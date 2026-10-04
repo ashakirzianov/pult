@@ -1,3 +1,4 @@
+import { APP_SCHEMES } from "./identity.ts";
 import { isLoopbackHost } from "./preview.ts";
 
 /** Only return to a local client or the hosted T3 client, never an arbitrary OAuth-supplied URL. */
@@ -5,7 +6,8 @@ export function providerAuthReturnUrl(value: string | undefined): string | undef
   if (!value) return undefined;
   try {
     const url = new URL(value);
-    const desktop = ["t3code:", "t3code-dev:"].includes(url.protocol) && url.host === "app";
+    const desktop =
+      APP_SCHEMES.some((scheme) => url.protocol === `${scheme}:`) && url.host === "app";
     const web =
       ["http:", "https:"].includes(url.protocol) &&
       (isLoopbackHost(url.hostname) || url.origin === "https://app.t3.codes");
