@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="430 583 905 297">
+  <!-- Generator: Adobe Illustrator 30.7.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 114)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #d8b41d;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6 {
+        stroke: #000;
+        stroke-width: 4px;
+      }
+
+      .st0, .st2, .st3, .st4, .st5, .st6 {
+        stroke-linejoin: round;
+      }
+
+      .st1 {
+        fill: none;
+        stroke-miterlimit: 8;
+      }
+
+      .st2 {
+        fill: #65bcfc;
+      }
+
+      .st3 {
+        fill: #57c170;
+      }
+
+      .st5 {
+        fill: #f9f9f9;
+      }
+
+      .st6 {
+        fill: #e55c65;
+      }
+    </style>
+  </defs>
+  <g>
+    <g id="guides1" data-name="guides">
+      <line class="st1" x1="491.92" y1="587.73" x2="1310.82" y2="587.73"/>
+      <line class="st1" x1="472.62" y1="659.72" x2="1330.11" y2="659.72"/>
+      <line class="st1" x1="453.35" y1="731.7" x2="1301.32" y2="731.7"/>
+      <line class="st1" x1="434.05" y1="803.69" x2="1314.69" y2="803.69"/>
+      <line class="st1" x1="462.85" y1="875.67" x2="1285.9" y2="875.67"/>
+    </g>
+    <g id="P1" data-name="P">
+      <path id="P-depth1" data-name="P-depth" class="st4" d="M491.94,587.73h103.98c24.03,0,43.29,12,51.29,31.99l28.79,71.98c8.82,22.1,2.6,50.51-16.2,73.92-18.8,23.43-47.11,38.05-73.66,38.05h-31.99l-19.3,71.98h-71.98l-28.79-71.98,57.87-215.95Z"/>
+      <path id="P-face1" data-name="P-face" class="st0" d="M491.94,587.73l-57.87,215.95h71.98l19.3-71.98h31.99c39.75,0,80.6-32.23,91.26-71.98,10.66-39.75-12.94-71.98-52.69-71.98h-103.98Z"/>
+    </g>
+    <g id="U1" data-name="U">
+      <path id="U-depth1" data-name="U-depth" class="st4" d="M656.14,659.72l28.79-71.98h71.98l28.89,107.84,14.3-35.85,28.79-71.98h71.98l57.87,215.95-28.79,71.98h-71.98l-28.89-107.84-14.3,35.85-28.79,71.98h-71.98l-57.87-215.95Z"/>
+      <path id="U-face1" data-name="U-face" class="st6" d="M656.14,659.72l57.87,215.95h71.98l43.05-107.98,28.93,107.98h71.98l-57.87-215.95h-71.98l-43.05,107.98-28.93-107.98h-71.98Z"/>
+    </g>
+    <g id="L1" data-name="L">
+      <path id="L-depth1" data-name="L-depth" class="st4" d="M1124.72,875.67h-161.96l-28.79-71.98,57.87-215.95h71.98l28.79,71.98-19.3,71.98h41.91l28.79,71.98-19.3,71.98Z"/>
+      <path id="L-face1" data-name="L-face" class="st2" d="M991.83,587.73l-57.87,215.95h161.96l19.3-71.98h-89.98l38.57-143.97h-71.98Z"/>
+    </g>
+    <g id="T1" data-name="T">
+      <path id="T-depth1" data-name="T-depth" class="st4" d="M1213.9,875.67l-38.57-143.97h-53.99l-19.3-71.98,28.79-71.98h179.96l19.3,71.98-28.79,71.98h-5.92l19.3,71.98-28.79,71.98h-71.98Z"/>
+      <path id="T-face1" data-name="T-face" class="st3" d="M1102.04,659.72l19.3,71.98h53.99l38.57,143.97h71.98l-38.57-143.97h53.99l-19.3-71.98h-179.96Z"/>
+    </g>
+  </g>
+</svg>
