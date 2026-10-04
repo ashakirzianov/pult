@@ -28,12 +28,15 @@ const sourceExtensions = new Set([
 const isTestFile = (fileName: string) =>
   /\.(test|spec)\.[cm]?[jt]sx?$/.test(fileName) || fileName.endsWith(".d.ts");
 
-// A `.t3` segment with a home-directory accessor on its line or on one of the
-// two before it, so a join split across lines is still caught. A quoted
-// "~/.t3" is both at once.
-const homeToken = /homedir\(\)|\bHOME\b|\bhomeDirectory\b|\bhomeDir\b|["']~[/\\]\.t3/;
+// A `.t3` segment with something naming a home directory on its line or on one
+// of the two lines before it, so a join split across lines is still
+// caught. A quoted "~/.t3" is both at once; a bare `home` counts as an argument.
+// Comment lines are skipped: prose about `~/.t3` is not a default.
+const homeToken =
+  /homedir\(\)|[(,]\s*home\s*[,)]|\bHOME|\bhomeDirectory\b|\bhomeDir\b|USERPROFILE|getPath\(["'`]home|["'`]~[/\\]\.t3/;
 const dotT3Token = /(^|[\s/\\'"`(])\.t3(?=$|[\s/\\'"`),}])/;
 const precedingLines = 2;
+const commentLine = /^\s*(\/\/|\/\*|\*|#)/;
 
 interface Finding {
   readonly file: string;
@@ -63,7 +66,9 @@ function findMatches() {
 
   const findings: Array<Finding> = [];
   for (const file of files) {
-    const lines = NodeFS.readFileSync(file, "utf8").split(/\r?\n/);
+    const lines = NodeFS.readFileSync(file, "utf8")
+      .split(/\r?\n/)
+      .map((line) => (commentLine.test(line) ? "" : line));
     lines.forEach((text, index) => {
       if (!dotT3Token.test(text)) return;
       const window = lines.slice(Math.max(0, index - precedingLines), index + 1).join("\n");
