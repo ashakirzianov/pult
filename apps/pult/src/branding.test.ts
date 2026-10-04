@@ -61,6 +61,19 @@ describe("branding", () => {
     expect(branding.APP_DISPLAY_NAME).toBe("Pult");
   });
 
+  it("shows the bare name for the Alpha stage and labels dev", async () => {
+    vi.stubEnv("VITE_HOSTED_APP_CHANNEL", "");
+    vi.stubEnv("DEV", false);
+    const production = await import("./branding");
+    expect(production.APP_STAGE_LABEL).toBe("Alpha");
+    expect(production.APP_DISPLAY_NAME).toBe("Pult");
+
+    vi.resetModules();
+    vi.stubEnv("DEV", true);
+    const development = await import("./branding");
+    expect(development.APP_DISPLAY_NAME).toBe("Pult (Dev)");
+  });
+
   it("ignores unknown hosted app channels", async () => {
     vi.stubEnv("VITE_HOSTED_APP_CHANNEL", "preview");
 
