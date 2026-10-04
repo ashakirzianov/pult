@@ -22,6 +22,8 @@ import { openMediaFile } from "./assets/MediaFile.ts";
 
 import { ORCHESTRATION_PROTOCOL_HEADER } from "@t3tools/contracts";
 
+import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+
 import * as ServerConfig from "./config.ts";
 
 import {
@@ -83,12 +85,15 @@ describe("browser API CORS", () => {
 
 const fileResponseLayer = Layer.mergeAll(NodeHttpPlatform.layer, NodeServices.layer);
 
-const makeStaticRequest = Effect.fn("HttpTest.makeStaticRequest")(function* (staticDir: string) {
+const makeStaticRequest = Effect.fn("HttpTest.makeStaticRequest")(function* (
+  staticDir: string,
+  clientDir?: string,
+) {
   const config = yield* ServerConfig.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const appLayer = Layer.merge(staticAndDevRouteLayer, httpCompressionLayer).pipe(
-    Layer.provideMerge(ServerConfig.layer({ ...config, staticDir })),
+    Layer.provideMerge(ServerConfig.layer({ ...config, staticDir, clientDir })),
     Layer.provideMerge(NodeHttpPlatform.layer),
     Layer.provideMerge(Layer.succeed(FileSystem.FileSystem, fileSystem)),
     Layer.provideMerge(Layer.succeed(Path.Path, path)),
@@ -187,6 +192,52 @@ it.layer(
       expect(head.status).toBe(200);
       expect(head.headers["content-length"]).toBe(String(Buffer.byteLength(nextHtml)));
       expect(yield* head.text).toBe("");
+    }),
+  );
+
+  it.effect("serves the client dir's current build, and the bundled client without one", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-static-bundled-" });
+      yield* fs.writeFileString(path.join(staticDir, "index.html"), "<html>bundled</html>");
+      const slotDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-static-slot-" });
+      const stage = (buildId: string, withEntry = true) =>
+        PultPayloadSlot.stagePayloadBuild(slotDir, buildId, (buildDir) =>
+          Effect.gen(function* () {
+            yield* fs.makeDirectory(path.join(buildDir, "client", "assets"), { recursive: true });
+            yield* fs.writeFileString(
+              path.join(buildDir, "client", "assets", "app.js"),
+              `export const build = "${buildId}";`,
+            );
+            if (withEntry) {
+              yield* fs.writeFileString(
+                path.join(buildDir, "client", "index.html"),
+                `<html>${buildId}</html>`,
+              );
+            }
+          }),
+        );
+      const request = yield* makeStaticRequest(staticDir, path.join(slotDir, "current", "client"));
+      const page = (resource: string) => request(resource).pipe(Effect.flatMap((r) => r.text));
+
+      expect(yield* page("/")).toBe("<html>bundled</html>");
+      yield* stage("b1");
+      expect(yield* page("/")).toBe("<html>bundled</html>");
+      yield* PultPayloadSlot.deployStagedPayload(slotDir);
+      expect(yield* page("/")).toBe("<html>b1</html>");
+      expect(yield* page("/threads/example")).toBe("<html>b1</html>");
+      expect(yield* page("/assets/app.js")).toContain('"b1"');
+
+      yield* stage("b2");
+      yield* PultPayloadSlot.deployStagedPayload(slotDir);
+      expect(yield* page("/")).toBe("<html>b2</html>");
+      yield* PultPayloadSlot.rollBackPayload(slotDir);
+      expect(yield* page("/")).toBe("<html>b1</html>");
+
+      yield* stage("broken", false);
+      yield* PultPayloadSlot.deployStagedPayload(slotDir);
+      expect(yield* page("/")).toBe("<html>bundled</html>");
     }),
   );
 

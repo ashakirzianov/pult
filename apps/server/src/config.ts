@@ -88,6 +88,11 @@ export class ServerConfig extends Context.Service<
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
+    /**
+     * A directory of built client files served instead of `staticDir` while
+     * it holds an `index.html`, checked per request.
+     */
+    readonly clientDir?: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAuthToken?: Redacted.Redacted<string> | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;

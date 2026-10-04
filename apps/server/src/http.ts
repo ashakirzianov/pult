@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
 import { APP_SCHEMES } from "@t3tools/shared/identity";
+import { resolveServedClientDir } from "@t3tools/shared/pult/payloadSlot";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -551,8 +552,10 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
       });
     }
 
-    const staticDir =
-      config.staticDir ?? (config.devUrl ? yield* ServerConfig.resolveStaticDir() : undefined);
+    const staticDir = yield* resolveServedClientDir(
+      config.clientDir,
+      config.staticDir ?? (config.devUrl ? yield* ServerConfig.resolveStaticDir() : undefined),
+    );
     if (!staticDir) {
       return HttpServerResponse.text("No static directory configured and no dev URL set.", {
         status: 503,

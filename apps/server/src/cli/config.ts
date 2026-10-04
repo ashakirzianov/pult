@@ -20,6 +20,8 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/unstable/cli";
 
+import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
@@ -46,6 +48,12 @@ export const baseDirFlag = Flag.String("base-dir").pipe(
 const devUrlFlag = Flag.String("dev-url").pipe(
   Flag.withSchema(Schema.URLFromString),
   Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
+  Flag.optional,
+);
+const clientDirFlag = Flag.String("client-dir").pipe(
+  Flag.withDescription(
+    "Directory of built client files to serve instead of the bundled client while it holds an index.html (equivalent to T3CODE_CLIENT_DIR).",
+  ),
   Flag.optional,
 );
 const noBrowserFlag = Flag.Boolean("no-browser").pipe(
@@ -129,6 +137,10 @@ const EnvServerConfig = Config.all({
   host: Config.String("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
   t3Home: Config.String("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  clientDir: Config.String("T3CODE_CLIENT_DIR").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   devAllowedOrigins: Config.String("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
     Config.map((value) =>
@@ -191,6 +203,7 @@ export interface CliServerFlags {
   readonly baseDir: Option.Option<string>;
   readonly cwd: Option.Option<string>;
   readonly devUrl: Option.Option<URL>;
+  readonly clientDir?: Option.Option<string>;
   readonly noBrowser: Option.Option<boolean>;
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
@@ -225,6 +238,7 @@ export const sharedServerCommandFlags = {
     Argument.optional,
   ),
   devUrl: devUrlFlag,
+  clientDir: clientDirFlag,
   noBrowser: noBrowserFlag,
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
@@ -268,6 +282,7 @@ export const resolveServerConfig = (
       baseDir: flags.baseDir ?? Option.none(),
       cwd: flags.cwd ?? Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
+      clientDir: flags.clientDir ?? Option.none(),
       noBrowser: flags.noBrowser ?? Option.none(),
       bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
@@ -382,6 +397,13 @@ export const resolveServerConfig = (
       () => 443,
     );
     const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
+    const explicitClientDir = resolveOptionPrecedence(
+      normalizedFlags.clientDir,
+      Option.fromUndefinedOr(env.clientDir),
+    ).pipe(Option.filter((value) => value.trim().length > 0));
+    const clientDir = Option.isSome(explicitClientDir)
+      ? path.resolve(yield* expandHomePath(explicitClientDir.value.trim()))
+      : yield* PultPayloadSlot.defaultClientDir(baseDir);
     const host = Option.getOrElse(
       resolveOptionPrecedence(
         normalizedFlags.host,
@@ -445,6 +467,7 @@ export const resolveServerConfig = (
       serverTracePath,
       host,
       staticDir,
+      clientDir,
       devUrl,
       ...(devAuthToken === undefined ? {} : { devAuthToken }),
       devAllowedOrigins: env.devAllowedOrigins,
