@@ -22,13 +22,9 @@ const APP_BUNDLE_ID = isDevelopment
   : Identity.APP_BUNDLE_ID;
 const APP_PROTOCOL_SCHEMES = [Identity.appScheme(isDevelopment)];
 const LAUNCHER_VERSION = 19;
-const developmentMacIconPngPath = NodePath.join(
-  repoRoot,
-  "assets",
-  "dev",
-  "blueprint-macos-1024.png",
-);
-const productionMacIconPngPath = NodePath.join(repoRoot, "assets", "prod", "black-macos-1024.png");
+// Pult's icons, rendered by scripts/pult/render-icons.ts.
+const developmentMacIconPngPath = NodePath.join(repoRoot, "assets", "pult", "dev", "macos-1024.png");
+const productionMacIconPngPath = NodePath.join(repoRoot, "assets", "pult", "prod", "macos-1024.png");
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone launcher script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
 

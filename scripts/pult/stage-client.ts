@@ -20,6 +20,8 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import { applyWebBrandAssets } from "../apply-web-brand-assets.ts";
+
 export class StageClientError extends Schema.TaggedError<StageClientError>()("StageClientError", {
   detail: Schema.String,
 }) {
@@ -107,6 +109,8 @@ const stageClient = Command.make(
           detail: `The build left no index.html in ${clientDist}.`,
         });
       }
+      // The build carries the dev icons from public/; a staged client is a prod one.
+      yield* applyWebBrandAssets("production", "apps/pult/dist");
 
       const buildDir = yield* PultPayloadSlot.stagePayloadBuild(slotDir, buildId, (dir) =>
         fs.copy(clientDist, path.join(dir, "client")),

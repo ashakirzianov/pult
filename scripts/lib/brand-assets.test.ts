@@ -42,19 +42,19 @@ describe("brand-assets", () => {
     expect(DEVELOPMENT_PUBLIC_ICON_OVERRIDES).toEqual([
       {
         sourceRelativePath: BRAND_ASSET_PATHS.developmentWebFaviconIco,
-        targetRelativePath: "apps/web/public/favicon.ico",
+        targetRelativePath: "apps/pult/public/favicon.ico",
       },
       {
         sourceRelativePath: BRAND_ASSET_PATHS.developmentWebFavicon16Png,
-        targetRelativePath: "apps/web/public/favicon-16x16.png",
+        targetRelativePath: "apps/pult/public/favicon-16x16.png",
       },
       {
         sourceRelativePath: BRAND_ASSET_PATHS.developmentWebFavicon32Png,
-        targetRelativePath: "apps/web/public/favicon-32x32.png",
+        targetRelativePath: "apps/pult/public/favicon-32x32.png",
       },
       {
         sourceRelativePath: BRAND_ASSET_PATHS.developmentWebAppleTouchIconPng,
-        targetRelativePath: "apps/web/public/apple-touch-icon.png",
+        targetRelativePath: "apps/pult/public/apple-touch-icon.png",
       },
     ]);
   });
@@ -94,8 +94,8 @@ describe("brand-assets", () => {
       "assets/nightly/app-icon.icon",
       "assets/prod/app-icon.icon",
     ]);
-    expect(BRAND_ASSET_PATHS.developmentDesktopIconPng).toMatch(/^assets\/dev\/blueprint-/);
+    expect(BRAND_ASSET_PATHS.developmentDesktopIconPng).toMatch(/^assets\/pult\/dev\//);
     expect(BRAND_ASSET_PATHS.nightlyMacIconPng).toMatch(/^assets\/nightly\/nightly-/);
-    expect(BRAND_ASSET_PATHS.productionMacIconPng).toMatch(/^assets\/prod\/black-/);
+    expect(BRAND_ASSET_PATHS.productionMacIconPng).toMatch(/^assets\/pult\/prod\//);
   });
 });
