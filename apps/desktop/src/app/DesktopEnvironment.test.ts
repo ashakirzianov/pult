@@ -117,6 +117,18 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.browserArtifactsDir, "/tmp/t3/userdata/browser-artifacts");
       assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
       assert.equal(environment.otlpProtocol, "http/json");
+      assert.equal(environment.clientDir, "/tmp/t3/payload/current/client");
+    }),
+  );
+
+  it.effect("serves the client from T3CODE_CLIENT_DIR when it is set", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        {},
+        { T3CODE_HOME: "/tmp/t3", T3CODE_CLIENT_DIR: " /tmp/client-build " },
+      );
+
+      assert.equal(environment.clientDir, "/tmp/client-build");
     }),
   );
 

@@ -68,6 +68,35 @@ describe("ElectronProtocol", () => {
     }).pipe(Effect.provide(Layer.merge(protocolLayer, NodeServices.layer)), Effect.scoped),
   );
 
+  it.effect("serves the client dir while it holds an index.html, else the bundled client", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const bundled = yield* fileSystem.makeTempDirectoryScoped();
+      const clientDir = yield* fileSystem.makeTempDirectoryScoped();
+      yield* fileSystem.writeFileString(`${bundled}/index.html`, "<html>bundled</html>");
+      let handler: ((request: Request) => Promise<Response>) | undefined;
+      handleMock.mockImplementation((_scheme, nextHandler) => {
+        handler = nextHandler;
+      });
+      const protocol = yield* ElectronProtocol.ElectronProtocol;
+      yield* protocol.registerDesktopProtocol({
+        scheme: "t3code",
+        assetDirectory: bundled,
+        clientDir,
+        clerkFrontendApiHostname: undefined,
+      });
+      const page = Effect.promise(() =>
+        handler!(new Request("t3code://app/settings")).then((response) => response.text()),
+      );
+
+      assert.equal(yield* page, "<html>bundled</html>");
+      yield* fileSystem.writeFileString(`${clientDir}/index.html`, "<html>deployed</html>");
+      assert.equal(yield* page, "<html>deployed</html>");
+      yield* fileSystem.remove(`${clientDir}/index.html`);
+      assert.equal(yield* page, "<html>bundled</html>");
+    }).pipe(Effect.provide(Layer.merge(protocolLayer, NodeServices.layer)), Effect.scoped),
+  );
+
   it.effect("proxies the stable renderer origin to the current app server", () =>
     Effect.gen(function* () {
       let handler: ((request: Request) => Promise<Response>) | undefined;

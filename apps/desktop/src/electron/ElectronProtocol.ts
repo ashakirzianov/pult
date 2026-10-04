@@ -13,6 +13,8 @@ import * as Scope from "effect/Scope";
 import * as Electron from "electron";
 import { APP_DEV_SCHEME, APP_SCHEME } from "@t3tools/shared/identity";
 
+import { resolveServedClientDir } from "@t3tools/shared/pult/payloadSlot";
+
 export const DESKTOP_HOST = "app";
 const DESKTOP_PRODUCTION_SCHEME = APP_SCHEME;
 const DESKTOP_DEVELOPMENT_SCHEME = APP_DEV_SCHEME;
@@ -54,11 +56,15 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
 }
 
 // The scheme either proxies to a dev server (`targetOrigin`) or serves the
-// built client from disk (`assetDirectory`).
+// built client from disk (`assetDirectory`, or `clientDir` while it holds an
+// `index.html`, checked per request).
 export type DesktopProtocolRegistrationInput = {
   readonly scheme: string;
   readonly clerkFrontendApiHostname: string | undefined;
-} & ({ readonly targetOrigin: URL } | { readonly assetDirectory: string });
+} & (
+  | { readonly targetOrigin: URL }
+  | { readonly assetDirectory: string; readonly clientDir?: string | undefined }
+);
 
 export class ElectronProtocol extends Context.Service<
   ElectronProtocol,
@@ -203,8 +209,10 @@ const TRANSIENT_FETCH_RETRY_DELAYS_MS = [0, 50, 150] as const;
 // router handles it, except for asset-shaped misses (`/missing.js`) which 404.
 const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   request: Request,
-  assetDirectory: string,
+  bundledDirectory: string,
+  clientDir: string | undefined,
 ) {
+  const assetDirectory = yield* resolveServedClientDir(clientDir, bundledDirectory);
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const url = new URL(request.url);
@@ -275,7 +283,9 @@ export const make = Effect.gen(function* () {
             Electron.protocol.handle(input.scheme, async (request) => {
               if ("assetDirectory" in input) {
                 return withContentSecurityPolicy(
-                  await runPromise(serveDesktopAsset(request, input.assetDirectory)),
+                  await runPromise(
+                    serveDesktopAsset(request, input.assetDirectory, input.clientDir),
+                  ),
                   contentSecurityPolicy,
                 );
               }
