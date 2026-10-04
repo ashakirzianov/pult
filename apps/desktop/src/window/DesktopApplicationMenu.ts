@@ -11,6 +11,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as PultPayloadMenu from "../pult/PayloadMenu.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 
@@ -113,6 +114,7 @@ export const make = Effect.gen(function* () {
   const appName = yield* electronApp.name;
   const context = yield* Effect.context<DesktopApplicationMenuRuntimeServices>();
   const runPromise = Effect.runPromiseWith(context);
+  const pultPayloadItems = yield* PultPayloadMenu.makePayloadMenuItems;
 
   const runMenuEffect = <E>(
     action: string,
@@ -233,6 +235,7 @@ export const make = Effect.gen(function* () {
           { role: "reload" },
           { role: "forceReload" },
           { role: "toggleDevTools" },
+          ...pultPayloadItems,
           { type: "separator" },
           /*
             Not the zoom roles: those act on the focused webContents, so with

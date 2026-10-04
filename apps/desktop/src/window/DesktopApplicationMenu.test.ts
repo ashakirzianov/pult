@@ -115,6 +115,7 @@ const configureMenu = (
         Layer.provideMerge(desktopUpdatesLayer),
         Layer.provideMerge(electronDialogLayer),
         Layer.provideMerge(electronAppLayer),
+        Layer.provideMerge(NodeServices.layer),
         Layer.provideMerge(
           DesktopEnvironment.layer(environmentInput).pipe(
             Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({}))),
