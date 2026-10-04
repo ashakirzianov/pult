@@ -2726,7 +2726,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
+          name: Identity.APP_DISPLAY_NAME,
           schemes: [...Identity.APP_SCHEMES],
         },
       ],
@@ -2780,7 +2780,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // pult:// OAuth callbacks to the app.
       protocols: [
         {
-          name: "T3 Code",
+          name: Identity.APP_DISPLAY_NAME,
           schemes: [...Identity.APP_SCHEMES],
         },
       ],
