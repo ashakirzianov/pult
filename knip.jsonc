@@ -32,7 +32,7 @@
       ],
       // Keep the transitive Effect runtime pinned for standalone npm installs.
       // The Vite+ web build prerequisite.
-      "ignoreDependencies": ["@effect/platform-node-shared", "@t3tools/web"],
+      "ignoreDependencies": ["@effect/platform-node-shared", "@pult/client"],
     },
     "apps/desktop": {
       // Electron loads these bundles by filename rather than importing them.
@@ -56,6 +56,16 @@
       "ignoreDependencies": ["playwright-core", "electron-builder"],
     },
     "apps/web": {
+      // Vitest loads this through the per-file @vitest-environment directive.
+      "ignoreDependencies": ["jsdom"],
+      // Worktree setup (scripts/setup-worktree.ts) runs this directly.
+      "entry": ["scripts/warm-dep-cache.ts"],
+      // UI component modules are copied and adapted as cohesive sets. Keep their
+      // named subcomponents even before they have callers; the file audit still
+      // reports an entire component module when nothing imports it.
+      "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
+    },
+    "apps/pult": {
       // Vitest loads this through the per-file @vitest-environment directive.
       "ignoreDependencies": ["jsdom"],
       // Worktree setup (scripts/setup-worktree.ts) runs this directly.

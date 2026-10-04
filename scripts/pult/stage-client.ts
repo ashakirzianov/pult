@@ -92,8 +92,7 @@ const stageClient = Command.make(
       const slotDir = yield* PultPayloadSlot.payloadSlotDir(home);
       const buildId = yield* makeBuildId(root);
 
-      // Until Pult's client has its own folder, the staged client is apps/web's build.
-      const build = yield* resolveSpawnCommand("vp", ["run", "--filter", "@t3tools/web", "build"]);
+      const build = yield* resolveSpawnCommand("vp", ["run", "--filter", "@pult/client", "build"]);
       yield* run(
         ChildProcess.make(build.command, build.args, {
           cwd: root,
@@ -102,7 +101,7 @@ const stageClient = Command.make(
           stderr: "inherit",
         }),
       );
-      const clientDist = path.join(root, "apps/web/dist");
+      const clientDist = path.join(root, "apps/pult/dist");
       if (!(yield* fs.exists(path.join(clientDist, "index.html")))) {
         return yield* new StageClientError({
           detail: `The build left no index.html in ${clientDist}.`,
