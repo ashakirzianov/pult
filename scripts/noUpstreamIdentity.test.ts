@@ -17,7 +17,14 @@ import { APP_DISPLAY_NAME, CLI_NAME } from "@t3tools/shared/identity";
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
 const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web"]);
-const excludedDirNames = new Set(["node_modules", "dist", "build", "out", "coverage"]);
+const excludedDirNames = new Set([
+  "node_modules",
+  "dist",
+  "dist-electron",
+  "build",
+  "out",
+  "coverage",
+]);
 const sourceExtensions = new Set([
   ".ts",
   ".tsx",

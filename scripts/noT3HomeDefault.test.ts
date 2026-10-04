@@ -12,7 +12,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedDirNames = new Set(["node_modules", "dist", "build", "out", "coverage"]);
+const excludedDirNames = new Set([
+  "node_modules",
+  "dist",
+  "dist-electron",
+  "build",
+  "out",
+  "coverage",
+]);
 const sourceExtensions = new Set([
   ".ts",
   ".tsx",
