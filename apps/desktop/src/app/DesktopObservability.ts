@@ -5,6 +5,7 @@ import {
   otlpSerializationLayer,
   type SignalExport,
 } from "@t3tools/shared/observability";
+import { DESKTOP_OBSERVABILITY_SERVICE_NAME } from "@t3tools/shared/identity";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import {
   parsePersistedServerObservabilitySettings,
@@ -626,7 +627,7 @@ const telemetryLayer = Layer.unwrap(
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const endpoints = yield* resolveOtlpEndpoints;
     const resource = {
-      serviceName: "t3code-desktop",
+      serviceName: DESKTOP_OBSERVABILITY_SERVICE_NAME,
       attributes: {
         "service.namespace": "t3code",
         "service.runtime": "desktop",
