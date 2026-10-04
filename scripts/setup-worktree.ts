@@ -39,7 +39,7 @@ if (NodeFS.realpathSync(projectRoot) !== NodeFS.realpathSync(worktree)) {
 
 const warm = NodeChildProcess.spawnSync(
   process.execPath,
-  [NodePath.join(worktree, "apps", "web", "scripts", "warm-dep-cache.ts")],
+  [NodePath.join(worktree, "apps", "pult", "scripts", "warm-dep-cache.ts")],
   { cwd: worktree, stdio: "inherit" },
 );
 process.exit(warm.status ?? 1);

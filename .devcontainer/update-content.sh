@@ -16,4 +16,4 @@ CI=true vp i
 vp run --filter @t3tools/desktop ensure:electron
 # Pre-warms Vite's dep optimizer (cache is keyed on the absolute path, which
 # is stable inside the container).
-node apps/web/scripts/warm-dep-cache.ts
+node apps/pult/scripts/warm-dep-cache.ts
