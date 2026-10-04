@@ -105,7 +105,8 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    return join(NodeOS.homedir(), ".t3");
+    // Pult's own home, never upstream's ~/.t3 (an installed T3 Code's live data).
+    return join(NodeOS.homedir(), ".pult");
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });
