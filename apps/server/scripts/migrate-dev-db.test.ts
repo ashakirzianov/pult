@@ -1,13 +1,23 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeOS from "node:os";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { afterEach, vi } from "vite-plus/test";
 
 import { runMigrations } from "../src/persistence/Migrations.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runMigrateDevDb } from "./migrate-dev-db.ts";
+
+// Calls through to the real homedir() unless a test points it at a fixture.
+vi.mock("node:os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("node:os")>();
+  return { ...os, homedir: vi.fn(os.homedir) };
+});
+
+afterEach(() => vi.mocked(NodeOS.homedir).mockReset());
 
 const withDatabase = <A, E>(
   databasePath: string,
@@ -229,6 +239,33 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
         { sharedHome: sourceDir },
       ).pipe(Effect.flip);
       assert.equal(error._tag, "MigrateDevDbSharedHomeError");
+    }),
+  );
+
+  it.effect("refuses ~/.pult by default and ~/.t3 always, reading ~/.t3 as the source", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-home-" });
+      vi.mocked(NodeOS.homedir).mockReturnValue(home);
+      const t3Home = path.join(home, ".t3");
+      yield* createFixtureSource(t3Home);
+      const pultHome = path.join(home, ".pult");
+      yield* fs.makeDirectory(pultHome);
+      const otherHome = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-other-" });
+
+      const pultError = yield* runMigrateDevDb({
+        baseDir: pultHome,
+        projects: 5,
+        threadsPerProject: 10,
+      }).pipe(Effect.flip);
+      const t3Error = yield* runMigrateDevDb(
+        { baseDir: t3Home, projects: 5, threadsPerProject: 10 },
+        { sharedHome: otherHome },
+      ).pipe(Effect.flip);
+
+      assert.equal(pultError._tag, "MigrateDevDbSharedHomeError");
+      assert.equal(t3Error._tag, "MigrateDevDbSharedHomeError");
     }),
   );
 });

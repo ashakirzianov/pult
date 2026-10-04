@@ -57,7 +57,7 @@ export class MigrateDevDbSharedHomeError extends Schema.TaggedError<MigrateDevDb
   {},
 ) {
   override get message(): string {
-    return "Refusing to rebuild the shared ~/.t3 database. Use an isolated --base-dir.";
+    return "Refusing to rebuild a shared ~/.pult or ~/.t3 database. Use an isolated --base-dir.";
   }
 }
 
@@ -153,7 +153,10 @@ export interface RunMigrateDevDbInput {
 }
 
 export interface RunMigrateDevDbOptions {
-  /** Overridable for tests; the directory writes must never target. */
+  /**
+   * Overridable for tests; the home writes must never target, ~/.pult by
+   * default. ~/.t3, an installed T3 Code's live home, is refused regardless.
+   */
   readonly sharedHome?: string | undefined;
 }
 
@@ -403,10 +406,10 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const sharedHome = path.resolve(options.sharedHome ?? path.join(NodeOS.homedir(), ".t3"));
-  const sourcePath = path.resolve(
-    input.source ?? path.join(sharedHome, "userdata", "statev2.sqlite"),
-  );
+  // The source stays the real T3 Code data: it is only ever read.
+  const t3Home = path.join(NodeOS.homedir(), ".t3");
+  const sharedHome = path.resolve(options.sharedHome ?? path.join(NodeOS.homedir(), ".pult"));
+  const sourcePath = path.resolve(input.source ?? path.join(t3Home, "userdata", "statev2.sqlite"));
 
   const baseDir =
     input.baseDir !== undefined
@@ -422,11 +425,12 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
   if (!(yield* fs.exists(sourcePath))) {
     return yield* new MigrateDevDbSourceMissingError({ sourcePath });
   }
-  const [canonicalBaseDir, canonicalSharedHome] = yield* Effect.all([
+  const [canonicalBaseDir, canonicalSharedHome, canonicalT3Home] = yield* Effect.all([
     fs.realPath(baseDir).pipe(Effect.orElseSucceed(() => baseDir)),
     fs.realPath(sharedHome).pipe(Effect.orElseSucceed(() => sharedHome)),
+    fs.realPath(t3Home).pipe(Effect.orElseSucceed(() => t3Home)),
   ]);
-  if (canonicalBaseDir === canonicalSharedHome) {
+  if (canonicalBaseDir === canonicalSharedHome || canonicalBaseDir === canonicalT3Home) {
     return yield* new MigrateDevDbSharedHomeError();
   }
   // The destination db and snapshot both get deleted below; a --source that

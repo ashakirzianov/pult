@@ -1,14 +1,24 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeOS from "node:os";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { afterEach, vi } from "vite-plus/test";
 
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runSqliteState } from "./t3-sqlite-state.ts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
+
+// Calls through to the real homedir() unless a test points it at a fixture.
+vi.mock("node:os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("node:os")>();
+  return { ...os, homedir: vi.fn(os.homedir) };
+});
+
+afterEach(() => vi.mocked(NodeOS.homedir).mockReset());
 
 const createFixtureDatabase = Effect.fn("createSqliteStateFixtureDatabase")(function* (
   baseDir: string,
@@ -120,5 +130,32 @@ it.layer(NodeServices.layer)("t3-sqlite-state", (it) => {
         ).pipe(Effect.flip);
         assert.equal(aliasError._tag, "SqliteStateSharedHomeMutationError");
       }),
+  );
+
+  it.effect("refuses to mutate ~/.pult by default and ~/.t3 always", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sqlite-state-home-" });
+      vi.mocked(NodeOS.homedir).mockReturnValue(home);
+      const pultHome = path.join(home, ".pult");
+      const t3Home = path.join(home, ".t3");
+      yield* createFixtureDatabase(pultHome);
+      yield* createFixtureDatabase(t3Home);
+      const otherHome = yield* fs.makeTempDirectoryScoped({ prefix: "t3-sqlite-state-other-" });
+      const exec = (baseDir: string) => ({
+        operation: "exec" as const,
+        baseDir,
+        sql: "DELETE FROM fixtures",
+      });
+
+      const pultError = yield* runSqliteState(exec(pultHome)).pipe(Effect.flip);
+      const t3Error = yield* runSqliteState(exec(t3Home), { sharedHome: otherHome }).pipe(
+        Effect.flip,
+      );
+
+      assert.equal(pultError._tag, "SqliteStateSharedHomeMutationError");
+      assert.equal(t3Error._tag, "SqliteStateSharedHomeMutationError");
+    }),
   );
 });
