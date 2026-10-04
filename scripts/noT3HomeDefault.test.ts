@@ -89,11 +89,6 @@ const allowList: ReadonlyArray<{ file: string; lineCount: number; reason: string
     reason: "a script run on a paired remote device; its home is that device's own.",
   },
   {
-    file: "packages/ssh/src/tunnel.ts",
-    lineCount: 10,
-    reason: "shell run over SSH on a remote host, against that host's own T3 Code install.",
-  },
-  {
     file: "apps/desktop/src/wsl/DesktopWslEnvironment.ts",
     lineCount: 3,
     reason:
