@@ -15,8 +15,9 @@ export function resolveDesktopBaseDir(input: {
   readonly joinPath: JoinPath;
   readonly t3Home: Option.Option<string>;
 }): string {
+  // Pult's own home, never upstream's ~/.t3 (an installed T3 Code's live data).
   return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, ".t3"),
+    input.joinPath(input.homeDirectory, ".pult"),
   );
 }
 
