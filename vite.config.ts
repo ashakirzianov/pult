@@ -2,6 +2,8 @@ import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 
+import { pultClientTildeAlias, withPultClientOverrides } from "./scripts/pult/rootViteConfig.ts";
+
 /** Import restrictions every file keeps, including the one module exempt from the glyph rule. */
 const RESTRICTED_IMPORT_PATHS = [
   {
@@ -54,6 +56,7 @@ const RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS = {
 };
 
 export default defineConfig({
+  plugins: [pultClientTildeAlias()],
   resolve: {
     alias: {
       "~": NodeURL.fileURLToPath(new URL("./apps/web/src", import.meta.url)),
@@ -174,7 +177,7 @@ export default defineConfig({
       "t3code/no-unscoped-has": "error",
       "t3code/namespace-node-imports": "error",
     },
-    overrides: [
+    overrides: withPultClientOverrides([
       {
         // The one place that reads the host platform to seed the injected references.
         files: ["packages/shared/src/hostProcess.ts"],
@@ -337,7 +340,7 @@ export default defineConfig({
           "t3code/no-mobile-uniwind-theme-escape-hatches": ["error", { allowUniwindTheme: true }],
         },
       },
-    ],
+    ]),
     options: {
       reportUnusedDisableDirectives: "error",
       // Revisit once Oxlint's tsgolint path can integrate with @effect/tsgo diagnostics.
