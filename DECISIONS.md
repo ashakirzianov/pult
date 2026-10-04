@@ -33,3 +33,8 @@ What the code cannot say about itself: decisions in force, grouped by area.
 
 ### payload-roll-back
 **Roll Back swaps `current` and `previous`, so a second Roll Back returns to the build that was rolled back from.** 2026-10-04. A roll back that drops the newer build would leave no way back to it short of staging it again. *Rejected:* a roll back that leaves `previous` empty. *See:* `pult/client-deploy`.
+
+## Packaging
+
+### auto-update-off
+**Packaged Pult builds carry no update feed, so the app ships without `app-update.yml` and never checks for updates; `PULT_UPDATE_FEED_ENABLED` in `scripts/build-desktop-artifact.ts` turns it back on when Pult has releases of its own.** 2026-10-04. A feed taken from the environment (`GITHUB_REPOSITORY`, `T3CODE_DESKTOP_UPDATE_REPOSITORY`) could name upstream's releases, and an update from there would replace Pult with T3 Code; with no feed the app's own check reports updates as unavailable, so the desktop code stays upstream's. The mock update server for local testing still works. *Rejected:* disabling the updater in the desktop app itself, which patches upstream's updater for a fact the build already decides. *See:* `pult/first-install`.

@@ -56,6 +56,12 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const DESKTOP_APP_ID = Identity.APP_BUNDLE_ID;
+// Pult has no releases of its own yet, and a feed taken from the environment
+// (GITHUB_REPOSITORY in CI) could point the app at upstream's, whose update
+// would replace Pult with T3 Code. Without a feed the app ships no
+// app-update.yml and reports updates as unavailable (DECISIONS.md,
+// `auto-update-off`).
+const PULT_UPDATE_FEED_ENABLED = false;
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -2700,7 +2706,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   if (!isDesktopPreviewVersion(version)) {
-    const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
+    const publishConfig = PULT_UPDATE_FEED_ENABLED
+      ? yield* resolveGitHubPublishConfig(updateChannel)
+      : undefined;
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
     } else if (mockUpdates) {
