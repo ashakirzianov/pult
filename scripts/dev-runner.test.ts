@@ -18,10 +18,12 @@ import * as PlatformError from "effect/PlatformError";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { afterEach, vi } from "vite-plus/test";
 
 import {
   checkPortAvailabilityOnHosts,
   createDevRunnerEnv,
+  DEFAULT_T3_HOME,
   devPortProbeHosts,
   findFirstAvailableOffset,
   getDevRunnerModeArgs,
@@ -30,6 +32,14 @@ import {
   resolveOffset,
   runDevRunnerWithInput,
 } from "./dev-runner.ts";
+
+// Calls through to the real homedir() unless a test points it at a fixture.
+vi.mock("node:os", async (importOriginal) => {
+  const os = await importOriginal<typeof import("node:os")>();
+  return { ...os, homedir: vi.fn(os.homedir) };
+});
+
+afterEach(() => vi.mocked(NodeOS.homedir).mockReset());
 
 const emptyConfigLayer = ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }));
 const netServiceLayer = Layer.succeed(NetService.NetService, {
@@ -85,6 +95,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       );
 
       assert.include(output, "[dev-runner] mode=dev");
+    }),
+  );
+
+  it.effect("defaults the home to ~/.pult, never ~/.t3", () =>
+    Effect.gen(function* () {
+      vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
+      const path = yield* Path.Path;
+
+      assert.equal(yield* DEFAULT_T3_HOME, path.join("/Users/fixture", ".pult"));
     }),
   );
 
