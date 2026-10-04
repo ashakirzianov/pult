@@ -4,7 +4,8 @@
 // a Pult app runs beside an installed T3 Code without either disturbing the
 // other (DECISIONS.md, `identity-seam`). This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
-// the reasoned allow-list below. Mobile is out of scope and not scanned.
+// the reasoned allow-list below. Mobile is out of scope and not scanned, and
+// apps/web is upstream's client kept byte for byte; Pult's is apps/pult.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -15,7 +16,7 @@ import { APP_DISPLAY_NAME, CLI_NAME } from "@t3tools/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/mobile", "apps/marketing"]);
+const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web"]);
 const excludedDirNames = new Set(["node_modules", "dist", "build", "out", "coverage"]);
 const sourceExtensions = new Set([
   ".ts",
@@ -103,7 +104,7 @@ function findMatches() {
 // how many matching lines the file has, so a new one cannot ride in on it.
 const allowList: ReadonlyArray<{ file: string; lineCount: number; reason: string }> = [
   {
-    file: "apps/web/src/components/NightlyMobileBeta.tsx",
+    file: "apps/pult/src/components/NightlyMobileBeta.tsx",
     lineCount: 1,
     reason: "links to upstream's mobile app in the Play Store; mobile is out of scope.",
   },
