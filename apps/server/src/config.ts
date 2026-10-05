@@ -93,6 +93,13 @@ export class ServerConfig extends Context.Service<
      * it holds an `index.html`, checked per request.
      */
     readonly clientDir?: string | undefined;
+    /**
+     * The server part's directory, run with the server's own Node runtime
+     * from its `main.mjs`; none runs while it holds none.
+     */
+    readonly partDir?: string | undefined;
+    /** Where the part runs from when the one in `partDir` does not come up. */
+    readonly partFallbackDir?: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAuthToken?: Redacted.Redacted<string> | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;

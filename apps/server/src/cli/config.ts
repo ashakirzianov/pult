@@ -56,6 +56,12 @@ const clientDirFlag = Flag.String("client-dir").pipe(
   ),
   Flag.optional,
 );
+const partDirFlag = Flag.String("part-dir").pipe(
+  Flag.withDescription(
+    "Directory of the server part to run beside the server, holding main.mjs (equivalent to T3CODE_PART_DIR).",
+  ),
+  Flag.optional,
+);
 const noBrowserFlag = Flag.Boolean("no-browser").pipe(
   Flag.withDescription("Disable automatic browser opening."),
   Flag.optional,
@@ -141,6 +147,7 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  partDir: Config.String("T3CODE_PART_DIR").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devAllowedOrigins: Config.String("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
     Config.map((value) =>
@@ -204,6 +211,7 @@ export interface CliServerFlags {
   readonly cwd: Option.Option<string>;
   readonly devUrl: Option.Option<URL>;
   readonly clientDir?: Option.Option<string>;
+  readonly partDir?: Option.Option<string>;
   readonly noBrowser: Option.Option<boolean>;
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
@@ -239,6 +247,7 @@ export const sharedServerCommandFlags = {
   ),
   devUrl: devUrlFlag,
   clientDir: clientDirFlag,
+  partDir: partDirFlag,
   noBrowser: noBrowserFlag,
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
@@ -283,6 +292,7 @@ export const resolveServerConfig = (
       cwd: flags.cwd ?? Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
       clientDir: flags.clientDir ?? Option.none(),
+      partDir: flags.partDir ?? Option.none(),
       noBrowser: flags.noBrowser ?? Option.none(),
       bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
@@ -404,6 +414,18 @@ export const resolveServerConfig = (
     const clientDir = Option.isSome(explicitClientDir)
       ? path.resolve(yield* expandHomePath(explicitClientDir.value.trim()))
       : yield* PultPayloadSlot.defaultClientDir(baseDir);
+    // An explicit part directory runs as named; the slot's default falls back
+    // to the previous build's part when the live one does not come up.
+    const explicitPartDir = resolveOptionPrecedence(
+      normalizedFlags.partDir,
+      Option.fromUndefinedOr(env.partDir),
+    ).pipe(Option.filter((value) => value.trim().length > 0));
+    const partDir = Option.isSome(explicitPartDir)
+      ? path.resolve(yield* expandHomePath(explicitPartDir.value.trim()))
+      : yield* PultPayloadSlot.defaultPartDir(baseDir);
+    const partFallbackDir = Option.isSome(explicitPartDir)
+      ? undefined
+      : yield* PultPayloadSlot.fallbackPartDir(baseDir);
     const host = Option.getOrElse(
       resolveOptionPrecedence(
         normalizedFlags.host,
@@ -468,6 +490,8 @@ export const resolveServerConfig = (
       host,
       staticDir,
       clientDir,
+      partDir,
+      ...(partFallbackDir === undefined ? {} : { partFallbackDir }),
       devUrl,
       ...(devAuthToken === undefined ? {} : { devAuthToken }),
       devAllowedOrigins: env.devAllowedOrigins,

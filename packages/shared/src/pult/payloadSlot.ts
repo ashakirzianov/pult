@@ -1,10 +1,11 @@
 /**
  * Pult's payload slot: `<home>/payload/` holds one directory per build,
- * `builds/<build-id>/`, with the client in `client/` (and later the server
- * part beside it), and three links into `builds/`: `staging`, `current` and
+ * `builds/<build-id>/`, with the client in `client/` and the server part in
+ * `part/`, and three links into `builds/`: `staging`, `current` and
  * `previous`. Agents stage a build; only the human switches it live, from the
  * desktop shell's menu. The server and the shell serve `current/client` on
- * every request, so a switch is one atomic rename and nothing has to restart.
+ * every request, so a switch is one atomic rename; the server notices that
+ * `current/part` moved and restarts only the part.
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -43,6 +44,23 @@ export const defaultClientDir = (home: string) =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
     return path.join(home, "payload", "current", "client");
+  });
+
+/** The file in a part directory that the server runs with its own Node runtime. */
+export const PART_ENTRY_FILE = "main.mjs";
+
+/** Pult's default server part directory: the live build's part. */
+export const defaultPartDir = (home: string) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    return path.join(home, "payload", "current", "part");
+  });
+
+/** Where the server runs the part from when the live build's part does not come up. */
+export const fallbackPartDir = (home: string) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    return path.join(home, "payload", "previous", "part");
   });
 
 /**
@@ -100,7 +118,7 @@ const pointLink = (slotDir: string, link: PayloadLink, buildId: string) =>
 
 /**
  * Stages a build: `populate` fills a fresh build directory (the client goes in
- * `client/`), which then becomes `builds/<buildId>` and the target of
+ * `client/`, the server part in `part/`), which then becomes `builds/<buildId>` and the target of
  * `staging`. Never touches `current`.
  */
 export const stagePayloadBuild = <E, R>(
