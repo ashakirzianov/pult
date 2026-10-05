@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { AuthSessionId, AuthStandardClientScopes } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import { PART_ROUTE_PREFIX } from "@t3tools/shared/pult/partProtocol";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -159,7 +160,7 @@ it.live("runs the live build's part and hands it the host bearer on fd 3", () =>
     expect(echoed.handshake).toMatchObject({
       serverUrl: "http://127.0.0.1:43123",
       token: "token-1",
-      routePrefix: PultPart.PART_ROUTE_PREFIX,
+      routePrefix: PART_ROUTE_PREFIX,
     });
     expect(echoed.handshake.dataDir).toMatch(/userdata[/\\]part$/);
     expect(echoed.authorization).toBe(`Bearer ${ready._tag === "Ready" ? ready.secret : ""}`);

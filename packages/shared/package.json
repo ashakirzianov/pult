@@ -203,6 +203,10 @@
       "types": "./src/symlink.ts",
       "import": "./src/symlink.ts"
     },
+    "./pult/partProtocol": {
+      "types": "./src/pult/partProtocol.ts",
+      "import": "./src/pult/partProtocol.ts"
+    },
     "./pult/payloadSlot": {
       "types": "./src/pult/payloadSlot.ts",
       "import": "./src/pult/payloadSlot.ts"

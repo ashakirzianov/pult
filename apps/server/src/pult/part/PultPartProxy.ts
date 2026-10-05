@@ -11,6 +11,7 @@ import {
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
+import { PART_ROUTE_PREFIX } from "@t3tools/shared/pult/partProtocol";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -170,7 +171,7 @@ const handler = Effect.gen(function* () {
   // The ticket authenticated this request and must not travel on.
   const search = new URLSearchParams(url.value.search);
   search.delete("wsTicket");
-  const path = url.value.pathname.slice(PultPart.PART_ROUTE_PREFIX.length) || "/";
+  const path = url.value.pathname.slice(PART_ROUTE_PREFIX.length) || "/";
   const upstreamPath = `${path}${search.size > 0 ? `?${search.toString()}` : ""}`;
   return upgrade
     ? yield* proxyWebSocket(
@@ -181,4 +182,4 @@ const handler = Effect.gen(function* () {
     : yield* proxyHttp(request, `${state.origin}${upstreamPath}`, state.secret);
 });
 
-export const routeLayer = HttpRouter.add("*", `${PultPart.PART_ROUTE_PREFIX}/*`, handler);
+export const routeLayer = HttpRouter.add("*", `${PART_ROUTE_PREFIX}/*`, handler);

@@ -17,6 +17,13 @@
  * does not come up in time.
  */
 import { AuthStandardClientScopes } from "@t3tools/contracts";
+import {
+  PART_HANDSHAKE_FD,
+  PART_READY_FD,
+  PART_ROUTE_PREFIX,
+  PartHandshake,
+  PartReady,
+} from "@t3tools/shared/pult/partProtocol";
 import { PART_ENTRY_FILE } from "@t3tools/shared/pult/payloadSlot";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -41,9 +48,6 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 import * as EnvironmentAuth from "../../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ServerActivation from "../../serverActivation.ts";
-
-/** Where the server reverse-proxies the part's HTTP routes. */
-export const PART_ROUTE_PREFIX = "/api/pult/part";
 
 export type PultPartState =
   /** No part directory holds a `main.mjs`. */
@@ -105,23 +109,8 @@ const STABLE_UPTIME_MS = 30_000;
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_MAX_MS = 60_000;
 
-/** What the part reads from fd 3. */
-const PartHandshake = Schema.Struct({
-  /** The server's loopback origin, for its ordinary client API. */
-  serverUrl: Schema.String,
-  /** A bearer for that API, with a paired client's scopes; revoked when this run ends. */
-  token: Schema.String,
-  /** Sent as `authorization: Bearer <secret>` on every request the server forwards. */
-  secret: Schema.String,
-  /** The part's own state directory. */
-  dataDir: Schema.String,
-  /** The path under which the server proxies the part's routes, stripped before forwarding. */
-  routePrefix: Schema.String,
-});
 const encodeHandshake = Schema.encodeSync(Schema.fromJsonString(PartHandshake));
-
-const ReadyLine = Schema.fromJsonString(Schema.Struct({ port: Schema.Int }));
-const decodeReadyLine = Schema.decodeUnknownOption(ReadyLine);
+const decodeReadyLine = Schema.decodeUnknownOption(Schema.fromJsonString(PartReady));
 
 class PartNotReady extends Schema.TaggedError<PartNotReady>()("PartNotReady", {
   reason: Schema.String,
@@ -192,7 +181,7 @@ export const make = Effect.fn("PultPart.make")(function* (options: PultPartOptio
     );
 
   const awaitReadyPort = (child: ChildProcessSpawner.ChildProcessHandle) =>
-    child.getOutputFd(4).pipe(
+    child.getOutputFd(PART_READY_FD).pipe(
       Stream.decodeText(),
       Stream.splitLines,
       Stream.runHead,
@@ -251,7 +240,10 @@ export const make = Effect.fn("PultPart.make")(function* (options: PultPartOptio
               stdin: "ignore",
               stdout: "pipe",
               stderr: "pipe",
-              additionalFds: { fd3: { type: "input" }, fd4: { type: "output" } },
+              additionalFds: {
+                [`fd${PART_HANDSHAKE_FD}`]: { type: "input" },
+                [`fd${PART_READY_FD}`]: { type: "output" },
+              },
               forceKillAfter: "3 seconds",
             }),
           )
@@ -267,7 +259,7 @@ export const make = Effect.fn("PultPart.make")(function* (options: PultPartOptio
           routePrefix: PART_ROUTE_PREFIX,
         })}\n`;
         yield* Stream.make(new TextEncoder().encode(handshake)).pipe(
-          Stream.run(child.getInputFd(3)),
+          Stream.run(child.getInputFd(PART_HANDSHAKE_FD)),
           Effect.ignore({ log: true }),
         );
         const port = yield* awaitReadyPort(child);

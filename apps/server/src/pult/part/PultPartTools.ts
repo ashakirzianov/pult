@@ -9,6 +9,7 @@
  * so tools stay listed while the part is down and answer with an error; a
  * part tool named like one of the host's own is not registered.
  */
+import { PART_CALLER_META_KEY, type PartCaller } from "@t3tools/shared/pult/partProtocol";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -23,9 +24,6 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as PultPart from "./PultPart.ts";
-
-/** The `_meta` key a forwarded call carries the caller's identity under. */
-export const CALLER_META_KEY = "pult/caller";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const REQUEST_TIMEOUT = Duration.seconds(10);
@@ -163,11 +161,11 @@ export const makePartMcpClient = (
     }),
   );
 
-  const callTool = (name: string, args: unknown, caller: Record<string, string>) =>
+  const callTool = (name: string, args: unknown, caller: PartCaller) =>
     request("tools/call", {
       name,
       arguments: args ?? {},
-      _meta: { [CALLER_META_KEY]: caller },
+      _meta: { [PART_CALLER_META_KEY]: caller },
     }).pipe(
       Effect.flatMap(decodeCallToolResult),
       Effect.mapError((error) =>

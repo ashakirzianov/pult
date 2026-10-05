@@ -3,6 +3,7 @@ import * as NodeHttp from "node:http";
 
 import { expect, it } from "@effect/vitest";
 import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { PART_CALLER_META_KEY } from "@t3tools/shared/pult/partProtocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -148,7 +149,7 @@ it.live("registers the part's tools on the host server and forwards calls with t
         name: "part_echo",
         arguments: { word: "hi" },
         _meta: {
-          [PultPartTools.CALLER_META_KEY]: {
+          [PART_CALLER_META_KEY]: {
             environmentId: invocation.environmentId,
             threadId: invocation.threadId,
             providerSessionId: invocation.providerSessionId,
