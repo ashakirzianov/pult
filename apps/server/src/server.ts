@@ -68,6 +68,8 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import { deviceHubProxyRouteLayer } from "./device/DeviceHubProxy.ts";
+import * as PultPart from "./pult/part/PultPart.ts";
+import * as PultPartTools from "./pult/part/PultPartTools.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -655,8 +657,13 @@ const makeRoutesLayer = Layer.mergeAll(
   // delegation targets through the same live adapter facade the V2
   // orchestrator uses, so MCP capability reporting can never drift from
   // what dispatch can actually serve.
-  McpHttpServer.layer.pipe(
-    Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+  // Pult's server part adds its tools to the same MCP server.
+  PultPartTools.registrationLayer.pipe(
+    Layer.provideMerge(
+      McpHttpServer.layer.pipe(
+        Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+      ),
+    ),
   ),
   // Last, so no route layer can replace the server's one TracerDisabledWhen.
   untracedRequestsLayer,
@@ -1021,12 +1028,16 @@ const makeServerLayer = Layer.unwrap(
     );
 
     return serverApplicationLayer.pipe(
+      Layer.provideMerge(PultPart.layer()),
       Layer.provideMerge(runtimeServicesLive),
       Layer.provideMerge(
-        McpSessionRegistry.layer.pipe(
-          Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),
+        PultPartTools.gatedSessionRegistry(
+          McpSessionRegistry.layer.pipe(
+            Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),
+          ),
         ),
       ),
+      Layer.provideMerge(PultPart.gateLayer),
       Layer.provide(activationLayer),
       Layer.provideMerge(serverRelayBrokerTracingLayer),
       Layer.provideMerge(HttpServerLive),
