@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Builds the client and stages it in Pult's payload slot (DECISIONS.md,
-// `payload-slot`). It never makes a build live: the human does that from the
-// desktop app, View → Deploy Staged Build.
+// Builds the client and the server part and stages them, as one build, in
+// Pult's payload slot (DECISIONS.md, `payload-slot`). It never makes a build
+// live: the human does that from the desktop app, View → Deploy Staged Build.
+// The server then restarts the part from the new build.
 //
 //   vp run pult:stage [--base-dir <home>]
 import * as NodeOS from "node:os";
@@ -22,7 +23,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { applyWebBrandAssets } from "../apply-web-brand-assets.ts";
 
-export class StageClientError extends Schema.TaggedError<StageClientError>()("StageClientError", {
+export class StageError extends Schema.TaggedError<StageError>()("StageError", {
   detail: Schema.String,
 }) {
   override get message(): string {
@@ -45,7 +46,7 @@ const resolveHome = Effect.fn("resolveHome")(function* (explicit: Option.Option<
     ? path.resolve(raw.replace(/^~(?=$|[/\\])/, userHome))
     : path.join(userHome, ".pult");
   if (home === path.join(userHome, ".t3")) {
-    return yield* new StageClientError({
+    return yield* new StageError({
       detail: "Refusing to stage into ~/.t3, T3 Code's live home.",
     });
   }
@@ -56,7 +57,7 @@ const run = Effect.fn("run")(function* (command: ChildProcess.StandardCommand) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const exitCode = yield* (yield* spawner.spawn(command)).exitCode;
   if (exitCode !== 0) {
-    return yield* new StageClientError({
+    return yield* new StageError({
       detail: `${command.command} ${command.args.join(" ")} exited with code ${exitCode}.`,
     });
   }
@@ -74,8 +75,20 @@ const makeBuildId = Effect.fn("makeBuildId")(function* (cwd: string) {
   return `${now}-${sha}${dirty ? "-dirty" : ""}`;
 });
 
-const stageClient = Command.make(
-  "stage-client",
+const build = Effect.fn("build")(function* (root: string, pkg: string) {
+  const command = yield* resolveSpawnCommand("vp", ["run", "--filter", pkg, "build"]);
+  yield* run(
+    ChildProcess.make(command.command, command.args, {
+      cwd: root,
+      shell: command.shell,
+      stdout: "inherit",
+      stderr: "inherit",
+    }),
+  );
+});
+
+const stage = Command.make(
+  "stage",
   {
     baseDir: Flag.String("base-dir").pipe(
       Flag.withDescription(
@@ -94,35 +107,42 @@ const stageClient = Command.make(
       const slotDir = yield* PultPayloadSlot.payloadSlotDir(home);
       const buildId = yield* makeBuildId(root);
 
-      const build = yield* resolveSpawnCommand("vp", ["run", "--filter", "@pult/client", "build"]);
-      yield* run(
-        ChildProcess.make(build.command, build.args, {
-          cwd: root,
-          shell: build.shell,
-          stdout: "inherit",
-          stderr: "inherit",
-        }),
-      );
+      yield* build(root, "@pult/client");
       const clientDist = path.join(root, "apps/pult/dist");
       if (!(yield* fs.exists(path.join(clientDist, "index.html")))) {
-        return yield* new StageClientError({
+        return yield* new StageError({
           detail: `The build left no index.html in ${clientDist}.`,
         });
       }
       // The build carries the dev icons from public/; a staged client is a prod one.
       yield* applyWebBrandAssets("production", "apps/pult/dist");
 
+      yield* build(root, "@pult/part");
+      const partDist = path.join(root, "apps/pult-part/dist");
+      if (!(yield* fs.exists(path.join(partDist, PultPayloadSlot.PART_ENTRY_FILE)))) {
+        return yield* new StageError({
+          detail: `The build left no ${PultPayloadSlot.PART_ENTRY_FILE} in ${partDist}.`,
+        });
+      }
+
       const buildDir = yield* PultPayloadSlot.stagePayloadBuild(slotDir, buildId, (dir) =>
-        fs.copy(clientDist, path.join(dir, "client")),
+        Effect.all([
+          fs.copy(clientDist, path.join(dir, "client")),
+          fs.copy(partDist, path.join(dir, "part")),
+        ]),
       );
       yield* Effect.log(
         `Staged build ${buildId} at ${buildDir}. Deploy it from the desktop app: View → Deploy Staged Build.`,
       );
     }),
-).pipe(Command.withDescription("Build the client and stage it in Pult's payload slot."));
+).pipe(
+  Command.withDescription(
+    "Build the client and the server part and stage them in Pult's payload slot.",
+  ),
+);
 
 if (import.meta.main) {
-  Command.run(stageClient, { version: "0.0.0" }).pipe(
+  Command.run(stage, { version: "0.0.0" }).pipe(
     Effect.scoped,
     Effect.provide(NodeServices.layer),
     NodeRuntime.runMain,
