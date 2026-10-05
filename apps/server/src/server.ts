@@ -69,6 +69,7 @@ import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import { deviceHubProxyRouteLayer } from "./device/DeviceHubProxy.ts";
 import * as PultPart from "./pult/part/PultPart.ts";
+import * as PultPartProxy from "./pult/part/PultPartProxy.ts";
 import * as PultPartTools from "./pult/part/PultPartTools.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -649,6 +650,7 @@ const makeRoutesLayer = Layer.mergeAll(
     assetRouteLayer,
     attachmentUploadRouteLayer,
     deviceHubProxyRouteLayer,
+    PultPartProxy.routeLayer,
     staticAndDevRouteLayer,
     websocketRpcRouteLayer,
   ),
