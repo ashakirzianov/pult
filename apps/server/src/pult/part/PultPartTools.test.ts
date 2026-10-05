@@ -6,12 +6,15 @@ import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts"
 import { PART_CALLER_META_KEY } from "@t3tools/shared/pult/partProtocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { McpSchema, McpServer } from "effect/unstable/ai";
 import { FetchHttpClient } from "effect/unstable/http";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as PultPart from "./PultPart.ts";
 import * as PultPartTools from "./PultPartTools.ts";
 
@@ -171,4 +174,45 @@ it.live("registers the part's tools on the host server and forwards calls with t
     ),
     Effect.scoped,
   ),
+);
+
+const gatedIssue = Effect.gen(function* () {
+  const issued: Array<string> = [];
+  const registry = yield* Layer.build(
+    PultPartTools.gatedSessionRegistry(
+      Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+        issue: (request) =>
+          Effect.sync(() => {
+            issued.push(request.threadId);
+            return { config: {} as McpSessionRegistry.McpIssuedCredential["config"] };
+          }),
+      }),
+    ),
+  ).pipe(Effect.map((context) => Context.get(context, McpSessionRegistry.McpSessionRegistry)));
+  const issuing = yield* registry
+    .issue({ threadId: invocation.threadId, providerInstanceId: invocation.providerInstanceId })
+    .pipe(Effect.forkChild);
+  yield* Effect.yieldNow;
+  return { issued, issuing };
+});
+
+it.effect("a new session's credentials wait until the part's tools are known", () =>
+  Effect.gen(function* () {
+    const { issued, issuing } = yield* gatedIssue;
+    expect(issued).toEqual([]);
+    yield* (yield* PultPart.PultPartGate).settle;
+    yield* Fiber.join(issuing);
+    expect(issued).toEqual([invocation.threadId]);
+  }).pipe(Effect.provide(PultPart.gateLayer), Effect.scoped),
+);
+
+it.effect("a new session starts without the part's tools once the wait runs out", () =>
+  Effect.gen(function* () {
+    const { issued, issuing } = yield* gatedIssue;
+    yield* TestClock.adjust("14 seconds");
+    expect(issued).toEqual([]);
+    yield* TestClock.adjust("1 second");
+    yield* Fiber.join(issuing);
+    expect(issued).toEqual([invocation.threadId]);
+  }).pipe(Effect.provide(PultPart.gateLayer), Effect.scoped),
 );
