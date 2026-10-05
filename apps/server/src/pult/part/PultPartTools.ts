@@ -30,7 +30,7 @@ const REQUEST_TIMEOUT = Duration.seconds(10);
 /** How long a new provider session waits for the part's tools before it starts without them. */
 const SESSION_WAIT = Duration.seconds(15);
 
-export class PartMcpError extends Schema.TaggedError<PartMcpError>()("PartMcpError", {
+class PartMcpError extends Schema.TaggedError<PartMcpError>()("PartMcpError", {
   detail: Schema.String,
 }) {
   override get message(): string {
@@ -68,11 +68,7 @@ const responseMessages = (contentType: string, body: string) =>
   ).flatMap((text) => Option.toArray(decodeJsonRpcResponse(text)));
 
 /** A minimal MCP client for one run of the part. */
-export const makePartMcpClient = (
-  httpClient: HttpClient.HttpClient,
-  origin: string,
-  secret: string,
-) => {
+const makePartMcpClient = (httpClient: HttpClient.HttpClient, origin: string, secret: string) => {
   let sessionId: string | undefined;
   let nextId = 0;
 
