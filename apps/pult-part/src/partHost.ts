@@ -21,6 +21,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import { McpSchema } from "effect/unstable/ai";
 import {
@@ -201,3 +202,19 @@ export const partLayer = <R, E, RR>(options: {
     Layer.provide(NodeHttpServer.layer(NodeHttp.createServer, { port: 0, host: "127.0.0.1" })),
     Layer.provideMerge(Layer.effect(Host, readHandshake)),
   );
+
+/**
+ * Completes once the server that started the part is gone. A server that is
+ * killed outright cannot stop its part, and the part still holds a host
+ * bearer, so it must not outlive the server.
+ */
+export const untilServerExits = Effect.gen(function* () {
+  const parent = process.ppid;
+  yield* Effect.sync(() => process.ppid).pipe(
+    Effect.repeat({ while: (ppid) => ppid === parent, schedule: Schedule.spaced("2 seconds") }),
+  );
+});
+
+/** Runs the part until it fails or the server is gone. */
+export const runPart = <E>(layer: Layer.Layer<never, E>) =>
+  Effect.raceFirst(Layer.launch(layer), untilServerExits);

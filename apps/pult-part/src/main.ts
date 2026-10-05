@@ -13,7 +13,7 @@ import * as Schema from "effect/Schema";
 import { McpSchema } from "effect/unstable/ai";
 import { FetchHttpClient, HttpClient, HttpRouter, HttpServerResponse } from "effect/unstable/http";
 
-import { Host, partLayer, type PartTool } from "./partHost.ts";
+import { Host, partLayer, runPart, type PartTool } from "./partHost.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -61,6 +61,6 @@ const routes = HttpRouter.add(
 
 partLayer({ tools: [statusTool], routes }).pipe(
   Layer.provide(FetchHttpClient.layer),
-  Layer.launch,
+  runPart,
   NodeRuntime.runMain,
 );
