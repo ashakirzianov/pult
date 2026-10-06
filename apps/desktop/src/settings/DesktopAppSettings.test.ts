@@ -11,6 +11,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopAppSettings from "./DesktopAppSettings.ts";
 
 const DesktopSettingsPatch = Schema.Struct({
+  localEnvironmentEnabled: Schema.optionalKey(Schema.Boolean),
   linuxPasswordStore: Schema.optionalKey(
     Schema.Literals(["auto", "gnome-libsecret", "kwallet", "kwallet5", "kwallet6"]),
   ),
@@ -39,7 +40,9 @@ const DesktopSettingsPatch = Schema.Struct({
 const decodeDesktopSettingsPatch = Schema.decodeEffect(Schema.fromJsonString(DesktopSettingsPatch));
 const encodeDesktopSettingsPatch = Schema.encodeEffect(Schema.fromJsonString(DesktopSettingsPatch));
 
-function makeEnvironmentLayer(baseDir: string, appVersion = "0.0.17") {
+// A development run, one with a dev server URL, is the only run with a local
+// environment, so the settings read as upstream's there; packaged tests opt out.
+function makeEnvironmentLayer(baseDir: string, appVersion = "0.0.17", development = true) {
   return DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,
@@ -47,12 +50,18 @@ function makeEnvironmentLayer(baseDir: string, appVersion = "0.0.17") {
     processArch: "x64",
     appVersion,
     appPath: "/repo",
-    isPackaged: true,
+    isPackaged: !development,
     resourcesPath: "/missing/resources",
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        DesktopConfig.layerTest({
+          T3CODE_HOME: baseDir,
+          ...(development ? { VITE_DEV_SERVER_URL: "http://127.0.0.1:5173" } : {}),
+        }),
+      ),
     ),
   );
 }
@@ -63,7 +72,7 @@ const withSettings = <A, E, R>(
     E,
     R | DesktopAppSettings.DesktopAppSettings | DesktopEnvironment.DesktopEnvironment
   >,
-  options?: { readonly appVersion?: string },
+  options?: { readonly appVersion?: string; readonly development?: boolean },
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -73,7 +82,9 @@ const withSettings = <A, E, R>(
     return yield* effect.pipe(
       Effect.provide(
         DesktopAppSettings.layer.pipe(
-          Layer.provideMerge(makeEnvironmentLayer(baseDir, options?.appVersion)),
+          Layer.provideMerge(
+            makeEnvironmentLayer(baseDir, options?.appVersion, options?.development),
+          ),
           Layer.provideMerge(NodeServices.layer),
         ),
       ),
@@ -108,6 +119,24 @@ describe("DesktopSettings", () => {
           assert.deepEqual(yield* settings.load, before);
         }),
       ),
+  );
+  it.effect("a packaged app runs without a local environment whatever the file says", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        assert.deepEqual(yield* settings.load, {
+          ...DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS,
+          localEnvironmentEnabled: false,
+        });
+        yield* writeSettingsPatch({ localEnvironmentEnabled: true, wslDistro: "Ubuntu" });
+        const loaded = yield* settings.load;
+        assert.isFalse(loaded.localEnvironmentEnabled);
+        assert.equal(loaded.wslDistro, "Ubuntu");
+        assert.isFalse((yield* settings.setLocalEnvironmentEnabled(true)).changed);
+        assert.isFalse((yield* settings.get).localEnvironmentEnabled);
+      }),
+      { development: false },
+    ),
   );
   it.effect("loads defaults when no settings file exists", () =>
     withSettings(

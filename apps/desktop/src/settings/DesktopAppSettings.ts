@@ -488,6 +488,11 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const settingsRef = yield* SynchronizedRef.make(environment.defaultDesktopSettings);
+  // Pult bundles no server (DECISIONS.md, `no-local-server`), so only a
+  // development run, which starts the repo's apps/server, has a local
+  // environment: a packaged app loads the setting as off whatever the file
+  // says, and turning it on is not a change.
+  const localEnvironmentAvailable = environment.isDevelopment;
 
   const updateInMemory = (update: (settings: DesktopSettings) => DesktopSettings) =>
     SynchronizedRef.modify(settingsRef, (settings) => {
@@ -536,7 +541,10 @@ export const make = Effect.gen(function* () {
         environment.desktopSettingsPath,
         environment.appVersion,
       );
-      return yield* SynchronizedRef.setAndGet(settingsRef, settings);
+      return yield* SynchronizedRef.setAndGet(
+        settingsRef,
+        localEnvironmentAvailable ? settings : setLocalEnvironmentEnabled(settings, false),
+      );
     }).pipe(Effect.withSpan("desktop.settings.load")),
     setMainWindowBounds: (bounds, isMaximized) =>
       persist((settings) => setMainWindowBounds(settings, bounds, isMaximized)).pipe(
@@ -577,7 +585,9 @@ export const make = Effect.gen(function* () {
         Effect.withSpan("desktop.settings.setWslOnly", { attributes: { enabled } }),
       ),
     setLocalEnvironmentEnabled: (enabled) =>
-      persist((settings) => setLocalEnvironmentEnabled(settings, enabled)).pipe(
+      persist((settings) =>
+        setLocalEnvironmentEnabled(settings, enabled && localEnvironmentAvailable),
+      ).pipe(
         Effect.withSpan("desktop.settings.setLocalEnvironmentEnabled", { attributes: { enabled } }),
       ),
     applyWslWindowsFallback: persist(applyWslWindowsFallback).pipe(
