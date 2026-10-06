@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Builds the client and the server part and stages them, as one build, in
-// Pult's payload slot (DECISIONS.md, `payload-slot`). It never makes a build
-// live: the human does that from the desktop app, View → Deploy Staged Build.
-// The server then restarts the part from the new build.
+// Builds the client and stages it as one build in Pult's payload slot
+// (DECISIONS.md, `payload-slot`). It never makes a build live: the human does
+// that from the desktop app, View → Deploy Staged Build.
 //
 //   vp run pult:stage [--base-dir <home>]
 import * as NodeOS from "node:os";
@@ -36,7 +35,7 @@ const repoRoot = Effect.gen(function* () {
   return path.resolve(import.meta.dirname, "../..");
 });
 
-// Same rule as the server's: an explicit home wins, otherwise ~/.pult. An
+// Same rule as the desktop's: an explicit home wins, otherwise ~/.pult. An
 // installed T3 Code's live home is refused even when named.
 const resolveHome = Effect.fn("resolveHome")(function* (explicit: Option.Option<string>) {
   const path = yield* Path.Path;
@@ -117,29 +116,14 @@ const stage = Command.make(
       // The build carries the dev icons from public/; a staged client is a prod one.
       yield* applyWebBrandAssets("production", "apps/pult/dist");
 
-      yield* build(root, "@pult/part");
-      const partDist = path.join(root, "apps/pult-part/dist");
-      if (!(yield* fs.exists(path.join(partDist, PultPayloadSlot.PART_ENTRY_FILE)))) {
-        return yield* new StageError({
-          detail: `The build left no ${PultPayloadSlot.PART_ENTRY_FILE} in ${partDist}.`,
-        });
-      }
-
       const buildDir = yield* PultPayloadSlot.stagePayloadBuild(slotDir, buildId, (dir) =>
-        Effect.all([
-          fs.copy(clientDist, path.join(dir, "client")),
-          fs.copy(partDist, path.join(dir, "part")),
-        ]),
+        fs.copy(clientDist, path.join(dir, "client")),
       );
       yield* Effect.log(
         `Staged build ${buildId} at ${buildDir}. Deploy it from the desktop app: View → Deploy Staged Build.`,
       );
     }),
-).pipe(
-  Command.withDescription(
-    "Build the client and the server part and stage them in Pult's payload slot.",
-  ),
-);
+).pipe(Command.withDescription("Build the client and stage it in Pult's payload slot."));
 
 if (import.meta.main) {
   Command.run(stage, { version: "0.0.0" }).pipe(
