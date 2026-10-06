@@ -11,6 +11,7 @@ import {
   removeCatalogValue,
   removeConnectionFromCatalog,
   setConnectionEnabledInCatalog,
+  setRoutesInCatalog,
   replaceCatalogValue,
   Persistence,
 } from "@t3tools/client-runtime/platform";
@@ -88,6 +89,7 @@ function persistenceError(
     | "register-connection"
     | "remove-connection"
     | "set-connection-enabled"
+    | "set-connection-routes"
     | "load-shell"
     | "save-shell"
     | "load-thread"
@@ -474,10 +476,14 @@ export const connectionStorageLayer = Layer.effectContext(
       ),
     });
     const registrationStore = Persistence.ConnectionRegistrationStore.of({
-      register: (registration) =>
+      register: (registration, routes) =>
         catalog
-          .update((document) => registerConnectionInCatalog(document, registration))
+          .update((document) => registerConnectionInCatalog(document, registration, routes))
           .pipe(Effect.mapError((cause) => persistenceError("register-connection", cause))),
+      setRoutes: (environmentId, routes) =>
+        catalog
+          .update((document) => setRoutesInCatalog(document, environmentId, routes))
+          .pipe(Effect.mapError((cause) => persistenceError("set-connection-routes", cause))),
       remove: (target) =>
         catalog
           .update((document) => removeConnectionFromCatalog(document, target))

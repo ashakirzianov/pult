@@ -11,7 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
 import {
   AVAILABLE_CONNECTION_STATE,
@@ -22,7 +22,7 @@ import {
 import { type RpcSession } from "@t3tools/client-runtime/rpc";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
-import { remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
+import { layerRemoteHttpClient } from "@t3tools/client-runtime/rpc";
 import { __resetDesktopPrimaryAuthForTests } from "../environments/primary/desktopAuth";
 
 import {
@@ -62,7 +62,7 @@ const dpopSignerLayer = Layer.succeed(
 );
 
 function relayLayer() {
-  const http = remoteHttpClientLayer(globalThis.fetch);
+  const http = layerRemoteHttpClient(globalThis.fetch);
   return Layer.mergeAll(
     http,
     ManagedRelay.layer({

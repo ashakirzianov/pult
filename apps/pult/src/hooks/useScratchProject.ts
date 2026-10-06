@@ -8,7 +8,6 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback } from "react";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
-import { waitForProject } from "~/state/entities";
 import { useEnvironments } from "~/state/environments";
 import { projectEnvironment } from "~/state/projects";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -32,7 +31,7 @@ function reportScratchFailure(error: unknown) {
  */
 export function useScratchProject() {
   const { environments } = useEnvironments();
-  const ensureScratch = useAtomCommand(projectEnvironment.ensureScratch, { reportFailure: false });
+  const openScratch = useAtomCommand(projectEnvironment.openScratch, { reportFailure: false });
   const handleNewThread = useNewThreadHandler();
 
   /** The scratch folder of a connected environment, or null when it offers none. */
@@ -63,23 +62,14 @@ export function useScratchProject() {
   /** Resolves to the scratch project once it is in this client's store. */
   const openScratchProject = useCallback(
     async (environmentId: EnvironmentId): Promise<EnvironmentProject | null> => {
-      const result = await ensureScratch({ environmentId, input: {} });
-      if (result._tag === "Failure") {
-        if (!isAtomCommandInterrupted(result)) {
-          reportScratchFailure(squashAtomCommandFailure(result));
-        }
-        return null;
+      const result = await openScratch({ environmentId, input: {} });
+      if (result._tag === "Success") return result.value;
+      if (!isAtomCommandInterrupted(result)) {
+        reportScratchFailure(squashAtomCommandFailure(result));
       }
-      // Drafts key off the project's stored path and settings, so wait for
-      // the create event to reach the store before targeting one.
-      return waitForProject(scopeProjectRef(environmentId, result.value.projectId)).catch(
-        (error: unknown) => {
-          reportScratchFailure(error);
-          return null;
-        },
-      );
+      return null;
     },
-    [ensureScratch],
+    [openScratch],
   );
 
   const startScratchThread = useCallback(

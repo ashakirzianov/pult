@@ -24,6 +24,7 @@ const model = (
   unpricedRecords: 0,
   unpricedTokens: 0,
   costShare: 0,
+  tokenShare: 0,
   ...overrides,
 });
 
