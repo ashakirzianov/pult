@@ -49,7 +49,6 @@ interface FirstRunDecisionInput {
 }
 
 interface HostedFirstRunDecisionInput {
-  readonly localEnvironmentDisabled?: boolean;
   readonly hydrated: boolean;
   readonly completed: boolean;
   readonly catalogReady: boolean;
@@ -179,9 +178,10 @@ export function resolveHostedFirstRunDecision(input: HostedFirstRunDecisionInput
     return { decision: "pending", persistCompletion: false };
   }
 
-  // An existing desktop may have disabled its server before onboarding existed.
-  // Keep Connections accessible so it can turn local execution back on.
-  return input.environmentCount === 0 && !input.localEnvironmentDisabled
+  // Pult has no local environment to fall back on (DECISIONS.md,
+  // `no-local-server`), so an install with nothing saved gets the wizard,
+  // whose pairing form is where a link from `t3 pair` goes.
+  return input.environmentCount === 0
     ? { decision: "wizard", persistCompletion: false }
     : { decision: "app", persistCompletion: true };
 }

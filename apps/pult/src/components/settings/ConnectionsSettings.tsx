@@ -66,7 +66,6 @@ import {
   SettingsSection,
   useRelativeTimeTick,
 } from "./settingsLayout";
-import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
 import { searchableSetting } from "./settingsSearch";
 import { EnvironmentIconMenu } from "./EnvironmentIconPicker";
 import {
@@ -3296,7 +3295,7 @@ export function ConnectionsSettings() {
 
   const primarySettings = (
     <>
-      {desktopBridge || canManageLocalBackend ? (
+      {!isLocalEnvironmentDisabled() && (desktopBridge || canManageLocalBackend) ? (
         <>
           <SettingsSection
             {...searchableSetting("connections-environment")}
@@ -3339,7 +3338,6 @@ export function ConnectionsSettings() {
               ) : null
             }
           >
-            <LocalEnvironmentSetting />
             {canManageLocalBackend ? (
               <SettingsRow
                 title="Version"

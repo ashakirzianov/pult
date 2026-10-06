@@ -198,7 +198,7 @@ describe("searchSettings", () => {
     expect(itemIds(true)).toContain("cursor-keychain-usage");
   });
 
-  it("keeps the local toggle searchable without offering hidden host publishing controls", () => {
+  it("offers no host publishing controls to a remote-only client", () => {
     const availability = {
       hasCloudPublicConfig: true,
       hasEnvironment: true,
@@ -212,7 +212,6 @@ describe("searchSettings", () => {
       ...availability,
       localEnvironmentDisabled: true,
     }).map((item) => item.id);
-    expect(remoteOnly).toContain("local-environment");
     expect(remoteOnly).not.toContain("t3-connect");
     expect(remoteOnly).not.toContain("publish-agent-activity");
     expect(remoteOnly).not.toContain("wsl-backend");
