@@ -688,6 +688,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.deepStrictEqual(win.files, DESKTOP_FILE_EXCLUSIONS);
       assert.deepStrictEqual(winWithoutWslRuntime.files, win.files);
       assert.notProperty(mac.mac as Record<string, unknown>, "sign");
+      // Unsigned Pult builds are signed ad hoc, so the bundle verifies at
+      // install; hardened runtime would refuse frameworks without a team id.
+      assert.equal((mac.mac as Record<string, unknown>).identity, "-");
+      assert.equal((mac.mac as Record<string, unknown>).hardenedRuntime, false);
       for (const config of [linux, win]) {
         assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
       }
@@ -1987,6 +1991,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(mac.entitlements, "/tmp/entitlements.mac.plist");
       assert.equal(mac.provisioningProfile, "/tmp/t3code.provisionprofile");
       assert.match(String(mac.sign), /[\\/]scripts[\\/]sign-macos\.ts$/);
+      assert.notProperty(mac, "identity");
+      assert.notProperty(mac, "hardenedRuntime");
       assert.deepStrictEqual(mac.protocols, [
         { name: Identity.APP_DISPLAY_NAME, schemes: [...Identity.APP_SCHEMES] },
       ]);
