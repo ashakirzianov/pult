@@ -46,7 +46,7 @@ const isMobileScript = (relativePath: string) => relativePath.startsWith("script
 // Upstream's values, each as it is spelled at a site. Comment lines are
 // skipped: prose about upstream's names is not a site.
 const upstreamValues: ReadonlyArray<{ name: string; pattern: RegExp; paths?: RegExp }> = [
-  { name: "bundle id or launchd label", pattern: /com\.t3tools\.t3code/ },
+  { name: "bundle id", pattern: /com\.t3tools\.t3code/ },
   { name: "Linux desktop entry", pattern: /com\.t3tools\.T3Code(\.Development)?\.desktop/ },
   { name: "Electron userData", pattern: /\bt3code-v2\b/ },
   // A bare "t3code" is also a branch prefix and a namespace, so only the
@@ -55,7 +55,6 @@ const upstreamValues: ReadonlyArray<{ name: string; pattern: RegExp; paths?: Reg
     name: "URL scheme",
     pattern: /\bt3code(-dev)?:\/\/|["'`]t3code(-dev)?:["'`]|["'`]t3code-dev["'`]/,
   },
-  { name: "systemd unit", pattern: /\bt3code\.service\b/ },
   { name: "observability service", pattern: /["'`]t3code-desktop["'`]/ },
   { name: "display name", pattern: /T3 Code \((Alpha|Dev|Nightly)\)/ },
   { name: "desktop backend port", pattern: /\b3773\b/, paths: /^apps\/desktop\// },

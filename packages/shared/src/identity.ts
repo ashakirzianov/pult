@@ -34,15 +34,6 @@ export const APP_DEV_LINUX_WM_CLASS = "pult-dev";
 export const APP_LINUX_DESKTOP_ENTRY_NAME = `${APP_BUNDLE_ID}.desktop`;
 export const APP_DEV_LINUX_DESKTOP_ENTRY_NAME = `${APP_DEV_BUNDLE_ID}.desktop`;
 
-/** The command name the CLI answers to and suggests. */
-export const CLI_NAME = "pult";
-
-/** The background service: systemd unit `<name>.service`, launchd label. */
-export const BOOT_SERVICE_NAME = "pult";
-// The `.service` suffix keeps the label distinct from the app's bundle id, so
-// launchd and TCC records never collide.
-export const BOOT_SERVICE_LAUNCHD_LABEL = `${APP_BUNDLE_ID}.service`;
-
 export const DESKTOP_OBSERVABILITY_SERVICE_NAME = "pult-desktop";
 
 /** Where the desktop backend starts scanning for a free port. */
