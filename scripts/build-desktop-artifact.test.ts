@@ -643,17 +643,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         ...LINUX_CAPTURE_EXTRA_RESOURCES,
         { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
       ]);
+      // Pult stages no server sidecar (DECISIONS.md, `no-local-server`).
       assert.deepStrictEqual(win.extraResources, [
         ...DESKTOP_EXTRA_RESOURCES,
-        ...WINDOWS_SERVER_EXTRA_RESOURCES,
         ...WSL_RUNTIME_EXTRA_RESOURCES,
       ]);
       // No Linux CLI archive means staging never writes the runtime, so
       // listing it here would fail the build on a missing source file.
-      assert.deepStrictEqual(winWithoutWslRuntime.extraResources, [
-        ...DESKTOP_EXTRA_RESOURCES,
-        ...WINDOWS_SERVER_EXTRA_RESOURCES,
-      ]);
+      assert.deepStrictEqual(winWithoutWslRuntime.extraResources, [...DESKTOP_EXTRA_RESOURCES]);
       assert.deepStrictEqual(win.nsis, { differentialPackage: true });
       // The Claude SDK platform packages and .bin shims never ship.
       assert.deepStrictEqual(WINDOWS_SERVER_ASAR_IGNORE_GLOBS, [

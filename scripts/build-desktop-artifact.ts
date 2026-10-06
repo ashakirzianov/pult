@@ -62,6 +62,14 @@ const DESKTOP_APP_ID = Identity.APP_BUNDLE_ID;
 // app-update.yml and reports updates as unavailable (DECISIONS.md,
 // `auto-update-off`).
 const PULT_UPDATE_FEED_ENABLED = false;
+// Pult bundles no server (DECISIONS.md, `no-local-server`): the app ships
+// Pult's client for the renderer and the desktop's own runtime dependencies,
+// and neither the server bundle, its dependency closure nor the Windows
+// server sidecar is staged. Upstream's server staging stays behind this switch.
+const PULT_BUNDLES_SERVER = false;
+// Repo-relative directory of the built client the packaged renderer serves;
+// the desktop reads it at the same path (DesktopEnvironment.clientAssetsDir).
+const CLIENT_DIST_DIR = "apps/pult/dist";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -2700,7 +2708,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ...DESKTOP_EXTRA_RESOURCES,
       ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
       ...(platform === "linux" ? LINUX_BROWSER_SECRET_EXTRA_RESOURCES : []),
-      ...(platform === "win" ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
+      ...(platform === "win" && PULT_BUNDLES_SERVER ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
       ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
     ],
   };
@@ -3477,8 +3485,9 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
     desktopResources: path.join(repoRoot, "apps/desktop/resources"),
     serverDist: path.join(repoRoot, "apps/server/dist"),
+    clientDist: path.join(repoRoot, CLIENT_DIST_DIR),
   };
-  const bundledClientEntry = path.join(distDirs.serverDist, "client/index.html");
+  const bundledClientEntry = path.join(distDirs.clientDist, "index.html");
 
   if (!options.skipBuild) {
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
@@ -3495,7 +3504,9 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const requiredBuildInputs = [
     { artifact: "desktop-dist", artifactPath: distDirs.desktopDist },
     { artifact: "desktop-resources", artifactPath: distDirs.desktopResources },
-    { artifact: "server-dist", artifactPath: distDirs.serverDist },
+    ...(PULT_BUNDLES_SERVER
+      ? [{ artifact: "server-dist", artifactPath: distDirs.serverDist } as const]
+      : []),
   ] as const;
   for (const input of requiredBuildInputs) {
     if (!(yield* fs.exists(input.artifactPath))) {
@@ -3514,7 +3525,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // prebuilds relative to the bundle and quietly falls back to a slower
   // pure-JS path, so this fails the build rather than shipping a silent
   // regression.
-  {
+  if (PULT_BUNDLES_SERVER) {
     const chunkNames = (yield* fs.readDirectory(distDirs.serverDist)).filter((entry) =>
       entry.endsWith(".mjs"),
     );
@@ -3578,12 +3589,12 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   }
 
   const webAssetBrand = resolveDesktopWebAssetBrand(appVersion);
-  yield* applyWebBrandAssets(webAssetBrand, "apps/server/dist/client");
+  yield* applyWebBrandAssets(webAssetBrand, CLIENT_DIST_DIR);
   yield* Effect.log(`[desktop-artifact] Applied ${webAssetBrand} web client branding.`);
   yield* validateBundledClientAssets(path.dirname(bundledClientEntry));
 
   yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop"), { recursive: true });
-  if (options.platform !== "win") {
+  if (PULT_BUNDLES_SERVER && options.platform !== "win") {
     yield* fs.makeDirectory(path.join(stageAppDir, "apps/server"), { recursive: true });
   }
 
@@ -3607,9 +3618,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.verbose,
     );
   }
+  yield* fs.copy(distDirs.clientDist, path.join(stageAppDir, CLIENT_DIST_DIR));
   // On Windows the server tree ships in the server.asar sidecar instead of
   // app.asar (see stageWindowsServerSidecar), so the app stage omits it.
-  if (options.platform !== "win") {
+  if (PULT_BUNDLES_SERVER && options.platform !== "win") {
     yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
   }
   yield* stageResourceMonitor({
@@ -3685,7 +3697,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // in the server.asar sidecar (see stageWindowsServerSidecar). macOS and
   // Linux merge both sets into one app.asar.
   const stageDependencies =
-    options.platform === "win"
+    options.platform === "win" || !PULT_BUNDLES_SERVER
       ? { ...resolvedDesktopRuntimeDependencies }
       : resolveMergedStageDependencies({
           platform: options.platform,
@@ -3769,7 +3781,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   // Only the Windows artifact carries the server sidecar and the WSL runtime;
   // other platforms ignore the --wsl-runtime input.
-  if (options.platform === "win" && windowsServerAsarPath) {
+  if (PULT_BUNDLES_SERVER && options.platform === "win" && windowsServerAsarPath) {
     yield* stageWindowsServerSidecar({
       stageRoot,
       repoRoot,
@@ -3897,7 +3909,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // Only Windows unpacks anything; macOS and Linux keep the whole tree inside
   // the app asar. Windows validates and executes the separately packed server
   // sidecar after electron-builder copies it into the final payload.
-  if (options.platform === "win") {
+  if (PULT_BUNDLES_SERVER && options.platform === "win") {
     yield* validateWindowsPackagedPayload({
       stageDistDir,
       appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,

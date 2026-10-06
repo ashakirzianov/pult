@@ -64,7 +64,8 @@ export class DesktopEnvironment extends Context.Service<
     // extracts on demand (see DesktopWslServerTree).
     readonly serverRoot: string;
     readonly backendEntryPath: string;
-    // Built web client the packaged renderer is served from over pult://app.
+    // Pult's built client, apps/pult/dist, which the packaged renderer is
+    // served from over pult://app (scripts/build-desktop-artifact.ts stages it).
     readonly clientAssetsDir: string;
     // Served instead of clientAssetsDir while it holds an index.html.
     readonly clientDir: string;
@@ -218,7 +219,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     appRoot,
     serverRoot,
     backendEntryPath: path.join(serverRoot, "apps/server/dist/bin.mjs"),
-    clientAssetsDir: path.join(serverRoot, "apps/server/dist/client"),
+    clientAssetsDir: path.join(appRoot, "apps/pult/dist"),
     clientDir: Option.isSome(config.clientDir)
       ? path.resolve(config.clientDir.value)
       : yield* PultPayloadSlot.defaultClientDir(baseDir),
