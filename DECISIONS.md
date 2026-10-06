@@ -2,6 +2,11 @@
 
 What the code cannot say about itself: decisions in force, grouped by area.
 
+## State
+
+### default-home
+**The desktop's own state (its payload slot and settings) and the dev modes default to `~/.pult`; the server Pult attaches to is not Pult's and keeps `~/.t3`.** 2026-10-06. `~/.t3` is the running T3 Code Extensible server's data, which a dev run must never touch, and Pult runs no server of its own (`no-local-server`); the names of the flags and variables stay upstream's. `scripts/noT3HomeDefault.test.ts` fails if a `~/.t3` default comes back outside upstream's own code. *Rejected:* a `~/.pult` default in the server and CLI (2026-10-03), gone with the server patches; a `~/.pult` home for the server the desktop launches over SSH, which is the fork's server. *See:* `pult/third-party-client`, `pult/own-home-dir`.
+
 ## Identity
 
 ### identity-seam
