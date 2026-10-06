@@ -88,18 +88,6 @@ export class ServerConfig extends Context.Service<
     readonly cwd: string;
     readonly baseDir: string;
     readonly staticDir: string | undefined;
-    /**
-     * A directory of built client files served instead of `staticDir` while
-     * it holds an `index.html`, checked per request.
-     */
-    readonly clientDir?: string | undefined;
-    /**
-     * The server part's directory, run with the server's own Node runtime
-     * from its `main.mjs`; none runs while it holds none.
-     */
-    readonly partDir?: string | undefined;
-    /** Where the part runs from when the one in `partDir` does not come up. */
-    readonly partFallbackDir?: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAuthToken?: Redacted.Redacted<string> | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;
@@ -269,7 +257,7 @@ export const resolveStaticDir = Effect.fn(function* () {
     return bundledClient;
   }
 
-  const monorepoClient = resolve(join(import.meta.dirname, "../../pult/dist"));
+  const monorepoClient = resolve(join(import.meta.dirname, "../../web/dist"));
   const monorepoStat = yield* exists(join(monorepoClient, "index.html")).pipe(
     Effect.orElseSucceed(() => false),
   );

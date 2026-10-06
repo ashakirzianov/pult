@@ -30,7 +30,6 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 
-import { BOOT_SERVICE_NAME } from "@t3tools/shared/identity";
 import packageJson from "../../package.json" with { type: "json" };
 import * as BootService from "../cloud/bootService.ts";
 import {
@@ -310,7 +309,7 @@ const belongsToBootService = Effect.fn("cli.update.belongs_to_boot_service")(fun
   const runner = yield* ProcessRunner.ProcessRunner;
   if (platform === "linux") {
     const cgroup = yield* fs.readFileString(`/proc/${pid}/cgroup`).pipe(Effect.option);
-    return Option.isSome(cgroup) && cgroup.value.includes(`/${BOOT_SERVICE_NAME}.service`);
+    return Option.isSome(cgroup) && cgroup.value.includes("/t3code.service");
   }
   if (platform === "darwin") {
     // The service server's parent is the launcher process.

@@ -5,18 +5,19 @@
 // other (DECISIONS.md, `identity-seam`). This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
 // the reasoned allow-list below. Mobile is out of scope and not scanned, and
-// apps/web is upstream's client kept byte for byte; Pult's is apps/pult.
+// apps/web and apps/server are upstream's bytes, kept as they are: Pult's
+// client is apps/pult, and its server side lives outside this repo
+// (DECISIONS.md, `server-side-home`).
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
-import serverPackageJson from "../apps/server/package.json" with { type: "json" };
-import { APP_DISPLAY_NAME, CLI_NAME } from "@t3tools/shared/identity";
+import { APP_DISPLAY_NAME } from "@t3tools/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web"]);
+const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web", "apps/server"]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",
@@ -139,8 +140,7 @@ describe("no upstream identity outside the identity module", () => {
     expect(matches.length, describeFindings(matches)).toBe(entry.lineCount);
   });
 
-  it("names the packaged app and the CLI binary after the identity module", () => {
+  it("names the packaged app after the identity module", () => {
     expect(desktopPackageJson.productName).toBe(APP_DISPLAY_NAME);
-    expect(Object.keys(serverPackageJson.bin)).toEqual([CLI_NAME]);
   });
 });

@@ -1,5 +1,3 @@
-import { APP_BASE_NAME, APP_DEV_DISPLAY_NAME, APP_DISPLAY_NAME } from "@t3tools/shared/identity";
-
 export type LoopbackAuthorizationStage = "dev" | "nightly" | "latest";
 
 declare const __T3CODE_BUILD_CHANNEL__: "nightly" | "latest" | undefined;
@@ -9,9 +7,9 @@ function resolveLoopbackAuthorizationStage(): LoopbackAuthorizationStage {
 }
 
 const stageBrands = {
-  dev: APP_DEV_DISPLAY_NAME,
-  nightly: `${APP_BASE_NAME} (Nightly)`,
-  latest: APP_DISPLAY_NAME,
+  dev: "T3 Code (Dev)",
+  nightly: "T3 Code (Nightly)",
+  latest: "T3 Code",
 } as const satisfies Record<LoopbackAuthorizationStage, string>;
 
 export function renderLoopbackAuthorizationCompleteHtml(

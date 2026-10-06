@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 
 import { HostProcessArguments } from "@t3tools/shared/hostProcess";
-import { CLI_NAME } from "@t3tools/shared/identity";
 
 import packageJson from "../../package.json" with { type: "json" };
 
@@ -61,7 +60,7 @@ export function formatCliCommand(input: {
 }): string {
   const runner = detectCliRunner(input.entryPath);
   if (runner === null) {
-    return `${CLI_NAME} ${input.subcommand}`;
+    return `t3 ${input.subcommand}`;
   }
   return `${runner} ${suggestedPackageSpec(input.version)} ${input.subcommand}`;
 }

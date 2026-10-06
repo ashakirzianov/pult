@@ -5,8 +5,6 @@ import {
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
-import { APP_SCHEMES } from "@t3tools/shared/identity";
-import { resolveServedClientDir } from "@t3tools/shared/pult/payloadSlot";
 import { decodeOtlpTraceRecords } from "@t3tools/shared/observability";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -52,7 +50,7 @@ import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./ht
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
-const DESKTOP_RENDERER_ORIGINS = APP_SCHEMES.map((scheme) => `${scheme}://app`);
+const DESKTOP_RENDERER_ORIGINS = ["t3code://app", "t3code-dev://app"];
 const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 // HTML previews are agent output, not the app. The sandbox gives the document an
 // opaque origin: scripts run, but same-origin cookies, storage, and API calls are
@@ -552,10 +550,8 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
       });
     }
 
-    const staticDir = yield* resolveServedClientDir(
-      config.clientDir,
-      config.staticDir ?? (config.devUrl ? yield* ServerConfig.resolveStaticDir() : undefined),
-    );
+    const staticDir =
+      config.staticDir ?? (config.devUrl ? yield* ServerConfig.resolveStaticDir() : undefined);
     if (!staticDir) {
       return HttpServerResponse.text("No static directory configured and no dev URL set.", {
         status: 503,
