@@ -12,7 +12,7 @@ vp i
 env -u ELECTRON_RUN_AS_NODE vp run dist:desktop:dmg:arm64
 ```
 
-- The artifacts land in `release/`: a DMG and a zip of `Pult.app`, under upstream's file names (`T3-Code-<version>-arm64.dmg`), which its release tooling expects. Set `T3CODE_DESKTOP_OUTPUT_DIR=<dir>` to write them elsewhere.
+- The artifacts land in `release/`: `Pult-<version>-arm64.dmg` and a zip of `Pult.app`. Set `T3CODE_DESKTOP_OUTPUT_DIR=<dir>` to write them elsewhere.
 - Without `--signed` (and Apple credentials, which Pult has none of), the build is signed ad hoc as `com.pult.pult`, without hardened runtime, and is not notarized (DECISIONS.md, `ad-hoc-signing`).
 - It needs the network once, to download Electron for electron-builder.
 - An agent shell under T3 Code or Pult inherits `ELECTRON_RUN_AS_NODE=1`, which turns every Electron binary the build spawns into plain Node; unset it as above.
@@ -31,7 +31,7 @@ Agents hand a build over in `/Users/devuser/repos/exchange/pult-build/`, with a 
 Pult runs no server and starts none: it attaches to a T3 Code server that is already running, on this machine or another, and remembers it in its own home. Pairing is the setup in this version.
 
 1. Make a pairing link on the host: `t3 pair`, or copy the `pairingUrl:` line the server prints when it starts. A link is single-use and expires (five minutes by default; `t3 pair --ttl 1h` for longer).
-2. On first launch, with nothing saved, Pult opens its setup wizard on the pairing form: paste the link there. Later, Settings → Connections → Add environment takes a link the same way.
+2. On first launch, with nothing saved, Pult opens its setup wizard with “Add a computer” expanded: paste the link into “Pairing link”. Later, Settings → Connections → “Add environment” opens a dialog whose “Remote link” fields take a pasted pairing URL the same way.
 3. With a server saved, Pult connects to it on every launch. The same pairing adds a second server, and Connections removes one.
 
 Development runs (`vp run dev`, `dev:desktop`) are the exception: they start the repo's `apps/server` against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's.
