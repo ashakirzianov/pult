@@ -192,8 +192,10 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(desktop.T3CODE_DEV_AUTH_TOKEN, undefined);
       }),
     );
-    it.effect("leaves the shared home implicit and disables browser auto-open", () =>
+    it.effect("exports Pult's default home and disables browser auto-open", () =>
       Effect.gen(function* () {
+        vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
+        const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
           mode: "dev",
           baseEnv: {},
@@ -208,7 +210,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_HOME, undefined);
+        assert.equal(env.T3CODE_HOME, path.join("/Users/fixture", ".pult"));
         assert.equal(env.T3CODE_NO_BROWSER, "1");
       }),
     );
@@ -930,9 +932,13 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
     // Base-dir precedence (--home-dir > worktree .t3 > ambient T3CODE_HOME)
     // lives in runDevRunnerWithInput; the env builder must not consult the
     // ambient variable on its own, or it would silently outrank the worktree
-    // default and land dev state on the user's real database.
-    it.effect("ignores an ambient T3CODE_HOME when no home is resolved", () =>
+    // default and land dev state on the user's real database. It overwrites
+    // the ambient value with Pult's default instead of leaving it unset, since
+    // upstream's server would read ~/.t3 from an empty one.
+    it.effect("replaces an ambient T3CODE_HOME with the default when no home is resolved", () =>
       Effect.gen(function* () {
+        vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
+        const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
           mode: "dev",
           baseEnv: { T3CODE_HOME: "/home/user/.t3" },
@@ -947,7 +953,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_HOME, undefined);
+        assert.equal(env.T3CODE_HOME, path.join("/Users/fixture", ".pult"));
       }),
     );
 
@@ -1355,14 +1361,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         }),
       );
 
-      it.effect("leaves the home implicit with no worktree and no ambient value", () =>
+      it.effect("exports ~/.pult with no worktree and no ambient value", () =>
         Effect.gen(function* () {
+          const path = yield* Path.Path;
           const home = yield* spawnedHome({
             t3Home: undefined,
             cwd: NodeOS.tmpdir(),
             ambientHome: undefined,
           });
-          assert.equal(home, undefined);
+          assert.equal(home, path.join(NodeOS.homedir(), ".pult"));
         }),
       );
     });

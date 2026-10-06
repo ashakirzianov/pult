@@ -325,11 +325,9 @@ export function createDevRunnerEnv({
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
     };
 
-    if (configuredBaseDir !== undefined) {
-      output.T3CODE_HOME = resolvedBaseDir;
-    } else {
-      delete output.T3CODE_HOME;
-    }
+    // Always exported: apps/server is upstream's bytes and would otherwise
+    // default to ~/.t3, the live server's data, while the log line names ~/.pult.
+    output.T3CODE_HOME = resolvedBaseDir;
 
     // A dev-runner server is never launcher-managed. When the shell that runs
     // this script was itself spawned by the machine's managed t3 service (an
@@ -695,10 +693,8 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       serverOffset !== offset || webOffset !== offset
         ? ` selectedOffset(server=${serverOffset},web=${webOffset})`
         : "";
-    const baseDir = env.T3CODE_HOME ?? (yield* DEFAULT_T3_HOME);
-
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${baseDir}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.T3CODE_HOME)}`,
     );
 
     // Before the share block: --dry-run only resolves and prints. Sharing would
