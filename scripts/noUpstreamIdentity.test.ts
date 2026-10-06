@@ -58,6 +58,7 @@ const upstreamValues: ReadonlyArray<{ name: string; pattern: RegExp; paths?: Reg
   { name: "observability service", pattern: /["'`]t3code-desktop["'`]/ },
   { name: "display name", pattern: /T3 Code \((Alpha|Dev|Nightly)\)/ },
   { name: "desktop backend port", pattern: /\b3773\b/, paths: /^apps\/desktop\// },
+  { name: "artifact name", pattern: /\bT3-Code-/ },
 ];
 const commentLine = /^\s*(\/\/|\/\*|\*|#|<!--)/;
 
@@ -114,6 +115,12 @@ const allowList: ReadonlyArray<{ file: string; lineCount: number; reason: string
     file: "apps/pult/src/components/NightlyMobileBeta.tsx",
     lineCount: 1,
     reason: "links to upstream's mobile app in the Play Store; mobile is out of scope.",
+  },
+  {
+    file: "scripts/release-smoke.ts",
+    lineCount: 20,
+    reason:
+      "mock update-feed fixtures for upstream's release smoke test; Pult ships no update feed (DECISIONS.md, `auto-update-off`).",
   },
 ];
 
