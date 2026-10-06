@@ -67,7 +67,8 @@ export function isProxiableBindHost(host: string): boolean {
   );
 }
 
-// Matches the server's and the desktop's own default: Pult's home, never upstream's ~/.t3.
+// Matches the desktop's own default: Pult's home, never upstream's ~/.t3, the live fleet's.
+// (apps/server is upstream's bytes and would default to ~/.t3 on its own.)
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".pult"),
 );
