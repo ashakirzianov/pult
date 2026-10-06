@@ -36,6 +36,8 @@ Pult runs no server and starts none: it attaches to a T3 Code server that is alr
 
 Development runs (`vp run dev`, `dev:desktop`) are the exception: they start the repo's `apps/server` against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's.
 
+The client and its protocol packages (`packages/contracts`, `packages/client-runtime`, `packages/shared`) are at upstream `f4f148eb67`, the same commit the T3 Code Extensible server it pairs with is built from; the two move together.
+
 ## Shipping a build to the installed app
 
 A build holds the client. An agent stages it; only Anton makes it live (DECISIONS.md, `payload-slot`).
