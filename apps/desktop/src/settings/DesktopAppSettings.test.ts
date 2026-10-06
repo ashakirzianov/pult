@@ -42,7 +42,7 @@ const encodeDesktopSettingsPatch = Schema.encodeEffect(Schema.fromJsonString(Des
 
 // A development run, one with a dev server URL, is the only run with a local
 // environment, so the settings read as upstream's there; packaged tests opt out.
-function makeEnvironmentLayer(baseDir: string, appVersion = "0.0.17", development = true) {
+function layerEnvironment(baseDir: string, appVersion = "0.0.17", development = true) {
   return DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,
@@ -82,9 +82,7 @@ const withSettings = <A, E, R>(
     return yield* effect.pipe(
       Effect.provide(
         DesktopAppSettings.layer.pipe(
-          Layer.provideMerge(
-            makeEnvironmentLayer(baseDir, options?.appVersion, options?.development),
-          ),
+          Layer.provideMerge(layerEnvironment(baseDir, options?.appVersion, options?.development)),
           Layer.provideMerge(NodeServices.layer),
         ),
       ),
