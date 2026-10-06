@@ -22,9 +22,19 @@ Agents hand a build over in `/Users/devuser/repos/exchange/pult-build/`, with a 
 
 ## Installing
 
-1. Open the DMG and drag Pult to Applications. It installs beside T3 Code: its own bundle id (`com.pult.pult`), profile, URL scheme (`pult://`), backend port and home (`~/.pult`).
+1. Open the DMG and drag Pult to Applications. It installs beside T3 Code: its own bundle id (`com.pult.pult`), profile, URL scheme (`pult://`) and home (`~/.pult`).
 2. If macOS refuses to open it, clear the quarantine flag (`xattr -dr com.apple.quarantine /Applications/Pult.app`), or right-click Pult in Applications and choose Open.
 3. Pult starts with an empty home and an empty Keychain item: nothing is carried over from T3 Code.
+
+## Connecting to a server
+
+Pult runs no server and starts none: it attaches to a T3 Code server that is already running, on this machine or another, and remembers it in its own home. Pairing is the setup in this version.
+
+1. Make a pairing link on the host: `t3 pair`, or copy the `pairingUrl:` line the server prints when it starts. A link is single-use and expires (five minutes by default; `t3 pair --ttl 1h` for longer).
+2. On first launch, with nothing saved, Pult opens its setup wizard on the pairing form: paste the link there. Later, Settings → Connections → Add environment takes a link the same way.
+3. With a server saved, Pult connects to it on every launch. The same pairing adds a second server, and Connections removes one.
+
+Development runs (`vp run dev`, `dev:desktop`) are the exception: they start the repo's `apps/server` against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's.
 
 ## Shipping a build to the installed app
 
@@ -50,6 +60,12 @@ From the MVP units, the checks agents could not make. Tick them on the first ins
 
 - [ ] Pult's state lands in `~/.pult`, and `~/.t3` is unchanged.
 
+**Connecting** (`pult/third-party-client`)
+
+- [ ] A first launch opens the setup wizard on the pairing form, and a link from `t3 pair` on the host connects.
+- [ ] No server process starts with Pult, and Settings → Connections offers no local environment to turn on.
+- [ ] A relaunch reconnects to the saved server without pairing again.
+
 **Deploy** (`pult/client-deploy`)
 
 - [ ] After `vp run pult:stage`, View → Deploy Staged Build reloads the window onto the staged build.
@@ -66,5 +82,5 @@ From the MVP units, the checks agents could not make. Tick them on the first ins
 ## Known gaps
 
 - Some client prose and the DMG background still say T3 Code.
-- An SSH environment fetches its remote runtime from upstream's release URL.
-- The desktop still bundles and starts upstream's server; running with no local server is a later change (DECISIONS.md, `no-local-server`).
+- An SSH environment launches upstream's T3 Code release on the host, not T3 Code Extensible, so Pult's plugin is absent there.
+- A zero-step credential from `t3 auth session issue`, in place of a pairing link, is a later change.
