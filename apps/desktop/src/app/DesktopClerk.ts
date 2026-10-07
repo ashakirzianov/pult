@@ -7,10 +7,10 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
-import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@t3tools/shared/codexAuthHandoff";
+import { codexAuthDeliveryUrl, readCodexAuthHandoff } from "@pult/shared/codexAuthHandoff";
 import { receiveCodexAuthCallback, CodexAuthCallbackError } from "./CodexAuthCallback.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
-import { providerAuthReturnUrl } from "@t3tools/shared/providerAuthReturnUrl";
+import { providerAuthReturnUrl } from "@pult/shared/providerAuthReturnUrl";
 import { HostProcessArguments } from "@t3tools/shared/hostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import * as ElectronApp from "../electron/ElectronApp.ts";

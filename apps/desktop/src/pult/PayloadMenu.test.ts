@@ -8,7 +8,7 @@ import * as Path from "effect/Path";
 
 import type * as Electron from "electron";
 
-import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+import * as PultPayloadSlot from "@pult/shared/payloadSlot";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";

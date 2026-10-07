@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
-import { appUserDataName } from "@t3tools/shared/identity";
+import { appUserDataName } from "@pult/shared/identity";
 
 export class DesktopUserDataInitializationError extends Schema.TaggedError<DesktopUserDataInitializationError>()(
   "DesktopUserDataInitializationError",

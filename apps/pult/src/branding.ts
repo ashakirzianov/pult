@@ -1,5 +1,5 @@
 import type { DesktopAppBranding } from "@t3tools/contracts";
-import { APP_BASE_NAME as IDENTITY_BASE_NAME } from "@t3tools/shared/identity";
+import { APP_BASE_NAME as IDENTITY_BASE_NAME } from "@pult/shared/identity";
 import { formatAppDisplayName } from "./branding.logic";
 
 function readInjectedDesktopAppBranding(): DesktopAppBranding | null {

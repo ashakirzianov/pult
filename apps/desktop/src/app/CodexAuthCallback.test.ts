@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off - Tests exercise the real native loopback listener without an OpenAI account.
 import * as NodeHttp from "node:http";
 import { describe, expect, it } from "vite-plus/test";
-import { codexAuthDeliveryUrl, readCodexAuthDelivery } from "@t3tools/shared/codexAuthHandoff";
+import { codexAuthDeliveryUrl, readCodexAuthDelivery } from "@pult/shared/codexAuthHandoff";
 import { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import { receiveCodexAuthCallback, cancelCodexAuthCallback } from "./CodexAuthCallback.ts";
 

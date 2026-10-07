@@ -17,8 +17,8 @@ import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
-import { APP_BASE_NAME, appBundleId, appLinuxWmClass } from "@t3tools/shared/identity";
-import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+import { APP_BASE_NAME, appBundleId, appLinuxWmClass } from "@pult/shared/identity";
+import * as PultPayloadSlot from "@pult/shared/payloadSlot";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;

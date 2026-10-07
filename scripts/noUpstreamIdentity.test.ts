@@ -1,23 +1,34 @@
 // @effect-diagnostics nodeBuiltinImport:off - walks the checked-out source tree on disk.
 //
-// Pult names its identity in one module, `packages/shared/src/identity.ts`, so
+// Pult names its identity in one module, `packages/pult/src/identity.ts`, so
 // a Pult app runs beside an installed T3 Code without either disturbing the
 // other (DECISIONS.md, `identity-seam`). This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
 // the reasoned allow-list below. Mobile is out of scope and not scanned, and
 // apps/web and apps/server are upstream's bytes, kept as they are: Pult's
 // client is apps/pult, and its server side lives outside this repo
-// (DECISIONS.md, `server-side-home`).
+// (DECISIONS.md, `server-side-home`). The protocol packages are upstream's
+// bytes too; Pult's own shared code is packages/pult.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
-import { APP_DISPLAY_NAME } from "@t3tools/shared/identity";
+import { APP_DISPLAY_NAME } from "@pult/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web", "apps/server"]);
+const excludedPaths = new Set([
+  "apps/mobile",
+  "apps/marketing",
+  "apps/web",
+  "apps/server",
+  "packages/client-runtime",
+  "packages/contracts",
+  "packages/shared",
+  "packages/ssh",
+  "packages/tailscale",
+]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",
@@ -93,7 +104,7 @@ function findMatches() {
 
   const findings: Array<Finding> = [];
   for (const file of files) {
-    if (file === "packages/shared/src/identity.ts") continue;
+    if (file === "packages/pult/src/identity.ts") continue;
     const lines = NodeFS.readFileSync(NodePath.join(repoRoot, file), "utf8").split(/\r?\n/);
     lines.forEach((text, index) => {
       if (commentLine.test(text)) return;
@@ -137,7 +148,7 @@ describe("no upstream identity outside the identity module", () => {
     const unexpected = findings.filter((finding) => !allowed.has(finding.file));
     expect(
       unexpected,
-      `Read the value from packages/shared/src/identity.ts, or add a reasoned entry to scripts/noUpstreamIdentity.test.ts:\n${describeFindings(unexpected)}`,
+      `Read the value from packages/pult/src/identity.ts, or add a reasoned entry to scripts/noUpstreamIdentity.test.ts:\n${describeFindings(unexpected)}`,
     ).toEqual([]);
   });
 

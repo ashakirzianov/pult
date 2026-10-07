@@ -13,7 +13,7 @@ import {
   type DirectoryRecord,
 } from "@electron/asar";
 
-import * as Identity from "@t3tools/shared/identity";
+import * as Identity from "@pult/shared/identity";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";

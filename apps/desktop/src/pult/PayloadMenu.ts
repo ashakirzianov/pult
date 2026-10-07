@@ -1,4 +1,4 @@
-// Pult's switch for the payload slot (`@t3tools/shared/pult/payloadSlot`).
+// Pult's switch for the payload slot (`@pult/shared/payloadSlot`).
 // Agents only stage builds; switching one live reloads the human's window,
 // so it lives here, in the shell's menu, where only the human reaches it.
 import * as Effect from "effect/Effect";
@@ -7,7 +7,7 @@ import * as Path from "effect/Path";
 
 import type * as Electron from "electron";
 
-import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+import * as PultPayloadSlot from "@pult/shared/payloadSlot";
 
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";

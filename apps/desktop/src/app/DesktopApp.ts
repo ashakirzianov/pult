@@ -6,7 +6,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import * as NetService from "@t3tools/shared/Net";
-import { DEFAULT_DESKTOP_BACKEND_PORT } from "@t3tools/shared/identity";
+import { DEFAULT_DESKTOP_BACKEND_PORT } from "@pult/shared/identity";
 import * as Crypto from "effect/Crypto";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";

@@ -11,9 +11,9 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
-import { APP_DEV_SCHEME, APP_SCHEME } from "@t3tools/shared/identity";
+import { APP_DEV_SCHEME, APP_SCHEME } from "@pult/shared/identity";
 
-import { resolveServedClientDir } from "@t3tools/shared/pult/payloadSlot";
+import { resolveServedClientDir } from "@pult/shared/payloadSlot";
 
 export const DESKTOP_HOST = "app";
 const DESKTOP_PRODUCTION_SCHEME = APP_SCHEME;

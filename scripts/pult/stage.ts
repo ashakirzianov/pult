@@ -8,7 +8,7 @@ import * as NodeOS from "node:os";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as PultPayloadSlot from "@t3tools/shared/pult/payloadSlot";
+import * as PultPayloadSlot from "@pult/shared/payloadSlot";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Config from "effect/Config";
 import * as DateTime from "effect/DateTime";

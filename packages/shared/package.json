@@ -7,10 +7,6 @@
       "types": "./src/orchestrationV2ThreadError.ts",
       "import": "./src/orchestrationV2ThreadError.ts"
     },
-    "./identity": {
-      "types": "./src/identity.ts",
-      "import": "./src/identity.ts"
-    },
     "./legacyCliLauncher": {
       "types": "./src/legacyCliLauncher.ts",
       "import": "./src/legacyCliLauncher.ts"
@@ -214,10 +210,6 @@
     "./symlink": {
       "types": "./src/symlink.ts",
       "import": "./src/symlink.ts"
-    },
-    "./pult/payloadSlot": {
-      "types": "./src/pult/payloadSlot.ts",
-      "import": "./src/pult/payloadSlot.ts"
     },
     "./path": {
       "types": "./src/path.ts",

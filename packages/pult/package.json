@@ -1,0 +1,38 @@
+{
+  "name": "@pult/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./identity": {
+      "types": "./src/identity.ts",
+      "import": "./src/identity.ts"
+    },
+    "./payloadSlot": {
+      "types": "./src/payloadSlot.ts",
+      "import": "./src/payloadSlot.ts"
+    },
+    "./providerAuthReturnUrl": {
+      "types": "./src/providerAuthReturnUrl.ts",
+      "import": "./src/providerAuthReturnUrl.ts"
+    },
+    "./codexAuthHandoff": {
+      "types": "./src/codexAuthHandoff.ts",
+      "import": "./src/codexAuthHandoff.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

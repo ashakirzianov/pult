@@ -93,7 +93,7 @@ import {
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import * as Identity from "@t3tools/shared/identity";
+import * as Identity from "@pult/shared/identity";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 // A minimal stand-in for the Linux CLI release archive: one top-level

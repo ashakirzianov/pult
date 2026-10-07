@@ -1,5 +1,5 @@
 import { PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
-import { DESKTOP_OBSERVABILITY_SERVICE_NAME } from "@t3tools/shared/identity";
+import { DESKTOP_OBSERVABILITY_SERVICE_NAME } from "@pult/shared/identity";
 import {
   makeLocalFileTracer,
   makeTraceSink,

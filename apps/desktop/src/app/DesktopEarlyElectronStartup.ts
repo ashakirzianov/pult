@@ -1,4 +1,4 @@
-import { appLinuxDesktopEntryName, appLinuxWmClass } from "@t3tools/shared/identity";
+import { appLinuxDesktopEntryName, appLinuxWmClass } from "@pult/shared/identity";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
