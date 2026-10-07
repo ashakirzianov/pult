@@ -331,8 +331,9 @@ export type ProjectEntryChangeKind = typeof ProjectEntryChangeKind.Type;
 export const ProjectEntryChange = Schema.Struct({
   // Untrimmed: one oddly named file must not fail the whole stream.
   path: Schema.String.check(Schema.isNonEmpty()),
-  // Read from the path when its batch is sent, so treat it as a hint: an
-  // atomic save reports `created`, and anything may change again after.
+  // Read from the path when its batch is sent, so treat it as a hint:
+  // `created` covers a path moved there or saved atomically, and on macOS
+  // sometimes an edit soon after creation; anything may change again after.
   kind: ProjectEntryChangeKind,
 });
 export type ProjectEntryChange = typeof ProjectEntryChange.Type;

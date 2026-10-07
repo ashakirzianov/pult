@@ -1,7 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
 
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -42,9 +41,6 @@ import * as WorkspaceTreeWatcher from "./WorkspaceTreeWatcher.ts";
 const WATCH_BATCH_WINDOW = "100 millis";
 // A batch past this many paths is sent truncated instead of growing.
 const WATCH_BATCH_MAX_PATHS = 1_000;
-// On macOS, how long before its batch's first event a path counts as newly
-// born; delivery lags, so a fresh file must not read as an old one changing.
-const WATCH_CREATED_SLACK_MS = 1_000;
 
 export class WorkspaceEntriesWindowsPathUnsupportedError extends Schema.TaggedError<WorkspaceEntriesWindowsPathUnsupportedError>()(
   "WorkspaceEntriesWindowsPathUnsupportedError",
@@ -445,40 +441,26 @@ export const make = Effect.gen(function* () {
 
   /**
    * Kinds come from each path's state when its batch is cut: a missing path
-   * is deleted, an existing one created if the watcher saw it appear, else
-   * changed. FSEvents can still flag an edit as the creation before it, so
-   * on macOS a path is created only if born during the batch.
+   * is deleted, an existing one created if any of its events said it
+   * appeared or moved there, else changed. FSEvents can flag an edit as a
+   * creation too; reading one as created only makes a client re-read it.
    */
   const classifyChanges = Effect.fn("WorkspaceEntries.classifyChanges")(function* (
     root: string,
     batch: ReadonlyMap<string, boolean>,
-    batchStartedAt: number,
   ) {
-    const platform = yield* HostProcessPlatform;
     const changes = yield* Effect.forEach(
       batch,
       ([changedPath, renamed]) =>
         Effect.promise(() =>
           NodeFSP.lstat(path.join(root, changedPath)).then(
-            (stat): ProjectEntryChange["kind"] =>
-              (
-                platform === "darwin"
-                  ? stat.birthtimeMs >= batchStartedAt - WATCH_CREATED_SLACK_MS
-                  : renamed
-              )
-                ? "created"
-                : "changed",
-            (error: NodeJS.ErrnoException): ProjectEntryChange["kind"] | null =>
-              error.code !== "ENOENT" && error.code !== "ENOTDIR"
-                ? "changed"
-                : // The watcher names the watched root itself by its basename.
-                  changedPath === path.basename(root)
-                  ? null
-                  : "deleted",
+            (): ProjectEntryChange["kind"] => (renamed ? "created" : "changed"),
+            (error: NodeJS.ErrnoException): ProjectEntryChange["kind"] =>
+              error.code !== "ENOENT" && error.code !== "ENOTDIR" ? "changed" : "deleted",
           ),
-        ).pipe(Effect.map((kind) => (kind === null ? [] : [{ path: changedPath, kind }]))),
+        ).pipe(Effect.map((kind) => ({ path: changedPath, kind }))),
       { concurrency: 16 },
-    ).pipe(Effect.map((perPath) => perPath.flat()));
+    );
     const deleted = new Set(
       changes.flatMap((change) => (change.kind === "deleted" ? [change.path] : [])),
     );
@@ -503,14 +485,13 @@ export const make = Effect.gen(function* () {
               yield* Effect.forever(
                 Effect.gen(function* () {
                   yield* Queue.take(wake);
-                  const batchStartedAt = yield* Clock.currentTimeMillis;
                   yield* Effect.sleep(WATCH_BATCH_WINDOW);
                   yield* Queue.clear(wake);
                   const batch = pending;
                   const batchTruncated = truncated;
                   pending = new Map();
                   truncated = false;
-                  const changes = yield* classifyChanges(root, batch, batchStartedAt);
+                  const changes = yield* classifyChanges(root, batch);
                   if (changes.length > 0 || batchTruncated) {
                     yield* Queue.offer(queue, { changes, truncated: batchTruncated });
                   }

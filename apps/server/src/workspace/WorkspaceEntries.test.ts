@@ -807,15 +807,8 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
 
     it.effect("reports created, changed and deleted paths as they stand when sent", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const cwd = yield* makeTempDir();
         yield* writeTextFile(cwd, "existing.md", "# Before\n");
-        // An hour old, so on macOS, where creation is read from birthtime
-        // (which an earlier mtime moves back), an edit is not a creation.
-        const anHourAgo = Math.floor((yield* Clock.currentTimeMillis) / 1000) - 3600;
-        yield* Effect.promise(() =>
-          NodeFSP.utimes(path.join(cwd, "existing.md"), anHourAgo, anHourAgo),
-        );
         yield* writeTextFile(cwd, "notes/new.md", "# New\n");
         const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
           Queue.offerAll(raw, [
@@ -833,6 +826,57 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           ],
           truncated: false,
         });
+      }),
+    );
+
+    it.effect("reports a moved file or directory as created at its new path", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir();
+        yield* writeTextFile(cwd, "moved.md", "# Moved\n");
+        yield* writeTextFile(cwd, "newdir/inside.md", "# Inside\n");
+        // A move keeps a path's birthtime; make it an hour old so only the
+        // move can make it new.
+        const anHourAgo = Math.floor((yield* Clock.currentTimeMillis) / 1000) - 3600;
+        for (const movedPath of ["moved.md", "newdir"]) {
+          yield* Effect.promise(() =>
+            NodeFSP.utimes(path.join(cwd, movedPath), anHourAgo, anHourAgo),
+          );
+        }
+
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Queue.offerAll(raw, [
+            { path: "old.md", rename: true },
+            { path: "moved.md", rename: true },
+            { path: "olddir", rename: true },
+            { path: "newdir", rename: true },
+          ]).pipe(Effect.andThen(Queue.take(batches))),
+        );
+
+        expect(batch.changes).toEqual([
+          { path: "old.md", kind: "deleted" },
+          { path: "moved.md", kind: "created" },
+          { path: "olddir", kind: "deleted" },
+          { path: "newdir", kind: "created" },
+        ]);
+      }),
+    );
+
+    it.effect("reports a deleted child named like the root", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = path.join(yield* makeTempDir(), "proj");
+        yield* fileSystem.makeDirectory(cwd);
+
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Queue.offerAll(raw, [
+            { path: "proj/__init__.py", rename: true },
+            { path: "proj", rename: true },
+          ]).pipe(Effect.andThen(Queue.take(batches))),
+        );
+
+        expect(batch.changes).toEqual([{ path: "proj", kind: "deleted" }]);
       }),
     );
 
@@ -914,8 +958,9 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
             Effect.forever,
             Effect.forkScoped,
           );
-          const batch = yield* Queue.take(second.batches);
-          expect(batch.changes.map((change) => change.path)).toEqual(["shared.md"]);
+          expect((yield* Queue.take(second.batches)).changes).toEqual([
+            { path: "shared.md", kind: "changed" },
+          ]);
           yield* Fiber.interrupt(pacer);
           expect(fake.counts).toEqual({ started: 1, stopped: 0 });
 
