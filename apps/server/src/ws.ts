@@ -1742,6 +1742,7 @@ const layerWsRpc = (
             projectFileVersions: true,
             projectEntryMutations: true,
             projectWatchEntries: true,
+            workspaceFileAssets: true,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),

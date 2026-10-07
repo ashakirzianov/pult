@@ -6,6 +6,8 @@ import * as NodeOS from "node:os";
 import {
   AssetAccessError,
   AssetPreviewTypeValidationError,
+  AssetWorkspaceAssetNotFoundError,
+  AssetWorkspacePathValidationError,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -787,6 +789,66 @@ describe("AssetAccess", () => {
         kind: "file",
         path: canonicalHtmlPath,
       });
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("serves any other file under a draft's root as an exact download", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-asset-draft-bytes-" });
+      const bytes = new Uint8Array([0x00, 0xff, 0x10, 0x3c, 0x68, 0x74]);
+      yield* fileSystem.makeDirectory(path.join(root, "data"));
+      yield* fileSystem.writeFile(path.join(root, "data", "archive.bin"), bytes);
+      const canonicalPath = yield* fileSystem.realPath(path.join(root, "data", "archive.bin"));
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "draft-workspace-file", cwd: root, path: "data/archive.bin" },
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const token = suffix.slice(0, suffix.indexOf("/"));
+      const asset = yield* resolveAsset(token, "archive.bin");
+
+      expect(asset).toEqual({
+        kind: "file",
+        path: canonicalPath,
+        download: true,
+        fileName: "archive.bin",
+      });
+      expect(yield* resolveAsset(token, "other.bin")).toBeNull();
+      if (asset?.kind !== "file") throw new Error("Expected the workspace file");
+      const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
+      expect(response.headers.get("content-type")).toBe("application/octet-stream");
+      expect(response.headers.get("content-disposition")).toBe(
+        'attachment; filename="archive.bin"',
+      );
+      expect(new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()))).toEqual(bytes);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("keeps a draft's other files inside its root", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-asset-draft-root-" });
+      const outside = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-asset-draft-outside-",
+      });
+      yield* fileSystem.writeFileString(path.join(outside, "secret.txt"), "secret");
+      const issue = (requestedPath: string) =>
+        issueAssetUrl({
+          resource: { _tag: "draft-workspace-file", cwd: root, path: requestedPath },
+        }).pipe(Effect.flip);
+
+      expect(yield* issue("../secret.txt")).toBeInstanceOf(AssetWorkspacePathValidationError);
+      // An absolute path still serves only what a media file may.
+      expect(yield* issue(path.join(outside, "secret.txt"))).toBeInstanceOf(
+        AssetPreviewTypeValidationError,
+      );
+      if (symlinksSupported) {
+        yield* fileSystem.symlink(path.join(outside, "secret.txt"), path.join(root, "link.txt"));
+        expect(yield* issue("link.txt")).toBeInstanceOf(AssetWorkspaceAssetNotFoundError);
+      }
     }).pipe(Effect.provide(layerTest)),
   );
 

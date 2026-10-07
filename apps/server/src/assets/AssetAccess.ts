@@ -101,6 +101,8 @@ const AssetClaimsSchema = Schema.Union([
     kind: Schema.Literal("workspace-file-exact"),
     workspaceRoot: Schema.String,
     relativePath: Schema.String,
+    /** Serve as a download: a file of any type, which must never render inline. */
+    download: Schema.optionalKey(Schema.Boolean),
     expiresAt: Schema.Number,
   }),
   Schema.Struct({
@@ -379,6 +381,8 @@ const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileA
     readonly requestedPath: string;
     readonly resource: AssetResource;
     readonly expiresAt: number;
+    /** Serve a file that cannot be previewed as a download instead of refusing it. */
+    readonly downloadOtherFiles?: boolean;
   }) {
     const path = yield* Path.Path;
     const fileSystem = yield* FileSystem.FileSystem;
@@ -397,7 +401,8 @@ const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileA
             }),
         ),
       );
-    if (!isWorkspacePreviewEntryPath(resolved.relativePath)) {
+    const isPreview = isWorkspacePreviewEntryPath(resolved.relativePath);
+    if (!isPreview && !input.downloadOtherFiles) {
       return yield* new AssetPreviewTypeValidationError({
         resource: input.resource,
       });
@@ -434,21 +439,30 @@ const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileA
       ? yield* readImageDimensionsFromHeader(canonicalFile)
       : null;
     return {
-      claims: isWorkspaceImagePreviewPath(resolved.relativePath)
+      claims: !isPreview
         ? {
             version: 1 as const,
             kind: "workspace-file-exact" as const,
             workspaceRoot: canonicalWorkspaceRoot,
             relativePath: resolved.relativePath,
+            download: true,
             expiresAt: input.expiresAt,
           }
-        : {
-            version: 1 as const,
-            kind: "workspace-file" as const,
-            workspaceRoot: canonicalWorkspaceRoot,
-            baseRelativePath: path.dirname(resolved.relativePath),
-            expiresAt: input.expiresAt,
-          },
+        : isWorkspaceImagePreviewPath(resolved.relativePath)
+          ? {
+              version: 1 as const,
+              kind: "workspace-file-exact" as const,
+              workspaceRoot: canonicalWorkspaceRoot,
+              relativePath: resolved.relativePath,
+              expiresAt: input.expiresAt,
+            }
+          : {
+              version: 1 as const,
+              kind: "workspace-file" as const,
+              workspaceRoot: canonicalWorkspaceRoot,
+              baseRelativePath: path.dirname(resolved.relativePath),
+              expiresAt: input.expiresAt,
+            },
       fileName: path.basename(resolved.relativePath),
       imageDimensions,
     };
@@ -549,11 +563,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
             }),
         ),
       );
+      // Any file under the root, so a client can read a file's bytes here
+      // rather than over the socket.
       const finalized = yield* finalizeWorkspaceFileAsset({
         workspaceRoot,
         requestedPath: input.resource.path,
         resource: input.resource,
         expiresAt,
+        downloadOtherFiles: true,
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
@@ -921,7 +938,11 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       relativePath: claims.relativePath,
     });
     return exactWorkspaceFile
-      ? ({ kind: "file", path: exactWorkspaceFile } satisfies ResolvedAsset)
+      ? ({
+          kind: "file",
+          path: exactWorkspaceFile,
+          ...(claims.download ? { download: true, fileName: decodedPath } : {}),
+        } satisfies ResolvedAsset)
       : null;
   }
   const segments = decodedPath.split(/[\\/]/);

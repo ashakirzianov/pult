@@ -667,6 +667,12 @@ export const ServerConfig = Schema.Struct({
   /** Whether projects.watchEntries exists. */
   projectWatchEntries: Schema.optionalKey(Schema.Boolean),
   /**
+   * Whether assets.createUrl serves any file under the root for a
+   * `draft-workspace-file` with a relative path, not only previewable ones.
+   * Clients read a file's bytes this way.
+   */
+  workspaceFileAssets: Schema.optionalKey(Schema.Boolean),
+  /**
    * Folder behind this environment's Scratch project, for threads that need
    * no repository. Present only on servers that answer projects.ensureScratch
    * and whose data dir is outside a Git checkout.
