@@ -6,13 +6,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import {
-  checkVendored,
-  extractCatalogBlock,
-  parsePin,
-  replaceCatalogBlock,
-  vendorCheckoutPath,
-} from "./vendor.ts";
+import { checkVendored, extractCatalogBlock, parsePin, replaceCatalogBlock } from "./vendor.ts";
+import { t3codeCheckoutPath } from "./checkout.ts";
 
 describe("parsePin", () => {
   it("reads the hash on the first line and ignores the rest", () => {
@@ -97,7 +92,7 @@ describe("catalog rewrite", () => {
 
 // The committed vendored tree against the fork at the pin. It needs the fork's
 // checkout, which CI and fresh machines lack; the skipped suite's name says why.
-const checkout = vendorCheckoutPath();
+const checkout = t3codeCheckoutPath();
 const hasCheckout = NodeFS.existsSync(NodePath.join(checkout, ".git"));
 
 describe.skipIf(!hasCheckout)(

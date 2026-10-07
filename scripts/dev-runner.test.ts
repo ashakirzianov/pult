@@ -26,8 +26,8 @@ import {
   DEFAULT_T3_HOME,
   devPortProbeHosts,
   findFirstAvailableOffset,
-  getDevRunnerModeArgs,
   isBrowserAllowedPort,
+  planDevProcesses,
   resolveModePortOffsets,
   resolveOffset,
   runDevRunnerWithInput,
@@ -69,8 +69,15 @@ function mockProcess(exit: number | PlatformError.PlatformError) {
   });
 }
 
+// A stand-in for the T3 Code Extensible checkout: the runner checks only that
+// the server's entry is there before it spawns anything.
+const fixtureCheckout = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pult-dev-checkout-"));
+NodeFS.mkdirSync(NodePath.join(fixtureCheckout, "apps/server/src"), { recursive: true });
+NodeFS.writeFileSync(NodePath.join(fixtureCheckout, "apps/server/src/bin.ts"), "");
+
 const devServerInput = {
   mode: "dev:server",
+  checkout: fixtureCheckout,
   t3Home: "/tmp/t3code-dev-runner",
   browser: undefined,
   autoBootstrapProjectFromCwd: undefined,
@@ -107,28 +114,56 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
     }),
   );
 
-  describe("getDevRunnerModeArgs", () => {
-    it.effect("lets Vite+ honor the desktop dev task graph", () =>
+  describe("planDevProcesses", () => {
+    it.effect("lets Vite+ honor the desktop dev task graph, with no server", () =>
       Effect.sync(() => {
-        assert.deepStrictEqual(getDevRunnerModeArgs("dev:desktop"), [
-          "run",
-          "--filter=@pult/desktop",
-          "--filter=@pult/client",
-          "dev",
+        assert.deepStrictEqual(planDevProcesses("dev:desktop", "/checkout"), [
+          {
+            role: "client",
+            executable: "vp",
+            args: ["run", "--filter=@pult/desktop", "--filter=@pult/client", "dev"],
+          },
         ]);
       }),
     );
 
-    it.effect("places Vite+ run flags before the task name", () =>
+    it.effect("runs the client and the checkout's server from source in dev", () =>
       Effect.sync(() => {
-        assert.deepStrictEqual(getDevRunnerModeArgs("dev"), [
-          "run",
-          "--filter=@t3tools/contracts",
-          "--filter=@pult/client",
-          "--filter=t3",
-          "--parallel",
-          "dev",
+        assert.deepStrictEqual(planDevProcesses("dev", "/checkout", ["--force"]), [
+          {
+            role: "client",
+            executable: "vp",
+            args: ["run", "--filter=@pult/client", "dev", "--force"],
+          },
+          {
+            role: "server",
+            executable: "node",
+            args: ["--watch", "apps/server/src/bin.ts"],
+            cwd: "/checkout",
+          },
         ]);
+      }),
+    );
+
+    it.effect("runs only the server in dev:server, and hands it the extra args", () =>
+      Effect.sync(() => {
+        assert.deepStrictEqual(planDevProcesses("dev:server", "/checkout", ["--inspect"]), [
+          {
+            role: "server",
+            executable: "node",
+            args: ["--watch", "apps/server/src/bin.ts", "--inspect"],
+            cwd: "/checkout",
+          },
+        ]);
+      }),
+    );
+
+    it.effect("runs only the client in dev:web", () =>
+      Effect.sync(() => {
+        assert.deepStrictEqual(
+          planDevProcesses("dev:web", "/checkout").map((process) => process.role),
+          ["client"],
+        );
       }),
     );
   });
@@ -917,8 +952,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         }
         assert.equal(error.operation, "spawn");
         assert.equal(error.mode, "dev:server");
-        assert.equal(error.executable, "vp");
-        assert.equal(error.argumentCount, 5);
+        assert.equal(error.executable, "node");
+        assert.equal(error.argumentCount, 4);
         assert.equal(error.shell, false);
         assert.equal(error.cause, cause);
         assert.ok(!error.message.includes(cause.message));
@@ -1040,7 +1075,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           Effect.provideService(HostProcessPlatform, "linux"),
         );
 
-        assert.equal(spawnCount, 1);
+        // The client and the server.
+        assert.equal(spawnCount, 2);
       });
     });
 
@@ -1178,6 +1214,39 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       );
     });
 
+    it.effect(
+      "names PULT_T3CODE_CHECKOUT when the checkout has no server, and spawns nothing",
+      () => {
+        let spawnCount = 0;
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() => {
+            spawnCount += 1;
+            return Effect.succeed(mockProcess(0));
+          }),
+        );
+
+        return Effect.gen(function* () {
+          const error = yield* runDevRunnerWithInput({
+            ...devServerInput,
+            mode: "dev",
+            port: undefined,
+            checkout: NodePath.join(fixtureCheckout, "missing"),
+          }).pipe(
+            Effect.provide(Layer.mergeAll(emptyConfigLayer, netServiceLayer, spawnerLayer)),
+            Effect.provideService(HostProcessPlatform, "linux"),
+            Effect.flip,
+          );
+
+          if (error._tag !== "DevRunnerCheckoutMissingError") {
+            assert.fail(`Unexpected error: ${error._tag}`);
+          }
+          assert.include(error.message, "PULT_T3CODE_CHECKOUT");
+          assert.equal(spawnCount, 0);
+        });
+      },
+    );
+
     it.effect("spawns nothing when --dry-run is combined with --share", () => {
       let spawnCount = 0;
       const spawnerLayer = Layer.succeed(
@@ -1221,8 +1290,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           assert.fail(`Unexpected error: ${error._tag}`);
         }
         assert.equal(error.mode, "dev:server");
-        assert.equal(error.executable, "vp");
-        assert.equal(error.argumentCount, 5);
+        assert.equal(error.executable, "node");
+        assert.equal(error.argumentCount, 4);
         assert.equal(error.shell, false);
         assert.equal(error.exitCode, 17);
         assert.ok(!("cause" in error));
@@ -1255,8 +1324,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         }
         assert.equal(error.operation, "wait-for-exit");
         assert.equal(error.mode, "dev:server");
-        assert.equal(error.executable, "vp");
-        assert.equal(error.argumentCount, 5);
+        assert.equal(error.executable, "node");
+        assert.equal(error.argumentCount, 4);
         assert.equal(error.shell, false);
         assert.equal(error.cause, cause);
         assert.ok(!error.message.includes(cause.message));

@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off - resolves the checkout path before an Effect runtime exists.
-//
 // Vendors the protocol packages from T3 Code Extensible at the commit pinned in
 // vendor/t3code/PIN: packages/{contracts,client-runtime,shared,ssh,tailscale}
 // land verbatim in vendor/t3code/packages/, the fork's `catalog:` block replaces
@@ -11,9 +9,6 @@
 //
 //   vp run vendor:sync     write the vendored tree
 //   vp run vendor:check    fail if the vendored tree differs from the pin
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -24,13 +19,12 @@ import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { loadRepoEnv } from "../lib/public-config.ts";
+import { t3codeCheckoutPath } from "./checkout.ts";
 
 const VENDORED_PACKAGES = ["contracts", "client-runtime", "shared", "ssh", "tailscale"] as const;
 const VENDOR_DIR = "vendor/t3code";
 const PACKAGE_PATHS = VENDORED_PACKAGES.map((name) => `packages/${name}`);
 const PINNED_PATHS = [...PACKAGE_PATHS, "pnpm-workspace.yaml"];
-const DEFAULT_CHECKOUT = "~/repos/t3code-extensible";
 
 export class VendorError extends Schema.TaggedError<VendorError>()("VendorError", {
   detail: Schema.String,
@@ -98,16 +92,10 @@ const git = Effect.fn("git")(function* (cwd: string, args: ReadonlyArray<string>
   return stdout;
 }, Effect.scoped);
 
-/** The fork checkout named by PULT_T3CODE_CHECKOUT (environment or .env), or the default. */
-export function vendorCheckoutPath(): string {
-  const raw = loadRepoEnv().PULT_T3CODE_CHECKOUT?.trim() || DEFAULT_CHECKOUT;
-  return NodePath.resolve(raw.replace(/^~(?=$|[/\\])/, NodeOS.homedir()));
-}
-
 const resolveCheckout = Effect.fn("resolveCheckout")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const checkout = vendorCheckoutPath();
+  const checkout = t3codeCheckoutPath();
   if (!(yield* fs.exists(path.join(checkout, ".git")))) {
     return yield* new VendorError({
       detail: `No T3 Code Extensible checkout at ${checkout}. Set PULT_T3CODE_CHECKOUT, in the environment or .env.`,

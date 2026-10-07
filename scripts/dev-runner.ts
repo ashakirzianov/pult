@@ -6,10 +6,15 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import { resolveGitWorktreePath, resolveWorktreeT3Home } from "@t3tools/shared/devHome";
-import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessExecutablePath,
+  HostProcessWorkingDirectory,
+} from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -21,6 +26,7 @@ import { ChildProcess } from "effect/process";
 
 import { type DevShareError, shareDevServer, unshareDevServer } from "./lib/dev-share.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
+import { T3CODE_CHECKOUT_VARIABLE, t3codeCheckoutPath } from "./pult/checkout.ts";
 
 Object.assign(process.env, loadRepoEnv());
 
@@ -68,26 +74,23 @@ export function isProxiableBindHost(host: string): boolean {
 }
 
 // Matches the desktop's own default: Pult's home, never upstream's ~/.t3, the live fleet's.
-// (apps/server is upstream's bytes and would default to ~/.t3 on its own.)
+// (The fork's server would default to ~/.t3 on its own.)
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".pult"),
 );
 
-const MODE_ARGS = {
-  dev: [
-    "run",
-    "--filter=@t3tools/contracts",
-    "--filter=@pult/client",
-    "--filter=t3",
-    "--parallel",
-    "dev",
-  ],
-  "dev:server": ["run", "--filter=t3", "dev"],
+/** The Vite+ task each mode runs for the client; dev:server runs none. */
+const CLIENT_TASK_ARGS = {
+  dev: ["run", "--filter=@pult/client", "dev"],
+  "dev:server": undefined,
   "dev:web": ["run", "--filter=@pult/client", "dev"],
   "dev:desktop": ["run", "--filter=@pult/desktop", "--filter=@pult/client", "dev"],
-} as const satisfies Record<string, ReadonlyArray<string>>;
+} as const satisfies Record<string, ReadonlyArray<string> | undefined>;
 
-type DevMode = keyof typeof MODE_ARGS;
+type DevMode = keyof typeof CLIENT_TASK_ARGS;
+
+/** The server's entry, relative to the fork checkout; it runs from source there. */
+const SERVER_ENTRY = "apps/server/src/bin.ts";
 /**
  * `role` matters because only the backend honours `--host`/`T3CODE_HOST`; the
  * web port is always loopback. Passed explicitly rather than inferred from the
@@ -98,10 +101,40 @@ type PortAvailabilityCheck<R = never> = (
   role?: "server" | "web",
 ) => Effect.Effect<boolean, never, R>;
 
-const DEV_RUNNER_MODES = Object.keys(MODE_ARGS) as Array<DevMode>;
+const DEV_RUNNER_MODES = Object.keys(CLIENT_TASK_ARGS) as Array<DevMode>;
 
-export function getDevRunnerModeArgs(mode: DevMode): ReadonlyArray<string> {
-  return MODE_ARGS[mode];
+/**
+ * One process a mode starts: the client's Vite+ task, or the server, which this
+ * repo does not carry. `dev` and `dev:server` run the server of the T3 Code
+ * Extensible checkout from source, with Node's watch mode, in the checkout.
+ */
+export interface DevProcess {
+  readonly role: "client" | "server";
+  readonly executable: "vp" | "node";
+  readonly args: ReadonlyArray<string>;
+  readonly cwd?: string;
+}
+
+/** The processes `mode` starts. Extra run args go to the client, or to the server in dev:server. */
+export function planDevProcesses(
+  mode: DevMode,
+  checkout: string,
+  runArgs: ReadonlyArray<string> = [],
+): ReadonlyArray<DevProcess> {
+  const clientArgs = CLIENT_TASK_ARGS[mode];
+  const processes: Array<DevProcess> = [];
+  if (clientArgs !== undefined) {
+    processes.push({ role: "client", executable: "vp", args: [...clientArgs, ...runArgs] });
+  }
+  if (mode === "dev" || mode === "dev:server") {
+    processes.push({
+      role: "server",
+      executable: "node",
+      args: ["--watch", SERVER_ENTRY, ...(mode === "dev:server" ? runArgs : [])],
+      cwd: checkout,
+    });
+  }
+  return processes;
 }
 
 export function isBrowserAllowedPort(port: number): boolean {
@@ -154,7 +187,7 @@ export class DevRunnerProcessError extends Schema.TaggedError<DevRunnerProcessEr
   {
     operation: Schema.Literals(["spawn", "wait-for-exit"]),
     mode: Schema.Literals(["dev", "dev:server", "dev:web", "dev:desktop"]),
-    executable: Schema.Literal("vp"),
+    executable: Schema.Literals(["vp", "node"]),
     argumentCount: Schema.Number,
     shell: Schema.Boolean,
     cause: Schema.Defect(),
@@ -169,7 +202,7 @@ export class DevRunnerProcessExitError extends Schema.TaggedError<DevRunnerProce
   "DevRunnerProcessExitError",
   {
     mode: Schema.Literals(["dev", "dev:server", "dev:web", "dev:desktop"]),
-    executable: Schema.Literal("vp"),
+    executable: Schema.Literals(["vp", "node"]),
     argumentCount: Schema.Number,
     shell: Schema.Boolean,
     exitCode: Schema.Number,
@@ -177,6 +210,18 @@ export class DevRunnerProcessExitError extends Schema.TaggedError<DevRunnerProce
 ) {
   override get message(): string {
     return `Dev-runner process exited with code ${this.exitCode} in mode "${this.mode}".`;
+  }
+}
+
+export class DevRunnerCheckoutMissingError extends Schema.TaggedError<DevRunnerCheckoutMissingError>()(
+  "DevRunnerCheckoutMissingError",
+  {
+    mode: Schema.Literals(["dev", "dev:server"]),
+    checkout: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `${this.mode} runs the server of a T3 Code Extensible checkout, and ${this.checkout} has no ${SERVER_ENTRY}. Set ${T3CODE_CHECKOUT_VARIABLE}, in the environment or .env, to a checkout with its dependencies installed.`;
   }
 }
 
@@ -325,8 +370,8 @@ export function createDevRunnerEnv({
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
     };
 
-    // Always exported: apps/server is upstream's bytes and would otherwise
-    // default to ~/.t3, the live server's data, while the log line names ~/.pult.
+    // Always exported: the fork's server would otherwise default to ~/.t3,
+    // the live server's data, while the log line names ~/.pult.
     output.T3CODE_HOME = resolvedBaseDir;
 
     // A dev-runner server is never launcher-managed. When the shell that runs
@@ -343,14 +388,14 @@ export function createDevRunnerEnv({
       // only place we set it. An inherited one (an exported HOST, a container,
       // a `HOST=0.0.0.0 npm start` habit) would otherwise reach Vite and pin
       // its HMR socket to that address — see the `explicitHost` gate in
-      // apps/web/vite.config.ts. Over a shared origin that is invisible: the
+      // apps/pult/vite.config.ts. Over a shared origin that is invisible: the
       // page loads and only HMR quietly dials the wrong machine.
       delete output.HOST;
       if (mode === "dev" || mode === "dev:web") {
         // Browser dev is single-origin: everything (including /ws) is proxied
         // through Vite, so the client must resolve its backend from
         // window.location.origin rather than a baked-in localhost URL. See
-        // resolveConfiguredPrimaryTarget in apps/web/src/environments/primary/target.ts
+        // resolveConfiguredPrimaryTarget in apps/pult/src/environments/primary/target.ts
         // — it only defers to the origin when both of these are absent. Baking
         // localhost here is what breaks any non-localhost origin (tailnet, LAN,
         // phone): the remote browser dials its own machine.
@@ -608,6 +653,8 @@ export function resolveModePortOffsets<R = NetService.NetService>({
 
 interface DevRunnerCliInput {
   readonly mode: DevMode;
+  /** The T3 Code Extensible checkout whose server `dev` and `dev:server` run. */
+  readonly checkout: string;
   readonly t3Home: string | undefined;
   readonly browser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
@@ -696,6 +743,13 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     yield* Effect.logInfo(
       `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.T3CODE_HOME)}`,
     );
+
+    const processes = planDevProcesses(input.mode, input.checkout, input.runArgs);
+    for (const devProcess of processes) {
+      yield* Effect.logInfo(
+        `[dev-runner] ${devProcess.role}: ${[devProcess.executable, ...devProcess.args].join(" ")}${devProcess.cwd ? ` (in ${devProcess.cwd})` : ""}`,
+      );
+    }
 
     // Before the share block: --dry-run only resolves and prints. Sharing would
     // replace, then tear down, whatever mapping the port already had — a
@@ -789,25 +843,51 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       }
     }
 
-    const spawnCommand = yield* resolveSpawnCommand(
-      "vp",
-      [...MODE_ARGS[input.mode], ...input.runArgs],
-      { env },
+    if (processes.some((devProcess) => devProcess.role === "server")) {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      if (
+        !(yield* fs
+          .exists(path.join(input.checkout, SERVER_ENTRY))
+          .pipe(Effect.orElseSucceed(() => false)))
+      ) {
+        return yield* new DevRunnerCheckoutMissingError({
+          mode: input.mode === "dev" ? "dev" : "dev:server",
+          checkout: input.checkout,
+        });
+      }
+    }
+
+    // A process that fails or exits non-zero ends the run; the scope then
+    // stops the others.
+    yield* Effect.all(
+      processes.map((devProcess) => runDevProcess(input.mode, devProcess, env)),
+      { concurrency: "unbounded", discard: true },
     );
+  });
+}
+
+const runDevProcess = (mode: DevMode, devProcess: DevProcess, env: NodeJS.ProcessEnv) =>
+  Effect.gen(function* () {
+    const spawnCommand =
+      devProcess.executable === "vp"
+        ? yield* resolveSpawnCommand("vp", devProcess.args, { env })
+        : { command: yield* HostProcessExecutablePath, args: devProcess.args, shell: false };
     const processContext = {
-      mode: input.mode,
-      executable: "vp" as const,
+      mode,
+      executable: devProcess.executable,
       argumentCount: spawnCommand.args.length,
       shell: spawnCommand.shell,
     } as const;
     const child = yield* ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      ...(devProcess.cwd ? { cwd: devProcess.cwd } : {}),
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
       env,
       extendEnv: false,
       shell: spawnCommand.shell,
-      // Keep Vite+ in the same process group so terminal signals (Ctrl+C)
+      // Keep each child in the same process group so terminal signals (Ctrl+C)
       // reach it directly. Effect defaults to detached: true on non-Windows,
       // which would put the runner in a new group and require manual forwarding.
       detached: false,
@@ -840,7 +920,6 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       });
     }
   });
-}
 
 const devRunnerCli = Command.make("dev-runner", {
   mode: Argument.Literals("mode", DEV_RUNNER_MODES).pipe(
@@ -886,7 +965,9 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.map(Option.getOrUndefined),
   ),
   dryRun: Flag.Boolean("dry-run").pipe(
-    Flag.withDescription("Resolve mode/ports/env and print, but do not spawn Vite+."),
+    Flag.withDescription(
+      "Resolve mode/ports/env and the commands, and print them, but spawn nothing.",
+    ),
     Flag.withDefault(false),
   ),
   share: Flag.Boolean("share").pipe(
@@ -896,12 +977,16 @@ const devRunnerCli = Command.make("dev-runner", {
     Flag.withDefault(false),
   ),
   runArgs: Argument.String("run-arg").pipe(
-    Argument.withDescription("Additional Vite+ run args (pass after `--`)."),
+    Argument.withDescription(
+      "Additional args (pass after `--`): Vite+ run args for the client, or the server's args in dev:server.",
+    ),
     Argument.variadic(),
   ),
 }).pipe(
-  Command.withDescription("Run monorepo development modes with deterministic port/env wiring."),
-  Command.withHandler((input) => runDevRunnerWithInput(input)),
+  Command.withDescription("Run Pult's development modes with deterministic port/env wiring."),
+  Command.withHandler((input) =>
+    runDevRunnerWithInput({ ...input, checkout: t3codeCheckoutPath() }),
+  ),
 );
 
 const cliRuntimeLayer = Layer.mergeAll(
