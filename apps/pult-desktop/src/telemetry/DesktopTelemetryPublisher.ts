@@ -78,7 +78,7 @@ export class DesktopTelemetryPublisher extends Context.Service<
     readonly updateCommits: Stream.Stream<DesktopTelemetryCommitDesktopUpdate>;
     readonly updateCancellations: Stream.Stream<DesktopTelemetryCancelDesktopUpdate>;
   }
->()("@t3tools/desktop/telemetry/DesktopTelemetryPublisher") {}
+>()("@pult/desktop/telemetry/DesktopTelemetryPublisher") {}
 
 function booleanState(value: boolean): HostPowerSnapshot["onBattery"] {
   return value ? "true" : "false";

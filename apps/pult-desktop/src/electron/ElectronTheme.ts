@@ -26,7 +26,7 @@ export class ElectronTheme extends Context.Service<
     readonly setSource: (theme: DesktopTheme) => Effect.Effect<void, ElectronThemeSetSourceError>;
     readonly onUpdated: (listener: () => void) => Effect.Effect<void, never, Scope.Scope>;
   }
->()("@t3tools/desktop/electron/ElectronTheme") {}
+>()("@pult/desktop/electron/ElectronTheme") {}
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = ElectronTheme.of({

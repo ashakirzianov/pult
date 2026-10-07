@@ -188,7 +188,7 @@ export class DesktopUpdates extends Context.Service<
       expectedVersion: string,
     ) => Effect.Effect<DesktopPreparedUpdateInstallResult>;
   }
->()("@t3tools/desktop/updates/DesktopUpdates") {}
+>()("@pult/desktop/updates/DesktopUpdates") {}
 
 const {
   logInfo: logUpdaterInfo,

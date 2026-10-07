@@ -58,7 +58,7 @@ export class DesktopWslBackend extends Context.Service<
     // surfaces via a dialog + Windows fallback).
     readonly lastPreflightError: Effect.Effect<Option.Option<string>>;
   }
->()("@t3tools/desktop/wsl/DesktopWslBackend") {}
+>()("@pult/desktop/wsl/DesktopWslBackend") {}
 
 const { logInfo: logWslBackendInfo, logWarning: logWslBackendWarning } =
   DesktopObservability.makeComponentLogger("desktop-wsl-backend");

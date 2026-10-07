@@ -58,7 +58,7 @@ export class ElectronShell extends Context.Service<
     readonly openSystemSettings: (pane: SystemSettingsPane) => Effect.Effect<boolean>;
     readonly copyText: (text: string) => Effect.Effect<void>;
   }
->()("@t3tools/desktop/electron/ElectronShell") {}
+>()("@pult/desktop/electron/ElectronShell") {}
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = ElectronShell.of({

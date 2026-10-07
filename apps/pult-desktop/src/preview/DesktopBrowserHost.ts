@@ -82,7 +82,7 @@ export class DesktopBrowserHost extends Context.Service<
       readonly y: number;
     }>;
   }
->()("@t3tools/desktop/preview/DesktopBrowserHost") {}
+>()("@pult/desktop/preview/DesktopBrowserHost") {}
 
 export const make = Effect.gen(function* () {
   const outbox = yield* PubSub.unbounded<DesktopBrowserEventType>();

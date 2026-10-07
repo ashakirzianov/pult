@@ -96,7 +96,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly resolvePickFolderDefaultPath: (rawOptions: unknown) => Option.Option<string>;
     readonly resolveResourcePathCandidates: (fileName: string) => readonly string[];
   }
->()("@t3tools/desktop/app/DesktopEnvironment") {}
+>()("@pult/desktop/app/DesktopEnvironment") {}
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
