@@ -111,7 +111,6 @@ export const WorkspaceEntriesError = Schema.Union([
   WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed,
   WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut,
   WorkspaceSearchIndex.WorkspaceSearchIndexSearchFailed,
-  WorkspaceEntriesWatchError,
 ]);
 export type WorkspaceEntriesError = typeof WorkspaceEntriesError.Type;
 
@@ -138,7 +137,14 @@ export class WorkspaceEntries extends Context.Service<
      */
     readonly watch: (
       input: ProjectWatchEntriesInput,
-    ) => Stream.Stream<ProjectWatchEntriesEvent, WorkspaceEntriesError>;
+    ) => Stream.Stream<
+      ProjectWatchEntriesEvent,
+      | WorkspacePaths.WorkspaceRootNotExistsError
+      | WorkspacePaths.WorkspaceRootCreateFailedError
+      | WorkspacePaths.WorkspaceRootStatFailedError
+      | WorkspacePaths.WorkspaceRootNotDirectoryError
+      | WorkspaceEntriesWatchError
+    >;
   }
 >()("t3/workspace/WorkspaceEntries") {}
 
@@ -187,7 +193,7 @@ export const make = Effect.gen(function* () {
 
   const normalizeWorkspaceRoot = Effect.fn("WorkspaceEntries.normalizeWorkspaceRoot")(function* (
     cwd: string,
-  ): Effect.fn.Return<string, WorkspaceEntriesError> {
+  ) {
     return yield* workspacePaths.normalizeWorkspaceRoot(cwd);
   });
 

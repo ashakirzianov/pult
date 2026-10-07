@@ -433,7 +433,9 @@ const persistChatAttachments = Effect.fn("ws.assets.persistChatAttachments")(fun
   );
 });
 
-function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesError): {
+function projectEntriesFailureContext(
+  error: WorkspaceEntries.WorkspaceEntriesError | WorkspaceEntries.WorkspaceEntriesWatchError,
+): {
   readonly failure: ProjectEntriesFailure;
   readonly normalizedCwd?: string;
   readonly timeout?: string;
