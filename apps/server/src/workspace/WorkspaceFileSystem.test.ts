@@ -887,6 +887,27 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
       }),
     );
 
+    it.effect("refuses a directory as not a file, with or without a version", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* workspaceFileSystem.createDirectory({ cwd, relativePath: "docs" });
+        const { version } = yield* workspaceFileSystem.statEntry({ cwd, relativePath: "docs" });
+
+        for (const expectedVersion of [undefined, version]) {
+          const error = yield* workspaceFileSystem
+            .writeFile({
+              cwd,
+              relativePath: "docs",
+              contents: "# Docs\n",
+              ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+            })
+            .pipe(Effect.flip);
+          expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFileError);
+        }
+      }),
+    );
+
     it.effect("rejects writes by absolute path", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;

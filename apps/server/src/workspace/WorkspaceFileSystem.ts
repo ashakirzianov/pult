@@ -704,16 +704,30 @@ export const make = Effect.gen(function* () {
     // creates or truncates on open; a versioned one opens without either and
     // truncates only after its version matches.
     const { O_CREAT, O_NOFOLLOW = 0, O_RDWR, O_TRUNC, O_WRONLY } = NodeFS.constants;
+    const openFile = (flags: number) =>
+      fileOperation("open", () => NodeFSP.open(target.absolutePath, flags)).pipe(
+        Effect.catchIf(
+          (error) => (error.cause as NodeJS.ErrnoException | undefined)?.code === "EISDIR",
+          () =>
+            Effect.fail(
+              new WorkspacePathNotFileError({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+                resolvedPath: target.absolutePath,
+              }),
+            ),
+        ),
+      );
     const open =
       expectedVersion === undefined
-        ? fileOperation("open", () =>
-            NodeFSP.open(target.absolutePath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW),
-          )
-        : fileOperation("open", () => NodeFSP.open(target.absolutePath, O_RDWR | O_NOFOLLOW)).pipe(
-            Effect.catchIf(
-              (error) => (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
-              () => Effect.fail(conflict(expectedVersion)),
-            ),
+        ? openFile(O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW)
+        : openFile(O_RDWR | O_NOFOLLOW).pipe(
+            Effect.catchTags({
+              WorkspaceFileSystemOperationError: (error) =>
+                (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+                  ? Effect.fail(conflict(expectedVersion))
+                  : Effect.fail(error),
+            }),
           );
     const version = yield* Effect.acquireUseRelease(
       open,
