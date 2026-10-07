@@ -366,12 +366,12 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         }),
     );
 
-    it.effect("describes the workspace root as an empty path or a dot", () =>
+    it.effect("describes the workspace root however its path spells it", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
         const cwd = yield* makeTempDir;
 
-        for (const relativePath of ["", "."]) {
+        for (const relativePath of ["", ".", "./", "src/.."]) {
           expect(yield* workspaceFileSystem.statEntry({ cwd, relativePath })).toMatchObject({
             relativePath: "",
             kind: "directory",

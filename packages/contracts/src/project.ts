@@ -521,7 +521,8 @@ export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
 export const ProjectStatEntryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  // Accepts the same paths as readFile, and `""` or `.` for the root itself.
+  // Accepts the same paths as readFile, and `""`, `.` or another relative
+  // path to the root, such as `./`, for the root itself.
   relativePath: TrimmedString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
 });
 export type ProjectStatEntryInput = typeof ProjectStatEntryInput.Type;

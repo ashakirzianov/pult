@@ -201,7 +201,7 @@ export class WorkspaceFileSystem extends Context.Service<
     >;
     /**
      * Describe what a path resolves to, accepting the same paths as `readFile`
-     * and `""` or `.` for the root. A symlink that dangles or leaves the root
+     * and `""`, `.` or another relative path to the root for the root. A symlink that dangles or leaves the root
      * is described as itself. A missing path fails with
      * `WorkspacePathNotFoundError`.
      */
@@ -585,9 +585,10 @@ export const make = Effect.gen(function* () {
     "WorkspaceFileSystem.statEntry",
   )(function* (input) {
     const requestedPath = input.relativePath.trim();
-    // The root itself, which the path guard keeps from every other method.
-    if (requestedPath === "" || requestedPath === ".") {
-      const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+    const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+    // The root itself, however spelled, which the path guard keeps from every
+    // other method.
+    if (!path.isAbsolute(requestedPath) && path.resolve(root, requestedPath) === root) {
       const realRoot = yield* realpathWorkspaceRoot(input, root).pipe(
         Effect.catchTags({
           WorkspaceFileSystemOperationError: (error) =>
