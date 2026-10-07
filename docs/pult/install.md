@@ -36,7 +36,7 @@ Pult runs no server and starts none: it attaches to a T3 Code server that is alr
 
 Development runs (`vp run dev`, `dev:desktop`) are the exception: they start the repo's `apps/server` against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's.
 
-The client and its protocol packages (`packages/contracts`, `packages/client-runtime`, `packages/shared`) are at upstream `f4f148eb67`, the same commit the T3 Code Extensible server it pairs with is built from; the two move together.
+The protocol packages are vendored verbatim under `vendor/t3code/packages/` from the T3 Code Extensible fork at the commit in `vendor/t3code/PIN` (`b98fd8ad27`, upstream `f4f148eb67`), the same commit the server it pairs with is built from; `vp run vendor:sync` bumps them and `vendor:check` fails when the copy drifts.
 
 ## Shipping a build to the installed app
 
