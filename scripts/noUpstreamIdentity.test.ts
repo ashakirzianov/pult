@@ -4,12 +4,10 @@
 // a Pult app runs beside an installed T3 Code without either disturbing the
 // other (DECISIONS.md, `identity-seam`). This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
-// the reasoned allow-list below. Mobile is out of scope and not scanned, and
-// apps/web and apps/server are upstream's bytes, kept as they are: Pult's
-// client is apps/pult, and its server side lives outside this repo
-// (DECISIONS.md, `server-side-home`). The protocol packages under vendor/ are
-// the fork's bytes and lie outside the scanned roots; Pult's own shared code
-// is packages/pult.
+// the reasoned allow-list below. Pult's server side lives outside this repo
+// (DECISIONS.md, `server-side-home`), and the protocol packages under vendor/
+// are the fork's bytes and lie outside the scanned roots; Pult's own shared
+// code is packages/pult.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -19,7 +17,6 @@ import { APP_DISPLAY_NAME } from "@pult/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web", "apps/server"]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",
@@ -43,7 +40,6 @@ const sourceExtensions = new Set([
 
 const isTestFile = (fileName: string) =>
   /\.(test|spec)\.[cm]?[jt]sx?$/.test(fileName) || fileName.endsWith(".d.ts");
-const isMobileScript = (relativePath: string) => relativePath.startsWith("scripts/mobile-");
 
 // Upstream's values, each as it is spelled at a site. Comment lines are
 // skipped: prose about upstream's names is not a site.
@@ -77,11 +73,10 @@ function walk(dir: string, out: Array<string>) {
     const full = NodePath.join(dir, entry.name);
     const relative = NodePath.relative(repoRoot, full);
     if (entry.isDirectory()) {
-      if (!excludedDirNames.has(entry.name) && !excludedPaths.has(relative)) walk(full, out);
+      if (!excludedDirNames.has(entry.name)) walk(full, out);
     } else if (
       entry.isFile() &&
       !isTestFile(entry.name) &&
-      !isMobileScript(relative) &&
       sourceExtensions.has(NodePath.extname(entry.name))
     ) {
       out.push(relative);
@@ -117,12 +112,6 @@ const allowList: ReadonlyArray<{ file: string; lineCount: number; reason: string
     file: "apps/pult/src/components/NightlyMobileBeta.tsx",
     lineCount: 1,
     reason: "links to upstream's mobile app in the Play Store; mobile is out of scope.",
-  },
-  {
-    file: "scripts/release-smoke.ts",
-    lineCount: 20,
-    reason:
-      "mock update-feed fixtures for upstream's release smoke test; Pult ships no update feed (DECISIONS.md, `auto-update-off`).",
   },
 ];
 

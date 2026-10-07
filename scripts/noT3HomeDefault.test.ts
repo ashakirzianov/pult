@@ -4,19 +4,17 @@
 // running T3 Code Extensible server's live data (DECISIONS.md,
 // `default-home`). This test fails if Pult's own source under apps/, packages/
 // or scripts/ joins a home directory to a literal `.t3` again, outside the
-// reasoned allow-list below. apps/server is upstream's bytes and legitimately
-// defaults to ~/.t3, so it is not scanned (DECISIONS.md, `server-side-home`),
-// nor are the protocol packages under vendor/, the fork's bytes, which lie
-// outside the scanned roots. A `.t3` that is not a home default (a worktree-local
-// `.t3`, a fixture path in a test) does not name a home directory next to it,
-// so it never matches.
+// reasoned allow-list below. The server, which legitimately defaults to ~/.t3,
+// lives outside this repo (DECISIONS.md, `server-side-home`), and the protocol
+// packages under vendor/, the fork's bytes, lie outside the scanned roots. A
+// `.t3` that is not a home default (a worktree-local `.t3`, a fixture path in a
+// test) does not name a home directory next to it, so it never matches.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/server"]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",
@@ -60,9 +58,8 @@ function walk(dir: string, out: Array<string>) {
   for (const entry of NodeFS.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".")) continue;
     const full = NodePath.join(dir, entry.name);
-    const relative = NodePath.relative(repoRoot, full);
     if (entry.isDirectory()) {
-      if (!excludedDirNames.has(entry.name) && !excludedPaths.has(relative)) walk(full, out);
+      if (!excludedDirNames.has(entry.name)) walk(full, out);
     } else if (
       entry.isFile() &&
       !isTestFile(entry.name) &&
