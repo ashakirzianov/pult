@@ -778,7 +778,9 @@ export class ProjectDeleteEntryError extends Schema.TaggedError<ProjectDeleteEnt
 /**
  * Moves a path within the workspace, creating missing parents of the new
  * path. An entry already at the new path is never replaced, except the same
- * entry renamed to another case on a case-insensitive filesystem.
+ * entry renamed to another case on a case-insensitive filesystem. The check
+ * and the move are separate steps, since Node has no rename that refuses to
+ * replace: an entry created at the new path between them is replaced.
  */
 export const ProjectRenameEntryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,

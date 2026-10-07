@@ -251,7 +251,9 @@ export class WorkspaceFileSystem extends Context.Service<
      * Move a path to a new path, both relative to the workspace root,
      * creating missing parents of the new path. An entry already there fails
      * with `WorkspacePathExistsError` unless it is the source under another
-     * case; a missing source fails with `WorkspacePathNotFoundError`.
+     * case; a missing source fails with `WorkspacePathNotFoundError`. The
+     * check is not atomic with the move: an entry created at the new path in
+     * between is replaced.
      */
     readonly renameEntry: (
       input: ProjectRenameEntryInput,
