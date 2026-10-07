@@ -860,10 +860,10 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
 
     // A process that fails or exits non-zero ends the run; the scope then
     // stops the others.
-    yield* Effect.all(
-      processes.map((devProcess) => runDevProcess(input.mode, devProcess, env)),
-      { concurrency: "unbounded", discard: true },
-    );
+    yield* Effect.forEach(processes, (devProcess) => runDevProcess(input.mode, devProcess, env), {
+      concurrency: "unbounded",
+      discard: true,
+    });
   });
 }
 
