@@ -29,7 +29,7 @@ line to add. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
 | ------------------------------------------------ | --------------------------------------------------------- |
 | Start the server and open the web app            | `t3`                                                      |
 | Start the server without a browser               | `t3 serve`                                                |
-| Keep it running in the background (macOS, Linux) | `t3 service install` ([details](./background-service.md)) |
+| Keep it running in the background (macOS, Linux) | `t3 service install` |
 | Move to the newest release                       | `t3 update`                                               |
 | Remove it again                                  | `t3 uninstall`                                            |
 
@@ -169,5 +169,4 @@ For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 - [Working with threads](./thread-sidebar.md): start tasks and organize parallel work.
 - [Permission modes](./permission-modes.md): choose when agents ask before acting.
 - [Remote access](./remote-access.md): connect from another device.
-- [Running in the background](./background-service.md): keep a Linux or macOS host available.
 - [Updating T3 Code](./updating.md): update the app and connected servers.

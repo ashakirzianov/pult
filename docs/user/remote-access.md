@@ -16,7 +16,7 @@ t3 connect
 ```
 
 Follow the sign-in instructions. Setup offers a
-[background service](./background-service.md); if you decline it, start the
+background service; if you decline it, start the
 server with `t3 serve`. Saving your sign-in alone does not make the machine
 reachable.
 
@@ -277,7 +277,7 @@ version; it reconnects at the same address without pairing again.
 
 On a command-line host, `t3 connect unlink` disables exposure while retaining
 your login; `t3 connect logout` also clears that login. Background-service
-[removal](./background-service.md#manage-the-service) is separate.
+removal is separate.
 
 Treat pairing URLs and authorization codes as passwords. Do not include them in
 screenshots, logs, or bug reports.
@@ -287,7 +287,7 @@ screenshots, logs, or bug reports.
 Run `t3 connect status` on the host to inspect saved authorization and link
 configuration. It is not a live reachability check. If the environment appears
 offline, run `t3 service status` and read the displayed log. If it disappears
-when SSH closes, see [background-service troubleshooting](./background-service.md#troubleshooting).
+when SSH closes, check the background service.
 
 | Error                                                     | Recovery                                                                                                                                    |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |

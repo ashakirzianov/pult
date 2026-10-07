@@ -7,7 +7,7 @@ to each client and do not change terminal contracts.
 
 ## Output and retention
 
-[Terminal history](../../apps/server/src/terminal/Manager.ts) is incremental.
+Terminal history is incremental.
 PTY callbacks append new chunks; live events carry only those chunks. Materializing
 or copying full scrollback on every callback makes output cost grow with retained
 history, so snapshots and coalesced persistence are the materialization boundaries.
@@ -40,5 +40,5 @@ info so the ABI check can detect drift without a second pin.
 Restoring scrollback must not send terminal replies to the current shell. Historical
 device queries can otherwise provoke fresh replies that appear as junk at the
 prompt. The server strips query/response traffic from retained history, and the
-[web renderer](../../apps/web/src/terminal/ghostty/core.ts) detaches its PTY writer
+[web renderer](../../apps/pult/src/terminal/ghostty/core.ts) detaches its PTY writer
 during replay. Preserve both protections when changing retention or renderer code.

@@ -13,7 +13,7 @@ Keeping that logic shared prevents reconnect and multi-environment behavior from
 web and mobile. See [connection runtime](./connection-runtime.md) and
 [remote environments](./remote.md).
 
-The [RPC contract](../../packages/contracts/src/rpc.ts) is the boundary between independently
+The [RPC contract](../../vendor/t3code/packages/contracts/src/rpc.ts) is the boundary between independently
 versioned clients and servers. Subscriptions send the state a client needs, so a client viewing one
 thread does not pay for every thread's history. Authentication of a socket does not authorize every
 method on it. See [environment auth](./environment-auth.md).
@@ -39,7 +39,7 @@ after an environment downgrade.
 
 Provider-specific behavior belongs behind an adapter. Orchestration works with normalized commands
 and events, so adding a provider should not require branches throughout the domain or clients.
-See [provider constraints](./providers.md).
+
 
 ## Settings ownership
 
@@ -53,14 +53,14 @@ select known environment-local checkouts; the group itself does not store inheri
 ## Durable intent and side effects
 
 The event log is the source of truth for orchestration state. The
-[v2 orchestrator](../../apps/server/src/orchestration-v2/Orchestrator.ts) serializes commands and
+v2 orchestrator serializes commands and
 decides events without performing provider or filesystem work.
-[EventSink](../../apps/server/src/orchestration-v2/EventSink.ts) commits events, persisted projections,
+EventSink commits events, persisted projections,
 the accepted command receipt, and outbox effects in one database transaction. Subscribers receive
 events after that commit. This keeps command retries idempotent and prevents a persisted projection
 from getting ahead of the event log.
 
-The [effect worker](../../apps/server/src/orchestration-v2/EffectWorker.ts) performs side effects
+The effect worker performs side effects
 after intent has been recorded, then feeds results back into orchestration. A command acknowledgement
 therefore means the intent committed, not that the provider, checkpoint, or other follow-up work
 finished. Keep external I/O out of command decisions and the database transaction. Effects tied to
@@ -74,21 +74,21 @@ what the newest client sends.
 
 A provider turn ending and its follow-up work settling are separate milestones. Orchestration
 records provider turn and run state independently from
-[run finalization](../../apps/server/src/orchestration-v2/RunFinalizationService.ts). A late
+run finalization. A late
 checkpoint or diff must not extend the recorded provider duration or keep the client showing
 provider work as active. PR discovery after completion also checks that the checkout still matches
 the thread's non-default branch and that a newer run is not active.
 
-[Checkpoints](../../apps/server/src/checkpointing/CheckpointStore.ts) use hidden Git refs to
+Checkpoints use hidden Git refs to
 capture workspace state without adding commits to the user's branch. A revert must coordinate
 workspace state with the provider conversation. A provider that cannot roll back its conversation
 must reject that operation before changing the filesystem.
 
 Thread settlement is server-owned. The
-[settlement service](../../apps/server/src/orchestration-v2/ThreadSettlementService.ts) evaluates PR
+settlement service evaluates PR
 and inactivity settings without a connected client. Merge notifications invalidate cached PR state
 and trigger a check. A merge outside T3, such as an agent running `gh pr merge`, sends no
-notification, so the [PR sync reactor](../../apps/server/src/orchestration-v2/PullRequestSyncReactor.ts)
+notification, so the PR sync reactor
 re-reads a thread's open links when a run that ran a merge or close command ends. The guarded
 `thread.auto-settle` command rejects newer activity, explicit settlement overrides, and live or
 blocked work. It records the activity timestamp for stable
@@ -97,7 +97,7 @@ derive settlement from their own clocks or PR caches.
 
 ## Waiting for asynchronous work
 
-Tests use [drainable workers](../../packages/shared/src/DrainableWorker.ts) to wait until both the
+Tests use [drainable workers](../../vendor/t3code/packages/shared/src/DrainableWorker.ts) to wait until both the
 queue and its current item have finished. An empty queue alone does not prove the worker is idle.
 
 V2 tests also drain the effect worker or await a specific persisted event or receipt. Test signals

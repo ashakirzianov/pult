@@ -2,7 +2,7 @@
 
 ## Primitives
 
-Controls come from [`components/ui`](../../apps/web/src/components/ui).
+Controls come from [`components/ui`](../../apps/pult/src/components/ui).
 [AGENTS.md](../../AGENTS.md#taste) says how to use and extend them.
 
 Don't style a raw `<button>`, `<input>`, `<select>`, or `<textarea>` to look like a control a
@@ -13,7 +13,7 @@ resize handles, swatches, editor surfaces, anything whose behavior or geometry d
 
 Style with Tailwind classes in the component that renders the element.
 
-- Global CSS, in [`index.css`](../../apps/web/src/index.css) or any other stylesheet, is only for
+- Global CSS, in [`index.css`](../../apps/pult/src/index.css) or any other stylesheet, is only for
   what classes on the owning component can't express: generated Markdown or imperative DOM, custom
   elements and shadow roots, animations, runtime theme variables, and browser or Electron
   integration.
@@ -25,14 +25,14 @@ Style with Tailwind classes in the component that renders the element.
 
 The composer banners are the reference.
 
-- [`ComposerBanner.tsx`](../../apps/web/src/components/chat/ComposerBanner.tsx) exports one object
+- [`ComposerBanner.tsx`](../../apps/pult/src/components/chat/ComposerBanner.tsx) exports one object
   of small slots. Slots own their classes, take `className`, and spread the rest of their props,
   merging classes with `cn`. Variants and density are props on `Root`. A slot that needs a control
   renders `Button`.
-- [`ComposerBannerStack.tsx`](../../apps/web/src/components/chat/ComposerBannerStack.tsx) composes
+- [`ComposerBannerStack.tsx`](../../apps/pult/src/components/chat/ComposerBannerStack.tsx) composes
   the slots and owns only stack behavior: priority, expand and collapse, dismiss transitions.
 - Consumers are a few lines of slots, and the slots carry the styling:
-  [`ComposerActivityStatus.tsx`](../../apps/web/src/components/chat/ComposerActivityStatus.tsx).
+  [`ComposerActivityStatus.tsx`](../../apps/pult/src/components/chat/ComposerActivityStatus.tsx).
 
 Build new UI the same way. Compose or extend a component instead of copying its markup and classes.
 When a call site repeats a treatment another one already uses, make it a variant or a slot on the

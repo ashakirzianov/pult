@@ -76,8 +76,6 @@ Nightly:
 yay -S t3code-nightly-bin
 ```
 
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
 ## Some notes
 
 We are very very early in this project. Expect bugs.
@@ -97,7 +95,6 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - [Keeping app and server in sync](./docs/user/updating.md)
 - [Source control integrations](./docs/user/source-control.md)
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
 
 Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
 

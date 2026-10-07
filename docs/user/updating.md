@@ -22,8 +22,8 @@ If you previously enabled continuation for updates, enable this setting once
 to allow recovery without a connected client.
 
 Updates from the previous orchestration system preserve conversation transcripts but cannot carry
-every kind of runtime history forward. Read [Threads from older T3 Code versions](./thread-migration.md)
-before continuing an important older thread.
+every kind of runtime history forward. Check an important older thread
+before continuing it.
 
 ## When versions don't match
 
