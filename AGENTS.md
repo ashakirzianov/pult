@@ -34,7 +34,7 @@ The most common defect is a change that works on the path you tested and is miss
 
 - **Entry points.** A behaviour reachable from the chat view is usually also reachable from Settings, the command palette, and a keybinding.
 - **Clients.** Web and desktop (which wraps web and adds the Electron shell and IPC). Mobile is not Pult's.
-- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`) or a Pult plugin route (`/api/plugins/pult/*`), and the client reads `GET /api/plugins` before relying on a plugin.
+- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`), offered upstream when it is generic; a Pult-specific one would be a plugin route (`/api/plugins/pult/*`), and a client reads `GET /api/plugins` before relying on one.
 - **Reverse states.** If you added a way in, add the way out and the way to see it. A one-way door is a bug.
 - **Connection modes.** Local, remote and SSH behave differently; multi-environment cases are real.
 - **Docs.** Check whether the change makes existing guidance inaccurate before adding anything.
@@ -69,7 +69,7 @@ Most code changes do not need a documentation change. Agents can read the code.
 
 ## Taste
 
-- Complexity belongs at the boundary. UI stays dumb; what a plugin or the fork can do deterministically, do not ask an agent to do.
+- Complexity belongs at the boundary. UI stays dumb; what the server can do deterministically, do not ask an agent to do.
 - `apps/pult/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one with `className`. Layout classes belong on the parent. `shadcn/no-restyle` fails lint on violations. See `docs/internals/web-ui.md`.
 - Inferred types over annotations. `any` is the enemy. The desktop and scripts use Effect; follow the patterns already in those trees.
 - Comments describe how a thing is used, and move when the code moves.

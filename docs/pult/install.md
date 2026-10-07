@@ -84,5 +84,5 @@ From the MVP units, the checks agents could not make. Tick them on the first ins
 ## Known gaps
 
 - Some client prose and the DMG background still say T3 Code.
-- An SSH environment launches upstream's T3 Code release on the host, not T3 Code Extensible, so Pult's plugin is absent there.
+- An SSH environment launches upstream's T3 Code release on the host, not T3 Code Extensible, so RPCs added in the fork are absent there.
 - A zero-step credential from `t3 auth session issue`, in place of a pairing link, is a later change.
