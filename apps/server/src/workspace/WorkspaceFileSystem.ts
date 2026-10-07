@@ -201,9 +201,9 @@ export class WorkspaceFileSystem extends Context.Service<
     >;
     /**
      * Describe what a path resolves to, accepting the same paths as `readFile`
-     * and `""`, `.` or another relative path to the root for the root. A symlink that dangles or leaves the root
-     * is described as itself. A missing path fails with
-     * `WorkspacePathNotFoundError`.
+     * and any relative path to the root itself, such as `""`, `.` or `./`. A
+     * symlink that dangles or leaves the root is described as itself. A
+     * missing path fails with `WorkspacePathNotFoundError`.
      */
     readonly statEntry: (
       input: ProjectStatEntryInput,
