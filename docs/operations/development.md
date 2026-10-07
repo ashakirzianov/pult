@@ -16,7 +16,11 @@ a new browser.
 ## Choosing a dev process
 
 Use `vp run dev` for server and web, or `vp run dev:desktop` for the Electron client.
-`dev:server` and `dev:web` start those processes separately.
+`dev:server` and `dev:web` start those processes separately. The server is not in this repo:
+`dev` and `dev:server` run `node --watch apps/server/src/bin.ts` in the T3 Code Extensible
+checkout that `PULT_T3CODE_CHECKOUT` names (environment or `.env`, by default
+`~/repos/t3code-extensible`), so that checkout needs its dependencies installed.
+`vp run migrate-dev-db` seeds the worktree's `.t3` with that checkout's migration script.
 
 Flags go directly after the task name, for example `vp run dev --home-dir /tmp/t3code-dev`.
 Add `--browser` to open a browser automatically.
@@ -24,7 +28,7 @@ Add `--browser` to open a browser automatically.
 ### State and ports
 
 Linked worktrees default to their own `.t3/userdata`, even when `T3CODE_HOME` is set.
-The main checkout defaults to `~/.t3/dev/userdata`. An explicit `--home-dir` wins in both cases.
+The main checkout defaults to `~/.pult/userdata`. An explicit `--home-dir` wins in both cases.
 Never run a development server against the live `~/.t3/userdata`.
 See [test data](../../AGENTS.md#test-data) for copying a consistent database snapshot.
 

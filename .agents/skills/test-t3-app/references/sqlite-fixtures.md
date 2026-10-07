@@ -12,6 +12,8 @@ Start the target runtime once before seeding so all migrations have run. Use an 
 
 ## Use the helper
 
+The helper is the server's, so run it from the T3 Code Extensible checkout (`PULT_T3CODE_CHECKOUT`, by default `~/repos/t3code-extensible`), with an absolute `--base-dir`.
+
 List tables:
 
 ```bash
@@ -42,8 +44,8 @@ Use one statement per invocation for both `query` and `exec`; the helper wraps w
 
 Clients read projects from `projection_projects` and everything else from the `orchestration_v2_projection_*` tables: threads, runs, messages, turn items, runtime requests, plans, and provider sessions. The older `projection_thread*` tables hold V1 history, which the server imports once per thread at startup; later edits there do not reach the UI.
 
-Most V2 rows carry a `payload_json` that must decode against the schemas in `packages/contracts/src/orchestrationV2.ts`. The safest start is a row the app wrote itself: create a thread through the UI, copy its rows, and edit them. Keep identifiers unique, timestamps as ISO strings, and related project, thread, and run IDs consistent.
+Most V2 rows carry a `payload_json` that must decode against the schemas in `vendor/t3code/packages/contracts/src/orchestrationV2.ts`. The safest start is a row the app wrote itself: create a thread through the UI, copy its rows, and edit them. Keep identifiers unique, timestamps as ISO strings, and related project, thread, and run IDs consistent.
 
 Direct projection writes are appropriate for ephemeral visual states, edge-case counts, long titles, long timelines, and similar UI fixtures. They do not create a coherent event history. Leave the event log (`orchestration_events`) unchanged, and do not use direct projection writes to claim backend business behavior works.
 
-Use the app's commands or APIs for behavior tests. Use `node apps/server/src/bin.ts auth ...` for auth state rather than editing `auth_pairing_links` or `auth_sessions`.
+Use the app's commands or APIs for behavior tests. Use `node apps/server/src/bin.ts auth ...`, from the checkout, for auth state rather than editing `auth_pairing_links` or `auth_sessions`.

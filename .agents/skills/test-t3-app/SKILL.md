@@ -1,14 +1,13 @@
 ---
 name: test-t3-app
-description: Test T3 Code's web and desktop UI through its built-in Browser panel against isolated development state. Use for browser verification, browser pairing recovery, and test fixtures. Use test-t3-mobile for native mobile verification.
+description: Test T3 Code's web and desktop UI through its built-in Browser panel against isolated development state. Use for browser verification, browser pairing recovery, and test fixtures.
 ---
 
 # Test T3 web and desktop
 
 Use T3's built-in Browser panel for verification. If its tools are absent or
 the panel reports unavailable, explain the blocker and stop verification.
-Do not install or switch to another automation system. For native mobile
-testing, use [test-t3-mobile](../test-t3-mobile/SKILL.md).
+Do not install or switch to another automation system.
 
 ## Start the app
 
@@ -26,8 +25,9 @@ inspecting or seeding SQLite. Stop the test server before direct fixture writes.
 Call `preview_status`, then `preview_open` if the Browser panel is
 closed. Navigate to the complete startup pairing URL once with
 `preview_navigate`, then use `preview_snapshot` and T3's interaction tools.
-If the token was consumed or expired, run `node apps/server/src/bin.ts pair`
-for a fresh one. Keep using the same tab.
+If the token was consumed or expired, mint a fresh one with the server, which
+lives in the T3 Code Extensible checkout (`PULT_T3CODE_CHECKOUT`): from that
+checkout, run `T3CODE_HOME=<worktree>/.t3 node apps/server/src/bin.ts pair`. Keep using the same tab.
 
 ## Verify and retain
 
