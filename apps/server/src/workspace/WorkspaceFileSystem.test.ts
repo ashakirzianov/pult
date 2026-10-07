@@ -73,6 +73,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         expect(result).toEqual({
           relativePath: "src/index.ts",
           contents: "export const answer = 42;\n",
+          encoding: "utf8",
           byteLength: 26,
           truncated: false,
         });
@@ -96,6 +97,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         expect(result).toEqual({
           relativePath: absolutePath,
           contents: "# Report\n",
+          encoding: "utf8",
           byteLength: 9,
           truncated: false,
         });
@@ -221,6 +223,31 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         });
         expect("cause" in error).toBe(false);
         expect("contents" in error).toBe(false);
+      }),
+    );
+
+    it.effect("returns any file's bytes as base64 when asked", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff]);
+        yield* fileSystem.writeFile(path.join(cwd, "image.png"), bytes);
+
+        const result = yield* workspaceFileSystem.readFile({
+          cwd,
+          relativePath: "image.png",
+          encoding: "base64",
+        });
+
+        expect(result).toEqual({
+          relativePath: "image.png",
+          contents: Buffer.from(bytes).toString("base64"),
+          encoding: "base64",
+          byteLength: 6,
+          truncated: false,
+        });
       }),
     );
 

@@ -31,6 +31,9 @@ import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 
 const PROJECT_READ_FILE_MAX_BYTES = 1024 * 1024;
+// Matches the largest image a turn can attach, which travels as a data URL
+// over the same socket.
+const PROJECT_READ_FILE_BASE64_MAX_BYTES = 10 * 1024 * 1024;
 
 export class WorkspaceFileSystemOperationError extends Schema.TaggedError<WorkspaceFileSystemOperationError>()(
   "WorkspaceFileSystemOperationError",
@@ -126,7 +129,7 @@ export class WorkspaceFileSystem extends Context.Service<
   {
     /**
      * Read a UTF-8 text file relative to the workspace root, or any host file by
-     * absolute path.
+     * absolute path. With `encoding: "base64"` it returns any file's bytes.
      */
     readonly readFile: (
       input: ProjectReadFileInput,
@@ -245,6 +248,9 @@ export const make = Effect.gen(function* () {
   )(function* (input) {
     const target = yield* resolveReadTarget(input);
     const realTargetPath = target.realTargetPath;
+    const encoding = input.encoding ?? "utf8";
+    const maxBytes =
+      encoding === "base64" ? PROJECT_READ_FILE_BASE64_MAX_BYTES : PROJECT_READ_FILE_MAX_BYTES;
 
     return yield* Effect.acquireUseRelease(
       Effect.tryPromise({
@@ -287,7 +293,7 @@ export const make = Effect.gen(function* () {
             });
           }
 
-          const bytesToRead = Math.min(stat.size, PROJECT_READ_FILE_MAX_BYTES);
+          const bytesToRead = Math.min(stat.size, maxBytes);
           const buffer = Buffer.alloc(bytesToRead);
           const { bytesRead } = yield* Effect.tryPromise({
             try: () => handle.read(buffer, 0, bytesToRead, 0),
@@ -302,7 +308,7 @@ export const make = Effect.gen(function* () {
               }),
           });
           const fileBytes = buffer.subarray(0, bytesRead);
-          if (fileBytes.includes(0)) {
+          if (encoding === "utf8" && fileBytes.includes(0)) {
             return yield* new WorkspaceBinaryFileError({
               workspaceRoot: input.cwd,
               relativePath: input.relativePath,
@@ -312,9 +318,13 @@ export const make = Effect.gen(function* () {
 
           return {
             relativePath: target.relativePath,
-            contents: new TextDecoder("utf-8").decode(fileBytes),
+            contents:
+              encoding === "base64"
+                ? fileBytes.toString("base64")
+                : new TextDecoder("utf-8").decode(fileBytes),
+            encoding,
             byteLength: stat.size,
-            truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
+            truncated: stat.size > maxBytes,
           };
         }),
       (handle) =>

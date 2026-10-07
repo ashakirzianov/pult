@@ -431,17 +431,26 @@ export class ProjectListEntriesError extends Schema.TaggedError<ProjectListEntri
   }
 }
 
+/** How file contents travel: UTF-8 text, or any file's bytes as base64. */
+export const ProjectFileEncoding = Schema.Literals(["utf8", "base64"]);
+export type ProjectFileEncoding = typeof ProjectFileEncoding.Type;
+
 export const ProjectReadFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   // Workspace-relative, or an absolute host path for a file outside the
   // workspace. Only workspace-relative paths can be written back.
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  // Defaults to utf8, which rejects binary files.
+  encoding: Schema.optional(ProjectFileEncoding),
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
 export const ProjectReadFileResult = Schema.Struct({
   relativePath: TrimmedNonEmptyString,
   contents: Schema.String,
+  // How `contents` is encoded. Older servers ignore a requested encoding,
+  // omit this, and always return utf8.
+  encoding: Schema.optional(ProjectFileEncoding),
   byteLength: NonNegativeInt,
   truncated: Schema.Boolean,
 });
