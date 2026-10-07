@@ -986,6 +986,25 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    it.effect("fails as subscribing would once its root is gone", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = path.join(yield* makeTempDir(), "proj");
+        yield* fileSystem.makeDirectory(cwd);
+        const fake = yield* makeFakeTreeWatcher();
+        const error = yield* Effect.gen(function* () {
+          const { fiber } = yield* startWatch(cwd);
+          yield* Deferred.await(fake.started);
+          yield* fileSystem.remove(cwd, { recursive: true });
+          yield* Queue.end(fake.raw);
+          return yield* Fiber.join(fiber).pipe(Effect.flip);
+        }).pipe(withTreeWatcher(fake.watcher));
+
+        expect(error._tag).toBe("WorkspaceRootNotExistsError");
+      }),
+    );
+
     it.effect("fails when the watcher fails", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir();

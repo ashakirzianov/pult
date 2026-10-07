@@ -320,6 +320,11 @@ export const ProjectListEntriesResult = Schema.Struct({
 });
 export type ProjectListEntriesResult = typeof ProjectListEntriesResult.Type;
 
+/**
+ * Subscribes to changes under a workspace root. The stream ends if the
+ * server's watcher closes, so subscribe again; once the root itself is gone
+ * it fails with `workspace_root_not_found`, as subscribing to it would.
+ */
 export const ProjectWatchEntriesInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
 });

@@ -113,6 +113,13 @@ export const WorkspaceEntriesError = Schema.Union([
 ]);
 export type WorkspaceEntriesError = typeof WorkspaceEntriesError.Type;
 
+type WorkspaceEntriesWatchFailure =
+  | WorkspacePaths.WorkspaceRootNotExistsError
+  | WorkspacePaths.WorkspaceRootCreateFailedError
+  | WorkspacePaths.WorkspaceRootStatFailedError
+  | WorkspacePaths.WorkspaceRootNotDirectoryError
+  | WorkspaceEntriesWatchError;
+
 export class WorkspaceEntries extends Context.Service<
   WorkspaceEntries,
   {
@@ -133,18 +140,12 @@ export class WorkspaceEntries extends Context.Service<
      * Stream changes anywhere under a workspace root as batches of changed
      * paths coalesced over a short window, leaving out `.git` and
      * `node_modules`. Subscribers to one root share its OS watcher. Ends if
-     * the watcher closes.
+     * the watcher closes, and fails as subscribing would once the root is
+     * gone.
      */
     readonly watch: (
       input: ProjectWatchEntriesInput,
-    ) => Stream.Stream<
-      ProjectWatchEntriesEvent,
-      | WorkspacePaths.WorkspaceRootNotExistsError
-      | WorkspacePaths.WorkspaceRootCreateFailedError
-      | WorkspacePaths.WorkspaceRootStatFailedError
-      | WorkspacePaths.WorkspaceRootNotDirectoryError
-      | WorkspaceEntriesWatchError
-    >;
+    ) => Stream.Stream<ProjectWatchEntriesEvent, WorkspaceEntriesWatchFailure>;
   }
 >()("t3/workspace/WorkspaceEntries") {}
 
@@ -474,7 +475,7 @@ export const make = Effect.gen(function* () {
     Stream.unwrap(
       Effect.gen(function* () {
         const root = yield* normalizeWorkspaceRoot(input.cwd);
-        return Stream.callback<ProjectWatchEntriesEvent, WorkspaceEntriesWatchError>(
+        return Stream.callback<ProjectWatchEntriesEvent, WorkspaceEntriesWatchFailure>(
           (queue) =>
             Effect.gen(function* () {
               // Each changed path, and whether any of its events was a create or remove.
@@ -523,8 +524,16 @@ export const make = Effect.gen(function* () {
               yield* Deferred.await(rootWatch.done).pipe(
                 // Stream.callback neither ends nor fails the stream with this effect.
                 Effect.matchEffect({
-                  // The watcher closed; end the stream so the client can subscribe again.
-                  onSuccess: () => Queue.end(queue),
+                  // The watcher closed, as it does when the root goes away.
+                  // End the stream so the client can subscribe again, unless
+                  // subscribing would fail.
+                  onSuccess: () =>
+                    normalizeWorkspaceRoot(input.cwd).pipe(
+                      Effect.matchEffect({
+                        onSuccess: () => Queue.end(queue),
+                        onFailure: (error) => Queue.fail(queue, error),
+                      }),
+                    ),
                   onFailure: (cause) =>
                     Queue.fail(queue, new WorkspaceEntriesWatchError({ cwd: root, cause })),
                 }),

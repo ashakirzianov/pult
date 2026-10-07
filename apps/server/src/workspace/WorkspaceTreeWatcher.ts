@@ -49,7 +49,10 @@ export interface WorkspaceTreeChange {
 export class WorkspaceTreeWatcher extends Context.Service<
   WorkspaceTreeWatcher,
   {
-    /** Raw changes under `root` from one OS watcher. Ends if the watcher closes. */
+    /**
+     * Raw changes under `root` from one OS watcher. Ends if the watcher
+     * closes or the root itself goes away.
+     */
     readonly watch: (root: string) => Stream.Stream<WorkspaceTreeChange, WorkspaceTreeWatchError>;
   }
 >()("t3/workspace/WorkspaceTreeWatcher") {}
@@ -59,6 +62,8 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
     Effect.acquireRelease(
       Effect.try({
         try: () => {
+          // FSEvents names the root by the basename of its real path.
+          const rootName = NodePath.basename(NodeFS.realpathSync(root));
           // On Linux, Node walks the tree here, synchronously, with one inotify
           // watch per entry; `ignore` keeps it out of skipped directories.
           // Elsewhere the OS watches the tree and `ignore` only filters events.
@@ -70,6 +75,24 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
           const options = { recursive: true, ignore: isIgnoredPath };
           const watcher = NodeFS.watch(root, options, (eventType, filename) => {
             if (filename === null || isIgnoredPath(filename)) return;
+            // The root's own events. On macOS a change to the root, such as a
+            // chmod, and its deletion or move arrive as `change` naming its
+            // basename, as an edit to a child of that name can, while a child's
+            // creation, deletion or move arrives as `rename`. On Linux the
+            // root's deletion arrives as `""`. Once the root is gone nothing
+            // is left to watch; while it stands, the name is reported only if
+            // a child has it.
+            if (filename === "" || (eventType === "change" && filename === rootName)) {
+              if (!NodeFS.existsSync(root)) {
+                Queue.endUnsafe(queue);
+                return;
+              }
+              const isChild =
+                filename !== "" &&
+                NodeFS.lstatSync(NodePath.join(root, filename), { throwIfNoEntry: false }) !==
+                  undefined;
+              if (!isChild) return;
+            }
             Queue.offerUnsafe(queue, {
               path: filename.split(NodePath.sep).join("/"),
               rename: eventType === "rename",
