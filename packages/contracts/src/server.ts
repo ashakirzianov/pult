@@ -656,6 +656,12 @@ export const ServerConfig = Schema.Struct({
   /** Whether thread reads accept the reasoningMessages opt-in. */
   reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /**
+   * Whether projects.writeFile honours `expectedMtimeMs`. Older servers
+   * ignore the field and overwrite, so clients must not rely on it unless
+   * this is set.
+   */
+  projectWriteFileVersionCheck: Schema.optionalKey(Schema.Boolean),
+  /**
    * Folder behind this environment's Scratch project, for threads that need
    * no repository. Present only on servers that answer projects.ensureScratch
    * and whose data dir is outside a Git checkout.

@@ -453,6 +453,10 @@ export const ProjectReadFileResult = Schema.Struct({
   encoding: Schema.optional(ProjectFileEncoding),
   byteLength: NonNegativeInt,
   truncated: Schema.Boolean,
+  // The version these contents are, for writeFile's `expectedMtimeMs`.
+  // Taken from the open file before reading, so a concurrent edit can only
+  // make a later write conflict, never let it overwrite.
+  mtimeMs: Schema.optional(Schema.Number),
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
@@ -475,6 +479,7 @@ export const ProjectStatEntryResult = Schema.Struct({
   symlink: Schema.Boolean,
   size: NonNegativeInt,
   // Milliseconds since the epoch, fractional where the filesystem is finer.
+  // `mtimeMs` is the version writeFile's `expectedMtimeMs` compares against.
   mtimeMs: Schema.Number,
   birthtimeMs: Schema.Number,
 });
@@ -488,6 +493,7 @@ export const ProjectFileFailure = Schema.Literals([
   "path_not_file",
   "path_not_found",
   "binary_file",
+  "version_conflict",
   "operation_failed",
 ]);
 export type ProjectFileFailure = typeof ProjectFileFailure.Type;
@@ -569,11 +575,18 @@ export const ProjectWriteFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
   contents: Schema.String,
+  // Write only if the file's mtime still equals this, else fail with
+  // `version_conflict`; a file deleted since counts as changed. Older servers
+  // ignore it and overwrite, so send it only where the server config sets
+  // `projectWriteFileVersionCheck`.
+  expectedMtimeMs: Schema.optional(Schema.Number),
 });
 export type ProjectWriteFileInput = typeof ProjectWriteFileInput.Type;
 
 export const ProjectWriteFileResult = Schema.Struct({
   relativePath: TrimmedNonEmptyString,
+  // The written file's version, for the next write's `expectedMtimeMs`.
+  mtimeMs: Schema.optional(Schema.Number),
 });
 export type ProjectWriteFileResult = typeof ProjectWriteFileResult.Type;
 

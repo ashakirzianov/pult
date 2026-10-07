@@ -101,6 +101,22 @@ export class WorkspacePathNotFoundError extends Schema.TaggedError<WorkspacePath
   }
 }
 
+export class WorkspaceFileVersionConflictError extends Schema.TaggedError<WorkspaceFileVersionConflictError>()(
+  "WorkspaceFileVersionConflictError",
+  {
+    workspaceRoot: Schema.String,
+    relativePath: Schema.String,
+    resolvedPath: Schema.String,
+    expectedMtimeMs: Schema.Number,
+    // Absent when the file no longer exists.
+    actualMtimeMs: Schema.optional(Schema.Number),
+  },
+) {
+  override get message(): string {
+    return `Workspace file '${this.relativePath}' in '${this.workspaceRoot}' changed since the expected version.`;
+  }
+}
+
 export class WorkspaceBinaryFileError extends Schema.TaggedError<WorkspaceBinaryFileError>()(
   "WorkspaceBinaryFileError",
   {
@@ -119,6 +135,7 @@ export const WorkspaceFileSystemError = Schema.Union([
   WorkspaceFilePathEscapeError,
   WorkspacePathNotFileError,
   WorkspacePathNotFoundError,
+  WorkspaceFileVersionConflictError,
   WorkspaceBinaryFileError,
 ]);
 export type WorkspaceFileSystemError = typeof WorkspaceFileSystemError.Type;
@@ -151,7 +168,8 @@ export class WorkspaceFileSystem extends Context.Service<
      * Write a file relative to the workspace root.
      *
      * Creates parent directories as needed and rejects paths that escape the
-     * workspace root.
+     * workspace root. With `expectedMtimeMs` it writes only over that version
+     * of an existing file, else fails with `WorkspaceFileVersionConflictError`.
      */
     readonly writeFile: (
       input: ProjectWriteFileInput,
@@ -325,6 +343,7 @@ export const make = Effect.gen(function* () {
             encoding,
             byteLength: stat.size,
             truncated: stat.size > maxBytes,
+            mtimeMs: stat.mtimeMs,
           };
         }),
       (handle) =>
@@ -398,34 +417,81 @@ export const make = Effect.gen(function* () {
       relativePath: input.relativePath,
     });
 
-    yield* fileSystem.makeDirectory(path.dirname(target.absolutePath), { recursive: true }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new WorkspaceFileSystemOperationError({
-            workspaceRoot: input.cwd,
-            relativePath: input.relativePath,
-            resolvedPath: target.absolutePath,
-            operationPath: path.dirname(target.absolutePath),
-            operation: "make-directory",
-            cause,
-          }),
-      ),
-    );
-    yield* fileSystem.writeFileString(target.absolutePath, input.contents).pipe(
-      Effect.mapError(
-        (cause) =>
+    const fileOperation = <A>(
+      operation: WorkspaceFileSystemOperationError["operation"],
+      run: () => Promise<A>,
+    ) =>
+      Effect.tryPromise({
+        try: run,
+        catch: (cause) =>
           new WorkspaceFileSystemOperationError({
             workspaceRoot: input.cwd,
             relativePath: input.relativePath,
             resolvedPath: target.absolutePath,
             operationPath: target.absolutePath,
-            operation: "write-file",
+            operation,
             cause,
           }),
-      ),
+      });
+    const conflict = (expectedMtimeMs: number, actualMtimeMs?: number) =>
+      new WorkspaceFileVersionConflictError({
+        workspaceRoot: input.cwd,
+        relativePath: input.relativePath,
+        resolvedPath: target.absolutePath,
+        expectedMtimeMs,
+        ...(actualMtimeMs !== undefined ? { actualMtimeMs } : {}),
+      });
+    const expectedMtimeMs = input.expectedMtimeMs;
+
+    // A versioned write targets a file that already exists, so its parents do too.
+    if (expectedMtimeMs === undefined) {
+      yield* fileSystem.makeDirectory(path.dirname(target.absolutePath), { recursive: true }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new WorkspaceFileSystemOperationError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: target.absolutePath,
+              operationPath: path.dirname(target.absolutePath),
+              operation: "make-directory",
+              cause,
+            }),
+        ),
+      );
+    }
+
+    // One handle carries the version check, the write and the new version, so
+    // a file renamed over the path cannot come between them. A plain write
+    // creates or truncates on open; a versioned one opens without either and
+    // truncates only after its version matches.
+    const open =
+      expectedMtimeMs === undefined
+        ? fileOperation("open", () => NodeFSP.open(target.absolutePath, "w"))
+        : fileOperation("open", () => NodeFSP.open(target.absolutePath, "r+")).pipe(
+            Effect.catchIf(
+              (error) => (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
+              () => Effect.fail(conflict(expectedMtimeMs)),
+            ),
+          );
+    const mtimeMs = yield* Effect.acquireUseRelease(
+      open,
+      (handle) =>
+        Effect.gen(function* () {
+          if (expectedMtimeMs !== undefined) {
+            const current = yield* fileOperation("stat", () => handle.stat());
+            if (current.mtimeMs !== expectedMtimeMs) {
+              return yield* conflict(expectedMtimeMs, current.mtimeMs);
+            }
+            yield* fileOperation("write-file", () => handle.truncate(0));
+          }
+          yield* fileOperation("write-file", () => handle.writeFile(input.contents));
+          const written = yield* fileOperation("stat", () => handle.stat());
+          return written.mtimeMs;
+        }),
+      (handle) => fileOperation("close", () => handle.close()),
     );
     yield* workspaceEntries.refresh(input.cwd);
-    return { relativePath: target.relativePath };
+    return { relativePath: target.relativePath, mtimeMs };
   });
 
   return WorkspaceFileSystem.of({ readFile, statEntry, writeFile });

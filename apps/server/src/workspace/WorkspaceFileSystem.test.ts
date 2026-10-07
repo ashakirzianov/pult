@@ -62,6 +62,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     it.effect("reads UTF-8 files relative to the workspace root", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
         const cwd = yield* makeTempDir;
         yield* writeTextFile(cwd, "src/index.ts", "export const answer = 42;\n");
 
@@ -76,6 +77,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           encoding: "utf8",
           byteLength: 26,
           truncated: false,
+          mtimeMs: NodeFS.statSync(path.join(cwd, "src/index.ts")).mtimeMs,
         });
       }),
     );
@@ -100,6 +102,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           encoding: "utf8",
           byteLength: 9,
           truncated: false,
+          mtimeMs: NodeFS.statSync(absolutePath).mtimeMs,
         });
       }),
     );
@@ -241,7 +244,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           encoding: "base64",
         });
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
           relativePath: "image.png",
           contents: Buffer.from(bytes).toString("base64"),
           encoding: "base64",
@@ -381,8 +384,88 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           .readFileString(path.join(cwd, "plans/effect-rpc.md"))
           .pipe(Effect.orDie);
 
-        expect(result).toEqual({ relativePath: "plans/effect-rpc.md" });
+        expect(result).toEqual({
+          relativePath: "plans/effect-rpc.md",
+          mtimeMs: NodeFS.statSync(path.join(cwd, "plans/effect-rpc.md")).mtimeMs,
+        });
         expect(saved).toBe("# Plan\n");
+      }),
+    );
+
+    it.effect("writes over the version it was given", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "# Draft\n");
+        const read = yield* workspaceFileSystem.readFile({ cwd, relativePath: "notes.md" });
+
+        const result = yield* workspaceFileSystem.writeFile({
+          cwd,
+          relativePath: "notes.md",
+          contents: "# Final\n",
+          expectedMtimeMs: read.mtimeMs,
+        });
+
+        expect(NodeFS.readFileSync(path.join(cwd, "notes.md"), "utf8")).toBe("# Final\n");
+        expect(result.mtimeMs).toBe(NodeFS.statSync(path.join(cwd, "notes.md")).mtimeMs);
+      }),
+    );
+
+    it.effect("refuses to overwrite a file changed since the version it was given", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const absolutePath = path.join(cwd, "notes.md");
+        yield* writeTextFile(cwd, "notes.md", "# Draft\n");
+        const read = yield* workspaceFileSystem.readFile({ cwd, relativePath: "notes.md" });
+        // An agent's edit, given an mtime that differs whatever the clock resolution.
+        NodeFS.writeFileSync(absolutePath, "# Agent edit\n");
+        const agentMtimeSeconds = Math.floor((read.mtimeMs ?? 0) / 1000) + 5;
+        NodeFS.utimesSync(absolutePath, agentMtimeSeconds, agentMtimeSeconds);
+
+        const error = yield* workspaceFileSystem
+          .writeFile({
+            cwd,
+            relativePath: "notes.md",
+            contents: "# Human edit\n",
+            expectedMtimeMs: read.mtimeMs,
+          })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileVersionConflictError);
+        expect(error).toMatchObject({
+          relativePath: "notes.md",
+          expectedMtimeMs: read.mtimeMs,
+          actualMtimeMs: agentMtimeSeconds * 1000,
+        });
+        expect(NodeFS.readFileSync(absolutePath, "utf8")).toBe("# Agent edit\n");
+      }),
+    );
+
+    it.effect("treats a file deleted since the version it was given as changed", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const absolutePath = path.join(cwd, "notes.md");
+        yield* writeTextFile(cwd, "notes.md", "# Draft\n");
+        const read = yield* workspaceFileSystem.readFile({ cwd, relativePath: "notes.md" });
+        NodeFS.rmSync(absolutePath);
+
+        const error = yield* workspaceFileSystem
+          .writeFile({
+            cwd,
+            relativePath: "notes.md",
+            contents: "# Human edit\n",
+            expectedMtimeMs: read.mtimeMs,
+          })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileVersionConflictError);
+        expect("actualMtimeMs" in error).toBe(false);
+        expect(NodeFS.existsSync(absolutePath)).toBe(false);
       }),
     );
 

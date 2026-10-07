@@ -534,6 +534,8 @@ function projectFileFailureContext(
       return { failure: "path_not_file", resolvedPath: error.resolvedPath };
     case "WorkspacePathNotFoundError":
       return { failure: "path_not_found", resolvedPath: error.resolvedPath };
+    case "WorkspaceFileVersionConflictError":
+      return { failure: "version_conflict", resolvedPath: error.resolvedPath };
     case "WorkspaceBinaryFileError":
       return { failure: "binary_file", resolvedPath: error.resolvedPath };
     default:
@@ -1725,6 +1727,7 @@ const layerWsRpc = (
             shellResumeCompletionMarker: true,
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
+            projectWriteFileVersionCheck: true,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),
