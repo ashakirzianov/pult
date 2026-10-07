@@ -14,7 +14,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
+import desktopPackageJson from "../apps/pult-desktop/package.json" with { type: "json" };
 import { APP_DISPLAY_NAME } from "@pult/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
@@ -59,7 +59,7 @@ const upstreamValues: ReadonlyArray<{ name: string; pattern: RegExp; paths?: Reg
   },
   { name: "observability service", pattern: /["'`]t3code-desktop["'`]/ },
   { name: "display name", pattern: /T3 Code \((Alpha|Dev|Nightly)\)/ },
-  { name: "desktop backend port", pattern: /\b3773\b/, paths: /^apps\/desktop\// },
+  { name: "desktop backend port", pattern: /\b3773\b/, paths: /^apps\/pult-desktop\// },
   { name: "artifact name", pattern: /\bT3-Code-/ },
 ];
 const commentLine = /^\s*(\/\/|\/\*|\*|#|<!--)/;

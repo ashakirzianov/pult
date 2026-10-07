@@ -38,7 +38,7 @@
       // The Vite+ web build prerequisite.
       "ignoreDependencies": ["@effect/platform-node-shared", "@t3tools/web"],
     },
-    "apps/desktop": {
+    "apps/pult-desktop": {
       // Electron loads these bundles by filename rather than importing them.
       "entry": [
         "gnome-extension/extension.js!",

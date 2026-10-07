@@ -560,26 +560,26 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
     assert.deepStrictEqual(DESKTOP_FILE_EXCLUSIONS, [
       "!**/node_modules/@cursor/sdk-*/**/*",
-      "!apps/desktop/prod-resources/cursor-sdk",
-      "!apps/desktop/prod-resources/cursor-sdk/**/*",
+      "!apps/pult-desktop/prod-resources/cursor-sdk",
+      "!apps/pult-desktop/prod-resources/cursor-sdk/**/*",
       "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
       "!**/*.map",
       "!**/*.d.cts",
-      "!apps/desktop/resources/browser-secret",
-      "!apps/desktop/resources/browser-secret/**/*",
-      "!apps/desktop/prod-resources/browser-secret",
-      "!apps/desktop/prod-resources/browser-secret/**/*",
-      "!apps/desktop/prod-resources/windows-server",
-      "!apps/desktop/prod-resources/windows-server/**/*",
-      "!apps/desktop/prod-resources/wsl-runtime.tar.gz",
-      "!apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
-      "!apps/desktop/gnome-extension",
-      "!apps/desktop/gnome-extension/**/*",
+      "!apps/pult-desktop/resources/browser-secret",
+      "!apps/pult-desktop/resources/browser-secret/**/*",
+      "!apps/pult-desktop/prod-resources/browser-secret",
+      "!apps/pult-desktop/prod-resources/browser-secret/**/*",
+      "!apps/pult-desktop/prod-resources/windows-server",
+      "!apps/pult-desktop/prod-resources/windows-server/**/*",
+      "!apps/pult-desktop/prod-resources/wsl-runtime.tar.gz",
+      "!apps/pult-desktop/prod-resources/wsl-runtime.tar.gz.sha256",
+      "!apps/pult-desktop/gnome-extension",
+      "!apps/pult-desktop/gnome-extension/**/*",
     ]);
-    assert.equal(WINDOWS_SERVER_RESOURCE_SOURCE_DIR, "apps/desktop/prod-resources/windows-server");
+    assert.equal(WINDOWS_SERVER_RESOURCE_SOURCE_DIR, "apps/pult-desktop/prod-resources/windows-server");
     assert.deepStrictEqual(WINDOWS_SERVER_EXTRA_RESOURCES, [
       {
-        from: "apps/desktop/prod-resources/windows-server",
+        from: "apps/pult-desktop/prod-resources/windows-server",
         to: ".",
         filter: ["server.asar", "server.asar.unpacked/**/*"],
       },
@@ -641,7 +641,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.deepStrictEqual(linux.extraResources, [
         ...DESKTOP_EXTRA_RESOURCES,
         ...LINUX_CAPTURE_EXTRA_RESOURCES,
-        { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
+        { from: "apps/pult-desktop/prod-resources/browser-secret", to: "browser-secret" },
       ]);
       // Pult stages no server sidecar (DECISIONS.md, `no-local-server`).
       assert.deepStrictEqual(win.extraResources, [
@@ -2040,11 +2040,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("stages the resource monitor as an external executable resource", () => {
     assert.deepStrictEqual(DESKTOP_EXTRA_RESOURCES, [
       {
-        from: "apps/desktop/prod-resources/cursor-sdk",
+        from: "apps/pult-desktop/prod-resources/cursor-sdk",
         to: "node_modules/@cursor",
       },
       {
-        from: "apps/desktop/prod-resources/resource-monitor",
+        from: "apps/pult-desktop/prod-resources/resource-monitor",
         to: "resource-monitor",
       },
     ]);
@@ -2066,11 +2066,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(WSL_RUNTIME_ARCHIVE_NAME, "wsl-runtime.tar.gz");
     assert.equal(WSL_RUNTIME_ARCHIVE_HASH_NAME, "wsl-runtime.tar.gz.sha256");
     assert.deepStrictEqual(WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE, {
-      from: "apps/desktop/prod-resources/wsl-runtime.tar.gz",
+      from: "apps/pult-desktop/prod-resources/wsl-runtime.tar.gz",
       to: "wsl-runtime.tar.gz",
     });
     assert.deepStrictEqual(WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE, {
-      from: "apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
+      from: "apps/pult-desktop/prod-resources/wsl-runtime.tar.gz.sha256",
       to: "wsl-runtime.tar.gz.sha256",
     });
     // Both the staging and the packaging config hang off this one decision:

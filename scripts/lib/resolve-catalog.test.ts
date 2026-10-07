@@ -16,7 +16,7 @@ describe("resolveCatalogDependencies", () => {
           lodash: "4.17.21",
         },
         catalog,
-        "apps/desktop",
+        "apps/pult-desktop",
       ),
       {
         "@clerk/backend": "3.18.1",
@@ -30,7 +30,7 @@ describe("resolveCatalogDependencies", () => {
 
   it("fails on a catalog entry that does not exist", () => {
     assert.throws(
-      () => resolveCatalogDependencies({ "a>missing": "catalog:" }, catalog, "apps/desktop"),
+      () => resolveCatalogDependencies({ "a>missing": "catalog:" }, catalog, "apps/pult-desktop"),
       /Expected key 'missing' in root workspace catalog/,
     );
   });
@@ -46,7 +46,7 @@ describe("resolveCatalogDependencies", () => {
           "parent@^1>@clerk/backend@^3": "catalog:",
         },
         { ...catalog, undici: "8.11.2", ws: "8.21.0" },
-        "apps/desktop",
+        "apps/pult-desktop",
       ),
       {
         "undici@^8": "8.11.2",

@@ -6,13 +6,13 @@
  * so. Env var names, flags, package names and protocol headers stay upstream's
  * (DECISIONS.md, `identity-seam`).
  *
- * Plain constants only: `apps/desktop/scripts/electron-launcher.mjs` imports
+ * Plain constants only: `apps/pult-desktop/scripts/electron-launcher.mjs` imports
  * this file under Node's type stripping.
  */
 
 export const APP_BASE_NAME = "Pult";
 
-/** The packaged app's name; `apps/desktop/package.json` `productName` matches it. */
+/** The packaged app's name; `apps/pult-desktop/package.json` `productName` matches it. */
 export const APP_DISPLAY_NAME = APP_BASE_NAME;
 export const APP_DEV_DISPLAY_NAME = `${APP_BASE_NAME} (Dev)`;
 

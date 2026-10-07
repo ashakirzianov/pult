@@ -96,7 +96,7 @@ it.layer(NodeServices.layer)("readDesktopBaseVersion", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "resolve-nightly-release-read-",
       });
-      const packageJsonPath = path.join(rootDir, "apps/desktop/package.json");
+      const packageJsonPath = path.join(rootDir, "apps/pult-desktop/package.json");
 
       const error = yield* readDesktopBaseVersion(rootDir).pipe(Effect.flip);
 
@@ -117,7 +117,7 @@ it.layer(NodeServices.layer)("readDesktopBaseVersion", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "resolve-nightly-release-decode-",
       });
-      const packageJsonPath = path.join(rootDir, "apps/desktop/package.json");
+      const packageJsonPath = path.join(rootDir, "apps/pult-desktop/package.json");
       yield* fs.makeDirectory(path.dirname(packageJsonPath), { recursive: true });
       yield* fs.writeFileString(packageJsonPath, "{");
 

@@ -19,8 +19,8 @@ import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/ho
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import rootPackageJson from "../package.json" with { type: "json" };
-import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
-import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
+import desktopPackageJson from "../apps/pult-desktop/package.json" with { type: "json" };
+import gnomeCaptureBundle from "../apps/pult-desktop/gnome-extension/bundle.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
 import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
@@ -961,8 +961,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   // Cursor finds platform assets by walking up from argv[1]. Keep them outside
   // asar so spawning helpers and loading native addons both use real paths.
   "!**/node_modules/@cursor/sdk-*/**/*",
-  "!apps/desktop/prod-resources/cursor-sdk",
-  "!apps/desktop/prod-resources/cursor-sdk/**/*",
+  "!apps/pult-desktop/prod-resources/cursor-sdk",
+  "!apps/pult-desktop/prod-resources/cursor-sdk/**/*",
   // T3 Code always passes the user's installed Claude executable to the SDK,
   // so the SDK's optional platform packages (each a ~200MB bundled executable)
   // are dead weight. The trailing dash keeps the SDK's own JS package.
@@ -971,19 +971,19 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   // client's maps alone were 50 MB of app.asar that no request ever read.
   "!**/*.map",
   "!**/*.d.cts",
-  "!apps/desktop/resources/browser-secret",
-  "!apps/desktop/resources/browser-secret/**/*",
-  "!apps/desktop/prod-resources/browser-secret",
-  "!apps/desktop/prod-resources/browser-secret/**/*",
+  "!apps/pult-desktop/resources/browser-secret",
+  "!apps/pult-desktop/resources/browser-secret/**/*",
+  "!apps/pult-desktop/prod-resources/browser-secret",
+  "!apps/pult-desktop/prod-resources/browser-secret/**/*",
   // Windows stages the server sidecar below prod-resources so electron-builder
   // can copy it using project-relative extraResources matchers. Keep those
   // staging inputs out of app.asar; they are emitted once at resources/.
-  "!apps/desktop/prod-resources/windows-server",
-  "!apps/desktop/prod-resources/windows-server/**/*",
-  "!apps/desktop/prod-resources/wsl-runtime.tar.gz",
-  "!apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
-  "!apps/desktop/gnome-extension",
-  "!apps/desktop/gnome-extension/**/*",
+  "!apps/pult-desktop/prod-resources/windows-server",
+  "!apps/pult-desktop/prod-resources/windows-server/**/*",
+  "!apps/pult-desktop/prod-resources/wsl-runtime.tar.gz",
+  "!apps/pult-desktop/prod-resources/wsl-runtime.tar.gz.sha256",
+  "!apps/pult-desktop/gnome-extension",
+  "!apps/pult-desktop/gnome-extension/**/*",
 ] as const;
 // Windows terminal helpers cannot run on macOS and slow signing and notarization.
 export const MAC_FILE_EXCLUSIONS = [
@@ -1051,7 +1051,7 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
 }
 
 export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
-export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
+export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/pult-desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
     // Copy the archive and its .unpacked sibling from one parent directory.
@@ -1066,11 +1066,11 @@ export const WINDOWS_SERVER_EXTRA_RESOURCES = [
 export const WSL_RUNTIME_ARCHIVE_NAME = "wsl-runtime.tar.gz";
 export const WSL_RUNTIME_ARCHIVE_HASH_NAME = `${WSL_RUNTIME_ARCHIVE_NAME}.sha256`;
 export const WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE = {
-  from: `apps/desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_NAME}`,
+  from: `apps/pult-desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_NAME}`,
   to: WSL_RUNTIME_ARCHIVE_NAME,
 } as const;
 export const WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE = {
-  from: `apps/desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_HASH_NAME}`,
+  from: `apps/pult-desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_HASH_NAME}`,
   to: WSL_RUNTIME_ARCHIVE_HASH_NAME,
 } as const;
 
@@ -1090,31 +1090,31 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
 ] as const;
 export const DESKTOP_EXTRA_RESOURCES = [
   {
-    from: "apps/desktop/prod-resources/cursor-sdk",
+    from: "apps/pult-desktop/prod-resources/cursor-sdk",
     to: "node_modules/@cursor",
   },
   {
-    from: "apps/desktop/prod-resources/resource-monitor",
+    from: "apps/pult-desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
-    from: "apps/desktop/prod-resources/hyprland-capture",
+    from: "apps/pult-desktop/prod-resources/hyprland-capture",
     to: "hyprland-capture",
   },
   {
-    from: "apps/desktop/prod-resources/kde-capture",
+    from: "apps/pult-desktop/prod-resources/kde-capture",
     to: "kde-capture",
   },
   {
-    from: "apps/desktop/gnome-extension",
+    from: "apps/pult-desktop/gnome-extension",
     to: "gnome-extension",
     filter: gnomeCaptureBundle.files,
   },
 ] as const;
 export const LINUX_BROWSER_SECRET_EXTRA_RESOURCES = [
-  { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
+  { from: "apps/pult-desktop/prod-resources/browser-secret", to: "browser-secret" },
 ] as const;
 
 export interface MacPasskeySigningConfiguration {
@@ -2338,7 +2338,7 @@ export const stageBrowserSecret = Effect.fn("stageBrowserSecret")(function* (inp
     ChildProcess.make(
       "node",
       [
-        path.join(input.repoRoot, "apps/desktop/scripts/build-browser-secret.mjs"),
+        path.join(input.repoRoot, "apps/pult-desktop/scripts/build-browser-secret.mjs"),
         "--arch",
         input.arch === "arm64" ? "arm64" : "x64",
         "--output",
@@ -2561,7 +2561,7 @@ function validateBundledClientAssets(clientDir: string) {
 }
 
 // The main-process bundle inlines every JS dependency (see
-// apps/desktop/vite.config.ts), so the packaged app only installs the packages
+// apps/pult-desktop/vite.config.ts), so the packaged app only installs the packages
 // that bundle leaves external: native addons and playwright-core. Everything
 // else already lives inside dist-electron and would only duplicate what the
 // server bundle carries too.
@@ -2576,7 +2576,7 @@ export function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(
     selectDesktopRuntimeExternalDependencies(dependencies),
     catalog,
-    "apps/desktop",
+    "apps/pult-desktop",
   );
 }
 
@@ -2697,7 +2697,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           : []),
     ],
     directories: {
-      buildResources: "apps/desktop/resources",
+      buildResources: "apps/pult-desktop/resources",
     },
     // Smart unpack extracts entire native packages, including JavaScript and
     // metadata. Windows keeps those files archived so native dependencies do
@@ -3453,7 +3453,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   }
 
   const resolvedOverrides = yield* Effect.try({
-    try: () => resolveCatalogDependencies(workspaceOverrides, workspaceCatalog, "apps/desktop"),
+    try: () => resolveCatalogDependencies(workspaceOverrides, workspaceCatalog, "apps/pult-desktop"),
     catch: (cause) =>
       new DesktopBuildDependencyResolutionError({
         kind: "workspace-overrides",
@@ -3479,7 +3479,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     catch: (cause) =>
       new DesktopBuildDependencyResolutionError({
         kind: "desktop-runtime",
-        manifestPath: "apps/desktop/package.json",
+        manifestPath: "apps/pult-desktop/package.json",
         cause,
       }),
   });
@@ -3493,10 +3493,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
 
   const stageAppDir = path.join(stageRoot, "app");
-  const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
+  const stageResourcesDir = path.join(stageAppDir, "apps/pult-desktop/resources");
   const distDirs = {
-    desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
-    desktopResources: path.join(repoRoot, "apps/desktop/resources"),
+    desktopDist: path.join(repoRoot, "apps/pult-desktop/dist-electron"),
+    desktopResources: path.join(repoRoot, "apps/pult-desktop/resources"),
     serverDist: path.join(repoRoot, "apps/server/dist"),
     clientDist: path.join(repoRoot, CLIENT_DIST_DIR),
   };
@@ -3606,20 +3606,20 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* Effect.log(`[desktop-artifact] Applied ${webAssetBrand} web client branding.`);
   yield* validateBundledClientAssets(path.dirname(bundledClientEntry));
 
-  yield* fs.makeDirectory(path.join(stageAppDir, "apps/desktop"), { recursive: true });
+  yield* fs.makeDirectory(path.join(stageAppDir, "apps/pult-desktop"), { recursive: true });
   if (PULT_BUNDLES_SERVER && options.platform !== "win") {
     yield* fs.makeDirectory(path.join(stageAppDir, "apps/server"), { recursive: true });
   }
 
   yield* Effect.log("[desktop-artifact] Staging release app...");
-  yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
+  yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/pult-desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   if (options.platform === "linux") {
-    const extensionDir = path.join(stageAppDir, "apps/desktop/gnome-extension");
+    const extensionDir = path.join(stageAppDir, "apps/pult-desktop/gnome-extension");
     yield* fs.makeDirectory(extensionDir, { recursive: true });
     for (const file of gnomeCaptureBundle.files) {
       yield* fs.copyFile(
-        path.join(repoRoot, "apps/desktop/gnome-extension", file),
+        path.join(repoRoot, "apps/pult-desktop/gnome-extension", file),
         path.join(extensionDir, file),
       );
     }
@@ -3674,7 +3674,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   );
 
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
-  const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
+  const stageProdResourcesDir = path.join(stageAppDir, "apps/pult-desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
   const configuredMacPasskeySigning =
@@ -3740,7 +3740,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     // Required by the .deb control file.
     homepage: "https://t3.codes",
     author: "T3 Tools",
-    main: "apps/desktop/dist-electron/boot.cjs",
+    main: "apps/pult-desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(
       options.platform,
       options.target,
@@ -3880,7 +3880,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const builderArgs = [
     "exec",
     "--filter",
-    "@t3tools/desktop",
+    "@pult/desktop",
     "--",
     "electron-builder",
     "--projectDir",
@@ -3898,7 +3898,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       shell: builderCommand.shell,
     }),
     {
-      label: `vp exec --filter @t3tools/desktop -- electron-builder --projectDir ${stageAppDir} ${platformConfig.cliFlag} --${options.arch} --publish never`,
+      label: `vp exec --filter @pult/desktop -- electron-builder --projectDir ${stageAppDir} ${platformConfig.cliFlag} --${options.arch} --publish never`,
       verbose: options.verbose,
     },
   );

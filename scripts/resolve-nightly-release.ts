@@ -132,7 +132,7 @@ export const readDesktopBaseVersion = Effect.fn("readDesktopBaseVersion")(functi
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspaceRoot = rootDir ? path.resolve(rootDir) : yield* RepoRoot;
-  const packageJsonPath = path.join(workspaceRoot, "apps/desktop/package.json");
+  const packageJsonPath = path.join(workspaceRoot, "apps/pult-desktop/package.json");
   const packageJsonSource = yield* fs.readFileString(packageJsonPath).pipe(
     Effect.mapError(
       (cause) =>
@@ -220,7 +220,7 @@ const command = Command.make(
       Flag.withDefault(false),
     ),
     root: Flag.String("root").pipe(
-      Flag.withDescription("Workspace root used to resolve apps/desktop/package.json."),
+      Flag.withDescription("Workspace root used to resolve apps/pult-desktop/package.json."),
       Flag.optional,
     ),
   },

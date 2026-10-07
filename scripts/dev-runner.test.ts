@@ -112,7 +112,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       Effect.sync(() => {
         assert.deepStrictEqual(getDevRunnerModeArgs("dev:desktop"), [
           "run",
-          "--filter=@t3tools/desktop",
+          "--filter=@pult/desktop",
           "--filter=@pult/client",
           "dev",
         ]);

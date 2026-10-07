@@ -3,7 +3,7 @@
  *
  * The desktop bundle follows the same policy as the server CLI bundle (see
  * cli-external-packages.ts): everything is inlined except what Node has to
- * load from the real filesystem. Both `apps/desktop/vite.config.ts` and the
+ * load from the real filesystem. Both `apps/pult-desktop/vite.config.ts` and the
  * artifact stage in scripts/build-desktop-artifact.ts derive from this list,
  * so a package that is external is also the only kind of package the staged
  * production install carries. Anything not listed here ships inside

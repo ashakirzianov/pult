@@ -102,7 +102,7 @@ function findMatches() {
 // cannot ride in on an entry that is already here.
 const allowList: ReadonlyArray<{ file: string; lineCount: number; reason: string }> = [
   {
-    file: "apps/desktop/src/wsl/DesktopWslEnvironment.ts",
+    file: "apps/pult-desktop/src/wsl/DesktopWslEnvironment.ts",
     lineCount: 3,
     reason:
       "a runtime-binary cache inside the WSL guest; the WSL backend's state home is the server's default.",
