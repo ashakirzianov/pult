@@ -39,6 +39,15 @@ import * as WorkspacePaths from "./WorkspacePaths.ts";
 
 const PROJECT_READ_FILE_MAX_BYTES = 1024 * 1024;
 
+/**
+ * The version clients compare before writing. mtime alone misses a write in
+ * the same tick on a coarse clock (one or two seconds on HFS+, FAT and some
+ * network filesystems), so size joins it; the contract keeps it opaque so
+ * it can get stronger.
+ */
+const fileVersion = (stat: { readonly mtimeMs: number; readonly size: number }) =>
+  `${stat.mtimeMs}-${stat.size}`;
+
 export class WorkspaceFileSystemOperationError extends Schema.TaggedError<WorkspaceFileSystemOperationError>()(
   "WorkspaceFileSystemOperationError",
   {
@@ -141,9 +150,9 @@ export class WorkspaceFileVersionConflictError extends Schema.TaggedError<Worksp
     workspaceRoot: Schema.String,
     relativePath: Schema.String,
     resolvedPath: Schema.String,
-    expectedMtimeMs: Schema.Number,
+    expectedVersion: Schema.String,
     // Absent when the file no longer exists.
-    actualMtimeMs: Schema.optional(Schema.Number),
+    actualVersion: Schema.optional(Schema.String),
   },
 ) {
   override get message(): string {
@@ -204,7 +213,7 @@ export class WorkspaceFileSystem extends Context.Service<
      * Write a file relative to the workspace root.
      *
      * Creates parent directories as needed and rejects paths that escape the
-     * workspace root. With `expectedMtimeMs` it writes only over that version
+     * workspace root. With `expectedVersion` it writes only over that version
      * of an existing file, else fails with `WorkspaceFileVersionConflictError`.
      */
     readonly writeFile: (
@@ -473,7 +482,7 @@ export const make = Effect.gen(function* () {
             contents: new TextDecoder("utf-8").decode(fileBytes),
             byteLength: stat.size,
             truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
-            mtimeMs: stat.mtimeMs,
+            version: fileVersion(stat),
           };
         }),
       (handle) =>
@@ -536,6 +545,7 @@ export const make = Effect.gen(function* () {
       size: targetStat.size,
       mtimeMs: targetStat.mtimeMs,
       birthtimeMs: targetStat.birthtimeMs,
+      version: fileVersion(targetStat),
     } as const;
   });
 
@@ -587,18 +597,18 @@ export const make = Effect.gen(function* () {
             cause,
           }),
       });
-    const conflict = (expectedMtimeMs: number, actualMtimeMs?: number) =>
+    const conflict = (expectedVersion: string, actualVersion?: string) =>
       new WorkspaceFileVersionConflictError({
         workspaceRoot: input.cwd,
         relativePath: input.relativePath,
         resolvedPath: target.absolutePath,
-        expectedMtimeMs,
-        ...(actualMtimeMs !== undefined ? { actualMtimeMs } : {}),
+        expectedVersion,
+        ...(actualVersion !== undefined ? { actualVersion } : {}),
       });
-    const expectedMtimeMs = input.expectedMtimeMs;
+    const expectedVersion = input.expectedVersion;
 
     // A versioned write targets a file that already exists, so its parents do too.
-    if (expectedMtimeMs === undefined) {
+    if (expectedVersion === undefined) {
       yield* fileSystem.makeDirectory(path.dirname(target.absolutePath), { recursive: true }).pipe(
         Effect.mapError(
           (cause) =>
@@ -620,35 +630,35 @@ export const make = Effect.gen(function* () {
     // truncates only after its version matches.
     const { O_CREAT, O_NOFOLLOW = 0, O_RDWR, O_TRUNC, O_WRONLY } = NodeFS.constants;
     const open =
-      expectedMtimeMs === undefined
+      expectedVersion === undefined
         ? fileOperation("open", () =>
             NodeFSP.open(target.absolutePath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW),
           )
         : fileOperation("open", () => NodeFSP.open(target.absolutePath, O_RDWR | O_NOFOLLOW)).pipe(
             Effect.catchIf(
               (error) => (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
-              () => Effect.fail(conflict(expectedMtimeMs)),
+              () => Effect.fail(conflict(expectedVersion)),
             ),
           );
-    const mtimeMs = yield* Effect.acquireUseRelease(
+    const version = yield* Effect.acquireUseRelease(
       open,
       (handle) =>
         Effect.gen(function* () {
-          if (expectedMtimeMs !== undefined) {
-            const current = yield* fileOperation("stat", () => handle.stat());
-            if (current.mtimeMs !== expectedMtimeMs) {
-              return yield* conflict(expectedMtimeMs, current.mtimeMs);
+          if (expectedVersion !== undefined) {
+            const current = fileVersion(yield* fileOperation("stat", () => handle.stat()));
+            if (current !== expectedVersion) {
+              return yield* conflict(expectedVersion, current);
             }
             yield* fileOperation("write-file", () => handle.truncate(0));
           }
           yield* fileOperation("write-file", () => handle.writeFile(input.contents));
           const written = yield* fileOperation("stat", () => handle.stat());
-          return written.mtimeMs;
+          return fileVersion(written);
         }),
       (handle) => fileOperation("close", () => handle.close()),
     );
     yield* workspaceEntries.refresh(input.cwd);
-    return { relativePath: target.relativePath, mtimeMs };
+    return { relativePath: target.relativePath, version };
   });
 
   const createDirectory: WorkspaceFileSystem["Service"]["createDirectory"] = Effect.fn(

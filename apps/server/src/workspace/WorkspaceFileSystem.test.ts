@@ -76,7 +76,8 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           contents: "export const answer = 42;\n",
           byteLength: 26,
           truncated: false,
-          mtimeMs: NodeFS.statSync(path.join(cwd, "src/index.ts")).mtimeMs,
+          version: (yield* workspaceFileSystem.statEntry({ cwd, relativePath: "src/index.ts" }))
+            .version,
         });
       }),
     );
@@ -100,7 +101,8 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           contents: "# Report\n",
           byteLength: 9,
           truncated: false,
-          mtimeMs: NodeFS.statSync(absolutePath).mtimeMs,
+          version: (yield* workspaceFileSystem.statEntry({ cwd, relativePath: absolutePath }))
+            .version,
         });
       }),
     );
@@ -271,6 +273,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           size: 26,
           mtimeMs: nodeStat.mtimeMs,
           birthtimeMs: nodeStat.birthtimeMs,
+          version: expect.any(String),
         });
         expect(directory).toMatchObject({ relativePath: "src", kind: "directory", symlink: false });
       }),
@@ -724,7 +727,10 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
 
         expect(result).toEqual({
           relativePath: "plans/effect-rpc.md",
-          mtimeMs: NodeFS.statSync(path.join(cwd, "plans/effect-rpc.md")).mtimeMs,
+          version: (yield* workspaceFileSystem.statEntry({
+            cwd,
+            relativePath: "plans/effect-rpc.md",
+          })).version,
         });
         expect(saved).toBe("# Plan\n");
       }),
@@ -742,11 +748,14 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           cwd,
           relativePath: "notes.md",
           contents: "# Final\n",
-          expectedMtimeMs: read.mtimeMs,
+          ...(read.version !== undefined ? { expectedVersion: read.version } : {}),
         });
 
         expect(NodeFS.readFileSync(path.join(cwd, "notes.md"), "utf8")).toBe("# Final\n");
-        expect(result.mtimeMs).toBe(NodeFS.statSync(path.join(cwd, "notes.md")).mtimeMs);
+        expect(result.version).toBe(
+          (yield* workspaceFileSystem.statEntry({ cwd, relativePath: "notes.md" })).version,
+        );
+        expect(result.version).not.toBe(read.version);
       }),
     );
 
@@ -758,26 +767,59 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         const absolutePath = path.join(cwd, "notes.md");
         yield* writeTextFile(cwd, "notes.md", "# Draft\n");
         const read = yield* workspaceFileSystem.readFile({ cwd, relativePath: "notes.md" });
-        // An agent's edit, given an mtime that differs whatever the clock resolution.
-        NodeFS.writeFileSync(absolutePath, "# Agent edit\n");
-        const agentMtimeSeconds = Math.floor((read.mtimeMs ?? 0) / 1000) + 5;
+        // An agent's edit of the same size, given an mtime that differs
+        // whatever the clock resolution.
+        NodeFS.writeFileSync(absolutePath, "# Agent\n");
+        const agentMtimeSeconds = Math.floor(NodeFS.statSync(absolutePath).mtimeMs / 1000) + 5;
         NodeFS.utimesSync(absolutePath, agentMtimeSeconds, agentMtimeSeconds);
+        const agentVersion = (yield* workspaceFileSystem.statEntry({
+          cwd,
+          relativePath: "notes.md",
+        })).version;
 
         const error = yield* workspaceFileSystem
           .writeFile({
             cwd,
             relativePath: "notes.md",
             contents: "# Human edit\n",
-            expectedMtimeMs: read.mtimeMs,
+            ...(read.version !== undefined ? { expectedVersion: read.version } : {}),
           })
           .pipe(Effect.flip);
 
         expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileVersionConflictError);
         expect(error).toMatchObject({
           relativePath: "notes.md",
-          expectedMtimeMs: read.mtimeMs,
-          actualMtimeMs: agentMtimeSeconds * 1000,
+          expectedVersion: read.version,
+          actualVersion: agentVersion,
         });
+        expect(NodeFS.readFileSync(absolutePath, "utf8")).toBe("# Agent\n");
+      }),
+    );
+
+    it.effect("refuses to overwrite a change made in the same tick of a coarse clock", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const absolutePath = path.join(cwd, "notes.md");
+        yield* writeTextFile(cwd, "notes.md", "# Draft\n");
+        // A filesystem that keeps whole seconds gives both writes one mtime.
+        const tick = Math.floor(NodeFS.statSync(absolutePath).mtimeMs / 1000);
+        NodeFS.utimesSync(absolutePath, tick, tick);
+        const read = yield* workspaceFileSystem.readFile({ cwd, relativePath: "notes.md" });
+        NodeFS.writeFileSync(absolutePath, "# Agent edit\n");
+        NodeFS.utimesSync(absolutePath, tick, tick);
+
+        const error = yield* workspaceFileSystem
+          .writeFile({
+            cwd,
+            relativePath: "notes.md",
+            contents: "# Human edit\n",
+            ...(read.version !== undefined ? { expectedVersion: read.version } : {}),
+          })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileVersionConflictError);
         expect(NodeFS.readFileSync(absolutePath, "utf8")).toBe("# Agent edit\n");
       }),
     );
@@ -797,12 +839,12 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
             cwd,
             relativePath: "notes.md",
             contents: "# Human edit\n",
-            expectedMtimeMs: read.mtimeMs,
+            ...(read.version !== undefined ? { expectedVersion: read.version } : {}),
           })
           .pipe(Effect.flip);
 
         expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileVersionConflictError);
-        expect("actualMtimeMs" in error).toBe(false);
+        expect("actualVersion" in error).toBe(false);
         expect(NodeFS.existsSync(absolutePath)).toBe(false);
       }),
     );

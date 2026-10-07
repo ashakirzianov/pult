@@ -493,15 +493,23 @@ export const ProjectReadFileInput = Schema.Struct({
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
+/**
+ * A file's version: opaque, and equal only while the file is unchanged as far
+ * as the server can tell. Compare it, never parse it; how it is computed may
+ * get stronger.
+ */
+export const ProjectFileVersion = TrimmedNonEmptyString.check(Schema.isMaxLength(256));
+export type ProjectFileVersion = typeof ProjectFileVersion.Type;
+
 export const ProjectReadFileResult = Schema.Struct({
   relativePath: TrimmedNonEmptyString,
   contents: Schema.String,
   byteLength: NonNegativeInt,
   truncated: Schema.Boolean,
-  // The version these contents are, for writeFile's `expectedMtimeMs`.
+  // The version these contents are, for writeFile's `expectedVersion`.
   // Taken from the open file before reading, so a concurrent edit can only
   // make a later write conflict, never let it overwrite.
-  mtimeMs: Schema.optional(Schema.Number),
+  version: Schema.optional(ProjectFileVersion),
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
@@ -524,9 +532,10 @@ export const ProjectStatEntryResult = Schema.Struct({
   symlink: Schema.Boolean,
   size: NonNegativeInt,
   // Milliseconds since the epoch, fractional where the filesystem is finer.
-  // `mtimeMs` is the version writeFile's `expectedMtimeMs` compares against.
   mtimeMs: Schema.Number,
   birthtimeMs: Schema.Number,
+  // What writeFile's `expectedVersion` compares against.
+  version: ProjectFileVersion,
 });
 export type ProjectStatEntryResult = typeof ProjectStatEntryResult.Type;
 
@@ -624,18 +633,18 @@ export const ProjectWriteFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
   contents: Schema.String,
-  // Write only if the file's mtime still equals this, else fail with
+  // Write only over this version of the file, else fail with
   // `version_conflict`; a file deleted since counts as changed. Older servers
   // ignore it and overwrite, so send it only where the server config sets
   // `projectFileVersions`.
-  expectedMtimeMs: Schema.optional(Schema.Number),
+  expectedVersion: Schema.optional(ProjectFileVersion),
 });
 export type ProjectWriteFileInput = typeof ProjectWriteFileInput.Type;
 
 export const ProjectWriteFileResult = Schema.Struct({
   relativePath: TrimmedNonEmptyString,
-  // The written file's version, for the next write's `expectedMtimeMs`.
-  mtimeMs: Schema.optional(Schema.Number),
+  // The written file's version, for the next write's `expectedVersion`.
+  version: Schema.optional(ProjectFileVersion),
 });
 export type ProjectWriteFileResult = typeof ProjectWriteFileResult.Type;
 
