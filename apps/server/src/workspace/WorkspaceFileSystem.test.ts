@@ -483,6 +483,100 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     );
   });
 
+  describe("renameEntry", () => {
+    it.effect("moves files and directories, creating missing parents", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "# Notes\n");
+        yield* writeTextFile(cwd, "src/index.ts", "export {};\n");
+
+        const file = yield* workspaceFileSystem.renameEntry({
+          cwd,
+          relativePath: "notes.md",
+          newRelativePath: "docs/archive/notes.md",
+        });
+        const directory = yield* workspaceFileSystem.renameEntry({
+          cwd,
+          relativePath: "src",
+          newRelativePath: "lib",
+        });
+
+        expect(file).toEqual({ relativePath: "docs/archive/notes.md" });
+        expect(directory).toEqual({ relativePath: "lib" });
+        expect(NodeFS.readFileSync(path.join(cwd, "docs/archive/notes.md"), "utf8")).toBe(
+          "# Notes\n",
+        );
+        expect(NodeFS.readFileSync(path.join(cwd, "lib/index.ts"), "utf8")).toBe("export {};\n");
+        expect(NodeFS.readdirSync(cwd).toSorted()).toEqual(["docs", "lib"]);
+      }),
+    );
+
+    it.effect("refuses to replace an entry already at the new path", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "draft.md", "# Draft\n");
+        yield* writeTextFile(cwd, "final.md", "# Final\n");
+
+        const error = yield* workspaceFileSystem
+          .renameEntry({ cwd, relativePath: "draft.md", newRelativePath: "final.md" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathExistsError);
+        expect(error).toMatchObject({ relativePath: "final.md" });
+        expect(NodeFS.readFileSync(path.join(cwd, "draft.md"), "utf8")).toBe("# Draft\n");
+        expect(NodeFS.readFileSync(path.join(cwd, "final.md"), "utf8")).toBe("# Final\n");
+      }),
+    );
+
+    it.effect("renames an entry to another case of its own name", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "readme.md", "# Readme\n");
+
+        yield* workspaceFileSystem.renameEntry({
+          cwd,
+          relativePath: "readme.md",
+          newRelativePath: "README.md",
+        });
+
+        expect(NodeFS.readdirSync(cwd)).toEqual(["README.md"]);
+      }),
+    );
+
+    it.effect("fails with a not-found error for a missing source", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+
+        const error = yield* workspaceFileSystem
+          .renameEntry({ cwd, relativePath: "missing.md", newRelativePath: "found.md" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFoundError);
+      }),
+    );
+
+    it.effect("rejects a new path outside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "# Notes\n");
+
+        const error = yield* workspaceFileSystem
+          .renameEntry({ cwd, relativePath: "notes.md", newRelativePath: "../notes.md" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspacePaths.WorkspacePathOutsideRootError);
+        expect(NodeFS.readdirSync(cwd)).toEqual(["notes.md"]);
+      }),
+    );
+  });
+
   describe("writeFile", () => {
     it.effect("writes files relative to the workspace root", () =>
       Effect.gen(function* () {

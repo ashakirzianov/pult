@@ -19,6 +19,8 @@ import type {
   ProjectDeleteEntryResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
+  ProjectRenameEntryInput,
+  ProjectRenameEntryResult,
   ProjectStatEntryInput,
   ProjectStatEntryResult,
   ProjectWriteFileInput,
@@ -56,6 +58,7 @@ export class WorkspaceFileSystemOperationError extends Schema.TaggedError<Worksp
       "make-directory",
       "write-file",
       "remove",
+      "rename",
     ]),
     cause: Schema.Defect(),
   },
@@ -216,6 +219,18 @@ export class WorkspaceFileSystem extends Context.Service<
       input: ProjectDeleteEntryInput,
     ) => Effect.Effect<
       ProjectDeleteEntryResult,
+      WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
+    >;
+    /**
+     * Move a path to a new path, both relative to the workspace root,
+     * creating missing parents of the new path. An entry already there fails
+     * with `WorkspacePathExistsError` unless it is the source under another
+     * case; a missing source fails with `WorkspacePathNotFoundError`.
+     */
+    readonly renameEntry: (
+      input: ProjectRenameEntryInput,
+    ) => Effect.Effect<
+      ProjectRenameEntryResult,
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
   }
@@ -595,10 +610,81 @@ export const make = Effect.gen(function* () {
     return { relativePath: target.relativePath };
   });
 
+  const renameEntry: WorkspaceFileSystem["Service"]["renameEntry"] = Effect.fn(
+    "WorkspaceFileSystem.renameEntry",
+  )(function* (input) {
+    const source = yield* workspacePaths.resolveRelativePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+    });
+    const destination = yield* workspacePaths.resolveRelativePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.newRelativePath,
+    });
+    const operationError = (
+      operation: WorkspaceFileSystemOperationError["operation"],
+      operationPath: string,
+      cause: unknown,
+    ) =>
+      new WorkspaceFileSystemOperationError({
+        workspaceRoot: input.cwd,
+        relativePath: input.relativePath,
+        resolvedPath: source.absolutePath,
+        operationPath,
+        operation,
+        cause,
+      });
+
+    const sourceStat = yield* Effect.tryPromise({
+      try: () => NodeFSP.lstat(source.absolutePath),
+      catch: (cause) =>
+        (cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+          ? new WorkspacePathNotFoundError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: source.absolutePath,
+              cause,
+            })
+          : operationError("stat", source.absolutePath, cause),
+    });
+    const destinationStat = yield* Effect.tryPromise({
+      try: () =>
+        NodeFSP.lstat(destination.absolutePath).catch((cause: NodeJS.ErrnoException) =>
+          cause.code === "ENOENT" ? null : Promise.reject(cause),
+        ),
+      catch: (cause) => operationError("stat", destination.absolutePath, cause),
+    });
+    // On a case-insensitive filesystem a new case of the same name finds the
+    // source itself, which the rename may replace.
+    const isSourceUnderAnotherCase =
+      destinationStat !== null &&
+      destinationStat.dev === sourceStat.dev &&
+      destinationStat.ino === sourceStat.ino &&
+      destination.absolutePath.toLowerCase() === source.absolutePath.toLowerCase();
+    if (destinationStat !== null && !isSourceUnderAnotherCase) {
+      return yield* new WorkspacePathExistsError({
+        workspaceRoot: input.cwd,
+        relativePath: input.newRelativePath,
+        resolvedPath: destination.absolutePath,
+      });
+    }
+
+    const destinationParent = path.dirname(destination.absolutePath);
+    yield* fileSystem
+      .makeDirectory(destinationParent, { recursive: true })
+      .pipe(Effect.mapError((cause) => operationError("make-directory", destinationParent, cause)));
+    yield* fileSystem
+      .rename(source.absolutePath, destination.absolutePath)
+      .pipe(Effect.mapError((cause) => operationError("rename", destination.absolutePath, cause)));
+    yield* workspaceEntries.refresh(input.cwd);
+    return { relativePath: destination.relativePath };
+  });
+
   return WorkspaceFileSystem.of({
     createDirectory,
     deleteEntry,
     readFile,
+    renameEntry,
     statEntry,
     writeFile,
   });

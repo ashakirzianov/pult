@@ -509,6 +509,7 @@ export const ProjectFileOperation = Schema.Literals([
   "make-directory",
   "write-file",
   "remove",
+  "rename",
 ]);
 export type ProjectFileOperation = typeof ProjectFileOperation.Type;
 
@@ -707,6 +708,51 @@ export class ProjectDeleteEntryError extends Schema.TaggedError<ProjectDeleteEnt
       message:
         decodedProjectErrorMessage(props) ??
         `Failed to delete workspace entry '${props.relativePath}' in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+/**
+ * Moves a path within the workspace, creating missing parents of the new
+ * path. An entry already at the new path is never replaced, except the same
+ * entry renamed to another case on a case-insensitive filesystem.
+ */
+export const ProjectRenameEntryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
+  newRelativePath: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH),
+  ),
+});
+export type ProjectRenameEntryInput = typeof ProjectRenameEntryInput.Type;
+
+export const ProjectRenameEntryResult = Schema.Struct({
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectRenameEntryResult = typeof ProjectRenameEntryResult.Type;
+
+export class ProjectRenameEntryError extends Schema.TaggedError<ProjectRenameEntryError>()(
+  "ProjectRenameEntryError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    relativePath: Schema.optional(TrimmedNonEmptyString),
+    newRelativePath: Schema.optional(TrimmedNonEmptyString),
+    failure: Schema.optional(ProjectFileFailure),
+    resolvedPath: Schema.optional(TrimmedNonEmptyString),
+    resolvedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
+    operation: Schema.optional(ProjectFileOperation),
+    operationPath: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: ProjectFileFailureContext & { readonly newRelativePath: string }) {
+    super({
+      ...props,
+      message:
+        decodedProjectErrorMessage(props) ??
+        `Failed to rename workspace entry '${props.relativePath}' to '${props.newRelativePath}' in '${props.cwd}'.`,
     } as any);
   }
 }

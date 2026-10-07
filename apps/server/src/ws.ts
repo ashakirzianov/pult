@@ -70,6 +70,7 @@ import {
   ProjectSearchContentsError,
   ProjectCreateDirectoryError,
   ProjectDeleteEntryError,
+  ProjectRenameEntryError,
   ProjectSearchEntriesError,
   ProjectStatEntryError,
   ProjectWriteFileError,
@@ -3169,6 +3170,21 @@ const layerWsRpc = (
               Effect.mapError(
                 (cause) =>
                   new ProjectDeleteEntryError({
+                    ...input,
+                    ...projectFileFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsRenameEntry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsRenameEntry,
+            workspaceFileSystem.renameEntry(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectRenameEntryError({
                     ...input,
                     ...projectFileFailureContext(cause),
                     cause,
