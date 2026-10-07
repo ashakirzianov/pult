@@ -5,7 +5,8 @@
  * Owns workspace-root-relative file read/write/stat operations and their
  * associated safety checks and cache invalidation hooks. Reads and stats also
  * accept absolute host paths so clients can show files an agent left outside
- * the workspace; writes never leave the root.
+ * the workspace. Writes and other mutations never leave the root, through a
+ * symlink included.
  *
  * @module WorkspaceFileSystem
  */
@@ -243,6 +244,89 @@ export const make = Effect.gen(function* () {
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
 
+  const isOutside = (realRoot: string, realPath: string) => {
+    const relative = path.relative(realRoot, realPath);
+    return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  };
+
+  const realpathWorkspaceRoot = (
+    input: { readonly cwd: string; readonly relativePath: string },
+    resolvedPath: string,
+  ) => {
+    const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+    return Effect.tryPromise({
+      try: () => NodeFSP.realpath(root),
+      catch: (cause) =>
+        new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath,
+          operationPath: root,
+          operation: "realpath-workspace-root",
+          cause,
+        }),
+    });
+  };
+
+  /**
+   * Resolves the path a mutation acts on. Its parent must lie inside the real
+   * workspace root once symlinks are followed, as reads require of their
+   * target. The leaf is not followed: a symlink there is itself what gets
+   * deleted or moved. A parent that does not exist yet is judged by its
+   * nearest existing ancestor, since mutations create it. The returned path
+   * is built on that ancestor's real path.
+   */
+  const resolveMutationTarget = Effect.fn("WorkspaceFileSystem.resolveMutationTarget")(
+    function* (input: { readonly cwd: string; readonly relativePath: string }) {
+      const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+        workspaceRoot: WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
+        relativePath: input.relativePath,
+      });
+      const realWorkspaceRoot = yield* realpathWorkspaceRoot(input, target.absolutePath);
+      const parentPath = path.dirname(target.absolutePath);
+      const realParentPath = yield* Effect.tryPromise({
+        try: async () => {
+          const missing: Array<string> = [];
+          let existing = parentPath;
+          for (;;) {
+            try {
+              return path.join(await NodeFSP.realpath(existing), ...missing);
+            } catch (cause) {
+              const code = (cause as NodeJS.ErrnoException).code;
+              if (
+                (code !== "ENOENT" && code !== "ENOTDIR") ||
+                path.dirname(existing) === existing
+              ) {
+                throw cause;
+              }
+              missing.unshift(path.basename(existing));
+              existing = path.dirname(existing);
+            }
+          }
+        },
+        catch: (cause) =>
+          new WorkspaceFileSystemOperationError({
+            workspaceRoot: input.cwd,
+            relativePath: input.relativePath,
+            resolvedPath: target.absolutePath,
+            operationPath: parentPath,
+            operation: "realpath-target",
+            cause,
+          }),
+      });
+      const absolutePath = path.join(realParentPath, path.basename(target.absolutePath));
+      if (isOutside(realWorkspaceRoot, realParentPath)) {
+        return yield* new WorkspaceFilePathEscapeError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedWorkspaceRoot: realWorkspaceRoot,
+          resolvedPath: absolutePath,
+        });
+      }
+      return { relativePath: target.relativePath, absolutePath, realWorkspaceRoot };
+    },
+  );
+
   /**
    * Resolves the file a read targets. Workspace-relative paths must stay inside the
    * root, symlinks included. An absolute path reads a host file in place, such as a
@@ -269,22 +353,10 @@ export const make = Effect.gen(function* () {
     }
 
     const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
+      workspaceRoot: WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
       relativePath: input.relativePath,
     });
-
-    const realWorkspaceRoot = yield* Effect.tryPromise({
-      try: () => NodeFSP.realpath(input.cwd),
-      catch: (cause) =>
-        new WorkspaceFileSystemOperationError({
-          workspaceRoot: input.cwd,
-          relativePath: input.relativePath,
-          resolvedPath: target.absolutePath,
-          operationPath: input.cwd,
-          operation: "realpath-workspace-root",
-          cause,
-        }),
-    });
+    const realWorkspaceRoot = yield* realpathWorkspaceRoot(input, target.absolutePath);
     const realTargetPath = yield* Effect.tryPromise({
       try: () => NodeFSP.realpath(target.absolutePath),
       catch: (cause) =>
@@ -297,12 +369,7 @@ export const make = Effect.gen(function* () {
           cause,
         }),
     });
-    const relativeRealPath = path.relative(realWorkspaceRoot, realTargetPath);
-    if (
-      relativeRealPath.startsWith(`..${path.sep}`) ||
-      relativeRealPath === ".." ||
-      path.isAbsolute(relativeRealPath)
-    ) {
+    if (isOutside(realWorkspaceRoot, realTargetPath)) {
       return yield* new WorkspaceFilePathEscapeError({
         workspaceRoot: input.cwd,
         relativePath: input.relativePath,
@@ -468,10 +535,34 @@ export const make = Effect.gen(function* () {
   const writeFile: WorkspaceFileSystem["Service"]["writeFile"] = Effect.fn(
     "WorkspaceFileSystem.writeFile",
   )(function* (input) {
-    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
-      relativePath: input.relativePath,
+    const mutationTarget = yield* resolveMutationTarget(input);
+    // A symlink at the path is written through when it resolves inside the
+    // root. O_NOFOLLOW below refuses a dangling one, and one swapped in after
+    // this check.
+    const realTargetPath = yield* Effect.tryPromise({
+      try: () =>
+        NodeFSP.realpath(mutationTarget.absolutePath).catch((cause: NodeJS.ErrnoException) =>
+          cause.code === "ENOENT" ? mutationTarget.absolutePath : Promise.reject(cause),
+        ),
+      catch: (cause) =>
+        new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath: mutationTarget.absolutePath,
+          operationPath: mutationTarget.absolutePath,
+          operation: "realpath-target",
+          cause,
+        }),
     });
+    if (isOutside(mutationTarget.realWorkspaceRoot, realTargetPath)) {
+      return yield* new WorkspaceFilePathEscapeError({
+        workspaceRoot: input.cwd,
+        relativePath: input.relativePath,
+        resolvedWorkspaceRoot: mutationTarget.realWorkspaceRoot,
+        resolvedPath: realTargetPath,
+      });
+    }
+    const target = { relativePath: mutationTarget.relativePath, absolutePath: realTargetPath };
 
     const fileOperation = <A>(
       operation: WorkspaceFileSystemOperationError["operation"],
@@ -520,10 +611,13 @@ export const make = Effect.gen(function* () {
     // a file renamed over the path cannot come between them. A plain write
     // creates or truncates on open; a versioned one opens without either and
     // truncates only after its version matches.
+    const { O_CREAT, O_NOFOLLOW = 0, O_RDWR, O_TRUNC, O_WRONLY } = NodeFS.constants;
     const open =
       expectedMtimeMs === undefined
-        ? fileOperation("open", () => NodeFSP.open(target.absolutePath, "w"))
-        : fileOperation("open", () => NodeFSP.open(target.absolutePath, "r+")).pipe(
+        ? fileOperation("open", () =>
+            NodeFSP.open(target.absolutePath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW),
+          )
+        : fileOperation("open", () => NodeFSP.open(target.absolutePath, O_RDWR | O_NOFOLLOW)).pipe(
             Effect.catchIf(
               (error) => (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
               () => Effect.fail(conflict(expectedMtimeMs)),
@@ -553,10 +647,7 @@ export const make = Effect.gen(function* () {
   const createDirectory: WorkspaceFileSystem["Service"]["createDirectory"] = Effect.fn(
     "WorkspaceFileSystem.createDirectory",
   )(function* (input) {
-    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
-      relativePath: input.relativePath,
-    });
+    const target = yield* resolveMutationTarget(input);
     yield* fileSystem.makeDirectory(target.absolutePath, { recursive: true }).pipe(
       Effect.mapError((cause) =>
         cause.reason._tag === "AlreadyExists"
@@ -583,10 +674,7 @@ export const make = Effect.gen(function* () {
   const deleteEntry: WorkspaceFileSystem["Service"]["deleteEntry"] = Effect.fn(
     "WorkspaceFileSystem.deleteEntry",
   )(function* (input) {
-    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
-      relativePath: input.relativePath,
-    });
+    const target = yield* resolveMutationTarget(input);
     yield* fileSystem.remove(target.absolutePath, { recursive: true }).pipe(
       Effect.mapError((cause) =>
         cause.reason._tag === "NotFound"
@@ -613,12 +701,9 @@ export const make = Effect.gen(function* () {
   const renameEntry: WorkspaceFileSystem["Service"]["renameEntry"] = Effect.fn(
     "WorkspaceFileSystem.renameEntry",
   )(function* (input) {
-    const source = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
-      relativePath: input.relativePath,
-    });
-    const destination = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
+    const source = yield* resolveMutationTarget(input);
+    const destination = yield* resolveMutationTarget({
+      cwd: input.cwd,
       relativePath: input.newRelativePath,
     });
     const operationError = (

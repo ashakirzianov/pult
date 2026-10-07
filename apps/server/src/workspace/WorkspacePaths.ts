@@ -118,6 +118,10 @@ export class WorkspacePaths extends Context.Service<
   }
 >()("t3/workspace/WorkspacePaths") {}
 
+/** A user-provided workspace root as an absolute path with `~` expanded, without touching the disk. */
+export const resolveWorkspaceRootPath = (workspaceRoot: string, path: Path.Path) =>
+  path.resolve(expandHomePathWith(workspaceRoot.trim(), path));
+
 function toPosixRelativePath(input: string): string {
   return input.replaceAll("\\", "/");
 }
@@ -152,7 +156,7 @@ export const make = Effect.gen(function* () {
   const normalizeWorkspaceRoot: WorkspacePaths["Service"]["normalizeWorkspaceRoot"] = Effect.fn(
     "WorkspacePaths.normalizeWorkspaceRoot",
   )(function* (workspaceRoot, options) {
-    const normalizedWorkspaceRoot = path.resolve(expandHomePathWith(workspaceRoot.trim(), path));
+    const normalizedWorkspaceRoot = resolveWorkspaceRootPath(workspaceRoot, path);
     let workspaceStat = yield* statWorkspaceRoot(
       workspaceRoot,
       normalizedWorkspaceRoot,

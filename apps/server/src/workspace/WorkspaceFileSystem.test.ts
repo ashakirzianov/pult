@@ -577,6 +577,135 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     );
   });
 
+  describe("mutations through symlinks", () => {
+    // `ext` inside the workspace points at a directory outside it.
+    const makeEscapingLink = Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* makeTempDir;
+      const outside = yield* makeTempDir;
+      yield* writeTextFile(outside, "tree/file.txt", "outside\n");
+      yield* writeTextFile(cwd, "inside.txt", "inside\n");
+      yield* fileSystem.symlink(outside, path.join(cwd, "ext"));
+      return { cwd, outside };
+    });
+
+    it.effect.skipIf(!symlinksSupported)(
+      "refuse to act outside the root through a symlinked directory",
+      () =>
+        Effect.gen(function* () {
+          const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+          const path = yield* Path.Path;
+          const { cwd, outside } = yield* makeEscapingLink;
+
+          const errors = yield* Effect.forEach(
+            [
+              workspaceFileSystem.deleteEntry({ cwd, relativePath: "ext/tree" }),
+              workspaceFileSystem.renameEntry({
+                cwd,
+                relativePath: "ext/tree/file.txt",
+                newRelativePath: "pulled-in.txt",
+              }),
+              workspaceFileSystem.renameEntry({
+                cwd,
+                relativePath: "inside.txt",
+                newRelativePath: "ext/pushed-out.txt",
+              }),
+              workspaceFileSystem.createDirectory({ cwd, relativePath: "ext/made/deeper" }),
+              workspaceFileSystem.writeFile({
+                cwd,
+                relativePath: "ext/new/written.txt",
+                contents: "x",
+              }),
+            ],
+            Effect.flip,
+          );
+
+          for (const error of errors) {
+            expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+          }
+          expect(NodeFS.readdirSync(outside)).toEqual(["tree"]);
+          expect(NodeFS.readFileSync(path.join(outside, "tree/file.txt"), "utf8")).toBe(
+            "outside\n",
+          );
+          expect(NodeFS.readFileSync(path.join(cwd, "inside.txt"), "utf8")).toBe("inside\n");
+        }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)(
+      "write through a symlinked file only when it resolves inside the root",
+      () =>
+        Effect.gen(function* () {
+          const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const { cwd, outside } = yield* makeEscapingLink;
+          yield* fileSystem.symlink(path.join(cwd, "inside.txt"), path.join(cwd, "in-link.txt"));
+          yield* fileSystem.symlink(
+            path.join(outside, "tree/file.txt"),
+            path.join(cwd, "out-link.txt"),
+          );
+
+          yield* workspaceFileSystem.writeFile({
+            cwd,
+            relativePath: "in-link.txt",
+            contents: "through\n",
+          });
+          const escaped = yield* workspaceFileSystem
+            .writeFile({ cwd, relativePath: "out-link.txt", contents: "x" })
+            .pipe(Effect.flip);
+
+          expect(NodeFS.readFileSync(path.join(cwd, "inside.txt"), "utf8")).toBe("through\n");
+          expect(escaped).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+          expect(NodeFS.readFileSync(path.join(outside, "tree/file.txt"), "utf8")).toBe(
+            "outside\n",
+          );
+        }),
+    );
+
+    // Windows has no O_NOFOLLOW.
+    it.effect.skipIf(!symlinksSupported || HostProcessPlatform.defaultValue() === "win32")(
+      "refuse to write through a dangling symlink",
+      () =>
+        Effect.gen(function* () {
+          const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const { cwd, outside } = yield* makeEscapingLink;
+          yield* fileSystem.symlink(path.join(outside, "made.txt"), path.join(cwd, "dangling.txt"));
+
+          const error = yield* workspaceFileSystem
+            .writeFile({ cwd, relativePath: "dangling.txt", contents: "x" })
+            .pipe(Effect.flip);
+
+          expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFileSystemOperationError);
+          expect(NodeFS.existsSync(path.join(outside, "made.txt"))).toBe(false);
+        }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)(
+      "delete or move a symlink that points outside, not its target",
+      () =>
+        Effect.gen(function* () {
+          const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+          const path = yield* Path.Path;
+          const { cwd, outside } = yield* makeEscapingLink;
+
+          yield* workspaceFileSystem.renameEntry({
+            cwd,
+            relativePath: "ext",
+            newRelativePath: "links/ext",
+          });
+          yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "links/ext" });
+
+          expect(NodeFS.readdirSync(path.join(cwd, "links"))).toEqual([]);
+          expect(NodeFS.readFileSync(path.join(outside, "tree/file.txt"), "utf8")).toBe(
+            "outside\n",
+          );
+        }),
+    );
+  });
+
   describe("writeFile", () => {
     it.effect("writes files relative to the workspace root", () =>
       Effect.gen(function* () {
