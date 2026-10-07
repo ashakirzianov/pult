@@ -547,6 +547,7 @@ export const ProjectFileFailure = Schema.Literals([
   "path_not_file",
   "path_not_found",
   "path_exists",
+  "directory_not_empty",
   "binary_file",
   "version_conflict",
   "operation_failed",
@@ -729,10 +730,13 @@ export class ProjectCreateDirectoryError extends Schema.TaggedError<ProjectCreat
   }
 }
 
-/** A file, symlink or whole directory tree. A symlink goes, not its target. */
+/** A file, symlink or directory. A symlink goes, not its target. */
 export const ProjectDeleteEntryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
+  // Deletes a directory with everything in it. Without it, a directory that
+  // is not empty fails with `directory_not_empty`.
+  recursive: Schema.optional(Schema.Boolean),
 });
 export type ProjectDeleteEntryInput = typeof ProjectDeleteEntryInput.Type;
 

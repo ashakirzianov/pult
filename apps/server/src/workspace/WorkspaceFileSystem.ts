@@ -124,6 +124,20 @@ export class WorkspacePathExistsError extends Schema.TaggedError<WorkspacePathEx
   }
 }
 
+export class WorkspaceDirectoryNotEmptyError extends Schema.TaggedError<WorkspaceDirectoryNotEmptyError>()(
+  "WorkspaceDirectoryNotEmptyError",
+  {
+    workspaceRoot: Schema.String,
+    relativePath: Schema.String,
+    resolvedPath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Workspace directory '${this.relativePath}' in '${this.workspaceRoot}' is not empty.`;
+  }
+}
+
 export class WorkspaceFileVersionConflictError extends Schema.TaggedError<WorkspaceFileVersionConflictError>()(
   "WorkspaceFileVersionConflictError",
   {
@@ -159,6 +173,7 @@ export const WorkspaceFileSystemError = Schema.Union([
   WorkspacePathNotFileError,
   WorkspacePathNotFoundError,
   WorkspacePathExistsError,
+  WorkspaceDirectoryNotEmptyError,
   WorkspaceFileVersionConflictError,
   WorkspaceBinaryFileError,
 ]);
@@ -213,8 +228,10 @@ export class WorkspaceFileSystem extends Context.Service<
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
     /**
-     * Delete a file, symlink or directory tree relative to the workspace
-     * root. A missing path fails with `WorkspacePathNotFoundError`.
+     * Delete a file, symlink or directory relative to the workspace root. A
+     * directory with anything in it needs `recursive`, else fails with
+     * `WorkspaceDirectoryNotEmptyError`; a missing path fails with
+     * `WorkspacePathNotFoundError`.
      */
     readonly deleteEntry: (
       input: ProjectDeleteEntryInput,
@@ -675,25 +692,36 @@ export const make = Effect.gen(function* () {
     "WorkspaceFileSystem.deleteEntry",
   )(function* (input) {
     const target = yield* resolveMutationTarget(input);
-    yield* fileSystem.remove(target.absolutePath, { recursive: true }).pipe(
-      Effect.mapError((cause) =>
-        cause.reason._tag === "NotFound"
-          ? new WorkspacePathNotFoundError({
-              workspaceRoot: input.cwd,
-              relativePath: input.relativePath,
-              resolvedPath: target.absolutePath,
-              cause,
-            })
-          : new WorkspaceFileSystemOperationError({
-              workspaceRoot: input.cwd,
-              relativePath: input.relativePath,
-              resolvedPath: target.absolutePath,
-              operationPath: target.absolutePath,
-              operation: "remove",
-              cause,
-            }),
-      ),
-    );
+    yield* Effect.tryPromise({
+      try: async () => {
+        if (input.recursive === true) {
+          return NodeFSP.rm(target.absolutePath, { recursive: true });
+        }
+        // rm refuses any directory without `recursive`, even an empty one.
+        const stat = await NodeFSP.lstat(target.absolutePath);
+        return stat.isDirectory()
+          ? NodeFSP.rmdir(target.absolutePath)
+          : NodeFSP.rm(target.absolutePath);
+      },
+      catch: (cause) => {
+        const code = (cause as NodeJS.ErrnoException).code;
+        const context = {
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath: target.absolutePath,
+          cause,
+        };
+        return code === "ENOENT"
+          ? new WorkspacePathNotFoundError(context)
+          : code === "ENOTEMPTY" || code === "EEXIST"
+            ? new WorkspaceDirectoryNotEmptyError(context)
+            : new WorkspaceFileSystemOperationError({
+                ...context,
+                operationPath: target.absolutePath,
+                operation: "remove",
+              });
+      },
+    });
     yield* workspaceEntries.refresh(input.cwd);
     return { relativePath: target.relativePath };
   });

@@ -418,19 +418,46 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
   });
 
   describe("deleteEntry", () => {
-    it.effect("deletes files and whole directory trees", () =>
+    it.effect("deletes files, empty directories, and whole trees when asked", () =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
         const cwd = yield* makeTempDir;
         yield* writeTextFile(cwd, "notes.md", "# Notes\n");
         yield* writeTextFile(cwd, "src/components/button.tsx", "export {};\n");
+        yield* fileSystem.makeDirectory(path.join(cwd, "empty"));
 
         const file = yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "notes.md" });
-        const tree = yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "src" });
+        const empty = yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "empty" });
+        const tree = yield* workspaceFileSystem.deleteEntry({
+          cwd,
+          relativePath: "src",
+          recursive: true,
+        });
 
-        expect(file).toEqual({ relativePath: "notes.md" });
-        expect(tree).toEqual({ relativePath: "src" });
+        expect([file, empty, tree]).toEqual([
+          { relativePath: "notes.md" },
+          { relativePath: "empty" },
+          { relativePath: "src" },
+        ]);
         expect(NodeFS.readdirSync(cwd)).toEqual([]);
+      }),
+    );
+
+    it.effect("refuses a directory that is not empty unless asked to recurse", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "src/index.ts", "export {};\n");
+
+        const error = yield* workspaceFileSystem
+          .deleteEntry({ cwd, relativePath: "src" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceDirectoryNotEmptyError);
+        expect(NodeFS.readFileSync(path.join(cwd, "src/index.ts"), "utf8")).toBe("export {};\n");
       }),
     );
 
@@ -600,7 +627,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
 
           const errors = yield* Effect.forEach(
             [
-              workspaceFileSystem.deleteEntry({ cwd, relativePath: "ext/tree" }),
+              workspaceFileSystem.deleteEntry({ cwd, relativePath: "ext/tree", recursive: true }),
               workspaceFileSystem.renameEntry({
                 cwd,
                 relativePath: "ext/tree/file.txt",

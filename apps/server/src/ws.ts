@@ -546,6 +546,8 @@ function projectFileFailureContext(
       return { failure: "version_conflict", resolvedPath: error.resolvedPath };
     case "WorkspacePathExistsError":
       return { failure: "path_exists", resolvedPath: error.resolvedPath };
+    case "WorkspaceDirectoryNotEmptyError":
+      return { failure: "directory_not_empty", resolvedPath: error.resolvedPath };
     case "WorkspaceBinaryFileError":
       return { failure: "binary_file", resolvedPath: error.resolvedPath };
     default:
