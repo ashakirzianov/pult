@@ -513,7 +513,8 @@ export const ProjectReadFileResult = Schema.Struct({
   truncated: Schema.Boolean,
   // The version these contents are, for writeFile's `expectedVersion`.
   // Taken from the open file before reading, so a concurrent edit can only
-  // make a later write conflict, never let it overwrite.
+  // make a later write conflict, never let it overwrite. Absent when
+  // `truncated`, since writing these contents back would drop the rest.
   version: Schema.optional(ProjectFileVersion),
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;

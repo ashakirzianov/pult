@@ -481,12 +481,14 @@ export const make = Effect.gen(function* () {
             });
           }
 
+          const truncated = stat.size > PROJECT_READ_FILE_MAX_BYTES;
           return {
             relativePath: target.relativePath,
             contents: new TextDecoder("utf-8").decode(fileBytes),
             byteLength: stat.size,
-            truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
-            version: fileVersion(stat),
+            truncated,
+            // Writing truncated contents back would drop the rest of the file.
+            ...(truncated ? {} : { version: fileVersion(stat) }),
           };
         }),
       (handle) =>

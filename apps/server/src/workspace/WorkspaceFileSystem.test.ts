@@ -106,6 +106,20 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
       }),
     );
 
+    it.effect("gives truncated contents no version to write back over", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "large.log", "x".repeat(1024 * 1024 + 1));
+
+        const result = yield* workspaceFileSystem.readFile({ cwd, relativePath: "large.log" });
+
+        expect(result.truncated).toBe(true);
+        expect(result.contents).toHaveLength(1024 * 1024);
+        expect(result.version).toBeUndefined();
+      }),
+    );
+
     // Needs mkfifo; Windows has no FIFOs to reject.
     it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
       "rejects a FIFO without blocking on open",
