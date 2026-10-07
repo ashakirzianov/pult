@@ -826,6 +826,41 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect("streams a draft's relative video and audio with byte ranges", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-asset-draft-media-" });
+      yield* fileSystem.makeDirectory(path.join(root, "media"));
+      for (const [requestedPath, mimeType] of [
+        ["media/clip.mp4", "video/mp4"],
+        ["media/voice.mp3", "audio/mpeg"],
+      ] as const) {
+        yield* fileSystem.writeFileString(path.join(root, requestedPath), "0123456789");
+        const result = yield* issueAssetUrl({
+          resource: { _tag: "draft-workspace-file", cwd: root, path: requestedPath },
+        });
+        const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const separator = suffix.indexOf("/");
+        const asset = yield* resolveAsset(suffix.slice(0, separator), suffix.slice(separator + 1));
+        if (asset?.kind !== "file") throw new Error("Expected a resolved media file");
+
+        const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset, "bytes=2-5"));
+        expect(response.status).toBe(206);
+        expect(response.headers.get("content-type")).toBe(mimeType);
+        expect(response.headers.get("accept-ranges")).toBe("bytes");
+        expect(response.headers.get("content-range")).toBe("bytes 2-5/10");
+        expect(response.headers.get("content-disposition")).toBeNull();
+        expect(yield* Effect.promise(() => response.text())).toBe("2345");
+      }
+      expect(
+        yield* issueAssetUrl({
+          resource: { _tag: "draft-workspace-file", cwd: root, path: "../clip.mp4" },
+        }).pipe(Effect.flip),
+      ).toBeInstanceOf(AssetWorkspacePathValidationError);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("keeps a draft's other files inside its root", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

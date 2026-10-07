@@ -21,8 +21,10 @@ import {
 import {
   audioMimeTypeFromExtension,
   hostPreviewMimeTypeFromExtension,
+  isWorkspaceAudioPreviewPath,
   isWorkspaceImagePreviewPath,
   isWorkspacePreviewEntryPath,
+  isWorkspaceVideoPreviewPath,
   WORKSPACE_BROWSER_PREVIEW_EXTENSIONS,
   WORKSPACE_IMAGE_PREVIEW_EXTENSIONS,
 } from "@t3tools/shared/filePreview";
@@ -563,8 +565,30 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
             }),
         ),
       );
-      // Any file under the root, so a client can read a file's bytes here
-      // rather than over the socket.
+      // Video and audio stream with byte ranges, as from a `media-file`.
+      if (
+        isWorkspaceVideoPreviewPath(input.resource.path) ||
+        isWorkspaceAudioPreviewPath(input.resource.path)
+      ) {
+        const resolved = yield* workspacePaths
+          .resolveRelativePathWithinRoot({ workspaceRoot, relativePath: input.resource.path })
+          .pipe(
+            Effect.mapError(
+              (cause) => new AssetWorkspacePathValidationError({ resource: input.resource, cause }),
+            ),
+          );
+        const finalized = yield* finalizeAbsoluteMediaFileAsset({
+          requestedPath: resolved.absolutePath,
+          resource: input.resource,
+          expiresAt,
+        });
+        claims = finalized.claims;
+        fileName = finalized.fileName;
+        imageDimensions = finalized.imageDimensions;
+        break;
+      }
+      // Any other file under the root, so a client can read a file's bytes
+      // here rather than over the socket.
       const finalized = yield* finalizeWorkspaceFileAsset({
         workspaceRoot,
         requestedPath: input.resource.path,
