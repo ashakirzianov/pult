@@ -73,6 +73,7 @@ import {
   ProjectRenameEntryError,
   ProjectSearchEntriesError,
   ProjectStatEntryError,
+  ProjectWatchEntriesError,
   ProjectWriteFileError,
   ProjectMutationError,
   ProviderUploadFeedbackError,
@@ -484,6 +485,8 @@ function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesEr
         normalizedCwd: error.cwd,
         detail: error.reason,
       };
+    case "WorkspaceEntriesWatchError":
+      return { failure: "watch_failed", normalizedCwd: error.cwd };
     default:
       return unexpectedCompatibilityError(error);
   }
@@ -3094,6 +3097,21 @@ const layerWsRpc = (
               Effect.mapError(
                 (cause) =>
                   new ProjectListEntriesError({
+                    ...input,
+                    ...projectEntriesFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsWatchEntries]: (input) =>
+          observeRpcStream(
+            WS_METHODS.projectsWatchEntries,
+            workspaceEntries.watch(input).pipe(
+              Stream.mapError(
+                (cause) =>
+                  new ProjectWatchEntriesError({
                     ...input,
                     ...projectEntriesFailureContext(cause),
                     cause,

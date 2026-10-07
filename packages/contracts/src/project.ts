@@ -320,6 +320,35 @@ export const ProjectListEntriesResult = Schema.Struct({
 });
 export type ProjectListEntriesResult = typeof ProjectListEntriesResult.Type;
 
+export const ProjectWatchEntriesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectWatchEntriesInput = typeof ProjectWatchEntriesInput.Type;
+
+export const ProjectEntryChangeKind = Schema.Literals(["created", "changed", "deleted"]);
+export type ProjectEntryChangeKind = typeof ProjectEntryChangeKind.Type;
+
+export const ProjectEntryChange = Schema.Struct({
+  // Untrimmed: one oddly named file must not fail the whole stream.
+  path: Schema.String.check(Schema.isNonEmpty()),
+  // Read from the path when its batch is sent, so treat it as a hint: an
+  // atomic save reports `created`, and anything may change again after.
+  kind: ProjectEntryChangeKind,
+});
+export type ProjectEntryChange = typeof ProjectEntryChange.Type;
+
+/**
+ * One batch of changes, naming each path at most once and leaving out `.git`.
+ * `truncated` means more changed than the batch names, so re-read whatever is
+ * open. Changes around the moment a subscription starts may or may not be
+ * reported, so re-read open files after subscribing.
+ */
+export const ProjectWatchEntriesEvent = Schema.Struct({
+  changes: Schema.Array(ProjectEntryChange),
+  truncated: Schema.Boolean,
+});
+export type ProjectWatchEntriesEvent = typeof ProjectWatchEntriesEvent.Type;
+
 export const ProjectEntriesFailure = Schema.Literals([
   "workspace_root_not_found",
   "workspace_root_create_failed",
@@ -329,6 +358,7 @@ export const ProjectEntriesFailure = Schema.Literals([
   "search_index_scan_timed_out",
   "search_index_search_failed",
   "directory_list_failed",
+  "watch_failed",
 ]);
 export type ProjectEntriesFailure = typeof ProjectEntriesFailure.Type;
 
@@ -434,6 +464,28 @@ export class ProjectListEntriesError extends Schema.TaggedError<ProjectListEntri
 /** How file contents travel: UTF-8 text, or any file's bytes as base64. */
 export const ProjectFileEncoding = Schema.Literals(["utf8", "base64"]);
 export type ProjectFileEncoding = typeof ProjectFileEncoding.Type;
+
+export class ProjectWatchEntriesError extends Schema.TaggedError<ProjectWatchEntriesError>()(
+  "ProjectWatchEntriesError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    failure: Schema.optional(ProjectEntriesFailure),
+    normalizedCwd: Schema.optional(TrimmedNonEmptyString),
+    timeout: Schema.optional(TrimmedNonEmptyString),
+    detail: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: ProjectEntriesFailureContext & { readonly cwd: string }) {
+    super({
+      ...props,
+      message:
+        decodedProjectErrorMessage(props) ?? `Failed to watch workspace entries in '${props.cwd}'.`,
+    } as any);
+  }
+}
 
 export const ProjectReadFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,

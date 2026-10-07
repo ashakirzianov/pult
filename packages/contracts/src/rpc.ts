@@ -223,6 +223,9 @@ import {
   ProjectStatEntryError,
   ProjectStatEntryInput,
   ProjectStatEntryResult,
+  ProjectWatchEntriesError,
+  ProjectWatchEntriesEvent,
+  ProjectWatchEntriesInput,
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
@@ -365,6 +368,7 @@ export const WS_METHODS = {
   projectsCreateDirectory: "projects.createDirectory",
   projectsDeleteEntry: "projects.deleteEntry",
   projectsRenameEntry: "projects.renameEntry",
+  projectsWatchEntries: "projects.watchEntries",
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
   projectsCreateNew: "projects.createNew",
@@ -1186,6 +1190,13 @@ const WsProjectsRenameEntryRpc = Rpc.make(WS_METHODS.projectsRenameEntry, {
   error: Schema.Union([ProjectRenameEntryError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectsWatchEntriesRpc = Rpc.make(WS_METHODS.projectsWatchEntries, {
+  payload: ProjectWatchEntriesInput,
+  success: ProjectWatchEntriesEvent,
+  error: Schema.Union([ProjectWatchEntriesError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 const WsProjectsStatEntryRpc = Rpc.make(WS_METHODS.projectsStatEntry, {
   payload: ProjectStatEntryInput,
   success: ProjectStatEntryResult,
@@ -1881,6 +1892,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsCreateDirectoryRpc,
   WsProjectsDeleteEntryRpc,
   WsProjectsRenameEntryRpc,
+  WsProjectsWatchEntriesRpc,
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

@@ -1,23 +1,30 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
 
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import type {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   ProjectEntry,
+  ProjectEntryChange,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
   ProjectSearchContentsResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
+  ProjectWatchEntriesEvent,
+  ProjectWatchEntriesInput,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
@@ -27,6 +34,14 @@ import { expandHomePathWith } from "../pathExpansion.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
+
+// Changes within this window after a batch's first change go out together.
+const WATCH_BATCH_WINDOW = "100 millis";
+// A batch past this many paths is sent truncated instead of growing.
+const WATCH_BATCH_MAX_PATHS = 1_000;
+// On macOS, how long before its batch's first event a path counts as newly
+// born; delivery lags, so a fresh file must not read as an old one changing.
+const WATCH_CREATED_SLACK_MS = 1_000;
 
 export class WorkspaceEntriesWindowsPathUnsupportedError extends Schema.TaggedError<WorkspaceEntriesWindowsPathUnsupportedError>()(
   "WorkspaceEntriesWindowsPathUnsupportedError",
@@ -68,6 +83,18 @@ export class WorkspaceEntriesReadDirectoryError extends Schema.TaggedError<Works
   }
 }
 
+export class WorkspaceEntriesWatchError extends Schema.TaggedError<WorkspaceEntriesWatchError>()(
+  "WorkspaceEntriesWatchError",
+  {
+    cwd: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to watch workspace entries in '${this.cwd}'.`;
+  }
+}
+
 export const WorkspaceEntriesBrowseError = Schema.Union([
   WorkspaceEntriesWindowsPathUnsupportedError,
   WorkspaceEntriesCurrentProjectRequiredError,
@@ -84,6 +111,7 @@ export const WorkspaceEntriesError = Schema.Union([
   WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed,
   WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut,
   WorkspaceSearchIndex.WorkspaceSearchIndexSearchFailed,
+  WorkspaceEntriesWatchError,
 ]);
 export type WorkspaceEntriesError = typeof WorkspaceEntriesError.Type;
 
@@ -103,8 +131,26 @@ export class WorkspaceEntries extends Context.Service<
       input: ProjectSearchContentsInput,
     ) => Effect.Effect<ProjectSearchContentsResult, WorkspaceEntriesError>;
     readonly refresh: (cwd: string) => Effect.Effect<void>;
+    /**
+     * Stream changes anywhere under a workspace root as batches of changed
+     * paths coalesced over a short window, leaving out `.git`. Ends if the
+     * watcher closes.
+     */
+    readonly watch: (
+      input: ProjectWatchEntriesInput,
+    ) => Stream.Stream<ProjectWatchEntriesEvent, WorkspaceEntriesError>;
   }
 >()("t3/workspace/WorkspaceEntries") {}
+
+const isGitPath = (changedPath: string) => changedPath.split("/").includes(".git");
+
+const hasDeletedAncestor = (changedPath: string, deleted: ReadonlySet<string>) => {
+  const segments = changedPath.split("/");
+  for (let depth = 1; depth < segments.length; depth += 1) {
+    if (deleted.has(segments.slice(0, depth).join("/"))) return true;
+  }
+  return false;
+};
 
 const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(function* (
   input: FilesystemBrowseInput,
@@ -133,6 +179,7 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceSearchIndexes = yield* WorkspaceSearchIndex.WorkspaceSearchIndexMap;
@@ -355,7 +402,113 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents });
+  /**
+   * Kinds come from each path's state when its batch is cut: a missing path
+   * is deleted, an existing one created if the watcher saw it appear, else
+   * changed. FSEvents can still flag an edit as the creation before it, so
+   * on macOS a path is created only if born during the batch.
+   */
+  const classifyChanges = Effect.fn("WorkspaceEntries.classifyChanges")(function* (
+    root: string,
+    batch: ReadonlyMap<string, boolean>,
+    batchStartedAt: number,
+  ) {
+    const platform = yield* HostProcessPlatform;
+    const changes = yield* Effect.forEach(
+      batch,
+      ([changedPath, renamed]) =>
+        Effect.promise(() =>
+          NodeFSP.lstat(path.join(root, changedPath)).then(
+            (stat): ProjectEntryChange["kind"] =>
+              (
+                platform === "darwin"
+                  ? stat.birthtimeMs >= batchStartedAt - WATCH_CREATED_SLACK_MS
+                  : renamed
+              )
+                ? "created"
+                : "changed",
+            (error: NodeJS.ErrnoException): ProjectEntryChange["kind"] | null =>
+              error.code !== "ENOENT" && error.code !== "ENOTDIR"
+                ? "changed"
+                : // The watcher names the watched root itself by its basename.
+                  changedPath === path.basename(root)
+                  ? null
+                  : "deleted",
+          ),
+        ).pipe(Effect.map((kind) => (kind === null ? [] : [{ path: changedPath, kind }]))),
+      { concurrency: 16 },
+    ).pipe(Effect.map((perPath) => perPath.flat()));
+    const deleted = new Set(
+      changes.flatMap((change) => (change.kind === "deleted" ? [change.path] : [])),
+    );
+    // A deleted directory stands for everything that was inside it.
+    return changes.filter(
+      (change) => change.kind !== "deleted" || !hasDeletedAncestor(change.path, deleted),
+    );
+  });
+
+  const watch: WorkspaceEntries["Service"]["watch"] = (input) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const root = yield* normalizeWorkspaceRoot(input.cwd);
+        return Stream.callback<ProjectWatchEntriesEvent, WorkspaceEntriesWatchError>(
+          (queue) =>
+            Effect.gen(function* () {
+              // Each changed path, and whether any of its events was a create or remove.
+              let pending = new Map<string, boolean>();
+              let truncated = false;
+              const wake = yield* Queue.dropping<void>(1);
+
+              yield* Effect.forever(
+                Effect.gen(function* () {
+                  yield* Queue.take(wake);
+                  const batchStartedAt = yield* Clock.currentTimeMillis;
+                  yield* Effect.sleep(WATCH_BATCH_WINDOW);
+                  yield* Queue.clear(wake);
+                  const batch = pending;
+                  const batchTruncated = truncated;
+                  pending = new Map();
+                  truncated = false;
+                  const changes = yield* classifyChanges(root, batch, batchStartedAt);
+                  if (changes.length > 0 || batchTruncated) {
+                    yield* Queue.offer(queue, { changes, truncated: batchTruncated });
+                  }
+                }),
+              ).pipe(Effect.forkScoped);
+
+              yield* fileSystem.watch(root, { recursive: true }).pipe(
+                Stream.runForEach((event) =>
+                  Effect.sync(() => {
+                    const changedPath = event.path.split(path.sep).join("/");
+                    if (isGitPath(changedPath)) return;
+                    if (!pending.has(changedPath) && pending.size >= WATCH_BATCH_MAX_PATHS) {
+                      truncated = true;
+                    } else {
+                      pending.set(
+                        changedPath,
+                        event._tag !== "Update" || pending.get(changedPath) === true,
+                      );
+                    }
+                    Queue.offerUnsafe(wake, undefined);
+                  }),
+                ),
+                // Stream.callback neither ends nor fails the stream with this effect.
+                Effect.matchEffect({
+                  // The watcher closed; end the stream so the client can subscribe again.
+                  onSuccess: () => Queue.end(queue),
+                  onFailure: (cause) =>
+                    Queue.fail(queue, new WorkspaceEntriesWatchError({ cwd: root, cause })),
+                }),
+              );
+            }),
+          // A slow subscriber holds the flush loop while changes keep
+          // coalescing in `pending`, which is bounded.
+          { bufferSize: 1 },
+        );
+      }),
+    );
+
+  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents, watch });
 });
 
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(

@@ -3,11 +3,15 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { FileFinder } from "@ff-labs/fff-node";
 import { it, afterEach, describe, expect } from "@effect/vitest";
+import type { ProjectWatchEntriesEvent } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
@@ -729,6 +733,177 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         const match = result.matches[0]!;
         const range = match.matchRanges[0]!;
         expect(match.lineContent.slice(range.start, range.end)).toBe("wörld");
+      }),
+    );
+  });
+
+  describe("watch", () => {
+    // A fresh WorkspaceEntries with `watchEvents` standing in for the OS
+    // watcher, so batching runs without depending on when the OS delivers events.
+    const withWatcher = (
+      watchEvents: Stream.Stream<FileSystem.WatchEvent, PlatformError.PlatformError>,
+    ) =>
+      Effect.provide(
+        Layer.fresh(WorkspaceEntries.layer).pipe(
+          Layer.provide(WorkspacePaths.layer),
+          Layer.provide(
+            Layer.effect(
+              FileSystem.FileSystem,
+              Effect.map(FileSystem.FileSystem, (fileSystem) =>
+                FileSystem.FileSystem.of({ ...fileSystem, watch: () => watchEvents }),
+              ),
+            ),
+          ),
+        ),
+      );
+
+    // Watches `cwd` in the background: the test offers raw watcher events and
+    // takes the batches they become.
+    const startWatch = Effect.fn(function* (cwd: string) {
+      const raw = yield* Queue.unbounded<FileSystem.WatchEvent>();
+      const batches = yield* Queue.unbounded<ProjectWatchEntriesEvent>();
+      yield* Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
+        workspaceEntries
+          .watch({ cwd })
+          .pipe(Stream.runForEach((batch) => Queue.offer(batches, batch))),
+      ).pipe(withWatcher(Stream.fromQueue(raw)), Effect.forkScoped);
+      return { raw, batches };
+    });
+
+    it.effect("reports created, changed and deleted paths as they stand when sent", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir();
+        yield* writeTextFile(cwd, "existing.md", "# Before\n");
+        // An hour old, so on macOS, where creation is read from birthtime
+        // (which an earlier mtime moves back), an edit is not a creation.
+        const anHourAgo = Math.floor((yield* Clock.currentTimeMillis) / 1000) - 3600;
+        yield* Effect.promise(() =>
+          NodeFSP.utimes(path.join(cwd, "existing.md"), anHourAgo, anHourAgo),
+        );
+        yield* writeTextFile(cwd, "notes/new.md", "# New\n");
+        const { raw, batches } = yield* startWatch(cwd);
+
+        yield* Queue.offerAll(raw, [
+          { _tag: "Create", path: path.join("notes", "new.md") },
+          { _tag: "Update", path: "existing.md" },
+          { _tag: "Remove", path: "gone.md" },
+        ]);
+
+        expect(yield* Queue.take(batches)).toEqual({
+          changes: [
+            { path: "notes/new.md", kind: "created" },
+            { path: "existing.md", kind: "changed" },
+            { path: "gone.md", kind: "deleted" },
+          ],
+          truncated: false,
+        });
+      }),
+    );
+
+    it.effect("names each path once however often it changed in a burst", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const paths = Array.from({ length: 30 }, (_, index) => `src/file-${index}.ts`);
+        for (const filePath of paths) yield* writeTextFile(cwd, filePath, "export {};\n");
+        const { raw, batches } = yield* startWatch(cwd);
+
+        for (const round of [1, 2, 3]) {
+          yield* Queue.offerAll(
+            raw,
+            paths.map(
+              (filePath) => ({ _tag: round === 1 ? "Create" : "Update", path: filePath }) as const,
+            ),
+          );
+        }
+
+        const batch = yield* Queue.take(batches);
+        expect(batch.changes.map((change) => change.path)).toEqual(paths);
+        expect(batch.truncated).toBe(false);
+      }),
+    );
+
+    it.effect("leaves out .git and reports a deleted directory without its contents", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        yield* writeTextFile(cwd, "src/app.ts", "export {};\n");
+        const { raw, batches } = yield* startWatch(cwd);
+
+        yield* Queue.offerAll(raw, [
+          { _tag: "Update", path: ".git/index" },
+          { _tag: "Update", path: "vendor/lib/.git/HEAD" },
+          { _tag: "Remove", path: "build/out/a.js" },
+          { _tag: "Remove", path: "build/out" },
+          { _tag: "Remove", path: "build" },
+          { _tag: "Create", path: "src/app.ts" },
+        ]);
+
+        expect(yield* Queue.take(batches)).toEqual({
+          changes: [
+            { path: "build", kind: "deleted" },
+            { path: "src/app.ts", kind: "created" },
+          ],
+          truncated: false,
+        });
+      }),
+    );
+
+    it.effect("marks a batch truncated past its path limit", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const { raw, batches } = yield* startWatch(cwd);
+
+        yield* Queue.offerAll(
+          raw,
+          Array.from({ length: 1_001 }, (_, index) => ({
+            _tag: "Remove" as const,
+            path: `gone-${index}.md`,
+          })),
+        );
+
+        const batch = yield* Queue.take(batches);
+        expect(batch.changes).toHaveLength(1_000);
+        expect(batch.truncated).toBe(true);
+      }),
+    );
+
+    it.effect("ends when the watcher closes and fails when it fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const watchCwd = Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
+          Stream.runCollect(workspaceEntries.watch({ cwd })),
+        );
+
+        const closed = yield* watchCwd.pipe(withWatcher(Stream.empty));
+        const error = yield* watchCwd.pipe(
+          withWatcher(
+            Stream.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                module: "FileSystem",
+                method: "watch",
+              }),
+            ),
+          ),
+          Effect.flip,
+        );
+
+        expect(closed).toEqual([]);
+        expect(error._tag).toBe("WorkspaceEntriesWatchError");
+      }),
+    );
+
+    it.effect("fails when the workspace root does not exist", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir();
+
+        const error = yield* workspaceEntries
+          .watch({ cwd: path.join(cwd, "missing") })
+          .pipe(Stream.runDrain, Effect.flip);
+
+        expect(error._tag).toBe("WorkspaceRootNotExistsError");
       }),
     );
   });
