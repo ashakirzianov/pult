@@ -69,6 +69,7 @@ import {
   ProjectReadFileError,
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
+  ProjectStatEntryError,
   ProjectWriteFileError,
   ProjectMutationError,
   ProviderUploadFeedbackError,
@@ -531,6 +532,8 @@ function projectFileFailureContext(
       };
     case "WorkspacePathNotFileError":
       return { failure: "path_not_file", resolvedPath: error.resolvedPath };
+    case "WorkspacePathNotFoundError":
+      return { failure: "path_not_found", resolvedPath: error.resolvedPath };
     case "WorkspaceBinaryFileError":
       return { failure: "binary_file", resolvedPath: error.resolvedPath };
     default:
@@ -3098,6 +3101,21 @@ const layerWsRpc = (
               Effect.mapError(
                 (cause) =>
                   new ProjectReadFileError({
+                    ...input,
+                    ...projectFileFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsStatEntry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsStatEntry,
+            workspaceFileSystem.statEntry(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectStatEntryError({
                     ...input,
                     ...projectFileFailureContext(cause),
                     cause,

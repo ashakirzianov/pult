@@ -447,10 +447,37 @@ export const ProjectReadFileResult = Schema.Struct({
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
+export const ProjectStatEntryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  // Accepts the same paths as readFile.
+  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+});
+export type ProjectStatEntryInput = typeof ProjectStatEntryInput.Type;
+
+/** What a path resolves to. `other` covers FIFOs, sockets and devices. */
+export const ProjectStatEntryKind = Schema.Literals(["file", "directory", "other"]);
+export type ProjectStatEntryKind = typeof ProjectStatEntryKind.Type;
+
+export const ProjectStatEntryResult = Schema.Struct({
+  relativePath: TrimmedNonEmptyString,
+  // Kind, size and times describe what a symlink points at; `symlink` says
+  // the path itself is one.
+  kind: ProjectStatEntryKind,
+  symlink: Schema.Boolean,
+  size: NonNegativeInt,
+  // Milliseconds since the epoch, fractional where the filesystem is finer.
+  mtimeMs: Schema.Number,
+  birthtimeMs: Schema.Number,
+});
+export type ProjectStatEntryResult = typeof ProjectStatEntryResult.Type;
+
+// Values added after a method shipped are only produced by that method's new
+// options or by newer methods, so older clients never have to decode them.
 export const ProjectFileFailure = Schema.Literals([
   "workspace_path_outside_root",
   "resolved_path_outside_root",
   "path_not_file",
+  "path_not_found",
   "binary_file",
   "operation_failed",
 ]);
@@ -500,6 +527,31 @@ export class ProjectReadFileError extends Schema.TaggedError<ProjectReadFileErro
       message:
         decodedProjectErrorMessage(props) ??
         `Failed to read workspace file '${props.relativePath}' in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+export class ProjectStatEntryError extends Schema.TaggedError<ProjectStatEntryError>()(
+  "ProjectStatEntryError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    relativePath: Schema.optional(TrimmedNonEmptyString),
+    failure: Schema.optional(ProjectFileFailure),
+    resolvedPath: Schema.optional(TrimmedNonEmptyString),
+    resolvedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
+    operation: Schema.optional(ProjectFileOperation),
+    operationPath: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: ProjectFileFailureContext) {
+    super({
+      ...props,
+      message:
+        decodedProjectErrorMessage(props) ??
+        `Failed to stat workspace entry '${props.relativePath}' in '${props.cwd}'.`,
     } as any);
   }
 }

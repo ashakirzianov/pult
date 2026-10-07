@@ -2,10 +2,10 @@
 /**
  * WorkspaceFileSystem - Effect service contract for workspace file mutations.
  *
- * Owns workspace-root-relative file read/write operations and their associated
- * safety checks and cache invalidation hooks. Reads also accept absolute host
- * paths so clients can show files an agent left outside the workspace; writes
- * never leave the root.
+ * Owns workspace-root-relative file read/write/stat operations and their
+ * associated safety checks and cache invalidation hooks. Reads and stats also
+ * accept absolute host paths so clients can show files an agent left outside
+ * the workspace; writes never leave the root.
  *
  * @module WorkspaceFileSystem
  */
@@ -15,6 +15,8 @@ import * as NodeFSP from "node:fs/promises";
 import type {
   ProjectReadFileInput,
   ProjectReadFileResult,
+  ProjectStatEntryInput,
+  ProjectStatEntryResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "@t3tools/contracts";
@@ -82,6 +84,20 @@ export class WorkspacePathNotFileError extends Schema.TaggedError<WorkspacePathN
   }
 }
 
+export class WorkspacePathNotFoundError extends Schema.TaggedError<WorkspacePathNotFoundError>()(
+  "WorkspacePathNotFoundError",
+  {
+    workspaceRoot: Schema.String,
+    relativePath: Schema.String,
+    resolvedPath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Workspace path '${this.relativePath}' in '${this.workspaceRoot}' does not exist.`;
+  }
+}
+
 export class WorkspaceBinaryFileError extends Schema.TaggedError<WorkspaceBinaryFileError>()(
   "WorkspaceBinaryFileError",
   {
@@ -99,6 +115,7 @@ export const WorkspaceFileSystemError = Schema.Union([
   WorkspaceFileSystemOperationError,
   WorkspaceFilePathEscapeError,
   WorkspacePathNotFileError,
+  WorkspacePathNotFoundError,
   WorkspaceBinaryFileError,
 ]);
 export type WorkspaceFileSystemError = typeof WorkspaceFileSystemError.Type;
@@ -115,6 +132,16 @@ export class WorkspaceFileSystem extends Context.Service<
       input: ProjectReadFileInput,
     ) => Effect.Effect<
       ProjectReadFileResult,
+      WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
+    >;
+    /**
+     * Describe what a path resolves to, accepting the same paths as `readFile`.
+     * A missing path fails with `WorkspacePathNotFoundError`.
+     */
+    readonly statEntry: (
+      input: ProjectStatEntryInput,
+    ) => Effect.Effect<
+      ProjectStatEntryResult,
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
     /**
@@ -161,7 +188,7 @@ export const make = Effect.gen(function* () {
             cause,
           }),
       });
-      return { relativePath: requestedPath, realTargetPath };
+      return { relativePath: requestedPath, absolutePath: requestedPath, realTargetPath };
     }
 
     const target = yield* workspacePaths.resolveRelativePathWithinRoot({
@@ -206,7 +233,11 @@ export const make = Effect.gen(function* () {
         resolvedPath: realTargetPath,
       });
     }
-    return { relativePath: target.relativePath, realTargetPath };
+    return {
+      relativePath: target.relativePath,
+      absolutePath: target.absolutePath,
+      realTargetPath,
+    };
   });
 
   const readFile: WorkspaceFileSystem["Service"]["readFile"] = Effect.fn(
@@ -302,6 +333,53 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const statEntry: WorkspaceFileSystem["Service"]["statEntry"] = Effect.fn(
+    "WorkspaceFileSystem.statEntry",
+  )(function* (input) {
+    const target = yield* resolveReadTarget(input).pipe(
+      Effect.catchIf(
+        (error): error is WorkspaceFileSystemOperationError =>
+          error._tag === "WorkspaceFileSystemOperationError" &&
+          error.operation === "realpath-target" &&
+          (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
+        (error) =>
+          Effect.fail(
+            new WorkspacePathNotFoundError({
+              workspaceRoot: error.workspaceRoot,
+              relativePath: error.relativePath,
+              resolvedPath: error.resolvedPath,
+              cause: error.cause,
+            }),
+          ),
+      ),
+    );
+    // lstat answers whether the path is a link; stat of the real path
+    // describes what it points at.
+    const statAt = (operationPath: string, stat: (path: string) => Promise<NodeFS.Stats>) =>
+      Effect.tryPromise({
+        try: () => stat(operationPath),
+        catch: (cause) =>
+          new WorkspaceFileSystemOperationError({
+            workspaceRoot: input.cwd,
+            relativePath: input.relativePath,
+            resolvedPath: target.realTargetPath,
+            operationPath,
+            operation: "stat",
+            cause,
+          }),
+      });
+    const linkStat = yield* statAt(target.absolutePath, NodeFSP.lstat);
+    const targetStat = yield* statAt(target.realTargetPath, NodeFSP.stat);
+    return {
+      relativePath: target.relativePath,
+      kind: targetStat.isFile() ? "file" : targetStat.isDirectory() ? "directory" : "other",
+      symlink: linkStat.isSymbolicLink(),
+      size: targetStat.size,
+      mtimeMs: targetStat.mtimeMs,
+      birthtimeMs: targetStat.birthtimeMs,
+    } as const;
+  });
+
   const writeFile: WorkspaceFileSystem["Service"]["writeFile"] = Effect.fn(
     "WorkspaceFileSystem.writeFile",
   )(function* (input) {
@@ -340,7 +418,7 @@ export const make = Effect.gen(function* () {
     return { relativePath: target.relativePath };
   });
 
-  return WorkspaceFileSystem.of({ readFile, writeFile });
+  return WorkspaceFileSystem.of({ readFile, statEntry, writeFile });
 });
 
 export const layer = Layer.effect(WorkspaceFileSystem, make);

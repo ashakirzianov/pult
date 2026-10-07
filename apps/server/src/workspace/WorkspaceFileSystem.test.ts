@@ -1,5 +1,6 @@
-// @effect-diagnostics nodeBuiltinImport:off - FileSystem cannot create a FIFO.
+// @effect-diagnostics nodeBuiltinImport:off - FileSystem cannot create a FIFO or report sub-millisecond mtimes.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, describe, expect } from "@effect/vitest";
@@ -245,6 +246,95 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         expect(error.cause).toBeInstanceOf(Error);
         expect((error.cause as NodeJS.ErrnoException).code).toBe("ENOENT");
       }),
+    );
+  });
+
+  describe("statEntry", () => {
+    it.effect("describes files and directories relative to the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "src/index.ts", "export const answer = 42;\n");
+        const nodeStat = NodeFS.statSync(path.join(cwd, "src/index.ts"));
+
+        const file = yield* workspaceFileSystem.statEntry({ cwd, relativePath: "src/index.ts" });
+        const directory = yield* workspaceFileSystem.statEntry({ cwd, relativePath: "src" });
+
+        expect(file).toEqual({
+          relativePath: "src/index.ts",
+          kind: "file",
+          symlink: false,
+          size: 26,
+          mtimeMs: nodeStat.mtimeMs,
+          birthtimeMs: nodeStat.birthtimeMs,
+        });
+        expect(directory).toMatchObject({ relativePath: "src", kind: "directory", symlink: false });
+      }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)("describes a symlink by what it points at", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "docs/guide.md", "# Guide\n");
+        yield* fileSystem.symlink(path.join(cwd, "docs"), path.join(cwd, "linked-docs"));
+
+        const result = yield* workspaceFileSystem.statEntry({
+          cwd,
+          relativePath: "linked-docs",
+        });
+
+        expect(result).toMatchObject({
+          relativePath: "linked-docs",
+          kind: "directory",
+          symlink: true,
+        });
+      }),
+    );
+
+    it.effect("fails with a not-found error for a missing path", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+
+        const error = yield* workspaceFileSystem
+          .statEntry({ cwd, relativePath: "missing.txt" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFoundError);
+        expect(error).toMatchObject({
+          workspaceRoot: cwd,
+          relativePath: "missing.txt",
+          resolvedPath: path.join(cwd, "missing.txt"),
+        });
+      }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)(
+      "rejects symlinks that resolve outside the workspace root",
+      () =>
+        Effect.gen(function* () {
+          const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const cwd = yield* makeTempDir;
+          const outsideDir = yield* makeTempDir;
+          yield* writeTextFile(outsideDir, "secret.txt", "outside\n");
+          yield* fileSystem.symlink(
+            path.join(outsideDir, "secret.txt"),
+            path.join(cwd, "linked-secret.txt"),
+          );
+
+          const error = yield* workspaceFileSystem
+            .statEntry({ cwd, relativePath: "linked-secret.txt" })
+            .pipe(Effect.flip);
+
+          expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+        }),
     );
   });
 
