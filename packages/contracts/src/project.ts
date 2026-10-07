@@ -338,7 +338,8 @@ export const ProjectEntryChange = Schema.Struct({
 export type ProjectEntryChange = typeof ProjectEntryChange.Type;
 
 /**
- * One batch of changes, naming each path at most once and leaving out `.git`.
+ * One batch of changes, naming each path at most once and leaving out any
+ * `.git` or `node_modules` directory and everything in it.
  * `truncated` means more changed than the batch names, so re-read whatever is
  * open. Changes around the moment a subscription starts may or may not be
  * reported, so re-read open files after subscribing.

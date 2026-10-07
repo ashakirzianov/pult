@@ -3,10 +3,12 @@ import * as NodeFSP from "node:fs/promises";
 
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
+import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
@@ -34,6 +36,7 @@ import { expandHomePathWith } from "../pathExpansion.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
+import * as WorkspaceTreeWatcher from "./WorkspaceTreeWatcher.ts";
 
 // Changes within this window after a batch's first change go out together.
 const WATCH_BATCH_WINDOW = "100 millis";
@@ -132,8 +135,9 @@ export class WorkspaceEntries extends Context.Service<
     readonly refresh: (cwd: string) => Effect.Effect<void>;
     /**
      * Stream changes anywhere under a workspace root as batches of changed
-     * paths coalesced over a short window, leaving out `.git`. Ends if the
-     * watcher closes.
+     * paths coalesced over a short window, leaving out `.git` and
+     * `node_modules`. Subscribers to one root share its OS watcher. Ends if
+     * the watcher closes.
      */
     readonly watch: (
       input: ProjectWatchEntriesInput,
@@ -148,8 +152,6 @@ export class WorkspaceEntries extends Context.Service<
   }
 >()("t3/workspace/WorkspaceEntries") {}
 
-const isGitPath = (changedPath: string) => changedPath.split("/").includes(".git");
-
 const hasDeletedAncestor = (changedPath: string, deleted: ReadonlySet<string>) => {
   const segments = changedPath.split("/");
   for (let depth = 1; depth < segments.length; depth += 1) {
@@ -157,6 +159,15 @@ const hasDeletedAncestor = (changedPath: string, deleted: ReadonlySet<string>) =
   }
   return false;
 };
+
+/** One root's shared watcher, as its subscribers see it. */
+interface RootWatch {
+  readonly changes: PubSub.PubSub<WorkspaceTreeWatcher.WorkspaceTreeChange>;
+  // Succeeds when the watcher closes and fails when it fails.
+  readonly done: Deferred.Deferred<void, WorkspaceTreeWatcher.WorkspaceTreeWatchError>;
+  // Opened by the first subscriber once it has subscribed, so it misses nothing.
+  readonly started: Latch.Latch;
+}
 
 const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(function* (
   input: FilesystemBrowseInput,
@@ -185,11 +196,11 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceSearchIndexes = yield* WorkspaceSearchIndex.WorkspaceSearchIndexMap;
   const vcsProcess = yield* VcsProcess.VcsProcess;
+  const treeWatcher = yield* WorkspaceTreeWatcher.WorkspaceTreeWatcher;
 
   const normalizeWorkspaceRoot = Effect.fn("WorkspaceEntries.normalizeWorkspaceRoot")(function* (
     cwd: string,
@@ -408,6 +419,30 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  // One OS watcher per root, shared by its subscribers and closed with the
+  // last of them. A watcher that stops leaves the map, so the next subscriber
+  // starts a fresh one.
+  const rootWatches: RcMap.RcMap<string, RootWatch> = yield* RcMap.make({
+    lookup: (root: string) =>
+      Effect.gen(function* () {
+        const changes = yield* PubSub.unbounded<WorkspaceTreeWatcher.WorkspaceTreeChange>();
+        const done = yield* Deferred.make<void, WorkspaceTreeWatcher.WorkspaceTreeWatchError>();
+        const started = yield* Latch.make();
+        yield* Latch.await(started).pipe(
+          Effect.andThen(
+            treeWatcher
+              .watch(root)
+              .pipe(Stream.runForEach((change) => PubSub.publish(changes, change))),
+          ),
+          Effect.exit,
+          Effect.flatMap((exit) => Deferred.done(done, exit)),
+          Effect.andThen(RcMap.invalidate(rootWatches, root)),
+          Effect.forkScoped,
+        );
+        return { changes, done, started };
+      }),
+  });
+
   /**
    * Kinds come from each path's state when its batch is cut: a missing path
    * is deleted, an existing one created if the watcher saw it appear, else
@@ -482,22 +517,29 @@ export const make = Effect.gen(function* () {
                 }),
               ).pipe(Effect.forkScoped);
 
-              yield* fileSystem.watch(root, { recursive: true }).pipe(
-                Stream.runForEach((event) =>
+              const rootWatch = yield* RcMap.get(rootWatches, root);
+              const changes = yield* PubSub.subscribe(rootWatch.changes);
+              yield* Latch.open(rootWatch.started);
+              yield* PubSub.takeAll(changes).pipe(
+                Effect.flatMap((taken) =>
                   Effect.sync(() => {
-                    const changedPath = event.path.split(path.sep).join("/");
-                    if (isGitPath(changedPath)) return;
-                    if (!pending.has(changedPath) && pending.size >= WATCH_BATCH_MAX_PATHS) {
-                      truncated = true;
-                    } else {
-                      pending.set(
-                        changedPath,
-                        event._tag !== "Update" || pending.get(changedPath) === true,
-                      );
+                    for (const change of taken) {
+                      if (!pending.has(change.path) && pending.size >= WATCH_BATCH_MAX_PATHS) {
+                        truncated = true;
+                      } else {
+                        pending.set(
+                          change.path,
+                          change.rename || pending.get(change.path) === true,
+                        );
+                      }
                     }
                     Queue.offerUnsafe(wake, undefined);
                   }),
                 ),
+                Effect.forever,
+                Effect.forkScoped,
+              );
+              yield* Deferred.await(rootWatch.done).pipe(
                 // Stream.callback neither ends nor fails the stream with this effect.
                 Effect.matchEffect({
                   // The watcher closed; end the stream so the client can subscribe again.
@@ -520,4 +562,5 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(
   Layer.provide(WorkspaceSearchIndex.WorkspaceSearchIndexMap.layer),
   Layer.provide(VcsProcess.layer),
+  Layer.provide(WorkspaceTreeWatcher.layer),
 );

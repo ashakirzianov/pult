@@ -4,8 +4,11 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { FileFinder } from "@ff-labs/fff-node";
 import { it, afterEach, describe, expect } from "@effect/vitest";
 import type { ProjectWatchEntriesEvent } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -19,6 +22,8 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
+import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
+import * as WorkspaceTreeWatcher from "./WorkspaceTreeWatcher.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -738,37 +743,67 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
   });
 
   describe("watch", () => {
-    // A fresh WorkspaceEntries with `watchEvents` standing in for the OS
-    // watcher, so batching runs without depending on when the OS delivers events.
-    const withWatcher = (
-      watchEvents: Stream.Stream<FileSystem.WatchEvent, PlatformError.PlatformError>,
-    ) =>
-      Effect.provide(
-        Layer.fresh(WorkspaceEntries.layer).pipe(
-          Layer.provide(WorkspacePaths.layer),
-          Layer.provide(
-            Layer.effect(
-              FileSystem.FileSystem,
-              Effect.map(FileSystem.FileSystem, (fileSystem) =>
-                FileSystem.FileSystem.of({ ...fileSystem, watch: () => watchEvents }),
+    // Stands in for the OS watcher, so batching runs without depending on when
+    // the OS delivers events: the test offers raw changes to `raw`, and every
+    // watcher started reads from it.
+    const makeFakeTreeWatcher = Effect.fn(function* () {
+      const raw = yield* Queue.unbounded<
+        WorkspaceTreeWatcher.WorkspaceTreeChange,
+        WorkspaceTreeWatcher.WorkspaceTreeWatchError | Cause.Done
+      >();
+      const started = yield* Deferred.make<void>();
+      const counts = { started: 0, stopped: 0 };
+      const watcher = WorkspaceTreeWatcher.WorkspaceTreeWatcher.of({
+        watch: () =>
+          Stream.unwrap(
+            Effect.acquireRelease(
+              Effect.sync(() => (counts.started += 1)).pipe(
+                Effect.andThen(Deferred.succeed(started, undefined)),
               ),
-            ),
+              () => Effect.sync(() => (counts.stopped += 1)),
+            ).pipe(Effect.as(Stream.fromQueue(raw))),
           ),
+      });
+      return { raw, started, counts, watcher };
+    });
+
+    const withTreeWatcher = (watcher: WorkspaceTreeWatcher.WorkspaceTreeWatcher["Service"]) =>
+      Effect.provide(
+        Layer.effect(WorkspaceEntries.WorkspaceEntries, WorkspaceEntries.make).pipe(
+          Layer.provide(WorkspaceSearchIndex.WorkspaceSearchIndexMap.layer),
+          Layer.provide(WorkspacePaths.layer),
+          Layer.provide(Layer.succeed(WorkspaceTreeWatcher.WorkspaceTreeWatcher, watcher)),
         ),
       );
 
-    // Watches `cwd` in the background: the test offers raw watcher events and
-    // takes the batches they become.
+    // Watches `cwd` in the background and collects the batches it sends.
     const startWatch = Effect.fn(function* (cwd: string) {
-      const raw = yield* Queue.unbounded<FileSystem.WatchEvent>();
       const batches = yield* Queue.unbounded<ProjectWatchEntriesEvent>();
-      yield* Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
+      const fiber = yield* Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
         workspaceEntries
           .watch({ cwd })
           .pipe(Stream.runForEach((batch) => Queue.offer(batches, batch))),
-      ).pipe(withWatcher(Stream.fromQueue(raw)), Effect.forkScoped);
-      return { raw, batches };
+      ).pipe(Effect.forkScoped);
+      return { batches, fiber };
     });
+
+    // Runs `use` against a fresh WorkspaceEntries with one watch on `cwd`,
+    // which has subscribed once its watcher starts.
+    const withOnlyWatch = <A, E, R>(
+      cwd: string,
+      use: (watch: {
+        readonly raw: Queue.Enqueue<WorkspaceTreeWatcher.WorkspaceTreeChange>;
+        readonly batches: Queue.Queue<ProjectWatchEntriesEvent>;
+      }) => Effect.Effect<A, E, R>,
+    ) =>
+      Effect.gen(function* () {
+        const fake = yield* makeFakeTreeWatcher();
+        return yield* Effect.gen(function* () {
+          const { batches } = yield* startWatch(cwd);
+          yield* Deferred.await(fake.started);
+          return yield* use({ raw: fake.raw, batches });
+        }).pipe(withTreeWatcher(fake.watcher));
+      });
 
     it.effect("reports created, changed and deleted paths as they stand when sent", () =>
       Effect.gen(function* () {
@@ -782,15 +817,15 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           NodeFSP.utimes(path.join(cwd, "existing.md"), anHourAgo, anHourAgo),
         );
         yield* writeTextFile(cwd, "notes/new.md", "# New\n");
-        const { raw, batches } = yield* startWatch(cwd);
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Queue.offerAll(raw, [
+            { path: "notes/new.md", rename: true },
+            { path: "existing.md", rename: false },
+            { path: "gone.md", rename: true },
+          ]).pipe(Effect.andThen(Queue.take(batches))),
+        );
 
-        yield* Queue.offerAll(raw, [
-          { _tag: "Create", path: path.join("notes", "new.md") },
-          { _tag: "Update", path: "existing.md" },
-          { _tag: "Remove", path: "gone.md" },
-        ]);
-
-        expect(yield* Queue.take(batches)).toEqual({
+        expect(batch).toEqual({
           changes: [
             { path: "notes/new.md", kind: "created" },
             { path: "existing.md", kind: "changed" },
@@ -806,39 +841,36 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         const cwd = yield* makeTempDir();
         const paths = Array.from({ length: 30 }, (_, index) => `src/file-${index}.ts`);
         for (const filePath of paths) yield* writeTextFile(cwd, filePath, "export {};\n");
-        const { raw, batches } = yield* startWatch(cwd);
-
-        for (const round of [1, 2, 3]) {
-          yield* Queue.offerAll(
-            raw,
-            paths.map(
-              (filePath) => ({ _tag: round === 1 ? "Create" : "Update", path: filePath }) as const,
-            ),
-          );
-        }
-
-        const batch = yield* Queue.take(batches);
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Effect.gen(function* () {
+            for (const round of [1, 2, 3]) {
+              yield* Queue.offerAll(
+                raw,
+                paths.map((filePath) => ({ path: filePath, rename: round === 1 })),
+              );
+            }
+            return yield* Queue.take(batches);
+          }),
+        );
         expect(batch.changes.map((change) => change.path)).toEqual(paths);
         expect(batch.truncated).toBe(false);
       }),
     );
 
-    it.effect("leaves out .git and reports a deleted directory without its contents", () =>
+    it.effect("reports a deleted directory without its contents", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir();
         yield* writeTextFile(cwd, "src/app.ts", "export {};\n");
-        const { raw, batches } = yield* startWatch(cwd);
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Queue.offerAll(raw, [
+            { path: "build/out/a.js", rename: true },
+            { path: "build/out", rename: true },
+            { path: "build", rename: true },
+            { path: "src/app.ts", rename: true },
+          ]).pipe(Effect.andThen(Queue.take(batches))),
+        );
 
-        yield* Queue.offerAll(raw, [
-          { _tag: "Update", path: ".git/index" },
-          { _tag: "Update", path: "vendor/lib/.git/HEAD" },
-          { _tag: "Remove", path: "build/out/a.js" },
-          { _tag: "Remove", path: "build/out" },
-          { _tag: "Remove", path: "build" },
-          { _tag: "Create", path: "src/app.ts" },
-        ]);
-
-        expect(yield* Queue.take(batches)).toEqual({
+        expect(batch).toEqual({
           changes: [
             { path: "build", kind: "deleted" },
             { path: "src/app.ts", kind: "created" },
@@ -851,44 +883,77 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
     it.effect("marks a batch truncated past its path limit", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir();
-        const { raw, batches } = yield* startWatch(cwd);
-
-        yield* Queue.offerAll(
-          raw,
-          Array.from({ length: 1_001 }, (_, index) => ({
-            _tag: "Remove" as const,
-            path: `gone-${index}.md`,
-          })),
+        const batch = yield* withOnlyWatch(cwd, ({ raw, batches }) =>
+          Queue.offerAll(
+            raw,
+            Array.from({ length: 1_001 }, (_, index) => ({
+              path: `gone-${index}.md`,
+              rename: true,
+            })),
+          ).pipe(Effect.andThen(Queue.take(batches))),
         );
 
-        const batch = yield* Queue.take(batches);
         expect(batch.changes).toHaveLength(1_000);
         expect(batch.truncated).toBe(true);
       }),
     );
 
-    it.effect("ends when the watcher closes and fails when it fails", () =>
+    it.effect("shares one watcher per root and stops it with its last subscriber", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir();
-        const watchCwd = Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
-          Stream.runCollect(workspaceEntries.watch({ cwd })),
+        yield* writeTextFile(cwd, "shared.md");
+        const fake = yield* makeFakeTreeWatcher();
+        yield* Effect.gen(function* () {
+          const first = yield* startWatch(cwd);
+          yield* Deferred.await(fake.started);
+          const second = yield* startWatch(cwd);
+          // `first` has subscribed; keep changing a path until `second` has
+          // subscribed too and reports it.
+          const pacer = yield* Queue.offer(fake.raw, { path: "shared.md", rename: false }).pipe(
+            Effect.andThen(Queue.take(first.batches)),
+            Effect.forever,
+            Effect.forkScoped,
+          );
+          const batch = yield* Queue.take(second.batches);
+          expect(batch.changes.map((change) => change.path)).toEqual(["shared.md"]);
+          yield* Fiber.interrupt(pacer);
+          expect(fake.counts).toEqual({ started: 1, stopped: 0 });
+
+          yield* Fiber.interrupt(first.fiber);
+          expect(fake.counts).toEqual({ started: 1, stopped: 0 });
+          yield* Fiber.interrupt(second.fiber);
+          expect(fake.counts).toEqual({ started: 1, stopped: 1 });
+        }).pipe(withTreeWatcher(fake.watcher));
+      }),
+    );
+
+    it.effect("ends when the watcher closes and starts a new one for the next subscriber", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const fake = yield* makeFakeTreeWatcher();
+        yield* Queue.end(fake.raw);
+        yield* Effect.gen(function* () {
+          const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+          expect(yield* Stream.runCollect(workspaceEntries.watch({ cwd }))).toEqual([]);
+          expect(yield* Stream.runCollect(workspaceEntries.watch({ cwd }))).toEqual([]);
+        }).pipe(withTreeWatcher(fake.watcher));
+        expect(fake.counts).toEqual({ started: 2, stopped: 2 });
+      }),
+    );
+
+    it.effect("fails when the watcher fails", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const fake = yield* makeFakeTreeWatcher();
+        yield* Queue.fail(
+          fake.raw,
+          new WorkspaceTreeWatcher.WorkspaceTreeWatchError({ root: cwd, cause: "lost" }),
         );
 
-        const closed = yield* watchCwd.pipe(withWatcher(Stream.empty));
-        const error = yield* watchCwd.pipe(
-          withWatcher(
-            Stream.fail(
-              PlatformError.systemError({
-                _tag: "Unknown",
-                module: "FileSystem",
-                method: "watch",
-              }),
-            ),
-          ),
-          Effect.flip,
-        );
+        const error = yield* Effect.flatMap(WorkspaceEntries.WorkspaceEntries, (workspaceEntries) =>
+          Stream.runDrain(workspaceEntries.watch({ cwd })),
+        ).pipe(withTreeWatcher(fake.watcher), Effect.flip);
 
-        expect(closed).toEqual([]);
         expect(error._tag).toBe("WorkspaceEntriesWatchError");
       }),
     );
