@@ -9,7 +9,7 @@
  * could not remove.
  *
  * Because browser dev is single-origin (Vite proxies the backend — see
- * `resolveDevProxyTarget` in apps/web/vite.config.ts), one proxy rule covering
+ * `resolveDevProxyTarget` in apps/pult/vite.config.ts), one proxy rule covering
  * the web port is enough; the backend needs no mapping of its own.
  */
 

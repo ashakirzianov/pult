@@ -18,7 +18,7 @@ const NOT_IMPORTED_KEYS = new Set([
   // Resumes a permission setup V1 left mid-flow; V2 would redirect to it on boot.
   "t3code:snap-shot-setup-resume:v1",
 ]);
-/** Matches MAX_STASH_ENTRIES in apps/web/src/promptStashStore.ts. */
+/** Matches MAX_STASH_ENTRIES in apps/pult/src/promptStashStore.ts. */
 const MAX_STASH_ENTRIES = 20;
 const DRAFT_RECORD_FIELDS = [
   "draftsByThreadKey",

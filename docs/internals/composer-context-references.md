@@ -82,7 +82,7 @@ Messages sent before this feature carry trailing `<terminal_context>`, `<element
 - Placeholders bind to terminal entries in order; entries without a placeholder are appended.
 - Ids are deterministic (`legacy_<kind>_<n>`) so re-running the upgrade is idempotent.
 
-Event history is never rewritten. Existing web parsers in `apps/web/src/lib/` stay until the
+Event history is never rewritten. Existing web parsers in `apps/pult/src/lib/` stay until the
 transcript renderer moves to records.
 
 [contract]: ../../packages/contracts/src/composerContext.ts
@@ -122,7 +122,7 @@ trailing `<terminal_context>` form is parsed only when reading messages sent by 
 
 The composer sends `message.text` as canonical prose with reference links and
 `message.context.records` built from the draft (`buildMessageContext` in
-`apps/web/src/lib/composerContextRecords.ts`). Expired terminal excerpts are dropped from both.
+`apps/pult/src/lib/composerContextRecords.ts`). Expired terminal excerpts are dropped from both.
 The server projects provider text at turn start (`projectComposerContextForProvider`), so the persisted
 message stays readable and the provider receives markers plus one envelope.
 

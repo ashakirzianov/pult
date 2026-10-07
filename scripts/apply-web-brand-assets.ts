@@ -63,7 +63,7 @@ export const applyWebBrandAssetsCommand = Command.make(
           onSome: resolveWebAssetBrandForChannel,
         }),
       ),
-      Option.getOrElse(targetDirectory, () => "apps/web/dist"),
+      Option.getOrElse(targetDirectory, () => "apps/pult/dist"),
     ),
 ).pipe(Command.withDescription("Copy web brand assets into a built hosted web app."));
 
