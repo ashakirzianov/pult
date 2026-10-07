@@ -68,6 +68,7 @@ import {
   ProjectListEntriesError,
   ProjectReadFileError,
   ProjectSearchContentsError,
+  ProjectCreateDirectoryError,
   ProjectSearchEntriesError,
   ProjectStatEntryError,
   ProjectWriteFileError,
@@ -536,6 +537,8 @@ function projectFileFailureContext(
       return { failure: "path_not_found", resolvedPath: error.resolvedPath };
     case "WorkspaceFileVersionConflictError":
       return { failure: "version_conflict", resolvedPath: error.resolvedPath };
+    case "WorkspacePathExistsError":
+      return { failure: "path_exists", resolvedPath: error.resolvedPath };
     case "WorkspaceBinaryFileError":
       return { failure: "binary_file", resolvedPath: error.resolvedPath };
     default:
@@ -3136,6 +3139,21 @@ const layerWsRpc = (
                   new ProjectWriteFileError({
                     cwd: input.cwd,
                     relativePath: input.relativePath,
+                    ...projectFileFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsCreateDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsCreateDirectory,
+            workspaceFileSystem.createDirectory(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectCreateDirectoryError({
+                    ...input,
                     ...projectFileFailureContext(cause),
                     cause,
                   }),

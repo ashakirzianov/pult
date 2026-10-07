@@ -13,6 +13,8 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 
 import type {
+  ProjectCreateDirectoryInput,
+  ProjectCreateDirectoryResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ProjectStatEntryInput,
@@ -101,6 +103,20 @@ export class WorkspacePathNotFoundError extends Schema.TaggedError<WorkspacePath
   }
 }
 
+export class WorkspacePathExistsError extends Schema.TaggedError<WorkspacePathExistsError>()(
+  "WorkspacePathExistsError",
+  {
+    workspaceRoot: Schema.String,
+    relativePath: Schema.String,
+    resolvedPath: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Workspace path '${this.relativePath}' in '${this.workspaceRoot}' already exists.`;
+  }
+}
+
 export class WorkspaceFileVersionConflictError extends Schema.TaggedError<WorkspaceFileVersionConflictError>()(
   "WorkspaceFileVersionConflictError",
   {
@@ -135,6 +151,7 @@ export const WorkspaceFileSystemError = Schema.Union([
   WorkspaceFilePathEscapeError,
   WorkspacePathNotFileError,
   WorkspacePathNotFoundError,
+  WorkspacePathExistsError,
   WorkspaceFileVersionConflictError,
   WorkspaceBinaryFileError,
 ]);
@@ -175,6 +192,17 @@ export class WorkspaceFileSystem extends Context.Service<
       input: ProjectWriteFileInput,
     ) => Effect.Effect<
       ProjectWriteFileResult,
+      WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
+    >;
+    /**
+     * Create a directory and any missing parents relative to the workspace
+     * root. An existing directory is success; anything else there fails with
+     * `WorkspacePathExistsError`.
+     */
+    readonly createDirectory: (
+      input: ProjectCreateDirectoryInput,
+    ) => Effect.Effect<
+      ProjectCreateDirectoryResult,
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
   }
@@ -494,7 +522,37 @@ export const make = Effect.gen(function* () {
     return { relativePath: target.relativePath, mtimeMs };
   });
 
-  return WorkspaceFileSystem.of({ readFile, statEntry, writeFile });
+  const createDirectory: WorkspaceFileSystem["Service"]["createDirectory"] = Effect.fn(
+    "WorkspaceFileSystem.createDirectory",
+  )(function* (input) {
+    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+    });
+    yield* fileSystem.makeDirectory(target.absolutePath, { recursive: true }).pipe(
+      Effect.mapError((cause) =>
+        cause.reason._tag === "AlreadyExists"
+          ? new WorkspacePathExistsError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: target.absolutePath,
+              cause,
+            })
+          : new WorkspaceFileSystemOperationError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: target.absolutePath,
+              operationPath: target.absolutePath,
+              operation: "make-directory",
+              cause,
+            }),
+      ),
+    );
+    yield* workspaceEntries.refresh(input.cwd);
+    return { relativePath: target.relativePath };
+  });
+
+  return WorkspaceFileSystem.of({ createDirectory, readFile, statEntry, writeFile });
 });
 
 export const layer = Layer.effect(WorkspaceFileSystem, make);

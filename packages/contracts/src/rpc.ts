@@ -196,6 +196,9 @@ import {
   OrchestrationV2ThreadLaunchError,
 } from "./orchestrationV2.ts";
 import {
+  ProjectCreateDirectoryError,
+  ProjectCreateDirectoryInput,
+  ProjectCreateDirectoryResult,
   ProjectCreateNewInput,
   ProjectCreateNewResult,
   ProjectEnsureScratchResult,
@@ -353,6 +356,7 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsStatEntry: "projects.statEntry",
   projectsWriteFile: "projects.writeFile",
+  projectsCreateDirectory: "projects.createDirectory",
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
   projectsCreateNew: "projects.createNew",
@@ -1156,6 +1160,12 @@ const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
   error: Schema.Union([ProjectReadFileError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectsCreateDirectoryRpc = Rpc.make(WS_METHODS.projectsCreateDirectory, {
+  payload: ProjectCreateDirectoryInput,
+  success: ProjectCreateDirectoryResult,
+  error: Schema.Union([ProjectCreateDirectoryError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsStatEntryRpc = Rpc.make(WS_METHODS.projectsStatEntry, {
   payload: ProjectStatEntryInput,
   success: ProjectStatEntryResult,
@@ -1848,6 +1858,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsEnsureScratchRpc,
   WsProjectsCreateNewRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsCreateDirectoryRpc,
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

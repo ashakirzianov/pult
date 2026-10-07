@@ -368,6 +368,55 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     );
   });
 
+  describe("createDirectory", () => {
+    it.effect("creates a directory and its missing parents, and accepts one that exists", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+
+        const created = yield* workspaceFileSystem.createDirectory({
+          cwd,
+          relativePath: "src/components/ui",
+        });
+        const again = yield* workspaceFileSystem.createDirectory({ cwd, relativePath: "src" });
+
+        expect(created).toEqual({ relativePath: "src/components/ui" });
+        expect(again).toEqual({ relativePath: "src" });
+        expect(NodeFS.statSync(path.join(cwd, "src/components/ui")).isDirectory()).toBe(true);
+      }),
+    );
+
+    it.effect("refuses a path a file already holds", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "README.md", "# Readme\n");
+
+        const error = yield* workspaceFileSystem
+          .createDirectory({ cwd, relativePath: "README.md" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathExistsError);
+      }),
+    );
+
+    it.effect("rejects directories outside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+
+        const error = yield* workspaceFileSystem
+          .createDirectory({ cwd, relativePath: "../escape" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspacePaths.WorkspacePathOutsideRootError);
+        expect(NodeFS.existsSync(path.resolve(cwd, "..", "escape"))).toBe(false);
+      }),
+    );
+  });
+
   describe("writeFile", () => {
     it.effect("writes files relative to the workspace root", () =>
       Effect.gen(function* () {

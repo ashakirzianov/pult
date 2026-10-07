@@ -492,6 +492,7 @@ export const ProjectFileFailure = Schema.Literals([
   "resolved_path_outside_root",
   "path_not_file",
   "path_not_found",
+  "path_exists",
   "binary_file",
   "version_conflict",
   "operation_failed",
@@ -631,6 +632,43 @@ export class ProjectWriteFileError extends Schema.TaggedError<ProjectWriteFileEr
       message:
         decodedProjectErrorMessage(props) ??
         `Failed to write workspace file '${props.relativePath}' in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+/** A directory and any missing parents; an existing directory is success. */
+export const ProjectCreateDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
+});
+export type ProjectCreateDirectoryInput = typeof ProjectCreateDirectoryInput.Type;
+
+export const ProjectCreateDirectoryResult = Schema.Struct({
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectCreateDirectoryResult = typeof ProjectCreateDirectoryResult.Type;
+
+export class ProjectCreateDirectoryError extends Schema.TaggedError<ProjectCreateDirectoryError>()(
+  "ProjectCreateDirectoryError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    relativePath: Schema.optional(TrimmedNonEmptyString),
+    failure: Schema.optional(ProjectFileFailure),
+    resolvedPath: Schema.optional(TrimmedNonEmptyString),
+    resolvedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
+    operation: Schema.optional(ProjectFileOperation),
+    operationPath: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: ProjectFileFailureContext) {
+    super({
+      ...props,
+      message:
+        decodedProjectErrorMessage(props) ??
+        `Failed to create workspace directory '${props.relativePath}' in '${props.cwd}'.`,
     } as any);
   }
 }
