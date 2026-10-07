@@ -2,8 +2,6 @@ import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 
-import { pultClientTildeAlias, withPultClientOverrides } from "./scripts/pult/rootViteConfig.ts";
-
 /** Import restrictions every file keeps, including the one module exempt from the glyph rule. */
 const RESTRICTED_IMPORT_PATHS = [
   {
@@ -52,20 +50,18 @@ const RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS = {
     "GitPullRequestCreateArrowIcon",
   ],
   message:
-    "Pick a glyph by meaning from PullRequestGlyph in apps/web/src/components/pullRequest/pullRequestIcons.tsx so every surface draws the same pull request the same way.",
+    "Pick a glyph by meaning from PullRequestGlyph in apps/pult/src/components/pullRequest/pullRequestIcons.tsx so every surface draws the same pull request the same way.",
 };
 
 export default defineConfig({
-  plugins: [pultClientTildeAlias()],
   resolve: {
     alias: {
-      "~": NodeURL.fileURLToPath(new URL("./apps/web/src", import.meta.url)),
+      "~": NodeURL.fileURLToPath(new URL("./apps/pult/src", import.meta.url)),
     },
   },
   test: {
     environment: "node",
     exclude: [
-      "**/.repos/**",
       "**/.t3/**",
       "**/node_modules/**",
       "**/dist/**",
@@ -86,7 +82,6 @@ export default defineConfig({
   },
   fmt: {
     ignorePatterns: [
-      ".repos/**",
       // The fork's packages, kept byte for byte (scripts/pult/vendor.ts).
       "vendor/t3code/packages/**",
       // Macroscope's glob-per-line ignore grammar, not Markdown: formatting
@@ -95,32 +90,18 @@ export default defineConfig({
       // Pult's decision log has a fixed entry shape (paragraph right under the
       // heading, `*Rejected:*`), which formatting rewrites.
       "DECISIONS.md",
-      ".alchemy",
       "dist",
       "dist-electron",
       "node_modules",
       "pnpm-lock.yaml",
       "*.tsbuildinfo",
       "**/routeTree.gen.ts",
-      "apps/mobile/android/**",
-      "apps/mobile/ios/**",
-      "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
     ],
     sortPackageJson: {},
-    overrides: [
-      {
-        files: [".devcontainer/devcontainer.json"],
-        options: {
-          trailingComma: "none",
-        },
-      },
-    ],
   },
   lint: {
     ignorePatterns: [
-      ".repos",
-      ".repos/**",
       "vendor/t3code/packages/**",
       "dist",
       "dist-electron",
@@ -128,9 +109,6 @@ export default defineConfig({
       "pnpm-lock.yaml",
       "*.tsbuildinfo",
       "**/routeTree.gen.ts",
-      "apps/mobile/android/**",
-      "apps/mobile/ios/**",
-      "apps/mobile/uniwind-types.d.ts",
     ],
     plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
     jsPlugins: ["./oxlint-plugin-t3code/index.ts", "@shadcn/lint"],
@@ -183,20 +161,10 @@ export default defineConfig({
       "t3code/prefer-catch-tags": "error",
       "t3code/require-suppression-reason": "error",
     },
-    overrides: withPultClientOverrides([
+    overrides: [
       {
-        // The one place that reads the host platform to seed the injected references.
-        files: ["packages/shared/src/hostProcess.ts"],
-        rules: { "t3code/no-global-process-runtime": "off" },
-      },
-      {
-        // The registration helpers that only accept handlers built by McpToolAccess.
-        files: ["apps/server/src/mcp/McpHttpServer.ts"],
-        rules: { "t3code/no-raw-mcp-registration": "off" },
-      },
-      {
-        files: ["apps/web/src/**"],
-        excludeFiles: ["apps/web/src/components/ui/**"],
+        files: ["apps/pult/src/**"],
+        excludeFiles: ["apps/pult/src/components/ui/**"],
         rules: {
           "eslint/no-restricted-imports": [
             "error",
@@ -210,29 +178,25 @@ export default defineConfig({
       {
         // The one module allowed to name lucide's pull-request glyphs; everything else picks
         // from its vocabulary. The other import restrictions still apply here.
-        files: ["apps/web/src/components/pullRequest/pullRequestIcons.tsx"],
+        files: ["apps/pult/src/components/pullRequest/pullRequestIcons.tsx"],
         rules: { "eslint/no-restricted-imports": ["error", { paths: RESTRICTED_IMPORT_PATHS }] },
-      },
-      {
-        files: ["apps/mobile/src/**"],
-        rules: { "t3code/no-mobile-uniwind-theme-escape-hatches": "error" },
       },
       {
         // Every class in web code must be one Tailwind generates: a typo or a class nothing
         // declares ships silently unstyled. JS hooks use data attributes, not class names.
-        files: ["apps/web/src/**"],
+        files: ["apps/pult/src/**"],
         rules: { "shadcn/no-unknown-classes": "error" },
       },
       {
         // Colors come from theme tokens so status tones follow custom themes. components/ui
         // has no findings and stays covered too.
-        files: ["apps/web/src/**"],
+        files: ["apps/pult/src/**"],
         rules: { "shadcn/no-raw-colors": "error" },
       },
       {
         // Third-party marks (brand logos, the macOS permission panes, Codex's Computer Use
         // mark) must keep their exact colors, so the files that hold them are exempt.
-        files: ["apps/web/src/components/Icons.tsx", "apps/web/src/components/JetBrainsIcons.tsx"],
+        files: ["apps/pult/src/components/Icons.tsx", "apps/pult/src/components/JetBrainsIcons.tsx"],
         rules: { "shadcn/no-raw-colors": "off" },
       },
       {
@@ -240,8 +204,8 @@ export default defineConfig({
         // of restyling with className; layout classes (width, flex, margin, position) stay
         // allowed because placement belongs to the parent. components/ui is for generic
         // primitives: a look that belongs to one feature stays in that feature's component.
-        files: ["apps/web/src/**"],
-        excludeFiles: ["apps/web/src/components/ui/**"],
+        files: ["apps/pult/src/**"],
+        excludeFiles: ["apps/pult/src/components/ui/**"],
         rules: {
           // A className built at runtime on a ui component is one no-restyle cannot read.
           "shadcn/require-static-classes": "error",
@@ -299,59 +263,10 @@ export default defineConfig({
       },
       {
         // The sign-in masthead is T3 brand artwork: fixed gradients, not theme surfaces.
-        files: ["apps/web/src/components/auth/AuthSurfaceShell.tsx"],
+        files: ["apps/pult/src/components/auth/AuthSurfaceShell.tsx"],
         rules: { "shadcn/no-arbitrary-values": "off" },
       },
-      {
-        // Shared client code must not call APIs missing from Hermes. Our ESNext
-        // TypeScript target accepts them even when they would crash mobile at launch.
-        // Tests run on Node and are exempt.
-        files: [
-          "apps/mobile/src/**",
-          "packages/client-runtime/src/**",
-          "packages/contracts/src/**",
-          "packages/shared/src/**",
-        ],
-        excludeFiles: ["**/*.test.ts", "**/*.test.tsx"],
-        rules: { "t3code/no-hermes-unsupported-apis": "error" },
-      },
-      {
-        // Reviewed native and third-party interop boundaries that cannot consume a className.
-        files: [
-          "apps/mobile/src/features/archive/ArchivedThreadsScreen.tsx",
-          "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
-          "apps/mobile/src/features/files/FileMarkdownPreview.tsx",
-          "apps/mobile/src/features/files/SourceFileSurface.tsx",
-          "apps/mobile/src/features/files/AttachmentFileScreen.tsx",
-          "apps/mobile/src/features/files/ThreadFilesRouteScreen.tsx",
-          "apps/mobile/src/features/files/thread-file-navigator-pane.tsx",
-          "apps/mobile/src/features/home/HomeHeader.tsx",
-          "apps/mobile/src/features/review/ReviewSheet.tsx",
-          "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
-          "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
-          "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
-          "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
-          "apps/mobile/src/features/threads/ThreadComposer.tsx",
-          "apps/mobile/src/features/threads/ThreadFeed.tsx",
-          "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
-          "apps/mobile/src/features/threads/NewTaskContextPickerScreens.tsx",
-          "apps/mobile/src/features/threads/ThreadQueueControl.tsx",
-          "apps/mobile/src/features/threads/ThreadAgentsSheet.tsx",
-          "apps/mobile/src/features/review/ReviewCommentCard.tsx",
-          "apps/mobile/src/features/threads/ThreadSettingsSheet.tsx",
-          "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
-          "apps/mobile/src/features/threads/thread-list-items.tsx",
-          "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
-          "apps/mobile/src/lib/useMobileNavigationTheme.ts",
-          "apps/mobile/src/native/T3ComposerEditor.ios.tsx",
-          "apps/mobile/src/native/T3ComposerEditor.native.tsx",
-          "apps/mobile/src/native/SelectableMarkdownText.android.tsx",
-        ],
-        rules: {
-          "t3code/no-mobile-uniwind-theme-escape-hatches": ["error", { allowUniwindTheme: true }],
-        },
-      },
-    ]),
+    ],
     options: {
       reportUnusedDisableDirectives: "error",
       // Revisit once Oxlint's tsgolint path can integrate with @effect/tsgo diagnostics.
