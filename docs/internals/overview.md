@@ -40,7 +40,6 @@ after an environment downgrade.
 Provider-specific behavior belongs behind an adapter. Orchestration works with normalized commands
 and events, so adding a provider should not require branches throughout the domain or clients.
 
-
 ## Settings ownership
 
 Client preferences stay in the current client; environment defaults and project overrides stay

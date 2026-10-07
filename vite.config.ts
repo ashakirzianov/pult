@@ -196,7 +196,10 @@ export default defineConfig({
       {
         // Third-party marks (brand logos, the macOS permission panes, Codex's Computer Use
         // mark) must keep their exact colors, so the files that hold them are exempt.
-        files: ["apps/pult/src/components/Icons.tsx", "apps/pult/src/components/JetBrainsIcons.tsx"],
+        files: [
+          "apps/pult/src/components/Icons.tsx",
+          "apps/pult/src/components/JetBrainsIcons.tsx",
+        ],
         rules: { "shadcn/no-raw-colors": "off" },
       },
       {
