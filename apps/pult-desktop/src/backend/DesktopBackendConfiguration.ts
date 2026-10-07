@@ -14,7 +14,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
-import serverPackageJson from "../../../server/package.json" with { type: "json" };
+import { SERVER_NODE_ENGINE_RANGE } from "../serverNodeEngine.ts";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -383,7 +383,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
 
   const nodePtyOptions = {
     allowBuild: input.allowBuild,
-    nodeEngineRange: serverPackageJson.engines.node,
+    nodeEngineRange: SERVER_NODE_ENGINE_RANGE,
   };
   const failedNodePty = (result: FailedNodePtyResult) =>
     ({
