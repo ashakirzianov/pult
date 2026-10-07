@@ -20,9 +20,12 @@ import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceTreeWatcher from "./WorkspaceTreeWatcher.ts";
 
-// The real fs.watch, which a test can make drop `ignore` as Node before 24.14
-// does.
-const fsWatch = vi.hoisted(() => ({ dropsIgnore: false }));
+// The real fs.watch, recording each watcher it opens with a promise of its
+// closing, which a test can make drop `ignore` as Node before 24.14 does.
+const fsWatch = vi.hoisted(() => ({
+  dropsIgnore: false,
+  opened: [] as Array<{ readonly path: string; readonly closed: Promise<void> }>,
+}));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -32,7 +35,10 @@ vi.mock("node:fs", async (importOriginal) => {
     listener?: NodeFS.WatchListener<string>,
   ) => {
     const { ignore: _ignore, ...withoutIgnore } = options;
-    return actual.watch(path, fsWatch.dropsIgnore ? withoutIgnore : options, listener);
+    const watcher = actual.watch(path, fsWatch.dropsIgnore ? withoutIgnore : options, listener);
+    const closed = new Promise<void>((resolve) => watcher.once("close", () => resolve()));
+    fsWatch.opened.push({ path, closed });
+    return watcher;
   };
   return { ...actual, watch };
 });
@@ -119,6 +125,37 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceTreeWatcher", (it) 
   });
 
   describe("watch", () => {
+    it.effect("reports changes beside node_modules and none inside it", () =>
+      Effect.gen(function* () {
+        const root = yield* makeRoot();
+        yield* writeFile(root, "node_modules/pkg/index.js");
+        const { batches } = yield* startWatch(root);
+
+        yield* writeFile(root, "node_modules/pkg/index.js");
+        yield* writeFile(root, "node_modules/pkg/added.js");
+        yield* writeFile(root, "src.txt");
+        const changes = yield* takeUntil(batches, "src.txt");
+        expect(changes.filter((change) => change.path.includes("node_modules"))).toEqual([]);
+      }),
+    );
+
+    it.effect("shares one OS watcher and closes it when its last subscriber leaves", () =>
+      Effect.gen(function* () {
+        const root = yield* makeRoot();
+        const first = yield* startWatch(root);
+        const second = yield* startWatch(root);
+        const opened = fsWatch.opened.filter((watcher) => watcher.path === root);
+        expect(opened).toHaveLength(1);
+
+        yield* Fiber.interrupt(first.fiber);
+        yield* writeFile(root, "after.txt");
+        yield* takeUntil(second.batches, "after.txt");
+
+        yield* Fiber.interrupt(second.fiber);
+        yield* Effect.promise(() => opened[0]!.closed);
+      }),
+    );
+
     it.effect("drops the root's own changes and fails once the root is gone", () =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
