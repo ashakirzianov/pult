@@ -515,19 +515,24 @@ export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
 export const ProjectStatEntryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  // Accepts the same paths as readFile.
-  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  // Accepts the same paths as readFile, and `""` or `.` for the root itself.
+  relativePath: TrimmedString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
 });
 export type ProjectStatEntryInput = typeof ProjectStatEntryInput.Type;
 
-/** What a path resolves to. `other` covers FIFOs, sockets and devices. */
+/**
+ * What a path resolves to. `other` covers FIFOs, sockets and devices, and a
+ * symlink the server does not follow.
+ */
 export const ProjectStatEntryKind = Schema.Literals(["file", "directory", "other"]);
 export type ProjectStatEntryKind = typeof ProjectStatEntryKind.Type;
 
 export const ProjectStatEntryResult = Schema.Struct({
-  relativePath: TrimmedNonEmptyString,
+  // `""` for the root.
+  relativePath: TrimmedString,
   // Kind, size and times describe what a symlink points at; `symlink` says
-  // the path itself is one.
+  // the path itself is one. A symlink that dangles or leaves the root is
+  // described as itself, with kind `other`.
   kind: ProjectStatEntryKind,
   symlink: Schema.Boolean,
   size: NonNegativeInt,
@@ -608,7 +613,7 @@ export class ProjectStatEntryError extends Schema.TaggedError<ProjectStatEntryEr
   "ProjectStatEntryError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
-    relativePath: Schema.optional(TrimmedNonEmptyString),
+    relativePath: Schema.optional(TrimmedString),
     failure: Schema.optional(ProjectFileFailure),
     resolvedPath: Schema.optional(TrimmedNonEmptyString),
     resolvedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),

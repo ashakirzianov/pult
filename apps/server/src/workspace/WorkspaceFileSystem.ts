@@ -200,8 +200,10 @@ export class WorkspaceFileSystem extends Context.Service<
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
     /**
-     * Describe what a path resolves to, accepting the same paths as `readFile`.
-     * A missing path fails with `WorkspacePathNotFoundError`.
+     * Describe what a path resolves to, accepting the same paths as `readFile`
+     * and `""` or `.` for the root. A symlink that dangles or leaves the root
+     * is described as itself. A missing path fails with
+     * `WorkspacePathNotFoundError`.
      */
     readonly statEntry: (
       input: ProjectStatEntryInput,
@@ -501,28 +503,30 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const statEntry: WorkspaceFileSystem["Service"]["statEntry"] = Effect.fn(
-    "WorkspaceFileSystem.statEntry",
-  )(function* (input) {
-    const target = yield* resolveReadTarget(input).pipe(
-      Effect.catchIf(
-        (error): error is WorkspaceFileSystemOperationError =>
-          error._tag === "WorkspaceFileSystemOperationError" &&
-          error.operation === "realpath-target" &&
-          (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
-        (error) =>
-          Effect.fail(
-            new WorkspacePathNotFoundError({
-              workspaceRoot: error.workspaceRoot,
-              relativePath: error.relativePath,
-              resolvedPath: error.resolvedPath,
-              cause: error.cause,
-            }),
-          ),
-      ),
-    );
-    // lstat answers whether the path is a link; stat of the real path
-    // describes what it points at.
+  const describeEntry = (
+    relativePath: string,
+    linkStat: NodeFS.Stats,
+    targetStat: NodeFS.Stats,
+  ): ProjectStatEntryResult => ({
+    relativePath,
+    kind: targetStat.isFile() ? "file" : targetStat.isDirectory() ? "directory" : "other",
+    symlink: linkStat.isSymbolicLink(),
+    size: targetStat.size,
+    mtimeMs: targetStat.mtimeMs,
+    birthtimeMs: targetStat.birthtimeMs,
+    version: fileVersion(targetStat),
+  });
+
+  // lstat answers whether the path is a link; stat of the real path describes
+  // what it points at.
+  const describeFollowed = Effect.fn("WorkspaceFileSystem.describeFollowed")(function* (
+    input: ProjectStatEntryInput,
+    target: {
+      readonly relativePath: string;
+      readonly absolutePath: string;
+      readonly realTargetPath: string;
+    },
+  ) {
     const statAt = (operationPath: string, stat: (path: string) => Promise<NodeFS.Stats>) =>
       Effect.tryPromise({
         try: () => stat(operationPath),
@@ -538,15 +542,81 @@ export const make = Effect.gen(function* () {
       });
     const linkStat = yield* statAt(target.absolutePath, NodeFSP.lstat);
     const targetStat = yield* statAt(target.realTargetPath, NodeFSP.stat);
-    return {
-      relativePath: target.relativePath,
-      kind: targetStat.isFile() ? "file" : targetStat.isDirectory() ? "directory" : "other",
-      symlink: linkStat.isSymbolicLink(),
-      size: targetStat.size,
-      mtimeMs: targetStat.mtimeMs,
-      birthtimeMs: targetStat.birthtimeMs,
-      version: fileVersion(targetStat),
-    } as const;
+    return describeEntry(target.relativePath, linkStat, targetStat);
+  });
+
+  /**
+   * Describes a symlink the server cannot or will not follow, dangling or
+   * pointing outside the root, as itself, so a listing that shows it can stat
+   * it. Anything else fails with `failure`, or as not found when nothing is
+   * there.
+   */
+  const describeLinkItself = Effect.fn("WorkspaceFileSystem.describeLinkItself")(function* (
+    input: ProjectStatEntryInput,
+    failure: WorkspaceFilePathEscapeError | WorkspaceFileSystemOperationError,
+  ) {
+    const requestedPath = input.relativePath.trim();
+    // A relative link's parent must still lie inside the root.
+    const link = path.isAbsolute(requestedPath)
+      ? { relativePath: requestedPath, absolutePath: requestedPath }
+      : yield* resolveMutationTarget(input);
+    const linkStat = yield* Effect.promise(() =>
+      NodeFSP.lstat(link.absolutePath).catch(() => null),
+    );
+    if (linkStat?.isSymbolicLink()) {
+      return describeEntry(link.relativePath, linkStat, linkStat);
+    }
+    if (linkStat === null && failure._tag === "WorkspaceFileSystemOperationError") {
+      return yield* new WorkspacePathNotFoundError({
+        workspaceRoot: failure.workspaceRoot,
+        relativePath: failure.relativePath,
+        resolvedPath: failure.resolvedPath,
+        cause: failure.cause,
+      });
+    }
+    return yield* failure;
+  });
+
+  const statEntry: WorkspaceFileSystem["Service"]["statEntry"] = Effect.fn(
+    "WorkspaceFileSystem.statEntry",
+  )(function* (input) {
+    const requestedPath = input.relativePath.trim();
+    // The root itself, which the path guard keeps from every other method.
+    if (requestedPath === "" || requestedPath === ".") {
+      const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+      const realRoot = yield* realpathWorkspaceRoot(input, root).pipe(
+        Effect.catchTags({
+          WorkspaceFileSystemOperationError: (error) =>
+            (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+              ? Effect.fail(
+                  new WorkspacePathNotFoundError({
+                    workspaceRoot: input.cwd,
+                    relativePath: input.relativePath,
+                    resolvedPath: root,
+                    cause: error.cause,
+                  }),
+                )
+              : Effect.fail(error),
+        }),
+      );
+      return yield* describeFollowed(input, {
+        relativePath: "",
+        absolutePath: root,
+        realTargetPath: realRoot,
+      });
+    }
+    return yield* resolveReadTarget(input).pipe(
+      Effect.flatMap((target) => describeFollowed(input, target)),
+      Effect.catchTags({
+        WorkspaceFilePathEscapeError: (error) => describeLinkItself(input, error),
+        WorkspaceFileSystemOperationError: (error) => {
+          const code = (error.cause as NodeJS.ErrnoException | undefined)?.code;
+          return error.operation === "realpath-target" && (code === "ENOENT" || code === "ELOOP")
+            ? describeLinkItself(input, error)
+            : Effect.fail(error);
+        },
+      }),
+    );
   });
 
   const writeFile: WorkspaceFileSystem["Service"]["writeFile"] = Effect.fn(

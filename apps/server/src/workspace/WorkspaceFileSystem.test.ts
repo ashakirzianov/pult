@@ -321,7 +321,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     );
 
     it.effect.skipIf(!symlinksSupported)(
-      "rejects symlinks that resolve outside the workspace root",
+      "describes a symlink it will not follow as itself, but nothing through it",
       () =>
         Effect.gen(function* () {
           const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -329,18 +329,43 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           const path = yield* Path.Path;
           const cwd = yield* makeTempDir;
           const outsideDir = yield* makeTempDir;
-          yield* writeTextFile(outsideDir, "secret.txt", "outside\n");
-          yield* fileSystem.symlink(
-            path.join(outsideDir, "secret.txt"),
-            path.join(cwd, "linked-secret.txt"),
-          );
+          yield* writeTextFile(outsideDir, "tree/secret.txt", "outside\n");
+          yield* fileSystem.symlink(outsideDir, path.join(cwd, "ext"));
+          yield* fileSystem.symlink(path.join(outsideDir, "gone"), path.join(cwd, "dangling"));
 
-          const error = yield* workspaceFileSystem
-            .statEntry({ cwd, relativePath: "linked-secret.txt" })
+          const outward = yield* workspaceFileSystem.statEntry({ cwd, relativePath: "ext" });
+          const dangling = yield* workspaceFileSystem.statEntry({ cwd, relativePath: "dangling" });
+          const through = yield* workspaceFileSystem
+            .statEntry({ cwd, relativePath: "ext/tree" })
+            .pipe(Effect.flip);
+          const underDangling = yield* workspaceFileSystem
+            .statEntry({ cwd, relativePath: "dangling/child" })
             .pipe(Effect.flip);
 
-          expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+          for (const [entry, relativePath] of [
+            [outward, "ext"],
+            [dangling, "dangling"],
+          ] as const) {
+            expect(entry).toMatchObject({ relativePath, kind: "other", symlink: true });
+          }
+          expect(through).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+          expect(underDangling).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFoundError);
         }),
+    );
+
+    it.effect("describes the workspace root as an empty path or a dot", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+
+        for (const relativePath of ["", "."]) {
+          expect(yield* workspaceFileSystem.statEntry({ cwd, relativePath })).toMatchObject({
+            relativePath: "",
+            kind: "directory",
+            symlink: false,
+          });
+        }
+      }),
     );
   });
 
