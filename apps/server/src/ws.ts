@@ -1739,7 +1739,9 @@ const layerWsRpc = (
             shellResumeCompletionMarker: true,
             threadResumeCompletionMarker: true,
             threadSnapshotPagination: true,
-            projectWriteFileVersionCheck: true,
+            projectFileVersions: true,
+            projectEntryMutations: true,
+            projectWatchEntries: true,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
               onSome: (root) => ({ scratchWorkspaceRoot: root }),

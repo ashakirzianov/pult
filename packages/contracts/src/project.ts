@@ -636,7 +636,7 @@ export const ProjectWriteFileInput = Schema.Struct({
   // Write only if the file's mtime still equals this, else fail with
   // `version_conflict`; a file deleted since counts as changed. Older servers
   // ignore it and overwrite, so send it only where the server config sets
-  // `projectWriteFileVersionCheck`.
+  // `projectFileVersions`.
   expectedMtimeMs: Schema.optional(Schema.Number),
 });
 export type ProjectWriteFileInput = typeof ProjectWriteFileInput.Type;

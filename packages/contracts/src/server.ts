@@ -656,11 +656,16 @@ export const ServerConfig = Schema.Struct({
   /** Whether thread reads accept the reasoningMessages opt-in. */
   reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /**
-   * Whether projects.writeFile honours `expectedMtimeMs`. Older servers
-   * ignore the field and overwrite, so clients must not rely on it unless
-   * this is set.
+   * Whether projects.statEntry exists and projects.readFile and writeFile
+   * carry file versions, writeFile refusing to overwrite a changed file.
+   * Older servers ignore the expected version and overwrite, so clients must
+   * not send it unless this is set.
    */
-  projectWriteFileVersionCheck: Schema.optionalKey(Schema.Boolean),
+  projectFileVersions: Schema.optionalKey(Schema.Boolean),
+  /** Whether projects.createDirectory, deleteEntry and renameEntry exist. */
+  projectEntryMutations: Schema.optionalKey(Schema.Boolean),
+  /** Whether projects.watchEntries exists. */
+  projectWatchEntries: Schema.optionalKey(Schema.Boolean),
   /**
    * Folder behind this environment's Scratch project, for threads that need
    * no repository. Present only on servers that answer projects.ensureScratch
