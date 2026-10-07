@@ -146,6 +146,8 @@ export class WorkspaceEntries extends Context.Service<
     readonly watch: (
       input: ProjectWatchEntriesInput,
     ) => Stream.Stream<ProjectWatchEntriesEvent, WorkspaceEntriesWatchFailure>;
+    /** Whether `watch` walks `.git` and `node_modules` too; see WorkspaceTreeWatcher. */
+    readonly watchWalksIgnoredDirectories: boolean;
   }
 >()("t3/workspace/WorkspaceEntries") {}
 
@@ -546,7 +548,15 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  return WorkspaceEntries.of({ browse, list, refresh, search, searchContents, watch });
+  return WorkspaceEntries.of({
+    browse,
+    list,
+    refresh,
+    search,
+    searchContents,
+    watch,
+    watchWalksIgnoredDirectories: treeWatcher.walksIgnoredDirectories,
+  });
 });
 
 export const layer = Layer.effect(WorkspaceEntries, make).pipe(

@@ -754,6 +754,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       const started = yield* Deferred.make<void>();
       const counts = { started: 0, stopped: 0 };
       const watcher = WorkspaceTreeWatcher.WorkspaceTreeWatcher.of({
+        walksIgnoredDirectories: false,
         watch: () =>
           Stream.unwrap(
             Effect.acquireRelease(

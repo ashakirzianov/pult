@@ -1,6 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import type * as NodeFS from "node:fs";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, describe, expect } from "@effect/vitest";
 import type { ProjectEntryChange, ProjectWatchEntriesEvent } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -9,10 +13,29 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
+import { vi } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
+import * as WorkspaceTreeWatcher from "./WorkspaceTreeWatcher.ts";
+
+// The real fs.watch, which a test can make drop `ignore` as Node before 24.14
+// does.
+const fsWatch = vi.hoisted(() => ({ dropsIgnore: false }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const watch = (
+    path: string,
+    options: NodeFS.WatchOptionsWithStringEncoding & { readonly ignore?: unknown },
+    listener?: NodeFS.WatchListener<string>,
+  ) => {
+    const { ignore: _ignore, ...withoutIgnore } = options;
+    return actual.watch(path, fsWatch.dropsIgnore ? withoutIgnore : options, listener);
+  };
+  return { ...actual, watch };
+});
 
 // WorkspaceEntries over the real OS watcher.
 const layerTest = WorkspaceEntries.layer.pipe(
@@ -75,6 +98,26 @@ const startWatch = Effect.fn(function* (root: string) {
 });
 
 it.layer(layerTest, { excludeTestServices: true })("WorkspaceTreeWatcher", (it) => {
+  describe("walksIgnoredDirectories", () => {
+    it.effect("is set on Linux only, when Node drops `ignore`", () =>
+      Effect.gen(function* () {
+        const walksOn = (platform: NodeJS.Platform) =>
+          Effect.map(
+            WorkspaceTreeWatcher.WorkspaceTreeWatcher,
+            (treeWatcher) => treeWatcher.walksIgnoredDirectories,
+          ).pipe(
+            Effect.provide(Layer.fresh(WorkspaceTreeWatcher.layer)),
+            Effect.provideService(HostProcessPlatform, platform),
+          );
+        fsWatch.dropsIgnore = true;
+        const walks = yield* Effect.all([walksOn("linux"), walksOn("darwin")]).pipe(
+          Effect.ensuring(Effect.sync(() => (fsWatch.dropsIgnore = false))),
+        );
+        expect(walks).toEqual([true, false]);
+      }),
+    );
+  });
+
   describe("watch", () => {
     it.effect("drops the root's own changes and fails once the root is gone", () =>
       Effect.gen(function* () {

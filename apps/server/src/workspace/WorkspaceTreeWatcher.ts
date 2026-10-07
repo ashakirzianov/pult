@@ -10,8 +10,10 @@
  * @module WorkspaceTreeWatcher
  */
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -24,6 +26,22 @@ const IGNORED_DIRECTORY_NAMES = new Set([".git", "node_modules"]);
 
 const isIgnoredPath = (relativePath: string) =>
   relativePath.split(/[\\/]/).some((segment) => IGNORED_DIRECTORY_NAMES.has(segment));
+
+/**
+ * Whether this Node honours `fs.watch`'s `ignore` option, which 24.14 and
+ * 25.5 added. Older versions accept any value and drop it; newer ones reject
+ * an invalid one.
+ */
+const honoursWatchIgnore = () => {
+  try {
+    // A variable, since @types/node does not declare `ignore` yet.
+    const options = { persistent: false, ignore: 0 };
+    NodeFS.watch(NodeOS.tmpdir(), options).close();
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ERR_INVALID_ARG_TYPE";
+  }
+};
 
 export class WorkspaceTreeWatchError extends Schema.TaggedError<WorkspaceTreeWatchError>()(
   "WorkspaceTreeWatchError",
@@ -54,6 +72,14 @@ export class WorkspaceTreeWatcher extends Context.Service<
      * closes or the root itself goes away.
      */
     readonly watch: (root: string) => Stream.Stream<WorkspaceTreeChange, WorkspaceTreeWatchError>;
+    /**
+     * Whether the OS watcher walks `.git` and `node_modules` as well, and only
+     * their events are dropped: on Linux, where Node walks the tree itself,
+     * when this Node lacks `ignore`. The server then leaves
+     * `projectWatchEntries` out of its config, so clients do not start a
+     * synchronous walk that takes an inotify watch per entry of a large tree.
+     */
+    readonly walksIgnoredDirectories: boolean;
   }
 >()("t3/workspace/WorkspaceTreeWatcher") {}
 
@@ -67,10 +93,11 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
           // On Linux, Node walks the tree here, synchronously, with one inotify
           // watch per entry; `ignore` keeps it out of skipped directories.
           // Elsewhere the OS watches the tree and `ignore` only filters events.
-          // Node before 24.14 and 25.5 drops the option and walks everything,
-          // so events are filtered here as well. The walk stops at the first
-          // error, such as an unreadable directory or the inotify watch limit,
-          // and Node swallows it, leaving the rest of the tree unwatched.
+          // Node before 24.14 and 25.5 drops the option and walks everything
+          // (`walksIgnoredDirectories`), so events are filtered here as well.
+          // The walk stops at the first error, such as an unreadable directory
+          // or the inotify watch limit, and Node swallows it, leaving the rest
+          // of the tree unwatched.
           // A variable, since @types/node does not declare `ignore` yet.
           const options = { recursive: true, ignore: isIgnoredPath };
           const watcher = NodeFS.watch(root, options, (eventType, filename) => {
@@ -113,4 +140,10 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
     ),
   );
 
-export const layer = Layer.succeed(WorkspaceTreeWatcher, WorkspaceTreeWatcher.of({ watch }));
+const make = Effect.gen(function* () {
+  const platform = yield* HostProcessPlatform;
+  const walksIgnoredDirectories = platform === "linux" && !(yield* Effect.sync(honoursWatchIgnore));
+  return WorkspaceTreeWatcher.of({ watch, walksIgnoredDirectories });
+});
+
+export const layer = Layer.effect(WorkspaceTreeWatcher, make);

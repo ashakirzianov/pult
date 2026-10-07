@@ -664,7 +664,11 @@ export const ServerConfig = Schema.Struct({
   projectFileVersions: Schema.optionalKey(Schema.Boolean),
   /** Whether projects.createDirectory, deleteEntry and renameEntry exist. */
   projectEntryMutations: Schema.optionalKey(Schema.Boolean),
-  /** Whether projects.watchEntries exists. */
+  /**
+   * Whether projects.watchEntries exists and stays out of `.git` and
+   * `node_modules`. A Linux server on a Node without `fs.watch`'s `ignore`
+   * leaves it unset, since watching would walk them too.
+   */
   projectWatchEntries: Schema.optionalKey(Schema.Boolean),
   /**
    * Whether assets.createUrl serves any file under the root for a

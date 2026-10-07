@@ -90,7 +90,10 @@ it.effect.each(
   const layer = RunFinalization.layerObserver.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.mock(WorkspaceEntries.WorkspaceEntries)({ refresh: () => Effect.void }),
+        Layer.mock(WorkspaceEntries.WorkspaceEntries)({
+          refresh: () => Effect.void,
+          watchWalksIgnoredDirectories: false,
+        }),
         Layer.mock(PullRequestService.PullRequestService)({
           refreshAfterTurn: () => Effect.void,
         }),

@@ -1741,7 +1741,7 @@ const layerWsRpc = (
             threadSnapshotPagination: true,
             projectFileVersions: true,
             projectEntryMutations: true,
-            projectWatchEntries: true,
+            projectWatchEntries: !workspaceEntries.watchWalksIgnoredDirectories,
             workspaceFileAssets: true,
             ...Option.match(scratchWorkspaceRoot, {
               onNone: () => ({}),
