@@ -4,9 +4,10 @@
 // running T3 Code Extensible server's live data (DECISIONS.md,
 // `default-home`). This test fails if Pult's own source under apps/, packages/
 // or scripts/ joins a home directory to a literal `.t3` again, outside the
-// reasoned allow-list below. apps/server and packages/ssh are upstream's bytes
-// and legitimately default to ~/.t3, so they are not scanned (DECISIONS.md,
-// `server-side-home`). A `.t3` that is not a home default (a worktree-local
+// reasoned allow-list below. apps/server is upstream's bytes and legitimately
+// defaults to ~/.t3, so it is not scanned (DECISIONS.md, `server-side-home`),
+// nor are the protocol packages under vendor/, the fork's bytes, which lie
+// outside the scanned roots. A `.t3` that is not a home default (a worktree-local
 // `.t3`, a fixture path in a test) does not name a home directory next to it,
 // so it never matches.
 import * as NodeFS from "node:fs";
@@ -15,7 +16,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set(["apps/server", "packages/ssh"]);
+const excludedPaths = new Set(["apps/server"]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",

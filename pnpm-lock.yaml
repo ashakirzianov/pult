@@ -170,19 +170,19 @@ importers:
         version: link:../../packages/pult
       '@t3tools/client-runtime':
         specifier: workspace:*
-        version: link:../../packages/client-runtime
+        version: link:../../vendor/t3code/packages/client-runtime
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       '@t3tools/ssh':
         specifier: workspace:*
-        version: link:../../packages/ssh
+        version: link:../../vendor/t3code/packages/ssh
       '@t3tools/tailscale':
         specifier: workspace:*
-        version: link:../../packages/tailscale
+        version: link:../../vendor/t3code/packages/tailscale
       dbus-next:
         specifier: 0.10.2
         version: 0.10.2(patch_hash=cfff57561b0ee59b5addb3b2e6c6f20906e967507a530ab67e8db8108e520ba4)
@@ -234,7 +234,7 @@ importers:
     dependencies:
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       astro:
         specifier: ^7.3.5
         version: 7.3.5(@types/node@24.12.4)(aws4fetch@1.0.20)(idb-keyval@6.2.1)(ioredis@5.11.0)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)
@@ -310,13 +310,13 @@ importers:
         version: 4.2.0
       '@t3tools/client-runtime':
         specifier: workspace:*
-        version: link:../../packages/client-runtime
+        version: link:../../vendor/t3code/packages/client-runtime
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/mobile-markdown-text':
         specifier: file:./modules/t3-markdown-text
-        version: file:apps/mobile/modules/t3-markdown-text(afae94297d61d3a65abc2214f9b05422)
+        version: file:apps/mobile/modules/t3-markdown-text(42e58edbceb7b9825870661d5adb0507)
       '@t3tools/mobile-review-diff-native':
         specifier: file:./modules/t3-review-diff
         version: file:apps/mobile/modules/t3-review-diff
@@ -325,7 +325,7 @@ importers:
         version: file:apps/mobile/modules/t3-terminal
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       '@tabler/icons-react-native':
         specifier: ^3.44.0
         version: 3.44.0(react-native-svg@15.15.5(react-native@0.88.0-rc.3(@babel/core@7.29.7)(@react-native/metro-config@0.88.0-rc.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6))(react@19.3.0))(react@19.3.0)
@@ -572,13 +572,13 @@ importers:
         version: link:../../packages/pult
       '@t3tools/client-runtime':
         specifier: workspace:*
-        version: link:../../packages/client-runtime
+        version: link:../../vendor/t3code/packages/client-runtime
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       '@tanstack/react-pacer':
         specifier: ^0.19.4
         version: 0.19.4(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -808,16 +808,16 @@ importers:
         version: 1.29.0(zod@4.6.5)
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       '@t3tools/ssh':
         specifier: workspace:*
-        version: link:../../packages/ssh
+        version: link:../../vendor/t3code/packages/ssh
       '@t3tools/tailscale':
         specifier: workspace:*
-        version: link:../../packages/tailscale
+        version: link:../../vendor/t3code/packages/tailscale
       '@t3tools/web':
         specifier: workspace:*
         version: link:../web
@@ -886,13 +886,13 @@ importers:
         version: 1.0.0-beta.4(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@t3tools/client-runtime':
         specifier: workspace:*
-        version: link:../../packages/client-runtime
+        version: link:../../vendor/t3code/packages/client-runtime
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       '@tanstack/react-pacer':
         specifier: ^0.19.4
         version: 0.19.4(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -1079,13 +1079,13 @@ importers:
         version: 1.8.0
       '@t3tools/client-runtime':
         specifier: workspace:*
-        version: link:../../packages/client-runtime
+        version: link:../../vendor/t3code/packages/client-runtime
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../vendor/t3code/packages/shared
       alchemy:
         specifier: 2.0.0-beta.80
         version: 2.0.0-beta.80(patch_hash=bea1b6c0c0b23157fd5f439a1d7feff430f28ac1621ba135d8a13eeec60ccacd)(d02b4e60a6a3c6b542dfa700209cf5ce)
@@ -1129,62 +1129,6 @@ importers:
       '@oxlint/plugins':
         specifier: ^1.63.0
         version: 1.68.0
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
-    devDependencies:
-      '@effect/vitest':
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-      vite-plus:
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
-  packages/client-runtime:
-    dependencies:
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
-      mdast-util-directive:
-        specifier: ^3.1.0
-        version: 3.1.0
-      micromark-extension-directive:
-        specifier: ^4.0.0
-        version: 4.0.0
-      micromark-util-character:
-        specifier: ^2.1.1
-        version: 2.1.1
-      remark-parse:
-        specifier: ^11.0.0
-        version: 11.0.0
-      three:
-        specifier: 0.180.0
-        version: 0.180.0
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
-    devDependencies:
-      '@effect/vitest':
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-      '@types/three':
-        specifier: 0.180.0
-        version: 0.180.0
-      micromark-util-types:
-        specifier: ^2.0.2
-        version: 2.0.2
-      vite-plus:
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
-  packages/contracts:
-    dependencies:
       effect:
         specifier: 4.0.1
         version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
@@ -1244,10 +1188,10 @@ importers:
     dependencies:
       '@t3tools/contracts':
         specifier: workspace:*
-        version: link:../contracts
+        version: link:../../vendor/t3code/packages/contracts
       '@t3tools/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../vendor/t3code/packages/shared
       effect:
         specifier: 4.0.1
         version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
@@ -1265,7 +1209,109 @@ importers:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
 
-  packages/shared:
+  scripts:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.1
+        version: 4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(redis@6.2.1)(utf-8-validate@6.0.6)
+      '@electron/asar':
+        specifier: ^4.3.0
+        version: 4.3.0
+      '@electron/osx-sign':
+        specifier: 2.7.0
+        version: 2.7.0
+      '@pult/shared':
+        specifier: workspace:*
+        version: link:../packages/pult
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../vendor/t3code/packages/shared
+      '@t3tools/tailscale':
+        specifier: workspace:*
+        version: link:../vendor/t3code/packages/tailscale
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+      sharp:
+        specifier: 0.35.4
+        version: 0.35.4(@types/node@24.12.4)
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      typescript-legacy:
+        specifier: npm:typescript@~6.0.3
+        version: typescript@6.0.3
+      vite-plus:
+        specifier: 1.0.0
+        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  vendor/t3code/packages/client-runtime:
+    dependencies:
+      '@t3tools/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../shared
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
+      mdast-util-directive:
+        specifier: ^3.1.0
+        version: 3.1.0
+      micromark-extension-directive:
+        specifier: ^4.0.0
+        version: 4.0.0
+      micromark-util-character:
+        specifier: ^2.1.1
+        version: 2.1.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      three:
+        specifier: 0.180.0
+        version: 0.180.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      '@types/three':
+        specifier: 0.180.0
+        version: 0.180.0
+      micromark-util-types:
+        specifier: ^2.0.2
+        version: 2.0.2
+      vite-plus:
+        specifier: 1.0.0
+        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  vendor/t3code/packages/contracts:
+    dependencies:
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.1
+        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      vite-plus:
+        specifier: 1.0.0
+        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  vendor/t3code/packages/shared:
     dependencies:
       '@noble/curves':
         specifier: 'catalog:'
@@ -1299,7 +1345,7 @@ importers:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
 
-  packages/ssh:
+  vendor/t3code/packages/ssh:
     dependencies:
       '@t3tools/contracts':
         specifier: workspace:*
@@ -1324,7 +1370,7 @@ importers:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
 
-  packages/tailscale:
+  vendor/t3code/packages/tailscale:
     dependencies:
       '@t3tools/shared':
         specifier: workspace:*
@@ -1339,52 +1385,6 @@ importers:
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4
-      vite-plus:
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
-  scripts:
-    dependencies:
-      '@effect/platform-node':
-        specifier: 4.0.1
-        version: 4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(redis@6.2.1)(utf-8-validate@6.0.6)
-      '@electron/asar':
-        specifier: ^4.3.0
-        version: 4.3.0
-      '@electron/osx-sign':
-        specifier: 2.7.0
-        version: 2.7.0
-      '@pult/shared':
-        specifier: workspace:*
-        version: link:../packages/pult
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../packages/shared
-      '@t3tools/tailscale':
-        specifier: workspace:*
-        version: link:../packages/tailscale
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f)
-      pngjs:
-        specifier: 7.0.0
-        version: 7.0.0
-      sharp:
-        specifier: 0.35.4
-        version: 0.35.4(@types/node@24.12.4)
-    devDependencies:
-      '@effect/vitest':
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.1(patch_hash=a33cba07c41f32374c2aaa86ea4a84d3ab9a872a78c94b65e929b19f8361856f))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-      '@types/pngjs':
-        specifier: 6.0.5
-        version: 6.0.5
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      typescript-legacy:
-        specifier: npm:typescript@~6.0.3
-        version: typescript@6.0.3
       vite-plus:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
@@ -15679,10 +15679,10 @@ snapshots:
     dependencies:
       defer-to-connect: 2.0.1
 
-  '@t3tools/mobile-markdown-text@file:apps/mobile/modules/t3-markdown-text(afae94297d61d3a65abc2214f9b05422)':
+  '@t3tools/mobile-markdown-text@file:apps/mobile/modules/t3-markdown-text(42e58edbceb7b9825870661d5adb0507)':
     dependencies:
-      '@t3tools/client-runtime': link:packages/client-runtime
-      '@t3tools/shared': link:packages/shared
+      '@t3tools/client-runtime': link:vendor/t3code/packages/client-runtime
+      '@t3tools/shared': link:vendor/t3code/packages/shared
       expo: 58.0.2(56fc8ddb8129740412739f0f0a6ee025)
       expo-asset: 58.0.10(expo@58.0.2)(react-native@0.88.0-rc.3(@babel/core@7.29.7)(@react-native/metro-config@0.88.0-rc.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6))(react@19.3.0)(typescript@7.0.2)
       expo-clipboard: 58.0.3(expo@58.0.2)(react-native@0.88.0-rc.3(@babel/core@7.29.7)(@react-native/metro-config@0.88.0-rc.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@6.0.6))(react@19.3.0)

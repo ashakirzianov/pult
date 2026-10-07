@@ -76,7 +76,7 @@ export default defineConfig({
     testTimeout: 60_000,
     setupFiles: [
       NodeURL.fileURLToPath(
-        new URL("./packages/shared/src/testing/longTempDir.ts", import.meta.url),
+        new URL("./vendor/t3code/packages/shared/src/testing/longTempDir.ts", import.meta.url),
       ),
     ],
   },
@@ -87,6 +87,8 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       ".repos/**",
+      // The fork's packages, kept byte for byte (scripts/pult/vendor.ts).
+      "vendor/t3code/packages/**",
       // Macroscope's glob-per-line ignore grammar, not Markdown: formatting
       // it rewrites `*` as `_` and joins lines.
       ".macroscope/ignore.md",
@@ -119,6 +121,7 @@ export default defineConfig({
     ignorePatterns: [
       ".repos",
       ".repos/**",
+      "vendor/t3code/packages/**",
       "dist",
       "dist-electron",
       "node_modules",

@@ -7,8 +7,9 @@
 // the reasoned allow-list below. Mobile is out of scope and not scanned, and
 // apps/web and apps/server are upstream's bytes, kept as they are: Pult's
 // client is apps/pult, and its server side lives outside this repo
-// (DECISIONS.md, `server-side-home`). The protocol packages are upstream's
-// bytes too; Pult's own shared code is packages/pult.
+// (DECISIONS.md, `server-side-home`). The protocol packages under vendor/ are
+// the fork's bytes and lie outside the scanned roots; Pult's own shared code
+// is packages/pult.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -18,17 +19,7 @@ import { APP_DISPLAY_NAME } from "@pult/shared/identity";
 
 const repoRoot = NodePath.join(import.meta.dirname, "..");
 const scanRoots = ["apps", "packages", "scripts"];
-const excludedPaths = new Set([
-  "apps/mobile",
-  "apps/marketing",
-  "apps/web",
-  "apps/server",
-  "packages/client-runtime",
-  "packages/contracts",
-  "packages/shared",
-  "packages/ssh",
-  "packages/tailscale",
-]);
+const excludedPaths = new Set(["apps/mobile", "apps/marketing", "apps/web", "apps/server"]);
 const excludedDirNames = new Set([
   "node_modules",
   "dist",
