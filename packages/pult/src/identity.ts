@@ -14,7 +14,7 @@ export const APP_BASE_NAME = "Pult";
 
 /** The packaged app's name; `apps/pult-desktop/package.json` `productName` matches it. */
 export const APP_DISPLAY_NAME = APP_BASE_NAME;
-export const APP_DEV_DISPLAY_NAME = `${APP_BASE_NAME} (Dev)`;
+const APP_DEV_DISPLAY_NAME = `${APP_BASE_NAME} (Dev)`;
 
 export const APP_BUNDLE_ID = "com.pult.pult";
 export const APP_DEV_BUNDLE_ID = `${APP_BUNDLE_ID}.dev`;
@@ -25,14 +25,14 @@ export const APP_DEV_SCHEME = "pult-dev";
 export const APP_SCHEMES = [APP_SCHEME, APP_DEV_SCHEME] as const;
 
 /** Electron's userData directory names under the OS app-data directory. */
-export const APP_USER_DATA_NAME = "pult";
-export const APP_DEV_USER_DATA_NAME = "pult-dev";
+const APP_USER_DATA_NAME = "pult";
+const APP_DEV_USER_DATA_NAME = "pult-dev";
 
 /** Linux window class and executable name. */
 export const APP_LINUX_WM_CLASS = "pult";
-export const APP_DEV_LINUX_WM_CLASS = "pult-dev";
-export const APP_LINUX_DESKTOP_ENTRY_NAME = `${APP_BUNDLE_ID}.desktop`;
-export const APP_DEV_LINUX_DESKTOP_ENTRY_NAME = `${APP_DEV_BUNDLE_ID}.desktop`;
+const APP_DEV_LINUX_WM_CLASS = "pult-dev";
+const APP_LINUX_DESKTOP_ENTRY_NAME = `${APP_BUNDLE_ID}.desktop`;
+const APP_DEV_LINUX_DESKTOP_ENTRY_NAME = `${APP_DEV_BUNDLE_ID}.desktop`;
 
 export const DESKTOP_OBSERVABILITY_SERVICE_NAME = "pult-desktop";
 

@@ -36,6 +36,10 @@
       // runs electron-builder from this workspace, outside its package scripts.
       "ignoreDependencies": ["playwright-core", "electron-builder"],
     },
+    "packages/pult": {
+      // APP_BASE_NAME and APP_DISPLAY_NAME are one value by design (DECISIONS.md, identity-seam).
+      "ignoreIssues": { "src/identity.ts": ["duplicates"] },
+    },
     "apps/pult": {
       // Vitest loads this through the per-file @vitest-environment directive.
       "ignoreDependencies": ["jsdom"],
