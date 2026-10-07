@@ -100,7 +100,9 @@ export function assetResponseHeaders(
   const lowerPath = filePath.toLowerCase();
   const inlineMimeType = options?.mimeType?.split(";", 1)[0]?.trim();
   return {
-    "Cache-Control": "private, max-age=3600",
+    // A download can be how a client reads a workspace file's current bytes,
+    // so a cache must ask again rather than reuse what it has.
+    "Cache-Control": options?.download ? "private, no-cache" : "private, max-age=3600",
     "X-Content-Type-Options": "nosniff",
     ...(options?.download
       ? {

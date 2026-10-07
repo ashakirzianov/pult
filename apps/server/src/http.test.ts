@@ -694,6 +694,12 @@ describe("assetResponseHeaders", () => {
     });
   });
 
+  it("has a cache revalidate downloads, which can change in place", () => {
+    expect(assetResponseHeaders("/workspace/data.bin", { download: true })).toMatchObject({
+      "Cache-Control": "private, no-cache",
+    });
+  });
+
   it("serves the real filename and mime type when the claims carry them", () => {
     expect(
       assetResponseHeaders("/attachments/thread-1-abc-pdf.pdf", {
