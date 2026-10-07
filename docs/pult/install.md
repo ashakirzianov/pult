@@ -34,7 +34,7 @@ Pult runs no server and starts none: it attaches to a T3 Code server that is alr
 2. On first launch, with nothing saved, Pult opens its setup wizard with “Add a computer” expanded: paste the link into “Pairing link”. Later, Settings → Connections → “Add environment” opens a dialog whose “Remote link” fields take a pasted pairing URL the same way.
 3. With a server saved, Pult connects to it on every launch. The same pairing adds a second server, and Connections removes one.
 
-Development runs (`vp run dev`, `dev:desktop`) are the exception: they start the repo's `apps/server` against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's.
+Development runs are the exception: `vp run dev` starts the T3 Code Extensible checkout's server (`PULT_T3CODE_CHECKOUT`, default `~/repos/t3code-extensible`) from source against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's. `dev:desktop` still expects a bundled server and does not open a window until `pult/desktop-dev-mode` lands.
 
 The protocol packages are vendored verbatim under `vendor/t3code/packages/` from the T3 Code Extensible fork at the commit in `vendor/t3code/PIN` (`b98fd8ad27`, upstream `f4f148eb67`), the same commit the server it pairs with is built from; `vp run vendor:sync` bumps them and `vendor:check` fails when the copy drifts.
 

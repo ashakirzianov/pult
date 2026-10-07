@@ -15,7 +15,7 @@ a new browser.
 
 ## Choosing a dev process
 
-Use `vp run dev` for server and web, or `vp run dev:desktop` for the Electron client.
+Use `vp run dev` for server and web. `vp run dev:desktop` starts the Electron client, but it still waits for a bundled server that is not in this repo and never opens its window (`pult/desktop-dev-mode`).
 `dev:server` and `dev:web` start those processes separately. The server is not in this repo:
 `dev` and `dev:server` run `node --watch apps/server/src/bin.ts` in the T3 Code Extensible
 checkout that `PULT_T3CODE_CHECKOUT` names (environment or `.env`, by default

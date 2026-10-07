@@ -92,7 +92,7 @@ resulting disconnect.
 ### Desktop without a local environment
 
 Desktop normally launches its own primary server, but the desktop setting `localEnvironmentEnabled`
-(`apps/desktop/src/settings/DesktopAppSettings.ts`) turns that off. Changing it relaunches the app;
+(`apps/pult-desktop/src/settings/DesktopAppSettings.ts`) turns that off. Changing it relaunches the app;
 no local state is deleted. On the next start the main process skips port selection, server exposure,
 and the primary and WSL backends, and opens the window right away. The renderer sees this through
 `desktopBridge.getLocalEnvironmentEnabled()`: `readPrimaryEnvironmentTarget` returns null, so primary
