@@ -7,6 +7,8 @@ slug: pult
 
 Pult starts as a fork of T3 Code: its own client, plus the smallest server changes that client needs. The server changes are offered upstream one at a time; once upstream has them all, the fork ends and Pult is a third-party client for T3 Code.
 
+Since 2026-10-07 the client direction is a VS Code extension against stock T3 Code servers, with an own shell deferred until a specific need: `docs/pult/rfc-1.md`.
+
 Pult is the sister track of **Bach** (`../bach`), the T3 Code extension the fleet runs on today. Both continue in parallel until they can be tried side by side.
 
 Start with `docs/pult/rfc-0.md` (Anton's, human-written). Repo conventions: `CLAUDE.md`.

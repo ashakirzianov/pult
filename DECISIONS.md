@@ -20,6 +20,9 @@ What the code cannot say about itself: decisions in force, grouped by area.
 ### client-folder
 **Pult's client is `apps/pult` (package `@pult/client`), Pult's own copy of upstream's `apps/web` taken at upstream `f4f148eb67`; the dev modes, `pult:stage` and the desktop artifact build it, and the root config names it directly.** 2026-10-04, reshaped 2026-10-07. Pult's client changes freely; an upstream client change reaches `apps/pult` only when someone carries it over by hand from the fork's history (the preview runtime, `pult/preview-runtime-port`, was the first), and the identity guard scans it. *Rejected:* editing `apps/web` in place; keeping `apps/web` beside it as upstream's bytes (the practice until 2026-10-07, which bought conflict-free merges Pult no longer makes). *See:* `pult/client-deploy` (ruling 2), `pult/apply-new-branding`, `pult/vendored-packages`.
 
+### client-shape
+**Pult's next client is a VS Code extension against stock T3 Code servers, beside the web client `apps/pult`; an own shell on VS Code's workbench, or on its editor layer below it, waits for a specific need the extension cannot meet.** 2026-10-07. The UI ideas are file editing, file citations and diff citations, which VS Code's extension API covers (a virtual filesystem, the diff editor, comments on ranges, decorations) while the server already speaks read, write, list and search; a fork would own the workbench and its monthly upstream, and Tabs IDE's experience shows that cost lands in hosting the workbench, not patching it. The proof is daily use for all development. Anton's ruling. *Rejected:* a fork of VS Code now; Monaco inside the web client; dropping the web client. *See:* `docs/pult/rfc-1.md`, `pult/vscode-extension`.
+
 ## Deploy
 
 ### payload-slot
