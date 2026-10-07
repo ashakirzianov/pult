@@ -69,6 +69,7 @@ import {
   ProjectReadFileError,
   ProjectSearchContentsError,
   ProjectCreateDirectoryError,
+  ProjectDeleteEntryError,
   ProjectSearchEntriesError,
   ProjectStatEntryError,
   ProjectWriteFileError,
@@ -3153,6 +3154,21 @@ const layerWsRpc = (
               Effect.mapError(
                 (cause) =>
                   new ProjectCreateDirectoryError({
+                    ...input,
+                    ...projectFileFailureContext(cause),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsDeleteEntry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsDeleteEntry,
+            workspaceFileSystem.deleteEntry(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectDeleteEntryError({
                     ...input,
                     ...projectFileFailureContext(cause),
                     cause,

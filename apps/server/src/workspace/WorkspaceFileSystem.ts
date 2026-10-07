@@ -15,6 +15,8 @@ import * as NodeFSP from "node:fs/promises";
 import type {
   ProjectCreateDirectoryInput,
   ProjectCreateDirectoryResult,
+  ProjectDeleteEntryInput,
+  ProjectDeleteEntryResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ProjectStatEntryInput,
@@ -53,6 +55,7 @@ export class WorkspaceFileSystemOperationError extends Schema.TaggedError<Worksp
       "close",
       "make-directory",
       "write-file",
+      "remove",
     ]),
     cause: Schema.Defect(),
   },
@@ -203,6 +206,16 @@ export class WorkspaceFileSystem extends Context.Service<
       input: ProjectCreateDirectoryInput,
     ) => Effect.Effect<
       ProjectCreateDirectoryResult,
+      WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
+    >;
+    /**
+     * Delete a file, symlink or directory tree relative to the workspace
+     * root. A missing path fails with `WorkspacePathNotFoundError`.
+     */
+    readonly deleteEntry: (
+      input: ProjectDeleteEntryInput,
+    ) => Effect.Effect<
+      ProjectDeleteEntryResult,
       WorkspaceFileSystemError | WorkspacePaths.WorkspacePathOutsideRootError
     >;
   }
@@ -552,7 +565,43 @@ export const make = Effect.gen(function* () {
     return { relativePath: target.relativePath };
   });
 
-  return WorkspaceFileSystem.of({ createDirectory, readFile, statEntry, writeFile });
+  const deleteEntry: WorkspaceFileSystem["Service"]["deleteEntry"] = Effect.fn(
+    "WorkspaceFileSystem.deleteEntry",
+  )(function* (input) {
+    const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+    });
+    yield* fileSystem.remove(target.absolutePath, { recursive: true }).pipe(
+      Effect.mapError((cause) =>
+        cause.reason._tag === "NotFound"
+          ? new WorkspacePathNotFoundError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: target.absolutePath,
+              cause,
+            })
+          : new WorkspaceFileSystemOperationError({
+              workspaceRoot: input.cwd,
+              relativePath: input.relativePath,
+              resolvedPath: target.absolutePath,
+              operationPath: target.absolutePath,
+              operation: "remove",
+              cause,
+            }),
+      ),
+    );
+    yield* workspaceEntries.refresh(input.cwd);
+    return { relativePath: target.relativePath };
+  });
+
+  return WorkspaceFileSystem.of({
+    createDirectory,
+    deleteEntry,
+    readFile,
+    statEntry,
+    writeFile,
+  });
 });
 
 export const layer = Layer.effect(WorkspaceFileSystem, make);

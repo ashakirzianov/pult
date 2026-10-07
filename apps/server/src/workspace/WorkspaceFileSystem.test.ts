@@ -417,6 +417,72 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
     );
   });
 
+  describe("deleteEntry", () => {
+    it.effect("deletes files and whole directory trees", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "# Notes\n");
+        yield* writeTextFile(cwd, "src/components/button.tsx", "export {};\n");
+
+        const file = yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "notes.md" });
+        const tree = yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "src" });
+
+        expect(file).toEqual({ relativePath: "notes.md" });
+        expect(tree).toEqual({ relativePath: "src" });
+        expect(NodeFS.readdirSync(cwd)).toEqual([]);
+      }),
+    );
+
+    it.effect.skipIf(!symlinksSupported)("deletes a symlink, not what it points at", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "docs/guide.md", "# Guide\n");
+        yield* fileSystem.symlink(path.join(cwd, "docs"), path.join(cwd, "linked-docs"));
+
+        yield* workspaceFileSystem.deleteEntry({ cwd, relativePath: "linked-docs" });
+
+        expect(NodeFS.existsSync(path.join(cwd, "linked-docs"))).toBe(false);
+        expect(NodeFS.readFileSync(path.join(cwd, "docs/guide.md"), "utf8")).toBe("# Guide\n");
+      }),
+    );
+
+    it.effect("fails with a not-found error for a missing path", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+
+        const error = yield* workspaceFileSystem
+          .deleteEntry({ cwd, relativePath: "missing.txt" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspacePathNotFoundError);
+      }),
+    );
+
+    it.effect("rejects the workspace root and paths outside it", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "# Notes\n");
+
+        const root = yield* workspaceFileSystem
+          .deleteEntry({ cwd, relativePath: "." })
+          .pipe(Effect.flip);
+        const outside = yield* workspaceFileSystem
+          .deleteEntry({ cwd, relativePath: "../" })
+          .pipe(Effect.flip);
+
+        expect(root).toBeInstanceOf(WorkspacePaths.WorkspacePathOutsideRootError);
+        expect(outside).toBeInstanceOf(WorkspacePaths.WorkspacePathOutsideRootError);
+        expect(NodeFS.readdirSync(cwd)).toEqual(["notes.md"]);
+      }),
+    );
+  });
+
   describe("writeFile", () => {
     it.effect("writes files relative to the workspace root", () =>
       Effect.gen(function* () {
