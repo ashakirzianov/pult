@@ -1,6 +1,12 @@
-# Pult codebase conventions
+# Pult
 
-Pult is a client for T3 Code Extensible: a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. These conventions are Pult's copy of upstream T3 Code's `AGENTS.md`, kept where they still apply.
+This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensible`): a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. The repo is the **Pult track**: see `TRACK.md`. Cross-track conventions live in `../axis/AGENTS.md`.
+
+- Read `docs/pult/rfc-0.md` (human-written, never edited by agents) before anything else, then `docs/pult/rfc-1.md`, the current direction.
+- `DECISIONS.md` holds the rulings.
+- `docs/pult/install.md` is how a build reaches Anton. Agents stage a client build (`vp run pult:stage`); only Anton makes one live, from the desktop's View menu.
+- Commits are small and semantically scoped, one logical unit each. Never push unless asked: the repo is public. `origin` is `github.com/ashakirzianov/pult`; there is no `upstream` remote.
+- Licence: upstream's MIT text stays.
 
 ## Glossary
 
@@ -15,17 +21,19 @@ Pult is a client for T3 Code Extensible: a web client (`apps/pult`), an Electron
 
 ## Where code lives
 
-- `apps/pult` - the React/Vite client. Shared client logic the server's own client also uses is in the vendored `client-runtime`.
-- `apps/pult-desktop` - the Electron shell: window, IPC, the payload slot and client-dir override, SSH and Tailscale connections.
+- `apps/pult` - the React/Vite client (`@pult/client`), Pult's own copy of upstream's `apps/web` taken at upstream `f4f148eb67`. Shared client logic the server's own client also uses is in the vendored `client-runtime`.
+- `apps/pult-desktop` - the Electron shell (`@pult/desktop`): window, IPC, the payload slot and client-dir override, SSH and Tailscale connections.
 - `packages/pult` - `@pult/shared`: the identity seam, the payload slot, the scheme-reading auth helpers.
-- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`, copied verbatim from the fork at `vendor/t3code/PIN`. Read them, never edit them.
+- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`, copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them: a bump is a new PIN, `vp run vendor:sync`, and fixing what the types say; `vendor:check` fails on drift.
 - `scripts` - the dev runner, the desktop artifact build, staging, icons, the vendoring script and the guards (`noUpstreamIdentity`, `noT3HomeDefault`).
-- `docs/pult` - Pult's own docs. `docs/internals` and `docs/user` are upstream's pages that still describe code or behaviour present here.
+- `docs/pult` - Pult's own docs; `docs/internals` and `docs/operations` - upstream-derived pages (see Documentation).
+
+Everything outside `vendor/` is Pult's own: change it freely, there is no upstream merge. An upstream client or desktop change reaches Pult only when someone carries it over by hand from the fork's history.
 
 ## The three ways to hurt yourself
 
 1. **Killing by pattern.** Never `pkill -f`, `pgrep | kill`, or `kill` a PID you found by matching a name, path, or worktree string. Your own agent process has this worktree's path in its argv, and this machine runs other dev servers at once. Kill only a PID you captured at spawn.
-2. **Writing to the live install.** `~/.t3/userdata` is the live server's database, in use while you work. Reading it and copying from it are fine (see Test data). Never start a server against it, never open it read-write, never clean it up.
+2. **Writing to the live install.** `~/.t3/userdata` is the live server's database, the installed T3 Code Extensible's, in use while you work. Reading it and copying from it are fine (see Test data). Never start a server against it, never open it read-write, never clean it up. `scripts/noT3HomeDefault.test.ts` keeps Pult's own defaults off `~/.t3`.
 3. **Baking in origins.** Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev. Dev is single-origin and Vite proxies `/api`, `/ws`, `/oauth`, and `/.well-known`. Setting them bakes localhost into the bundle and breaks every remote browser.
 
 ## Hit every surface
@@ -34,7 +42,7 @@ The most common defect is a change that works on the path you tested and is miss
 
 - **Entry points.** A behaviour reachable from the chat view is usually also reachable from Settings, the command palette, and a keybinding.
 - **Clients.** Web and desktop (which wraps web and adds the Electron shell and IPC). Mobile is not Pult's.
-- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`), offered upstream when it is generic; a Pult-specific one would be a plugin route (`/api/plugins/pult/*`), and a client reads `GET /api/plugins` before relying on one.
+- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`), offered upstream when it is generic; a Pult-specific one would be a plugin route (`/api/plugins/pult/*`), and a client reads `GET /api/plugins` before relying on one (`DECISIONS.md`, `server-side-home`).
 - **Reverse states.** If you added a way in, add the way out and the way to see it. A one-way door is a bug.
 - **Connection modes.** Local, remote and SSH behave differently; multi-environment cases are real.
 - **Docs.** Check whether the change makes existing guidance inaccurate before adding anything.
@@ -57,15 +65,15 @@ An empty database is a bad test. `vp run migrate-dev-db`, with your dev server s
 - Test meaningful logic or observable behaviour. Do not render components to static markup to assert props, or add tests that merely mirror the implementation.
 - **Do not run repo-wide checks** unless asked. There is no CI; the lead integrates by review.
 - A test that needs a timeout or a sleep to pass is wrong.
-- User-visible changes get one integrated pass in the real client, `test-t3-app`, by the primary agent after integrating, with permission before any browser or computer use. Subagents do not launch their own dev servers.
+- User-visible changes get one integrated pass in the real client, `test-t3-app`, which runs the app against isolated state, by the primary agent after integrating, with permission before any browser or computer use. Subagents do not launch their own dev servers.
 
 ## Documentation
 
 Most code changes do not need a documentation change. Agents can read the code.
 
-- `docs/pult/` is for Pult's own decisions and procedures; `DECISIONS.md` holds the rulings (see `~/.claude/CLAUDE.md` for the entry shape). Before adding a paragraph, ask what a maintainer would get wrong without it.
-- `docs/internals/` and `docs/user/` are upstream's pages kept where they still describe what is here. When a kept page goes stale, rewrite or remove the affected text; do not append another account.
-- Do not commit implementation plans, research notes or agent scratch files.
+- `docs/pult/` is for Pult's own designs and procedures; `DECISIONS.md` holds the rulings (see `~/.claude/CLAUDE.md` for the entry shape). Before adding a paragraph, ask what a maintainer would get wrong without it.
+- `docs/internals/` and `docs/operations/` are upstream-derived pages, kept where they describe Pult's code. When a page goes stale, rewrite or remove the affected text; do not append another account.
+- An effort's plan may sit beside its design as `docs/<effort>-tasks.md` while the effort runs; when the effort ends, both move to `archive/`. Do not commit research notes or agent scratch files.
 
 ## Taste
 
