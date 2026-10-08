@@ -5,8 +5,12 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 - Read `docs/pult/rfc-0.md` (human-written, never edited by agents) before anything else, then `docs/pult/rfc-1.md`, the current direction.
 - `DECISIONS.md` holds the rulings.
 - `docs/pult/install.md` is how a build reaches Anton. Agents stage a client build (`vp run pult:stage`); only Anton makes one live, from the desktop's View menu.
-- Commits are small and semantically scoped, one logical unit each. Never push unless asked: the repo is public. `origin` is `github.com/ashakirzianov/pult`; there is no `upstream` remote.
+- Commits are small and semantically scoped, one logical unit each. `origin` is `github.com/ashakirzianov/pult`; there is no `upstream` remote.
 - Licence: upstream's MIT text stays.
+
+## Review posture
+
+**High-level.** Anton reviews direction, interfaces and module boundaries (the RFCs, `DECISIONS.md`, the seams with the server and the vendored packages), not implementation. Agents commit on their own and surface design deltas introduced during implementation rather than landing them silently. **Never push unless asked:** the repo is public, so pushing is Anton's call.
 
 ## Glossary
 
