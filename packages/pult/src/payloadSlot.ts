@@ -158,7 +158,8 @@ export const deployStagedPayload = (slotDir: string) =>
 
 /**
  * Makes the previous build live again. `current` and `previous` swap, so a
- * second roll back returns to the build that was rolled back from.
+ * second roll back returns to the build that was rolled back from; dropping
+ * it would leave no way back short of staging it again.
  */
 export const rollBackPayload = (slotDir: string) =>
   Effect.gen(function* () {

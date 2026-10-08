@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Builds the client and stages it as one build in Pult's payload slot
-// (DECISIONS.md, `payload-slot`). It never makes a build live: the human does
-// that from the desktop app, View → Deploy Staged Build.
+// Builds the client and stages it as one build in Pult's payload slot. It
+// never makes a build live: a switch reloads the human's window, so the human
+// does that from the desktop app, View → Deploy Staged Build.
 //
 //   vp run pult:stage [--base-dir <home>]
 import * as NodeOS from "node:os";

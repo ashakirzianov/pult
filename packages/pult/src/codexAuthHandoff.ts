@@ -1,5 +1,5 @@
-// Pult's copy of `@t3tools/shared/codexAuthHandoff`, whose handoff URLs use
-// Pult's app scheme instead of T3 Code's (DECISIONS.md, `identity-seam`).
+// Pult's copy of the vendored `@t3tools/shared/codexAuthHandoff`, whose
+// handoff URLs use Pult's app scheme instead of T3 Code's.
 import { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 

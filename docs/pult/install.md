@@ -13,10 +13,10 @@ env -u ELECTRON_RUN_AS_NODE vp run dist:desktop:dmg:arm64
 ```
 
 - The artifacts land in `release/`: `Pult-<version>-arm64.dmg` and a zip of `Pult.app`. Set `T3CODE_DESKTOP_OUTPUT_DIR=<dir>` to write them elsewhere.
-- Without `--signed` (and Apple credentials, which Pult has none of), the build is signed ad hoc as `com.pult.pult`, without hardened runtime, and is not notarized (DECISIONS.md, `ad-hoc-signing`).
+- Without `--signed` (and Apple credentials, which Pult has none of), the build is signed ad hoc as `com.pult.pult`, without hardened runtime, and is not notarized.
 - It needs the network once, to download Electron for electron-builder.
 - An agent shell under T3 Code or Pult inherits `ELECTRON_RUN_AS_NODE=1`, which turns every Electron binary the build spawns into plain Node; unset it as above.
-- Packaged builds carry no update feed, so the app never updates itself (DECISIONS.md, `auto-update-off`).
+- Packaged builds carry no update feed, so the app never updates itself.
 
 Agents hand a build over in `/Users/devuser/repos/exchange/pult-build/`, with a `COMMIT` file naming the commit it was built from.
 
@@ -40,7 +40,7 @@ The protocol packages are vendored verbatim under `vendor/t3code/packages/` from
 
 ## Shipping a build to the installed app
 
-A build holds the client. An agent stages it; only Anton makes it live (DECISIONS.md, `payload-slot`).
+A build holds the client. An agent stages it; only Anton makes it live, since a switch reloads his window.
 
 - **Stage** (agent): `vp run pult:stage` builds `apps/pult` and copies it to `~/.pult/payload/builds/<time>-<sha>/client`, then points `staging` at the build. It never touches what is live.
 - **Deploy** (Anton): View → Deploy Staged Build. The window reloads onto the staged build, and the build it replaced becomes `previous`.

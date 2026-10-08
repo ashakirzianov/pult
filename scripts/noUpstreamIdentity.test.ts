@@ -2,7 +2,7 @@
 //
 // Pult names its identity in one module, `packages/pult/src/identity.ts`, so
 // a Pult app runs beside an installed T3 Code without either disturbing the
-// other (DECISIONS.md, `identity-seam`). This test fails if source under apps/,
+// other. This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
 // the reasoned allow-list below. Pult's server side lives outside this repo
 // (DECISIONS.md, `server-side-home`), and the protocol packages under vendor/

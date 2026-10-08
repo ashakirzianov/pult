@@ -3,7 +3,8 @@
 //
 // Renders every desktop and web icon Pult ships from the sources in
 // assets/pult/: the app icons, the favicons and the Windows `.ico`, for prod
-// and dev, plus the dev web icons in apps/pult/public.
+// and dev, plus the dev web icons in apps/pult/public. The sources are SVGs and
+// a PNG, not Icon Composer projects, so this script renders every size.
 //
 //   vp run icons:export          write them
 //   vp run icons:check           fail if a written icon differs from a fresh render

@@ -1,5 +1,5 @@
-// Pult's copy of `@t3tools/shared/providerAuthReturnUrl`, which accepts Pult's
-// app schemes instead of T3 Code's (DECISIONS.md, `identity-seam`).
+// Pult's copy of the vendored `@t3tools/shared/providerAuthReturnUrl`, which
+// accepts Pult's app schemes instead of T3 Code's.
 import { isLoopbackHost } from "@t3tools/shared/preview";
 
 import { APP_SCHEMES } from "./identity.ts";

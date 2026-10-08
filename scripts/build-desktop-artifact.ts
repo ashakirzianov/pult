@@ -43,8 +43,7 @@ const DESKTOP_APP_ID = Identity.APP_BUNDLE_ID;
 // Pult has no releases of its own yet, and a feed taken from the environment
 // (GITHUB_REPOSITORY in CI) could point the app at upstream's, whose update
 // would replace Pult with T3 Code. Without a feed the app ships no
-// app-update.yml and reports updates as unavailable (DECISIONS.md,
-// `auto-update-off`).
+// app-update.yml and reports updates as unavailable.
 const PULT_UPDATE_FEED_ENABLED = false;
 // Repo-relative directory of the built client the packaged renderer serves;
 // the desktop reads it at the same path (DesktopEnvironment.clientAssetsDir).
@@ -2183,6 +2182,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           schemes: [...Identity.APP_SCHEMES],
         },
       ],
+      // An unsigned build is signed ad hoc: without it the bundle carries only
+      // linker signatures and does not verify. An ad hoc signature has no team
+      // id, so hardened runtime's library validation would refuse Electron's
+      // frameworks; it stays off.
       ...(signed
         ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") }
         : { identity: "-", hardenedRuntime: false }),

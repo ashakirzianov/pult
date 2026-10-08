@@ -37,7 +37,7 @@
       "ignoreDependencies": ["playwright-core", "electron-builder"],
     },
     "packages/pult": {
-      // APP_BASE_NAME and APP_DISPLAY_NAME are one value by design (DECISIONS.md, identity-seam).
+      // APP_BASE_NAME and APP_DISPLAY_NAME are one value by design.
       "ignoreIssues": { "src/identity.ts": ["duplicates"] },
     },
     "apps/pult": {
