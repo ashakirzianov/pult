@@ -18,7 +18,7 @@ env -u ELECTRON_RUN_AS_NODE vp run dist:desktop:dmg:arm64
 - An agent shell under T3 Code or Pult inherits `ELECTRON_RUN_AS_NODE=1`, which turns every Electron binary the build spawns into plain Node; unset it as above.
 - Packaged builds carry no update feed, so the app never updates itself.
 
-Agents hand a build over in `/Users/devuser/repos/exchange/pult-build/`, with a `COMMIT` file naming the commit it was built from.
+Agents hand a build over in `~/repos/exchange/pult-build/`, with a `COMMIT` file naming the commit it was built from.
 
 ## Installing
 

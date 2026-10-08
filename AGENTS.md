@@ -24,7 +24,7 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 - `apps/pult` - the React/Vite client (`@pult/client`), Pult's own copy of upstream's `apps/web` taken at upstream `f4f148eb67`. Shared client logic the server's own client also uses is in the vendored `client-runtime`.
 - `apps/pult-desktop` - the Electron shell (`@pult/desktop`): window, IPC, the payload slot and client-dir override, SSH and Tailscale connections.
 - `packages/pult` - `@pult/shared`: the identity seam, the payload slot, the scheme-reading auth helpers.
-- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`, copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them: a bump is a new PIN, `vp run vendor:sync`, and fixing what the types say; `vendor:check` fails on drift.
+- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`, copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them (`DECISIONS.md`, `protocol-packages-pinned`): a bump is a new PIN, `vp run vendor:sync`, and fixing what the types say; `vendor:check` fails on drift.
 - `scripts` - the dev runner, the desktop artifact build, staging, icons, the vendoring script and the guards (`noUpstreamIdentity`, `noT3HomeDefault`).
 - `docs/pult` - Pult's own docs; `docs/internals` and `docs/operations` - upstream-derived pages (see Documentation).
 
@@ -71,7 +71,7 @@ An empty database is a bad test. `vp run migrate-dev-db`, with your dev server s
 
 Most code changes do not need a documentation change. Agents can read the code.
 
-- `docs/pult/` is for Pult's own designs and procedures; `DECISIONS.md` holds the rulings (see `~/.claude/CLAUDE.md` for the entry shape). Before adding a paragraph, ask what a maintainer would get wrong without it.
+- `docs/pult/` is for Pult's own designs and procedures. A `DECISIONS.md` entry takes the shape in `../axis/workflow/global-agents.md`. Before adding a paragraph, ask what a maintainer would get wrong without it.
 - `docs/internals/` and `docs/operations/` are upstream-derived pages, kept where they describe Pult's code. When a page goes stale, rewrite or remove the affected text; do not append another account.
 - An effort's plan may sit beside its design as `docs/<effort>-tasks.md` while the effort runs; when the effort ends, both move to `archive/`. Do not commit research notes or agent scratch files.
 

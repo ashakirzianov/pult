@@ -37,7 +37,8 @@
       "ignoreDependencies": ["playwright-core", "electron-builder"],
     },
     "packages/pult": {
-      // APP_BASE_NAME and APP_DISPLAY_NAME are one value by design.
+      // APP_BASE_NAME (the root the dev name derives from) and APP_DISPLAY_NAME
+      // (the packaged app's name) are different roles that share a value.
       "ignoreIssues": { "src/identity.ts": ["duplicates"] },
     },
     "apps/pult": {

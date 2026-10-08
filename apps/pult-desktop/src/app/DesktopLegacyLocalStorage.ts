@@ -34,7 +34,7 @@ const MARKER_FILE_NAME = "v1-local-storage-imported";
 // Pult has never shipped a V1 profile, so there is none to import from.
 // Upstream lists its own profile folders here; those are T3 Code's, and a
 // display-name folder `Pult` would be the userData `pult` on a
-// case-insensitive disk.
+// case-insensitive disk, so listing it would import Pult's own live profile.
 const V1_PROFILE_NAMES: ReadonlyArray<string> = [];
 
 const make = Effect.gen(function* () {
