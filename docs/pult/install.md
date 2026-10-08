@@ -1,6 +1,6 @@
 # Installing Pult
 
-How a Pult desktop build is made and installed beside T3 Code, how a client build reaches the installed app, and what only a human can check. Agents build; Anton installs and launches. Pult runs no server of its own: it attaches to a running T3 Code Extensible server (DECISIONS.md, `server-side-home`, `no-local-server`).
+How a Pult desktop build is made and installed beside T3 Code, and how a client build reaches the installed app. Agents build; Anton installs and launches. Pult runs no server of its own: it attaches to a running T3 Code Extensible server (DECISIONS.md, `server-side-home`, `no-local-server`).
 
 ## Making a build
 
@@ -36,7 +36,7 @@ Pult runs no server and starts none: it attaches to a T3 Code server that is alr
 
 Development runs are the exception: `vp run dev` starts the T3 Code Extensible checkout's server (`PULT_T3CODE_CHECKOUT`, default `~/repos/t3code-extensible`) from source against the worktree's `.t3` as a local environment, so the client can be worked on without a server of Anton's. `dev:desktop` still expects a bundled server and does not open a window until `pult/desktop-dev-mode` lands.
 
-The protocol packages are vendored verbatim under `vendor/t3code/packages/` from the T3 Code Extensible fork at the commit in `vendor/t3code/PIN` (`b98fd8ad27`, upstream `f4f148eb67`), the same commit the server it pairs with is built from; `vp run vendor:sync` bumps them and `vendor:check` fails when the copy drifts.
+The protocol packages are vendored verbatim under `vendor/t3code/packages/` from the T3 Code Extensible fork at the commit in `vendor/t3code/PIN`, the same commit the server it pairs with is built from; `vp run vendor:sync` bumps them and `vendor:check` fails when the copy drifts.
 
 ## Shipping a build to the installed app
 
@@ -46,43 +46,3 @@ A build holds the client. An agent stages it; only Anton makes it live, since a 
 - **Deploy** (Anton): View → Deploy Staged Build. The window reloads onto the staged build, and the build it replaced becomes `previous`.
 - **Roll back** (Anton): View → Roll Back Build. It swaps `current` and `previous`, so a second Roll Back returns to the newer build.
 - With nothing to switch, either item shows a dialog instead. The menu belongs to the shell, so it works even when a deployed client fails to load; a `current` with no `index.html` falls back to the client bundled in the app.
-
-## Human checks
-
-From the MVP units, the checks agents could not make. Tick them on the first install.
-
-**Beside T3 Code** (`pult/identity-seam`)
-
-- [ ] Pult and the installed T3 Code run at the same time, with separate Dock entries, single-instance locks and profiles.
-- [ ] macOS hands `pult://` links to Pult and `t3code://` links to T3 Code.
-- [ ] Pult's secrets start empty in its own Keychain item, and T3 Code's are untouched.
-- [ ] Clerk / T3 Connect sign-in and the Codex auth handoff, if used, accept `pult://` redirects; upstream's Clerk allowlist may not include them.
-
-**Home** (`pult/own-home-dir`)
-
-- [ ] Pult's state lands in `~/.pult`, and `~/.t3` is unchanged.
-
-**Connecting** (`pult/third-party-client`)
-
-- [ ] A first launch opens the setup wizard on the pairing form, and a link from `t3 pair` on the host connects.
-- [ ] No server process starts with Pult, and Settings → Connections offers no local environment to turn on.
-- [ ] A relaunch reconnects to the saved server without pairing again.
-
-**Deploy** (`pult/client-deploy`)
-
-- [ ] After `vp run pult:stage`, View → Deploy Staged Build reloads the window onto the staged build.
-- [ ] Roll Back Build reloads back, and a second Roll Back returns to the newer build.
-- [ ] With nothing staged, Deploy Staged Build shows a dialog.
-
-**Branding** (`pult/apply-new-branding`)
-
-- [ ] The Dock, the app switcher and the window show the name Pult and Pult's icon.
-- [ ] The wordmark and mark look right in a real window.
-- [ ] The small icon (`small-icon.png`, used at 32 px and below) reads well in the favicon and small sizes.
-- [ ] The dev icons (white fills, a solid black P) look right in a dev run.
-
-## Known gaps
-
-- Some client prose and the DMG background still say T3 Code.
-- An SSH environment launches upstream's T3 Code release on the host, not T3 Code Extensible, so RPCs added in the fork are absent there.
-- A zero-step credential from `t3 auth session issue`, in place of a pairing link, is a later change.
