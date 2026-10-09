@@ -1,3 +1,8 @@
+---
+track: pult
+label: repo:t3code-extensible
+---
+
 # T3 Code Extensible
 
 This repo is **T3 Code Extensible**, a minimal fork of T3 Code that loads fully trusted plugins into the server process. It is the host Anton's fleet runs on, and Pult (`~/repos/pult`) is its client; Pult's server side is a plugin here. `DECISIONS.md` holds the rulings; `docs/internals/plugins.md` is the plugin contract; `examples/plugins/hello` is the reference plugin.
@@ -7,7 +12,7 @@ This repo is **T3 Code Extensible**, a minimal fork of T3 Code that loads fully 
 - **Plugins are code the server trusts completely.** A plugin runs in-process with the server's services, with no manifest, capabilities or consent, and contributes no UI (`DECISIONS.md`, `plugins-in-process`). It imports only `@t3code/plugin-host`, the server bundle's stable entry; the loader refuses a build using another copy of Effect or built for another server build, and swaps builds only on an explicit admin request. When a plugin needs something the host does not expose, extend `src/pluginHost.ts` or add a hook point, with a test, and record the reason.
 - **Builds.** `node_modules/.bin/vp` if `vp` is not on PATH; unset `ELECTRON_RUN_AS_NODE` before a desktop build. Finished artifacts go to `~/repos/exchange/t3code-extensible-build/` with a `COMMIT` note naming the commit; Anton installs them. An unsigned macOS build is signed ad hoc, and a build names an update feed only when a repository is configured (`DECISIONS.md`, `ad-hoc-signing`, `update-feed`).
 - Commits: small and semantically scoped, one logical unit each. **Never push unless asked.** `origin` is `github.com/ashakirzianov/t3code-extensible`.
-- Issues live in xaxis under the Pult track, `pult/<slug>` (`~/repos/pult/TRACK.md`); this repo has no track of its own. A standing note belongs in `docs/`, never the tracker.
+- Issues live in xaxis under the Pult track, `pult/<slug>`, labelled `repo:t3code-extensible` (the frontmatter above; the track is `pult/about`); this repo has no track of its own. A standing note belongs in `docs/`, never the tracker.
 - Licence: upstream's MIT text stays.
 
 @AGENTS.md
