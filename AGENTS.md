@@ -1,6 +1,11 @@
+---
+track: pult
+label: repo:pult
+---
+
 # Pult
 
-This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensible`): a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. The repo is the **Pult track**: see `TRACK.md`. Cross-track conventions live in `../axis/AGENTS.md`.
+This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensible`): a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. It is one repo of the **Pult track** (xaxis `pult/about`), beside `../pult-extension` and the fork. Cross-track conventions live in `../axis/AGENTS.md`.
 
 - Read `docs/pult/rfc-0.md` (human-written, never edited by agents) before anything else, then `docs/pult/rfc-1.md`, the current direction.
 - `DECISIONS.md` holds the rulings.
