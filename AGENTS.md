@@ -26,7 +26,7 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 - **client** means Pult's web or desktop UI.
 - **environment** means one running server and the machine, filesystem, credentials and state it owns. Pult's packaged desktop runs with no local environment and attaches to one.
 - **project**, **thread**, **turn** are the server's: a workspace record rooted at a directory, the durable conversation for a project, one user-to-agent cycle.
-- **T3 home** means the server's base data directory (`~/.t3` for the live server, a worktree's `.t3` in development). Pult's own desktop state lives in `~/.pult`.
+- **T3 home** means the server's base data directory (`~/.t3` for the live server, a checkout's `.t3` in development). Pult's own desktop state lives in `~/.pult`.
 
 ## Where code lives
 
@@ -59,14 +59,14 @@ The most common defect is a change that works on the path you tested and is miss
 ## Dev servers
 
 - `vp i` installs. A worktree gets this, and the main checkout's `.env`, from `scripts/setup-worktree.ts`: T3 Code runs it through `t3.json`, and a worktree made by hand runs `node scripts/setup-worktree.ts`. If module resolution looks broken, it probably did not run.
-- `vp run dev` starts the server and the web client. The server is the T3 Code Extensible checkout's (`PULT_T3CODE_CHECKOUT`, environment or `.env`, default `~/repos/t3code-extensible`), run from source with the worktree's gitignored `.t3` as its home; that home outranks an ambient `T3CODE_HOME`, and an explicit `--home-dir` wins. `dev:web` starts the client alone. `dev:desktop` starts the Electron client but still expects a bundled server (`pult/desktop-dev-mode`).
+- `vp run dev` starts the server and the web client. The server is the T3 Code Extensible checkout's (`PULT_T3CODE_CHECKOUT`, environment or `.env`, default `~/repos/t3code-extensible`), run from source with the checkout's gitignored `.t3` as its home, a worktree's or the main checkout's; that home outranks an ambient `T3CODE_HOME`, and an explicit `--home-dir` wins. `dev:web` starts the client alone. `dev:desktop` starts the Electron client but still expects a bundled server (`pult/desktop-dev-mode`).
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
-- Sharing over the tailnet: run `vp run dev --share` in the background, wait for the `pairingUrl:` line, give that URL to an unpaired browser. If a one-time token was consumed, mint a fresh one with `node apps/server/src/bin.ts pair` run in the checkout with `T3CODE_HOME` set to the worktree's `.t3`. See `docs/operations/development.md`.
+- Sharing over the tailnet: run `vp run dev --share` in the background, wait for the `pairingUrl:` line, give that URL to an unpaired browser. If a one-time token was consumed, mint a fresh one with `node apps/server/src/bin.ts pair` run in the checkout with `T3CODE_HOME` set to the checkout's `.t3`. See `docs/operations/development.md`.
 - Stop what you started, by the PID you tracked.
 
 ## Test data
 
-An empty database is a bad test. `vp run migrate-dev-db`, with your dev server stopped, rebuilds `<worktree>/.t3/userdata/statev2.sqlite` from a read-only snapshot of `~/.t3/userdata/statev2.sqlite` with the checkout's migration script. It keeps recent projects and their stopped threads and drops scheduled tasks, pending work and auth sessions. Copy in, never symlink. Data flows one way: into your sandbox, never back out.
+An empty database is a bad test. `vp run migrate-dev-db`, with your dev server stopped, rebuilds `<checkout>/.t3/userdata/statev2.sqlite` from a read-only snapshot of `~/.t3/userdata/statev2.sqlite` with the checkout's migration script. It keeps recent projects and their stopped threads and drops scheduled tasks, pending work and auth sessions. Copy in, never symlink. Data flows one way: into your sandbox, never back out.
 
 ## Verifying
 

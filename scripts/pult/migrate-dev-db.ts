@@ -1,25 +1,20 @@
 #!/usr/bin/env node
-// Seeds this worktree's dev database from a pruned, read-only snapshot of
+// Seeds this checkout's dev database from a pruned, read-only snapshot of
 // ~/.t3, with the migrate-dev-db script of the T3 Code Extensible checkout
 // (PULT_T3CODE_CHECKOUT), since the server that owns the schema lives there.
-// The target is the worktree's own .t3, the home the dev runner gives the server.
+// The target is this checkout's own .t3, the home the dev runner gives the server.
 //
 //   vp run migrate-dev-db [--base-dir <dir>] [--projects <n>] [--threads-per-project <n>]
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { resolveWorktreeT3Home } from "@t3tools/shared/devHome";
-import {
-  HostProcessArguments,
-  HostProcessExecutablePath,
-  HostProcessWorkingDirectory,
-} from "@t3tools/shared/hostProcess";
+import { HostProcessArguments, HostProcessExecutablePath } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { ChildProcess } from "effect/process";
 
-import { T3CODE_CHECKOUT_VARIABLE, t3codeCheckoutPath } from "./checkout.ts";
+import { DEV_T3_HOME, T3CODE_CHECKOUT_VARIABLE, t3codeCheckoutPath } from "./checkout.ts";
 
 const MIGRATE_SCRIPT = "apps/server/scripts/migrate-dev-db.ts";
 
@@ -32,13 +27,10 @@ export class MigrateDevDbError extends Schema.TaggedError<MigrateDevDbError>()(
   }
 }
 
-/** The checkout script's arguments: the worktree's .t3 as --base-dir, unless one was given. */
-export function migrateArgs(
-  args: ReadonlyArray<string>,
-  worktreeHome: string | undefined,
-): ReadonlyArray<string> | undefined {
+/** The checkout script's arguments: `home` as --base-dir, unless one was given. */
+export function migrateArgs(args: ReadonlyArray<string>, home: string): ReadonlyArray<string> {
   if (args.some((arg) => arg === "--base-dir" || arg.startsWith("--base-dir="))) return args;
-  return worktreeHome === undefined ? undefined : ["--base-dir", worktreeHome, ...args];
+  return ["--base-dir", home, ...args];
 }
 
 const program = Effect.gen(function* () {
@@ -52,14 +44,7 @@ const program = Effect.gen(function* () {
     });
   }
 
-  const worktreeHome = yield* resolveWorktreeT3Home(yield* HostProcessWorkingDirectory);
-  const args = migrateArgs((yield* HostProcessArguments).slice(2), worktreeHome);
-  if (args === undefined) {
-    return yield* new MigrateDevDbError({
-      detail:
-        "Not inside a linked git worktree, so there is no worktree .t3 to seed. Pass --base-dir to target an isolated directory.",
-    });
-  }
+  const args = migrateArgs((yield* HostProcessArguments).slice(2), DEV_T3_HOME);
 
   const child = yield* ChildProcess.make(yield* HostProcessExecutablePath, [script, ...args], {
     cwd: checkout,

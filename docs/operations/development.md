@@ -13,13 +13,13 @@ Open the pairing URL printed by the dev runner. The bare origin does not authent
 
 ## Choosing a dev process
 
-Use `vp run dev` for server and web. `vp run dev:desktop` starts the Electron client, but it still waits for a bundled server that is not in this repo and never opens its window (`pult/desktop-dev-mode`). `dev:server` and `dev:web` start those processes separately. The server is not in this repo: `dev` and `dev:server` run `node --watch apps/server/src/bin.ts` in the T3 Code Extensible checkout that `PULT_T3CODE_CHECKOUT` names (environment or `.env`, by default `~/repos/t3code-extensible`), so that checkout needs its dependencies installed. `vp run migrate-dev-db` seeds the worktree's `.t3` with that checkout's migration script.
+Use `vp run dev` for server and web. `vp run dev:desktop` starts the Electron client, but it still waits for a bundled server that is not in this repo and never opens its window (`pult/desktop-dev-mode`). `dev:server` and `dev:web` start those processes separately. The server is not in this repo: `dev` and `dev:server` run `node --watch apps/server/src/bin.ts` in the T3 Code Extensible checkout that `PULT_T3CODE_CHECKOUT` names (environment or `.env`, by default `~/repos/t3code-extensible`), so that checkout needs its dependencies installed. `vp run migrate-dev-db` seeds this checkout's `.t3` with that checkout's migration script.
 
 Flags go directly after the task name, for example `vp run dev --home-dir /tmp/t3code-dev`. Add `--browser` to open a browser automatically.
 
 ### State and ports
 
-Linked worktrees default to their own `.t3/userdata`, even when `T3CODE_HOME` is set. The main checkout defaults to `~/.pult/userdata`. An explicit `--home-dir` wins in both cases. Never run a development server against the live `~/.t3/userdata`. See [test data](../../AGENTS.md#test-data) for copying a consistent database snapshot.
+The main checkout and each linked worktree default to their own gitignored `.t3/userdata`, even when `T3CODE_HOME` is set; `~/.pult` is the installed desktop's. An explicit `--home-dir` wins. Never run a development server against the live `~/.t3/userdata`. See [test data](../../AGENTS.md#test-data) for copying a consistent database snapshot.
 
 Read ports from the `[dev-runner]` output. Worktrees derive stable preferences from their paths, but occupied ports can shift them. `T3CODE_PORT_OFFSET` or `T3CODE_DEV_INSTANCE` can select a different preference when needed.
 

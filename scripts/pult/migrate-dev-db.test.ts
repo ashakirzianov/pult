@@ -3,7 +3,7 @@ import { assert, describe, it } from "vite-plus/test";
 import { migrateArgs } from "./migrate-dev-db.ts";
 
 describe("migrateArgs", () => {
-  it("targets the worktree's .t3 ahead of the other arguments", () => {
+  it("targets the checkout's .t3 ahead of the other arguments", () => {
     assert.deepStrictEqual(migrateArgs(["--projects", "3"], "/work/tree/.t3"), [
       "--base-dir",
       "/work/tree/.t3",
@@ -17,10 +17,8 @@ describe("migrateArgs", () => {
       "--base-dir",
       "/tmp/x",
     ]);
-    assert.deepStrictEqual(migrateArgs(["--base-dir=/tmp/x"], undefined), ["--base-dir=/tmp/x"]);
-  });
-
-  it("has no target outside a worktree without --base-dir", () => {
-    assert.strictEqual(migrateArgs(["--projects", "3"], undefined), undefined);
+    assert.deepStrictEqual(migrateArgs(["--base-dir=/tmp/x"], "/work/tree/.t3"), [
+      "--base-dir=/tmp/x",
+    ]);
   });
 });

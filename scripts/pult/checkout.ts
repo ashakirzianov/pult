@@ -3,7 +3,7 @@
 // The checkout of T3 Code Extensible that Pult vendors its protocol packages
 // from (scripts/pult/vendor.ts) and whose server the dev modes run
 // (scripts/dev-runner.ts): PULT_T3CODE_CHECKOUT, from the environment or .env,
-// by default ~/repos/t3code-extensible.
+// by default ~/repos/t3code-extensible. And the home that server runs with.
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -17,3 +17,10 @@ export function t3codeCheckoutPath(): string {
   const raw = loadRepoEnv()[T3CODE_CHECKOUT_VARIABLE]?.trim() || DEFAULT_CHECKOUT;
   return NodePath.resolve(raw.replace(/^~(?=$|[/\\])/, NodeOS.homedir()));
 }
+
+/**
+ * A dev server's home, and migrate-dev-db's target: this checkout's gitignored
+ * `.t3`, a linked worktree's and the main checkout's alike. Never ~/.t3, the
+ * live server's, nor ~/.pult, the installed desktop's.
+ */
+export const DEV_T3_HOME = NodePath.resolve(import.meta.dirname, "../..", ".t3");

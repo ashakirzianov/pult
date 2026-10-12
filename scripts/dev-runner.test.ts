@@ -18,12 +18,10 @@ import * as PlatformError from "effect/PlatformError";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { afterEach, vi } from "vite-plus/test";
 
 import {
   checkPortAvailabilityOnHosts,
   createDevRunnerEnv,
-  DEFAULT_T3_HOME,
   devPortProbeHosts,
   findFirstAvailableOffset,
   isBrowserAllowedPort,
@@ -33,13 +31,8 @@ import {
   runDevRunnerWithInput,
 } from "./dev-runner.ts";
 
-// Calls through to the real homedir() unless a test points it at a fixture.
-vi.mock("node:os", async (importOriginal) => {
-  const os = await importOriginal<typeof import("node:os")>();
-  return { ...os, homedir: vi.fn(os.homedir) };
-});
-
-afterEach(() => vi.mocked(NodeOS.homedir).mockReset());
+// The dev home: this checkout's own .t3, never ~/.t3 nor ~/.pult.
+const checkoutHome = NodePath.resolve(import.meta.dirname, "..", ".t3");
 
 const emptyConfigLayer = ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }));
 const netServiceLayer = Layer.succeed(NetService.NetService, {
@@ -102,15 +95,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       );
 
       assert.include(output, "[dev-runner] mode=dev");
-    }),
-  );
-
-  it.effect("defaults the home to ~/.pult, never ~/.t3", () =>
-    Effect.gen(function* () {
-      vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
-      const path = yield* Path.Path;
-
-      assert.equal(yield* DEFAULT_T3_HOME, path.join("/Users/fixture", ".pult"));
     }),
   );
 
@@ -227,10 +211,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(desktop.T3CODE_DEV_AUTH_TOKEN, undefined);
       }),
     );
-    it.effect("exports Pult's default home and disables browser auto-open", () =>
+    it.effect("exports the checkout's .t3 as the home and disables browser auto-open", () =>
       Effect.gen(function* () {
-        vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
-        const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
           mode: "dev",
           baseEnv: {},
@@ -245,7 +227,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_HOME, path.join("/Users/fixture", ".pult"));
+        assert.equal(env.T3CODE_HOME, checkoutHome);
         assert.equal(env.T3CODE_NO_BROWSER, "1");
       }),
     );
@@ -964,16 +946,11 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
 
     // `tailscale serve` config outlives the process, so a dry run that shared
     // would replace and then tear down whatever mapping the port already had.
-    // Base-dir precedence (--home-dir > worktree .t3 > ambient T3CODE_HOME)
-    // lives in runDevRunnerWithInput; the env builder must not consult the
-    // ambient variable on its own, or it would silently outrank the worktree
-    // default and land dev state on the user's real database. It overwrites
-    // the ambient value with Pult's default instead of leaving it unset, since
-    // upstream's server would read ~/.t3 from an empty one.
-    it.effect("replaces an ambient T3CODE_HOME with the default when no home is resolved", () =>
+    // An agent's shell inherits the live server's T3CODE_HOME, so the ambient
+    // value is overwritten with the checkout's .t3 rather than left in place
+    // or unset; upstream's server would read ~/.t3 from an empty one.
+    it.effect("replaces an ambient T3CODE_HOME with the checkout's .t3", () =>
       Effect.gen(function* () {
-        vi.mocked(NodeOS.homedir).mockReturnValue("/Users/fixture");
-        const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
           mode: "dev",
           baseEnv: { T3CODE_HOME: "/home/user/.t3" },
@@ -988,7 +965,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_HOME, path.join("/Users/fixture", ".pult"));
+        assert.equal(env.T3CODE_HOME, checkoutHome);
       }),
     );
 
@@ -1335,18 +1312,6 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
     });
 
     describe("t3 home precedence", () => {
-      const makeWorktree = Effect.acquireRelease(
-        Effect.sync(() => {
-          const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-devrunner-"));
-          NodeFS.writeFileSync(
-            NodePath.join(root, ".git"),
-            "gitdir: /elsewhere/.git/worktrees/x\n",
-          );
-          return root;
-        }),
-        (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
-      );
-
       const spawnedHome = (input: {
         readonly t3Home: string | undefined;
         readonly cwd: string;
@@ -1379,66 +1344,43 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           return captured?.T3CODE_HOME;
         });
 
-      it.effect("prefers an explicit --home-dir over the worktree default", () =>
+      it.effect("prefers an explicit --home-dir", () =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const root = yield* makeWorktree;
           const home = yield* spawnedHome({
             t3Home: "/tmp/explicit-home",
-            cwd: root,
+            cwd: NodeOS.tmpdir(),
             ambientHome: "/home/user/.t3",
           });
           assert.equal(home, path.resolve("/tmp/explicit-home"));
-        }).pipe(Effect.scoped),
+        }),
       );
 
       it.effect("treats a blank --home-dir as unset rather than as a selection", () =>
         Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const root = yield* makeWorktree;
           const home = yield* spawnedHome({
             t3Home: "   ",
-            cwd: root,
-            ambientHome: "/home/user/.t3",
-          });
-          assert.equal(home, path.join(path.resolve(root), ".t3"));
-        }).pipe(Effect.scoped),
-      );
-
-      it.effect("prefers the worktree .t3 over an ambient T3CODE_HOME", () =>
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const root = yield* makeWorktree;
-          const home = yield* spawnedHome({
-            t3Home: undefined,
-            cwd: root,
-            ambientHome: "/home/user/.t3",
-          });
-          assert.equal(home, path.join(path.resolve(root), ".t3"));
-        }).pipe(Effect.scoped),
-      );
-
-      it.effect("falls back to an ambient T3CODE_HOME outside a worktree", () =>
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const home = yield* spawnedHome({
-            t3Home: undefined,
             cwd: NodeOS.tmpdir(),
             ambientHome: "/home/user/.t3",
           });
-          assert.equal(home, path.resolve("/home/user/.t3"));
+          assert.equal(home, checkoutHome);
         }),
       );
 
-      it.effect("exports ~/.pult with no worktree and no ambient value", () =>
+      // The main checkout included: ~/.pult is the installed desktop's home.
+      it.effect("uses the checkout's .t3 over an ambient T3CODE_HOME, from any directory", () =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const home = yield* spawnedHome({
-            t3Home: undefined,
-            cwd: NodeOS.tmpdir(),
-            ambientHome: undefined,
-          });
-          assert.equal(home, path.join(NodeOS.homedir(), ".pult"));
+          for (const cwd of [path.resolve(import.meta.dirname, ".."), NodeOS.tmpdir()]) {
+            assert.equal(
+              yield* spawnedHome({ t3Home: undefined, cwd, ambientHome: "/home/user/.t3" }),
+              checkoutHome,
+            );
+            assert.equal(
+              yield* spawnedHome({ t3Home: undefined, cwd, ambientHome: undefined }),
+              checkoutHome,
+            );
+          }
         }),
       );
     });

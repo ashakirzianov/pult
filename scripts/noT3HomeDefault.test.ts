@@ -1,8 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - walks the checked-out source tree on disk.
 //
-// The desktop's own state and the dev modes default to ~/.pult; ~/.t3 is the
-// running T3 Code Extensible server's live data, which a dev run must never
-// touch. This test fails if Pult's own source under apps/, packages/
+// The desktop's own state defaults to ~/.pult and the dev modes to the
+// checkout's own .t3; ~/.t3 is the running T3 Code Extensible server's live
+// data, which a dev run must never touch. This test fails if Pult's own source under apps/, packages/
 // or scripts/ joins a home directory to a literal `.t3` again, outside the
 // reasoned allow-list below. The server, which legitimately defaults to ~/.t3,
 // lives outside this repo (DECISIONS.md, `server-side-home`), and the protocol
