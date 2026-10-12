@@ -7,6 +7,7 @@ import { resolveGitWorktreePath } from "@t3tools/shared/devHome";
 import {
   HostProcessEnvironment,
   HostProcessExecutablePath,
+  HostProcessPlatform,
   HostProcessWorkingDirectory,
 } from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -20,7 +21,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/cli";
-import { ChildProcess } from "effect/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { type DevShareError, shareDevServer, unshareDevServer } from "./lib/dev-share.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
@@ -842,6 +843,74 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
   });
 }
 
+// How long each step of stopping a child's process tree may take before the
+// next, harder one.
+const STOP_GRACE_MILLIS = 5_000;
+const STOP_POLL_MILLIS = 50;
+
+/** `root` and every process under it, from the output of `ps -A -o pid=,ppid=`. */
+export function processTree(psOutput: string, root: number): ReadonlyArray<number> {
+  const children = new Map<number, Array<number>>();
+  for (const line of psOutput.split("\n")) {
+    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+    if (pid === undefined || ppid === undefined || !(pid > 0) || !(ppid > 0)) continue;
+    children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+  }
+  const tree = new Set([root]);
+  for (const pid of tree) for (const child of children.get(pid) ?? []) tree.add(child);
+  return [...tree];
+}
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const signalAll = (pids: ReadonlyArray<number>, signal: NodeJS.Signals) => {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Already gone.
+    }
+  }
+};
+
+const awaitExit = (pids: ReadonlyArray<number>) =>
+  Effect.gen(function* () {
+    for (let waited = 0; waited < STOP_GRACE_MILLIS; waited += STOP_POLL_MILLIS) {
+      if (!pids.some(isAlive)) return;
+      yield* Effect.sleep(STOP_POLL_MILLIS);
+    }
+  });
+
+/**
+ * Stops a running child and whatever it started. Effect's own kill reaches the
+ * child alone, as the children share the runner's process group so that a
+ * terminal's Ctrl+C reaches them directly; and `vp run` exits on SIGTERM without
+ * passing it on, so a SIGTERM or SIGINT sent to the runner left Vite running,
+ * holding its port. The child goes first: the server's `node --watch` passes the
+ * signal on and waits, and a second one would cut the server's shutdown short.
+ */
+const stopProcessTree = (child: ChildProcessSpawner.ChildProcessHandle) =>
+  Effect.gen(function* () {
+    // Windows' kill already takes the tree (taskkill /T), and an exited
+    // child's pid may name another process by now.
+    if ((yield* HostProcessPlatform) === "win32" || !(yield* child.isRunning)) return;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const psOutput = yield* spawner.string(ChildProcess.make("ps", ["-A", "-o", "pid=,ppid="]));
+    const descendants = processTree(psOutput, child.pid).filter((pid) => pid !== child.pid);
+    yield* child.kill({ forceKillAfter: STOP_GRACE_MILLIS });
+    const left = descendants.filter(isAlive);
+    signalAll(left, "SIGTERM");
+    yield* awaitExit(left);
+    signalAll(left.filter(isAlive), "SIGKILL");
+  }).pipe(Effect.ignore);
+
 const runDevProcess = (mode: DevMode, devProcess: DevProcess, env: NodeJS.ProcessEnv) =>
   Effect.gen(function* () {
     const spawnCommand =
@@ -877,6 +946,8 @@ const runDevProcess = (mode: DevMode, devProcess: DevProcess, env: NodeJS.Proces
           }),
       ),
     );
+    // Added after the spawn, so it runs before the spawn's own release.
+    yield* Effect.addFinalizer(() => stopProcessTree(child));
 
     const exitCode = yield* child.exitCode.pipe(
       Effect.mapError(

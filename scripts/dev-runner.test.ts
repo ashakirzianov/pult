@@ -26,6 +26,7 @@ import {
   findFirstAvailableOffset,
   isBrowserAllowedPort,
   planDevProcesses,
+  processTree,
   resolveModePortOffsets,
   resolveOffset,
   runDevRunnerWithInput,
@@ -97,6 +98,26 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       assert.include(output, "[dev-runner] mode=dev");
     }),
   );
+
+  describe("processTree", () => {
+    it.effect("takes the root and everything under it, and nothing else", () =>
+      Effect.sync(() => {
+        const psOutput = [
+          "    1     0",
+          "  500     1",
+          "  510   500",
+          "  520   510",
+          "  521   510",
+          "  530   520",
+          "  600     1",
+          "  610   600",
+          "",
+        ].join("\n");
+        assert.deepStrictEqual(processTree(psOutput, 510), [510, 520, 521, 530]);
+        assert.deepStrictEqual(processTree(psOutput, 999), [999]);
+      }),
+    );
+  });
 
   describe("planDevProcesses", () => {
     it.effect("lets Vite+ honor the desktop dev task graph, with no server", () =>
