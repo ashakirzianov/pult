@@ -6,7 +6,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import compression from "compression";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { defineConfig, type Connect, type Plugin } from "vite-plus";
+import { defaultAllowedOrigins, defineConfig, type Connect, type Plugin } from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
@@ -153,6 +153,15 @@ const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
   .filter((entry) => entry.length > 0);
 const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
+// Vite answers CORS preflights itself, before proxying, and admits only
+// localhost origins by default. A pairing link names this port, so the origins
+// the server admits from T3CODE_DEV_ALLOWED_ORIGINS (desktop VS Code's
+// vscode-file://vscode-app, say) have to be admitted here as well.
+const configuredAllowedOrigins = (process.env.T3CODE_DEV_ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0);
+
 export default defineConfig(() => {
   return {
     assetsInclude: ["**/*.wasm"],
@@ -228,6 +237,7 @@ export default defineConfig(() => {
       port,
       strictPort: true,
       allowedHosts,
+      cors: { origin: [defaultAllowedOrigins, ...configuredAllowedOrigins] },
       // Transform the whole module graph at server start instead of on the
       // first request. Without this, a cold worktree discovers and transforms
       // modules one import-level at a time while the browser waits — which
