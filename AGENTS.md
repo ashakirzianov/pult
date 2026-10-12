@@ -58,7 +58,7 @@ The most common defect is a change that works on the path you tested and is miss
 
 ## Dev servers
 
-- `vp i` installs. Worktrees get this from the `t3.json` setup script; if module resolution looks broken, it probably did not run.
+- `vp i` installs. A worktree gets this, and the main checkout's `.env`, from `scripts/setup-worktree.ts`: T3 Code runs it through `t3.json`, and a worktree made by hand runs `node scripts/setup-worktree.ts`. If module resolution looks broken, it probably did not run.
 - `vp run dev` starts the server and the web client. The server is the T3 Code Extensible checkout's (`PULT_T3CODE_CHECKOUT`, environment or `.env`, default `~/repos/t3code-extensible`), run from source with the worktree's gitignored `.t3` as its home; that home outranks an ambient `T3CODE_HOME`, and an explicit `--home-dir` wins. `dev:web` starts the client alone. `dev:desktop` starts the Electron client but still expects a bundled server (`pult/desktop-dev-mode`).
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
 - Sharing over the tailnet: run `vp run dev --share` in the background, wait for the `pairingUrl:` line, give that URL to an unpaired browser. If a one-time token was consumed, mint a fresh one with `node apps/server/src/bin.ts pair` run in the checkout with `T3CODE_HOME` set to the worktree's `.t3`. See `docs/operations/development.md`.

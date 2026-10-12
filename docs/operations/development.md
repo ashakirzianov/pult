@@ -52,9 +52,9 @@ Put that value in the main checkout's gitignored `.env`:
 T3CODE_DEV_AUTH_TOKEN=<the value generated above>
 ```
 
-The `t3.json` Setup Worktree action links that file to each worktree's `.env`. The dev runner reads repository env files at startup and passes the value to the server in web modes, never in `dev:desktop`. `.env.local` and inherited process environment values override `.env`, so no per-worktree export is needed after setup.
+`scripts/setup-worktree.ts`, which the `t3.json` Setup Worktree action runs and a worktree made by hand runs as `node scripts/setup-worktree.ts`, links that file to each worktree's `.env`. The dev runner reads repository env files at startup and passes the value to the server in web modes, never in `dev:desktop`. `.env.local` and inherited process environment values override `.env`, so no per-worktree export is needed after setup.
 
-For a manual worktree or launcher without that link, export the same fixed value instead:
+For a launcher without that link, export the same fixed value instead:
 
 ```sh
 export T3CODE_DEV_AUTH_TOKEN="<the value generated above>"
