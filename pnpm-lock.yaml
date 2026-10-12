@@ -31,7 +31,6 @@ catalogs:
 overrides:
   '@exodus/bytes>@noble/hashes': 1.8.0
   dbus-next>usocket: '-'
-  '@clerk/backend': 3.18.1
   '@clerk/clerk-js': 6.32.1
   '@clerk/clerk-js>@base-org/account': '-'
   '@clerk/clerk-js>@coinbase/wallet-sdk': '-'
@@ -455,6 +454,9 @@ importers:
       sharp:
         specifier: 0.35.4
         version: 0.35.4(@types/node@24.12.4)
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@effect/vitest':
         specifier: 4.0.1

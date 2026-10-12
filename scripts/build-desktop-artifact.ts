@@ -2615,8 +2615,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     stageWorkspaceConfigString,
   );
 
-  if (Object.keys(stagePatchedDependencies).length > 0) {
-    yield* fs.copy(path.join(repoRoot, "patches"), path.join(stageAppDir, "patches"));
+  // Each patch at the repo-relative path the staged workspace names it by.
+  for (const patchFile of new Set(Object.values(stagePatchedDependencies))) {
+    yield* fs.makeDirectory(path.dirname(path.join(stageAppDir, patchFile)), { recursive: true });
+    yield* fs.copyFile(path.join(repoRoot, patchFile), path.join(stageAppDir, patchFile));
   }
 
   yield* Effect.log("[desktop-artifact] Installing staged production dependencies...");
