@@ -5,7 +5,7 @@
 // data, which a dev run must never touch. This test fails if Pult's own source under apps/, packages/
 // or scripts/ joins a home directory to a literal `.t3` again, outside the
 // reasoned allow-list below. The server, which legitimately defaults to ~/.t3,
-// lives outside this repo (DECISIONS.md, `server-side-home`), and the protocol
+// lives outside this repo (pult/decisions, `server-side-home`), and the protocol
 // packages under vendor/, the fork's bytes, lie outside the scanned roots. A
 // `.t3` that is not a home default (a worktree-local `.t3`, a fixture path in a
 // test) does not name a home directory next to it, so it never matches.

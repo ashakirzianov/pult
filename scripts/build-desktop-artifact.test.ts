@@ -524,7 +524,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         ...LINUX_CAPTURE_EXTRA_RESOURCES,
         { from: "apps/pult-desktop/prod-resources/browser-secret", to: "browser-secret" },
       ]);
-      // Pult stages no server sidecar (DECISIONS.md, `no-local-server`).
+      // Pult stages no server sidecar (pult/decisions, `no-local-server`).
       assert.deepStrictEqual(win.extraResources, [
         ...DESKTOP_EXTRA_RESOURCES,
         ...WSL_RUNTIME_EXTRA_RESOURCES,

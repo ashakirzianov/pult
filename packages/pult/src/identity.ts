@@ -4,7 +4,7 @@
  * instead of spelling a literal, so a Pult app runs beside T3 Code without
  * either disturbing the other; `scripts/noUpstreamIdentity.test.ts` keeps it
  * so. Env var names, flags, package names and protocol headers stay upstream's
- * (DECISIONS.md, `identity-seam`).
+ * (pult/decisions, `identity-seam`).
  *
  * Plain constants only: `apps/pult-desktop/scripts/electron-launcher.mjs` imports
  * this file under Node's type stripping.

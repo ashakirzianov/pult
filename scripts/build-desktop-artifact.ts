@@ -2558,7 +2558,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   }
 
   // The app installs only the desktop main-process externals; Pult bundles no
-  // server (DECISIONS.md, `no-local-server`).
+  // server (pult/decisions, `no-local-server`).
   const stageDependencies = { ...resolvedDesktopRuntimeDependencies };
   const stagePatchedDependencies = createStagePatchedDependencies(
     workspacePatchedDependencies,

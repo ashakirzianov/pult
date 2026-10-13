@@ -87,9 +87,6 @@ export default defineConfig({
       // Macroscope's glob-per-line ignore grammar, not Markdown: formatting
       // it rewrites `*` as `_` and joins lines.
       ".macroscope/ignore.md",
-      // Pult's decision log has a fixed entry shape (paragraph right under the
-      // heading, `*Rejected:*`), which formatting rewrites.
-      "DECISIONS.md",
       "dist",
       "dist-electron",
       "node_modules",

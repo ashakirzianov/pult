@@ -488,7 +488,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const settingsRef = yield* SynchronizedRef.make(environment.defaultDesktopSettings);
-  // Pult bundles no server (DECISIONS.md, `no-local-server`), so only a
+  // Pult bundles no server (pult/decisions, `no-local-server`), so only a
   // development run, which may start a local server, has a local
   // environment: a packaged app loads the setting as off whatever the file
   // says, and turning it on is not a change.

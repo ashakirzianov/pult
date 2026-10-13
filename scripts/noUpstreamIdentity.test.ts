@@ -5,7 +5,7 @@
 // other. This test fails if source under apps/,
 // packages/ or scripts/ spells one of upstream's identity values again, outside
 // the reasoned allow-list below. Pult's server side lives outside this repo
-// (DECISIONS.md, `server-side-home`), and the protocol packages under vendor/
+// (pult/decisions, `server-side-home`), and the protocol packages under vendor/
 // are the fork's bytes and lie outside the scanned roots; Pult's own shared
 // code is packages/pult.
 import * as NodeFS from "node:fs";

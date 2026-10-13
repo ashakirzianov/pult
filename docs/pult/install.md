@@ -1,6 +1,6 @@
 # Installing Pult
 
-How a Pult desktop build is made and installed beside T3 Code, and how a client build reaches the installed app. Agents build; Anton installs and launches. Pult runs no server of its own: it attaches to a running T3 Code Extensible server (DECISIONS.md, `server-side-home`, `no-local-server`).
+How a Pult desktop build is made and installed beside T3 Code, and how a client build reaches the installed app. Agents build; Anton installs and launches. Pult runs no server of its own: it attaches to a running T3 Code Extensible server (xaxis `pult/decisions`, `server-side-home`, `no-local-server`).
 
 ## Making a build
 

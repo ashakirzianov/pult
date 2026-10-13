@@ -1,6 +1,6 @@
 # Architecture
 
-Pult is a client. Execution stays in the environment that owns the workspace: a running T3 Code Extensible server, which Pult's web client (`apps/pult`) and Electron shell (`apps/pult-desktop`) control over authenticated RPC. A client must never substitute its own filesystem, provider credentials, or machine state for the environment's. Pult bundles no server; the desktop attaches to one (`DECISIONS.md`, `no-local-server`).
+Pult is a client. Execution stays in the environment that owns the workspace: a running T3 Code Extensible server, which Pult's web client (`apps/pult`) and Electron shell (`apps/pult-desktop`) control over authenticated RPC. A client must never substitute its own filesystem, provider credentials, or machine state for the environment's. Pult bundles no server; the desktop attaches to one (xaxis `pult/decisions`, `no-local-server`).
 
 ## Ownership boundaries
 

@@ -8,14 +8,14 @@ label: repo:pult
 This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensible`): a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. It is one repo of the **Pult track** (xaxis `pult/about`), beside `../pult-extension` and the fork. Cross-track conventions live in `../axis/AGENTS.md`.
 
 - Read `docs/pult/rfc-0.md` (human-written, never edited by agents) before anything else, then `docs/pult/rfc-1.md`, the current direction.
-- `DECISIONS.md` holds the rulings.
+- The track's decisions are xaxis `pult/decisions`: one log for its three repos, grouped by area. Record a new one there, in the entry shape of `../axis/workflow/global-agents.md`.
 - `docs/pult/install.md` is how a build reaches Anton. Agents stage a client build (`vp run pult:stage`); only Anton makes one live, from the desktop's View menu.
 - Commits are small and semantically scoped, one logical unit each. `origin` is `github.com/ashakirzianov/pult`; there is no `upstream` remote.
 - Licence: upstream's MIT text stays.
 
 ## Review posture
 
-**High-level.** Anton reviews direction, interfaces and module boundaries (the RFCs, `DECISIONS.md`, the seams with the server and the vendored packages), not implementation. Agents commit on their own and surface design deltas introduced during implementation rather than landing them silently. **Never push unless asked:** the repo is public, so pushing is Anton's call.
+**High-level.** Anton reviews direction, interfaces and module boundaries (the RFCs, `pult/decisions`, the seams with the server and the vendored packages), not implementation. Agents commit on their own and surface design deltas introduced during implementation rather than landing them silently. **Never push unless asked:** the repo is public, so pushing is Anton's call.
 
 ## Glossary
 
@@ -33,7 +33,7 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 - `apps/pult` - the React/Vite client (`@pult/client`), Pult's own copy of upstream's `apps/web` taken at upstream `f4f148eb67`. Shared client logic the server's own client also uses is in the vendored `client-runtime`.
 - `apps/pult-desktop` - the Electron shell (`@pult/desktop`): window, IPC, the payload slot and client-dir override, SSH and Tailscale connections.
 - `packages/pult` - `@pult/shared`: the identity seam, the payload slot, the scheme-reading auth helpers.
-- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`; `vendor/t3code/patches` - the fork's patches to the packages this repo installs, applied through `pnpm-workspace.yaml`, whose `catalog`, `overrides`, `packageExtensions` and `patchedDependencies` blocks `vendor.ts` writes from the fork's. All of it is copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them, those blocks included (`DECISIONS.md`, `protocol-packages-pinned`): a bump is a new PIN, `vp run vendor:sync`, `vp i`, and fixing what the types say; `vendor:check` fails on drift.
+- `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`; `vendor/t3code/patches` - the fork's patches to the packages this repo installs, applied through `pnpm-workspace.yaml`, whose `catalog`, `overrides`, `packageExtensions` and `patchedDependencies` blocks `vendor.ts` writes from the fork's. All of it is copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them, those blocks included (`pult/decisions`, `protocol-packages-pinned`): a bump is a new PIN, `vp run vendor:sync`, `vp i`, and fixing what the types say; `vendor:check` fails on drift.
 - `scripts` - the dev runner, the desktop artifact build, staging, icons, the vendoring script and the guards (`noUpstreamIdentity`, `noT3HomeDefault`).
 - `docs/pult` - Pult's own docs; `docs/internals` and `docs/operations` - upstream-derived pages (see Documentation).
 
@@ -51,7 +51,7 @@ The most common defect is a change that works on the path you tested and is miss
 
 - **Entry points.** A behaviour reachable from the chat view is usually also reachable from Settings, the command palette, and a keybinding.
 - **Clients.** Web and desktop (which wraps web and adds the Electron shell and IPC). Mobile is not Pult's.
-- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`), offered upstream when it is generic; a Pult-specific one would be a plugin route (`/api/plugins/pult/*`), and a client reads `GET /api/plugins` before relying on one (`DECISIONS.md`, `server-side-home`).
+- **Contracts.** Anything crossing the wire is typed in the vendored `contracts`. Pult cannot change it; a feature that needs a new wire shape is a fork change (`~/repos/t3code-extensible`), offered upstream when it is generic; a Pult-specific one would be a plugin route (`/api/plugins/pult/*`), and a client reads `GET /api/plugins` before relying on one (`pult/decisions`, `server-side-home`).
 - **Reverse states.** If you added a way in, add the way out and the way to see it. A one-way door is a bug.
 - **Connection modes.** Local, remote and SSH behave differently; multi-environment cases are real.
 - **Docs.** Check whether the change makes existing guidance inaccurate before adding anything.
@@ -80,7 +80,7 @@ An empty database is a bad test. `vp run migrate-dev-db`, with your dev server s
 
 Most code changes do not need a documentation change. Agents can read the code.
 
-- `docs/pult/` is for Pult's own designs and procedures. A `DECISIONS.md` entry takes the shape in `../axis/workflow/global-agents.md`. Before adding a paragraph, ask what a maintainer would get wrong without it.
+- `docs/pult/` is for Pult's own procedures, what is useless without the checkout. Designs, direction and decisions live in xaxis under `pult/`, since someone without the repo uses them too. Before adding a paragraph, ask what a maintainer would get wrong without it.
 - `docs/internals/` and `docs/operations/` are upstream-derived pages, kept where they describe Pult's code. When a page goes stale, rewrite or remove the affected text; do not append another account.
 - An effort's plan may sit beside its design as `docs/<effort>-tasks.md` while the effort runs; when the effort ends, both move to `archive/`. Do not commit research notes or agent scratch files.
 

@@ -178,7 +178,7 @@ export function resolveHostedFirstRunDecision(input: HostedFirstRunDecisionInput
     return { decision: "pending", persistCompletion: false };
   }
 
-  // Pult has no local environment to fall back on (DECISIONS.md,
+  // Pult has no local environment to fall back on (pult/decisions,
   // `no-local-server`), so an install with nothing saved gets the wizard,
   // whose pairing form is where a link from `t3 pair` goes.
   return input.environmentCount === 0
