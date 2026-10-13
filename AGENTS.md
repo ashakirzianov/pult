@@ -7,7 +7,7 @@ label: repo:pult
 
 This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensible`): a web client (`apps/pult`), an Electron shell that serves it (`apps/pult-desktop`), and the tooling to build and deploy them. The server is not here; it is a running T3 Code Extensible, which Pult reaches over its WebSocket and HTTP protocol, typed by the vendored packages. It is one repo of the **Pult track** (xaxis `pult/about`), beside `../pult-extension` and the fork. Cross-track conventions live in `../axis/AGENTS.md`.
 
-- Read `docs/pult/rfc-0.md` (human-written, never edited by agents) before anything else, then `docs/pult/rfc-1.md`, the current direction.
+- Read xaxis `pult/rfc-0` (human-written, never edited by agents) before anything else, then `pult/rfc-1`, the current direction.
 - The track's decisions are xaxis `pult/decisions`: one log for its three repos, grouped by area. Record a new one there, in the entry shape of `../axis/workflow/global-agents.md`.
 - `docs/pult/install.md` is how a build reaches Anton. Agents stage a client build (`vp run pult:stage`); only Anton makes one live, from the desktop's View menu.
 - Commits are small and semantically scoped, one logical unit each. `origin` is `github.com/ashakirzianov/pult`; there is no `upstream` remote.
@@ -35,7 +35,7 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 - `packages/pult` - `@pult/shared`: the identity seam, the payload slot, the scheme-reading auth helpers.
 - `vendor/t3code/packages` - `contracts`, `client-runtime`, `shared`, `ssh`, `tailscale`; `vendor/t3code/patches` - the fork's patches to the packages this repo installs, applied through `pnpm-workspace.yaml`, whose `catalog`, `overrides`, `packageExtensions` and `patchedDependencies` blocks `vendor.ts` writes from the fork's. All of it is copied verbatim from the fork at the commit in `vendor/t3code/PIN`. Read them, never edit them, those blocks included (`pult/decisions`, `protocol-packages-pinned`): a bump is a new PIN, `vp run vendor:sync`, `vp i`, and fixing what the types say; `vendor:check` fails on drift.
 - `scripts` - the dev runner, the desktop artifact build, staging, icons, the vendoring script and the guards (`noUpstreamIdentity`, `noT3HomeDefault`).
-- `docs/pult` - Pult's own docs; `docs/internals` and `docs/operations` - upstream-derived pages (see Documentation).
+- `docs/pult` - Pult's own procedures; `docs/internals` and `docs/operations` - upstream-derived pages (see Documentation).
 
 Everything outside `vendor/` is Pult's own: change it freely, there is no upstream merge. An upstream client or desktop change reaches Pult only when someone carries it over by hand from the fork's history.
 
