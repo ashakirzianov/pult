@@ -2716,7 +2716,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     // Left unset, electron-builder infers a GitHub feed from a GH_TOKEN or
     // GITHUB_TOKEN in the environment, or from the project's repository, and
     // a feed naming upstream's releases would update this fork into T3 Code.
-    // Null is its "no feed": no app-update.yml (DECISIONS.md, `update-feed`).
+    // Null is its "no feed": no app-update.yml (pult/decisions, `update-feed`).
     buildConfig.publish = null;
   }
 
@@ -2739,7 +2739,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ],
       // An unsigned build is signed ad hoc so the bundle verifies at install;
       // hardened runtime would refuse Electron's frameworks without a team id
-      // (DECISIONS.md, `ad-hoc-signing`).
+      // (pult/decisions, `ad-hoc-signing`).
       ...(signed
         ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") }
         : { identity: "-", hardenedRuntime: false }),

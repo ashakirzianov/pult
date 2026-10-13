@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin is code the server imports into its own process and runs with its own services: fully trusted, no manifest, no capabilities, no consent, and no UI. The decisions behind that shape are in [DECISIONS.md](../../DECISIONS.md#plugins). The loader is [`PluginLoader.ts`](../../apps/server/src/plugins/PluginLoader.ts), the HTTP surface [`plugins/http.ts`](../../apps/server/src/plugins/http.ts), and the sample [`examples/plugins/hello`](../../examples/plugins/hello/main.mjs).
+A plugin is code the server imports into its own process and runs with its own services: fully trusted, no manifest, no capabilities, no consent, and no UI. The decisions behind that shape are in the Plugins area of xaxis `pult/decisions`. The loader is [`PluginLoader.ts`](../../apps/server/src/plugins/PluginLoader.ts), the HTTP surface [`plugins/http.ts`](../../apps/server/src/plugins/http.ts), and the sample [`examples/plugins/hello`](../../examples/plugins/hello/main.mjs).
 
 ## Layout
 
