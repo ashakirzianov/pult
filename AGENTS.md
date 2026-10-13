@@ -82,14 +82,12 @@ Most code changes do not need a documentation change. Agents can read the code.
 
 - `docs/pult/` is for Pult's own procedures, what is useless without the checkout. Designs, direction and decisions live in xaxis under `pult/`, since someone without the repo uses them too. Before adding a paragraph, ask what a maintainer would get wrong without it.
 - `docs/internals/` and `docs/operations/` are upstream-derived pages, kept where they describe Pult's code. When a page goes stale, rewrite or remove the affected text; do not append another account.
-- An effort's plan may sit beside its design as `docs/<effort>-tasks.md` while the effort runs; when the effort ends, both move to `archive/`. Do not commit research notes or agent scratch files.
+- An effort's design and plan live on its xaxis issue, not here. Do not commit research notes or agent scratch files.
 
-## Taste
+## Code conventions
 
-- Complexity belongs at the boundary. UI stays dumb; what the server can do deterministically, do not ask an agent to do.
+The track's design principles are xaxis `pult/taste`. In this repo's code:
+
 - `apps/pult/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one with `className`. Layout classes belong on the parent. `shadcn/no-restyle` fails lint on violations. See `docs/internals/web-ui.md`.
 - Inferred types over annotations. `any` is the enemy. The desktop and scripts use Effect; follow the patterns already in those trees.
 - Comments describe how a thing is used, and move when the code moves.
-- No continuously repainting animations; they peg the GPU on high-refresh displays. Users notice a dropped frame, a lying spinner and a stale label.
-- Do not preserve complexity because it already exists, and do not add machinery because it looks architecturally impressive. Fight scope creep. If a rule here fights the task, say so and get a human sign-off before breaking it.
-- Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
