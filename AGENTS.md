@@ -15,7 +15,7 @@ This repo is **Pult**, a client for T3 Code Extensible (`~/repos/t3code-extensib
 
 ## Review posture
 
-**High-level.** Anton reviews direction, interfaces and module boundaries (the RFCs, `pult/decisions`, the seams with the server and the vendored packages), not implementation. Agents commit on their own and surface design deltas introduced during implementation rather than landing them silently. **Never push unless asked:** the repo is public, so pushing is Anton's call.
+**High-level.** Anton reviews direction, interfaces and module boundaries (the RFCs, `pult/decisions`, the seams with the server and the vendored packages), not implementation. Agents commit on their own and surface design deltas introduced during implementation rather than landing them silently. **Agents push on their own** (`axis/decisions`, `push-gate`): a push deploys nothing, since a client build reaches Anton only when he deploys a staged one (`docs/pult/install.md`), and no push is gated, since nothing here migrates production state (`migrate-dev-db` writes only a checkout's sandbox). The repo is public, so a push publishes: never commit secrets, tokens, `.env` files or data copied from `~/.t3`.
 
 ## Glossary
 
