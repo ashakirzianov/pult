@@ -1,15 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-/**
- * WorkspaceFileSystem - Effect service contract for workspace file mutations.
- *
- * Owns workspace-root-relative file read/write/stat operations and their
- * associated safety checks and cache invalidation hooks. Reads and stats also
- * accept absolute host paths so clients can show files an agent left outside
- * the workspace. Writes and other mutations never leave the root, through a
- * symlink included.
- *
- * @module WorkspaceFileSystem
- */
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 
@@ -18,6 +7,9 @@ import type {
   ProjectCreateDirectoryResult,
   ProjectDeleteEntryInput,
   ProjectDeleteEntryResult,
+  FilesystemEntryMetadata,
+  FilesystemGetMetadataInput,
+  FilesystemGetMetadataResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ProjectRenameEntryInput,
@@ -27,6 +19,8 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "@t3tools/contracts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -36,6 +30,7 @@ import * as Schema from "effect/Schema";
 
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
+import { fileHeaderMimeType } from "./fileHeaderMimeType.ts";
 
 const PROJECT_READ_FILE_MAX_BYTES = 1024 * 1024;
 
@@ -185,14 +180,13 @@ export const WorkspaceFileSystemError = Schema.Union([
 ]);
 export type WorkspaceFileSystemError = typeof WorkspaceFileSystemError.Type;
 
-/** Service tag for workspace file operations. */
 export class WorkspaceFileSystem extends Context.Service<
   WorkspaceFileSystem,
   {
-    /**
-     * Read a UTF-8 text file relative to the workspace root, or any host file by
-     * absolute path.
-     */
+    readonly getMetadata: (
+      input: FilesystemGetMetadataInput,
+    ) => Effect.Effect<FilesystemGetMetadataResult>;
+
     readonly readFile: (
       input: ProjectReadFileInput,
     ) => Effect.Effect<
@@ -276,12 +270,12 @@ export const make = Effect.gen(function* () {
     return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
   };
 
-  const realpathWorkspaceRoot = (
+  const realpathWorkspaceRoot = Effect.fnUntraced(function* (
     input: { readonly cwd: string; readonly relativePath: string },
     resolvedPath: string,
-  ) => {
-    const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
-    return Effect.tryPromise({
+  ) {
+    const root = yield* WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+    return yield* Effect.tryPromise({
       try: () => NodeFSP.realpath(root),
       catch: (cause) =>
         new WorkspaceFileSystemOperationError({
@@ -293,7 +287,7 @@ export const make = Effect.gen(function* () {
           cause,
         }),
     });
-  };
+  });
 
   /**
    * Resolves the path a mutation acts on. Its parent must lie inside the real
@@ -306,7 +300,7 @@ export const make = Effect.gen(function* () {
   const resolveMutationTarget = Effect.fn("WorkspaceFileSystem.resolveMutationTarget")(
     function* (input: { readonly cwd: string; readonly relativePath: string }) {
       const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-        workspaceRoot: WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
+        workspaceRoot: yield* WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
         relativePath: input.relativePath,
       });
       const realWorkspaceRoot = yield* realpathWorkspaceRoot(input, target.absolutePath);
@@ -353,11 +347,53 @@ export const make = Effect.gen(function* () {
       return { relativePath: target.relativePath, absolutePath, realWorkspaceRoot };
     },
   );
+  const metadataForPath = Effect.fnUntraced(function* (requestedPath: string) {
+    const expandedPath = expandHomePath(requestedPath, yield* HostProcess.HomeDirectory);
+    if (!path.isAbsolute(expandedPath)) return null;
+    const stat = yield* fileSystem.stat(expandedPath).pipe(Effect.option);
+    if (stat._tag === "None") return null;
+    if (stat.value.type === "Directory") return { kind: "directory" } as const;
+    if (stat.value.type !== "File") return { kind: "other" } as const;
+    let mimeType: string | undefined;
+    if (path.extname(expandedPath) === "" && stat.value.size > 0) {
+      mimeType = yield* Effect.tryPromise({
+        try: async () => {
+          const handle = await NodeFSP.open(
+            expandedPath,
+            NodeFS.constants.O_RDONLY | NodeFS.constants.O_NONBLOCK,
+          );
+          try {
+            if (!(await handle.stat()).isFile()) return undefined;
+            const buffer = Buffer.alloc(512);
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+            return fileHeaderMimeType(buffer.subarray(0, bytesRead));
+          } finally {
+            await handle.close();
+          }
+        },
+        catch: () => undefined,
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+    }
+    return {
+      kind: "file",
+      byteLength: Number(stat.value.size),
+      ...(mimeType === undefined ? {} : { mimeType }),
+    } satisfies FilesystemEntryMetadata;
+  });
+
+  const getMetadata: WorkspaceFileSystem["Service"]["getMetadata"] = Effect.fn(
+    "WorkspaceFileSystem.getMetadata",
+  )(function* (input) {
+    const paths = [...new Set(input.paths)];
+    const entries = yield* Effect.forEach(paths, metadataForPath, { concurrency: 8 });
+    const byPath = new Map(paths.map((value, index) => [value, entries[index] ?? null]));
+    return { entries: input.paths.map((value) => byPath.get(value) ?? null) };
+  });
 
   /**
-   * Resolves the file a read targets. Workspace-relative paths must stay inside the
-   * root, symlinks included. An absolute path reads a host file in place, such as a
-   * report an agent wrote to a temp directory; it gets no root check.
+   * Workspace-relative paths must stay inside the root, symlinks included. An
+   * absolute path reads a host file in place, such as a report an agent wrote to a
+   * temp directory; it gets no root check.
    */
   const resolveReadTarget = Effect.fn("WorkspaceFileSystem.resolveReadTarget")(function* (
     input: ProjectReadFileInput,
@@ -380,7 +416,7 @@ export const make = Effect.gen(function* () {
     }
 
     const target = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
+      workspaceRoot: yield* WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path),
       relativePath: input.relativePath,
     });
     const realWorkspaceRoot = yield* realpathWorkspaceRoot(input, target.absolutePath);
@@ -585,7 +621,7 @@ export const make = Effect.gen(function* () {
     "WorkspaceFileSystem.statEntry",
   )(function* (input) {
     const requestedPath = input.relativePath.trim();
-    const root = WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
+    const root = yield* WorkspacePaths.resolveWorkspaceRootPath(input.cwd, path);
     // The root itself, however spelled, which the path guard keeps from every
     // other method.
     if (!path.isAbsolute(requestedPath) && path.resolve(root, requestedPath) === root) {
@@ -885,6 +921,7 @@ export const make = Effect.gen(function* () {
   return WorkspaceFileSystem.of({
     createDirectory,
     deleteEntry,
+    getMetadata,
     readFile,
     renameEntry,
     statEntry,

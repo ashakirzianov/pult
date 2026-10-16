@@ -13,7 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -141,7 +141,7 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
   );
 
 const make = Effect.gen(function* () {
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const walksIgnoredDirectories = platform === "linux" && !(yield* Effect.sync(honoursWatchIgnore));
   return WorkspaceTreeWatcher.of({ watch, walksIgnoredDirectories });
 });

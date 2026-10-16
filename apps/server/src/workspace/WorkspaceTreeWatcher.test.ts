@@ -4,7 +4,7 @@ import type * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, describe, expect } from "@effect/vitest";
 import type { ProjectEntryChange, ProjectWatchEntriesEvent } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -113,7 +113,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceTreeWatcher", (it) 
             (treeWatcher) => treeWatcher.walksIgnoredDirectories,
           ).pipe(
             Effect.provide(Layer.fresh(WorkspaceTreeWatcher.layer)),
-            Effect.provideService(HostProcessPlatform, platform),
+            Effect.provideService(HostProcess.Platform, platform),
           );
         fsWatch.dropsIgnore = true;
         const walks = yield* Effect.all([walksOn("linux"), walksOn("darwin")]).pipe(
