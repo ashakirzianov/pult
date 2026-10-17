@@ -28,6 +28,7 @@ import defaultConfiguration from "./configuration.json?raw";
 import { installDebugHandle } from "./debug.ts";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
+import { localStorageSecrets } from "./secrets.ts";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
 
@@ -60,6 +61,7 @@ const connectionToken = params.get("connectionToken") ?? undefined;
 const options: IWorkbenchConstructionOptions = {
   remoteAuthority,
   connectionToken,
+  secretStorageProvider: localStorageSecrets,
   productConfiguration: {
     nameShort: "Pult",
     nameLong: "Pult",

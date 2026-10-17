@@ -80,7 +80,7 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getStatusBarServiceOverride(),
     ...getTitleBarServiceOverride(),
     // Question 5: the remote agent path, for a Node extension host on the environment.
-    ...getRemoteAgentServiceOverride({ scanRemoteExtensions: false }),
+    ...getRemoteAgentServiceOverride({ scanRemoteExtensions: true }),
     // Open VSX as the gallery (the construct options name its URLs).
     ...getExtensionGalleryServiceOverride({ webOnly: false }),
     ...getWorkbenchServiceOverride(),
