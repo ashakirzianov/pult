@@ -16,7 +16,6 @@ import "@codingame/monaco-vscode-configuration-editing-default-extension";
 
 import { initialize, type IWorkbenchConstructionOptions } from "@codingame/monaco-vscode-api";
 import { Parts, setPartVisibility } from "@codingame/monaco-vscode-workbench-service-override/common";
-import { initUserConfiguration } from "@codingame/monaco-vscode-configuration-service-override/common";
 import {
   createIndexedDBProviders,
   RegisteredFileSystemProvider,
@@ -38,7 +37,6 @@ installWorkers();
 
 // User data (settings, keybindings, storage) persists in IndexedDB across reloads.
 await createIndexedDBProviders();
-await initUserConfiguration(defaultConfiguration);
 
 // An empty workspace file: the Pult extension adds `pult:` folders to it when
 // a project is opened, and VS Code keeps the editor layout per workspace.
@@ -62,6 +60,8 @@ const options: IWorkbenchConstructionOptions = {
   remoteAuthority,
   connectionToken,
   secretStorageProvider: localStorageSecrets,
+  // The shell's defaults, under the user's own settings: chrome off, editor stock.
+  configurationDefaults: JSON.parse(defaultConfiguration) as Record<string, unknown>,
   productConfiguration: {
     nameShort: "Pult",
     nameLong: "Pult",
