@@ -13,9 +13,6 @@ body {
   color: #ccc;
 }
 
-#workbench {
-  height: 100%;
-}
 
 /* The shell-rendered thread pane (src/threads). */
 .pult-thread-pane {

@@ -32,7 +32,6 @@ import getTimelineServiceOverride from "@codingame/monaco-vscode-timeline-servic
 import getUserDataProfileServiceOverride from "@codingame/monaco-vscode-user-data-profile-service-override";
 import getBannerServiceOverride from "@codingame/monaco-vscode-view-banner-service-override";
 import getStatusBarServiceOverride from "@codingame/monaco-vscode-view-status-bar-service-override";
-import getTitleBarServiceOverride from "@codingame/monaco-vscode-view-title-bar-service-override";
 import getWorkbenchServiceOverride from "@codingame/monaco-vscode-workbench-service-override";
 import getWorkingCopyServiceOverride from "@codingame/monaco-vscode-working-copy-service-override";
 import getWorkspaceTrustOverride from "@codingame/monaco-vscode-workspace-trust-service-override";
@@ -78,7 +77,6 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getExplorerServiceOverride(),
     ...getBannerServiceOverride(),
     ...getStatusBarServiceOverride(),
-    ...getTitleBarServiceOverride(),
     // Question 5: the remote agent path, for a Node extension host on the environment.
     ...getRemoteAgentServiceOverride({ scanRemoteExtensions: true }),
     // Open VSX as the gallery (the construct options name its URLs).

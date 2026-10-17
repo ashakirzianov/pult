@@ -1,0 +1,223 @@
+/* The thread-centred layout: rail | thread | VS Code's editor groups. */
+.pult-shell {
+  display: flex;
+  height: 100%;
+  background: #141414;
+  color: #d4d4d4;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+}
+
+.pult-rail {
+  width: 248px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border-right: 1px solid #262626;
+}
+
+.pult-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.pult-rail-title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex: 1;
+}
+
+.pult-icon-button,
+.pult-link,
+.pult-rail-row,
+.pult-rail-connect {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pult-icon-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: #9a9a9a;
+}
+
+.pult-icon-button:hover,
+.pult-link:hover {
+  color: #fff;
+  background: #262626;
+}
+
+.pult-link {
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #a0a0a0;
+}
+
+.pult-rail-list {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+.pult-rail-connect {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #3a3a3a;
+  border-radius: 8px;
+  color: #a0a0a0;
+}
+
+.pult-rail-project {
+  margin: 10px 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7a7a7a;
+}
+
+.pult-rail-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+}
+
+.pult-rail-row:hover {
+  background: #1e1e1e;
+}
+
+.pult-rail-row.selected {
+  background: #242424;
+  border-left-color: #e55b68;
+}
+
+.pult-rail-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-rail-row-time {
+  font-size: 11px;
+  color: #7a7a7a;
+}
+
+.pult-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4a4a4a;
+  flex: none;
+}
+
+.pult-dot.working,
+.pult-dot.ready {
+  background: #e55b68;
+}
+
+.pult-dot.ready {
+  background: #6fb36f;
+}
+
+.pult-dot.settled {
+  background: #2e2e2e;
+}
+
+.pult-rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #262626;
+  font-size: 12px;
+  color: #9a9a9a;
+}
+
+.pult-rail-env {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-centre {
+  flex: 1 1 0;
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  border-right: 1px solid #262626;
+}
+
+.pult-centre-empty {
+  align-items: center;
+  justify-content: center;
+  color: #7a7a7a;
+}
+
+.pult-centre-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #262626;
+  font-size: 12px;
+}
+
+.pult-centre-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.pult-centre .pult-thread-pane,
+.pult-centre .pult-thread {
+  background: transparent;
+}
+
+.pult-composer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid #262626;
+}
+
+.pult-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  font: inherit;
+  color: inherit;
+  background: #111;
+  border: 1px solid #2e2e2e;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.pult-composer-row {
+  padding-top: 6px;
+  font-size: 11px;
+  color: #6a6a6a;
+}
+
+.pult-editor {
+  flex: 1.3 1 0;
+  min-width: 320px;
+  position: relative;
+}
+
+.pult-editor #workbench {
+  position: absolute;
+  inset: 0;
+}

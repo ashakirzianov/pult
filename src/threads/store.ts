@@ -9,6 +9,8 @@ export interface ShellThread {
   readonly id: string;
   readonly projectId: string;
   readonly projectName: string;
+  /** The project's root on the environment host, for `pult:` URIs. */
+  readonly projectRoot: string | null;
   readonly title: string;
   readonly branch: string | null;
   readonly createdAt: string;
@@ -22,6 +24,7 @@ export interface ShellThread {
 }
 
 export interface ShellEnvironment {
+  readonly id: string;
   readonly label: string;
   readonly phase: string;
 }

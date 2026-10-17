@@ -15,6 +15,7 @@ import "@codingame/monaco-vscode-references-view-default-extension";
 import "@codingame/monaco-vscode-configuration-editing-default-extension";
 
 import { initialize, type IWorkbenchConstructionOptions } from "@codingame/monaco-vscode-api";
+import { Parts, setPartVisibility } from "@codingame/monaco-vscode-workbench-service-override/common";
 import { initUserConfiguration } from "@codingame/monaco-vscode-configuration-service-override/common";
 import {
   createIndexedDBProviders,
@@ -29,6 +30,7 @@ import { installDebugHandle } from "./debug.ts";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { localStorageSecrets } from "./secrets.ts";
+import { mountShell } from "./shell/mount.tsx";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
 
@@ -48,9 +50,7 @@ registerFileSystemOverlay(1, memory);
 registerThreadPane();
 const pult = registerPultExtension();
 
-const container = document.createElement("div");
-container.id = "workbench";
-document.body.replaceChildren(container);
+const container = mountShell();
 
 // Question 5: `?remoteAuthority=host:port[&connectionToken=…]` points the
 // workbench at a VS Code server (remote extension host) of the same commit.
@@ -83,6 +83,8 @@ await initialize(workbenchServices(), container, options, {
   userHome: Uri.file("/"),
 });
 
+// The explorer and search live in a drawer (Cmd+B); the rail is the shell's.
+setPartVisibility(Parts.SIDEBAR_PART, false);
 await pult.whenReady();
 console.info("[pult-shell] workbench up; Pult extension registered as", pult.id);
 installDebugHandle();
