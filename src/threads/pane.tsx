@@ -1,4 +1,4 @@
-import { createInstance, type IEditorGroup, type IInstantiationService } from "@codingame/monaco-vscode-api";
+import { type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import {
@@ -91,9 +91,11 @@ export function registerThreadPane(): void {
   // Opens a thread in the shell's pane; the extension's menus could call it too.
   CommandsRegistry.registerCommand(
     "pult-shell.openThreadPane",
-    async (accessor, threadId: string, column?: number) => {
-      const input = await createInstance(ThreadInput, threadId);
-      await accessor.get(IEditorService).openEditor(input, { pinned: true }, column);
+    (accessor, threadId: string, column?: number) => {
+      // Services are read before any await; the accessor is only valid synchronously.
+      const editorService = accessor.get(IEditorService);
+      const input = accessor.get(IInstantiationService).createInstance(ThreadInput, threadId);
+      return editorService.openEditor(input, { pinned: true }, column);
     },
   );
 }
