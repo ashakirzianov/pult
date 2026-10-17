@@ -25,7 +25,9 @@ import {
 import { Uri } from "monaco-editor";
 
 import defaultConfiguration from "./configuration.json?raw";
+import { installDebugHandle } from "./debug.ts";
 import { registerPultExtension } from "./pultExtension.ts";
+import { registerThreadPane } from "./threads/pane.tsx";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
 
@@ -42,6 +44,7 @@ const memory = new RegisteredFileSystemProvider(false);
 memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ folders: [] }, null, 2)));
 registerFileSystemOverlay(1, memory);
 
+registerThreadPane();
 const pult = registerPultExtension();
 
 const container = document.createElement("div");
@@ -72,3 +75,4 @@ await initialize(workbenchServices(), container, options, {
 
 await pult.whenReady();
 console.info("[pult-shell] workbench up; Pult extension registered as", pult.id);
+installDebugHandle();

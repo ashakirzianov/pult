@@ -95,7 +95,6 @@ export function workbenchServices(): IEditorOverrideServices {
 export const openVsxGallery: NonNullable<IWorkbenchConstructionOptions["productConfiguration"]> = {
   extensionsGallery: {
     serviceUrl: "https://open-vsx.org/vscode/gallery",
-    itemUrl: "https://open-vsx.org/vscode/item",
     resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
     extensionUrlTemplate: "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
     controlUrl: "",

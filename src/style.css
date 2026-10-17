@@ -16,3 +16,71 @@ body {
 #workbench {
   height: 100%;
 }
+
+/* The shell-rendered thread pane (src/threads). */
+.pult-thread-pane {
+  height: 100%;
+  overflow: auto;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+}
+
+.pult-thread {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 2.5rem;
+}
+
+.pult-thread-empty {
+  padding: 2rem;
+  opacity: 0.7;
+}
+
+.pult-thread header h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0.25rem 0 0.5rem;
+  line-height: 1.3;
+}
+
+.pult-thread-project {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.pult-thread-meta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.pult-thread-status {
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.pult-thread-status-working {
+  color: #e55b68;
+}
+
+.pult-thread-goal {
+  border-left: 3px solid #d8b41d;
+  padding-left: 0.75rem;
+  opacity: 0.9;
+}
+
+.pult-thread-body {
+  margin-top: 2rem;
+  border-top: 1px solid var(--vscode-editorWidget-border, #333);
+  padding-top: 1rem;
+}
+
+.pult-thread-note {
+  opacity: 0.6;
+  font-size: 0.9rem;
+}
