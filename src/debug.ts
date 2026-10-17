@@ -1,10 +1,13 @@
 import { getService, ICommandService, IExtensionService } from "@codingame/monaco-vscode-api";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 
+import { threadStore } from "./threads/store.ts";
+
 /** `window.pult`: a handle for driving the spike from the console. */
 export function installDebugHandle(): void {
   Object.assign(window, {
     pult: {
+      threads: () => threadStore.get(),
       exec: async (id: string, ...args: unknown[]) => (await getService(ICommandService)).executeCommand(id, ...args),
       commands: (prefix = "pult.") => [...CommandsRegistry.getCommands().keys()].filter((id) => id.startsWith(prefix)),
       extensions: async () => (await getService(IExtensionService)).extensions.map((e) => e.identifier.value),

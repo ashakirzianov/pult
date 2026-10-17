@@ -51,7 +51,15 @@ const container = document.createElement("div");
 container.id = "workbench";
 document.body.replaceChildren(container);
 
+// Question 5: `?remoteAuthority=host:port[&connectionToken=…]` points the
+// workbench at a VS Code server (remote extension host) of the same commit.
+const params = new URL(window.location.href).searchParams;
+const remoteAuthority = params.get("remoteAuthority") ?? undefined;
+const connectionToken = params.get("connectionToken") ?? undefined;
+
 const options: IWorkbenchConstructionOptions = {
+  remoteAuthority,
+  connectionToken,
   productConfiguration: {
     nameShort: "Pult",
     nameLong: "Pult",
