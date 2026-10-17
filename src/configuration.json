@@ -1,0 +1,21 @@
+{
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.iconTheme": "vs-seti",
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false,
+  "workbench.activityBar.location": "hidden",
+  "workbench.statusBar.visible": false,
+  "workbench.layoutControl.enabled": false,
+  "workbench.editor.editorActionsLocation": "titleBar",
+  "window.commandCenter": false,
+  "window.menuBarVisibility": "hidden",
+  "window.titleBarStyle": "custom",
+  "breadcrumbs.enabled": false,
+  "editor.minimap.enabled": false,
+  "editor.fontSize": 13,
+  "files.autoSave": "off",
+  "security.workspace.trust.enabled": false,
+  "extensions.ignoreRecommendations": true,
+  "update.mode": "none",
+  "telemetry.telemetryLevel": "off"
+}
