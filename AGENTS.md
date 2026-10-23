@@ -15,10 +15,12 @@ This repo is **Pult**'s shell: VS Code's workbench, vendored through `@codingame
 
 ## Where code lives
 
-- `src/main.ts` boots, in order: workers, IndexedDB user data, the workspace file, the thread pane, the extension, then the workbench into the page.
+- `src/main.ts` boots, in order: workers, IndexedDB user data, the workspace file, the thread pane and its command, the extension, the workbench into the page, then the status bar sync and the restored thread selection.
 - `src/services.ts` lists the service overrides and the Open VSX gallery; `src/configuration.json` is the shell's settings defaults (chrome off, editor stock); `src/secrets.ts` persists extension secrets (localStorage, the keychain once there is a desktop wrapper); `src/workers.ts` names the web workers; `src/debug.ts` is the `window.pult` console handle.
 - `src/pultExtension.ts` registers the extension as a built-in from its checkout, which `vite/pultExtension.ts` serves file by file (`PULT_EXTENSION_DIR`, or `.env`, default `../pult-extension/extension`). The extension pushes its thread model into the page over the main-thread command `pult-shell.threads` (`src/shellBridge.ts` in the extension, branch `shell-spike` until it lands on its `main`).
 - `src/threads/` is the shell-rendered thread: the editor pane (`pane.tsx`, registered with the workbench's own editor registries), the store the extension fills (`store.ts`), the React view.
+- `src/threads/selection.ts` is the selected thread and `pult-shell.selectThread`: a switch saves the editor part as the previous thread's editor working set and applies the next one's, keeping the thread tab leftmost.
+- `src/threads/statusBar.ts` shows the status bar while a non-thread editor is open, through `workbench.statusBar.visible` in the in-memory configuration layer.
 - `src/identity.ts` names Pult; `assets/pult/` holds the brand assets (its README says what is source and what is rendered).
 - `scripts/drive.ts` drives the page in headless Chromium; `scripts/setup-worktree.ts` is what T3 Code runs in a new worktree (`t3.json`).
 - Below the extension API: `@codingame/monaco-vscode-workbench-service-override/common` exports `registerEditorPane`, `registerEditorSerializer`, `registerCustomView` and the workbench's services; `@codingame/monaco-vscode-api/vscode/vs/...` reaches VS Code's own modules. Read them in `node_modules/@codingame`, never patch them. A VS Code bump is one version for every `@codingame/*` package at once, plus `monaco-editor` and `vscode` aliases in `package.json`.
@@ -29,7 +31,7 @@ Node 24 and pnpm. The extension must be built (`pnpm i && pnpm build` in its `ex
 
 - `pnpm i`, then `pnpm dev`, then open http://localhost:5190/ (the port is strict; the dev server's allowed origin names it). The first load pre-bundles the workbench for a minute.
 - Connect with Cmd+Shift+P, "Pult: Connect to Environment", and a pairing link or `<server>/#token=<token>`. The **live** server (the installed T3 Code Extensible) hands out a pairing link in its Settings, Connections; it accepts bearer tokens from any origin. A **dev** server is `vp run dev` in the fork checkout with `T3CODE_DEV_ALLOWED_ORIGINS=http://localhost:5190`; a session token that opens files comes from `node apps/server/src/bin.ts auth session issue --ttl 7d --json` run there with `T3CODE_HOME` set to the dev home.
-- `window.pult` in the console: `status()`, `threads()`, `exec(command, ...args)`, `commands(prefix)`, `read(uri)`. Headless: `node scripts/drive.ts 'wait:5000' 'eval:pult.status()' 'shot:/tmp/shell.png'`; the steps are listed at the top of the file.
+- `window.pult` in the console: `status()`, `threads()`, `selected()`, `tabs()`, `exec(command, ...args)`, `commands(prefix)`, `read(uri)`. Headless: `node scripts/drive.ts 'wait:5000' 'eval:pult.status()' 'shot:/tmp/shell.png'`; the steps are listed at the top of the file.
 - Stop what you started, by the PID you tracked.
 
 ## The three ways to hurt yourself
