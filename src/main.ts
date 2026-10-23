@@ -28,6 +28,7 @@ import { installDebugHandle } from "./debug.ts";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
+import { syncStatusBarWithEditors } from "./threads/statusBar.ts";
 import { localStorageSecrets } from "./secrets.ts";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
@@ -86,6 +87,7 @@ await initialize(workbenchServices(), container, options, {
   userHome: Uri.file("/"),
 });
 
+await syncStatusBarWithEditors();
 await restoreThreadSelection();
 
 await pult.whenReady();
