@@ -1,9 +1,17 @@
-import { getService, ICommandService, IExtensionService, IFileService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  ICommandService,
+  IEditorGroupsService,
+  IExtensionService,
+  IFileService,
+} from "@codingame/monaco-vscode-api";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
+import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 
 import { Uri } from "monaco-editor";
 
+import { selectedThread } from "./threads/selection.ts";
 import { threadStore } from "./threads/store.ts";
 
 /** `window.pult`: a handle for driving the spike from the console. */
@@ -12,6 +20,12 @@ export function installDebugHandle(): void {
     pult: {
       Uri,
       threads: () => threadStore.get(),
+      selected: () => selectedThread(),
+      // The editor part's tabs, per group in grid order; `*` marks the active one.
+      tabs: async () =>
+        (await getService(IEditorGroupsService)).getGroups(GroupsOrder.GRID_APPEARANCE).map((group) =>
+          group.editors.map((editor) => `${group.isActive(editor) ? "*" : ""}${editor.getName()}`),
+        ),
       read: async (uri: URI) => {
         const files = await getService(IFileService);
         if (!files.hasProvider(uri)) return { provider: false };
