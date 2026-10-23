@@ -1,8 +1,7 @@
 import { type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
-import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
-import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import {
   type EditorInput,
+  EditorInputCapabilities,
   type IEditorSerializer,
   registerEditorPane,
   registerEditorSerializer,
@@ -17,11 +16,11 @@ import { ThreadView } from "./ThreadView.tsx";
 const PANE_ID = "pult.shell.threadPane";
 
 /**
- * Question 1 of the spike: an editor pane the shell renders itself, registered
- * below the extension API with the workbench's own `EditorPane` and
- * `EditorInput`. The pane mounts a React root in the element the editor group
- * hands it; the group handles tabs, splitting, drag and restore as for any
- * editor.
+ * An editor pane the shell renders itself, registered below the extension API
+ * with the workbench's own `EditorPane` and `EditorInput`. The pane mounts a
+ * React root in the element the editor group hands it; the group handles tabs,
+ * drag and restore as for any editor. `selection.ts` opens it as the selected
+ * thread's leftmost tab.
  */
 class ThreadPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
@@ -51,11 +50,25 @@ class ThreadPane extends SimpleEditorPane {
   }
 }
 
+/**
+ * The selected thread's tab. It cannot be closed: it leaves the editor part
+ * only when another thread is selected, which swaps the whole part with
+ * `force`. Its name follows the thread's title, since a tab restored at
+ * startup is created before the extension has pushed the threads.
+ */
 export class ThreadInput extends SimpleEditorInput {
   constructor(readonly threadId: string) {
     super(undefined);
-    this.setName(threadStore.get().threads.find((thread) => thread.id === threadId)?.title ?? "Thread");
+    this.addCapability(EditorInputCapabilities.CannotClose);
     this.setDescription("Pult");
+    this.updateName();
+    const unsubscribe = threadStore.subscribe(() => this.updateName());
+    this._register({ dispose: unsubscribe });
+  }
+
+  private updateName(): void {
+    const title = threadStore.get().threads.find((thread) => thread.id === this.threadId)?.title ?? "Thread";
+    if (title !== this.getName()) this.setName(title);
   }
 
   override get typeId(): string {
@@ -73,6 +86,8 @@ interface SerializedThreadInput {
 
 export function registerThreadPane(): void {
   registerEditorPane(PANE_ID, "Pult Thread", ThreadPane, [ThreadInput]);
+  // Serialisable, so the editor part's saved state and the per-thread working
+  // sets (`selection.ts`) restore the thread's tab with the rest.
   registerEditorSerializer(
     PANE_ID,
     class implements IEditorSerializer {
@@ -86,16 +101,6 @@ export function registerThreadPane(): void {
         const { threadId } = JSON.parse(serialized) as SerializedThreadInput;
         return instantiation.createInstance(ThreadInput, threadId);
       }
-    },
-  );
-  // Opens a thread in the shell's pane; the extension's menus could call it too.
-  CommandsRegistry.registerCommand(
-    "pult-shell.openThreadPane",
-    (accessor, threadId: string, column?: number) => {
-      // Services are read before any await; the accessor is only valid synchronously.
-      const editorService = accessor.get(IEditorService);
-      const input = accessor.get(IInstantiationService).createInstance(ThreadInput, threadId);
-      return editorService.openEditor(input, { pinned: true }, column);
     },
   );
 }

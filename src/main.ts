@@ -27,6 +27,7 @@ import defaultConfiguration from "./configuration.json?raw";
 import { installDebugHandle } from "./debug.ts";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
+import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
 import { localStorageSecrets } from "./secrets.ts";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
@@ -44,6 +45,7 @@ memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ fol
 registerFileSystemOverlay(1, memory);
 
 registerThreadPane();
+registerSelectThreadCommand();
 const pult = registerPultExtension();
 
 // The workbench owns the whole page; its parts are the layout (xaxis `pult/own-shell`).
@@ -83,6 +85,8 @@ const options: IWorkbenchConstructionOptions = {
 await initialize(workbenchServices(), container, options, {
   userHome: Uri.file("/"),
 });
+
+await restoreThreadSelection();
 
 await pult.whenReady();
 console.info("[pult-shell] workbench up; Pult extension registered as", pult.id);
