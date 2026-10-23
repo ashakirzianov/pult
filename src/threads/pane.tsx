@@ -53,13 +53,15 @@ class ThreadPane extends SimpleEditorPane {
 /**
  * The selected thread's tab. It cannot be closed: it leaves the editor part
  * only when another thread is selected, which swaps the whole part with
- * `force`. Its name follows the thread's title, since a tab restored at
- * startup is created before the extension has pushed the threads.
+ * `force`. It is a singleton: Split Editor skips it and a drag moves it rather
+ * than copies it, so a second copy never appears that could not be closed.
+ * Its name follows the thread's title, since a tab restored at startup is
+ * created before the extension has pushed the threads.
  */
 export class ThreadInput extends SimpleEditorInput {
   constructor(readonly threadId: string) {
     super(undefined);
-    this.addCapability(EditorInputCapabilities.CannotClose);
+    this.addCapability(EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton);
     this.setDescription("Pult");
     this.updateName();
     const unsubscribe = threadStore.subscribe(() => this.updateName());

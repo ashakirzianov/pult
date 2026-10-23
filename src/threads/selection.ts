@@ -5,6 +5,7 @@ import {
   IInstantiationService,
   IQuickInputService,
   IStorageService,
+  type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
 import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
@@ -115,7 +116,7 @@ function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
   for (const group of groups) {
     const tab = group.editors.find((editor) => editor instanceof ThreadInput);
     if (tab !== undefined && group.getIndexOfEditor(tab) !== 0) {
-      group.moveEditor(tab, group, { index: 0, preserveFocus: true, inactive: !group.isActive(tab) });
+      group.moveEditor(tab, group, { index: 0 });
     }
   }
 }
@@ -123,7 +124,10 @@ function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
 /**
  * Reads the selection saved before a reload; the editor part restores its own
  * state, which is the selected thread's tabs, so nothing is applied. Then
- * keeps the thread tab leftmost as editors move. Started once the workbench is up.
+ * keeps the thread tab leftmost as editors move, after each change has settled:
+ * the event fires inside a group's move, before its tab strip has caught up,
+ * and a second move from there scrambles the strip's labels. Started once the
+ * workbench is up.
  */
 export async function restoreThreadSelection(): Promise<void> {
   const storage = await getService(IStorageService);
@@ -132,7 +136,7 @@ export async function restoreThreadSelection(): Promise<void> {
   const groups = await getService(IEditorGroupsService);
   const editors = await getService(IEditorService);
   editors.onDidEditorsChange(() => {
-    if (!switching) keepThreadTabsFirst(groups.groups);
+    if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
   });
   for (const listener of listeners) listener();
 }
@@ -150,19 +154,19 @@ export function registerSelectThreadCommand(): void {
         });
       }
 
-      async run(accessor: Parameters<Action2["run"]>[0], threadId?: unknown): Promise<void> {
+      async run(accessor: ServicesAccessor, threadId?: unknown): Promise<void> {
         if (typeof threadId === "string") return selectThread(threadId);
         // Services are read before any await; the accessor is only valid synchronously.
         const quickInput = accessor.get(IQuickInputService);
-        const picked = await quickInput.pick(
-          threadStore.get().threads.map((thread) => ({
-            id: thread.id,
-            label: thread.title,
-            description: thread.projectName,
-            picked: thread.id === selected?.threadId,
-          })),
-          { placeHolder: "Select a thread" },
-        );
+        const items = threadStore.get().threads.map((thread) => ({
+          id: thread.id,
+          label: thread.title,
+          description: thread.projectName,
+        }));
+        const picked = await quickInput.pick(items, {
+          placeHolder: "Select a thread",
+          activeItem: items.find((item) => item.id === selected?.threadId),
+        });
         if (picked !== undefined) await selectThread(picked.id);
       }
     },

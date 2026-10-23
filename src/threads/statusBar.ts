@@ -10,7 +10,7 @@ const STATUS_BAR_VISIBLE = "workbench.statusBar.visible";
 /**
  * Shows VS Code's status bar while any editor other than a thread tab is open,
  * in any group, and hides it otherwise. The layout service has no public way
- * to hide the status bar (`setPartVisibility` excludes it), so this sets the
+ * to hide the status bar (`setPartHidden` has no case for it), so this sets the
  * setting it follows in the in-memory configuration layer: never written to
  * the user's settings, and above them. Started once the workbench is up.
  */
