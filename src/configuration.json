@@ -2,6 +2,7 @@
   "workbench.colorTheme": "Default Dark Modern",
   "workbench.iconTheme": "vs-seti",
   "workbench.startupEditor": "none",
+  "workbench.editor.useModal": "off",
   "workbench.tips.enabled": false,
   "workbench.activityBar.location": "hidden",
   "workbench.statusBar.visible": false,

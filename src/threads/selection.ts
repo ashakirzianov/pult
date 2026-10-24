@@ -1,5 +1,6 @@
 import {
   getService,
+  ICommandService,
   type IEditorGroup,
   IEditorGroupsService,
   IInstantiationService,
@@ -7,7 +8,9 @@ import {
   IStorageService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
+import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
@@ -21,15 +24,24 @@ export interface ThreadSelection {
   readonly threadId: string;
 }
 
+/** Settings, content of its own beside the threads: VS Code's settings editor with a tab set of its own. */
+const SETTINGS = "settings";
+type Selection = ThreadSelection | typeof SETTINGS;
+
 const STORAGE_KEY = "pult.shell.selectedThread";
 
-let selected: ThreadSelection | undefined;
+let selected: Selection | undefined;
 let switching = false;
 let queue = Promise.resolve();
 const listeners = new Set<() => void>();
 
+/** The selected thread; undefined while Settings is selected. */
 export function selectedThread(): ThreadSelection | undefined {
-  return selected;
+  return selected === SETTINGS ? undefined : selected;
+}
+
+export function isSettingsSelected(): boolean {
+  return selected === SETTINGS;
 }
 
 /** True while a switch swaps the editor part, whose editor events are transient then. */
@@ -37,7 +49,7 @@ export function isSwitchingThread(): boolean {
   return switching;
 }
 
-/** Called after every completed selection, the startup one included. */
+/** Called after every completed selection, the startup one and Settings included. */
 export function onDidSelectThread(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -53,22 +65,37 @@ export function onDidSelectThread(listener: () => void): () => void {
  * time, in call order.
  */
 export function selectThread(threadId: string): Promise<void> {
-  const next = queue.then(() => switchTo(threadId));
+  return enqueue(() => {
+    const environmentId = threadStore.get().environment?.id;
+    if (environmentId === undefined) throw new Error("Connect to an environment before selecting a thread.");
+    return switchTo({ environmentId, threadId });
+  });
+}
+
+/**
+ * Selects Settings as a thread is selected: the selected thread's tabs are
+ * saved, and the editor part shows Settings' own tab set, the settings editor
+ * alone the first time. Selecting a thread again restores that thread's tabs.
+ */
+export function selectSettings(): Promise<void> {
+  return enqueue(() => switchTo(SETTINGS));
+}
+
+function enqueue(run: () => Promise<void>): Promise<void> {
+  const next = queue.then(run);
   queue = next.catch(() => undefined);
   return next;
 }
 
-async function switchTo(threadId: string): Promise<void> {
-  const environmentId = threadStore.get().environment?.id;
-  if (environmentId === undefined) throw new Error("Connect to an environment before selecting a thread.");
-  const next = { environmentId, threadId };
+async function switchTo(next: Selection): Promise<void> {
   const groups = await getService(IEditorGroupsService);
   const storage = await getService(IStorageService);
   const instantiation = await getService(IInstantiationService);
+  const commands = await getService(ICommandService);
 
   switching = true;
   try {
-    // With nothing selected yet, the open editors become the new thread's tabs.
+    // With nothing selected yet, the open editors become the new selection's tabs.
     if (selected !== undefined && workingSetName(selected) !== workingSetName(next)) {
       deleteWorkingSet(selected);
       groups.saveWorkingSet(workingSetName(selected));
@@ -77,7 +104,8 @@ async function switchTo(threadId: string): Promise<void> {
     }
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-    await showThreadTab(threadId);
+    if (next === SETTINGS) await showSettings();
+    else await showThreadTab(next.threadId);
   } finally {
     switching = false;
   }
@@ -85,10 +113,7 @@ async function switchTo(threadId: string): Promise<void> {
 
   /** The thread's tab in the first group, leftmost; other threads' tabs leave. */
   async function showThreadTab(id: string): Promise<void> {
-    for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
-      const stale = group.editors.filter((editor) => editor instanceof ThreadInput && editor.threadId !== id);
-      if (stale.length > 0) await group.closeEditors(stale, { force: true });
-    }
+    await closeThreadTabs((editor) => editor.threadId !== id);
     const first = groups.getGroups(GroupsOrder.GRID_APPEARANCE)[0] ?? groups.activeGroup;
     if (!first.editors.some((editor) => editor instanceof ThreadInput)) {
       await first.openEditor(instantiation.createInstance(ThreadInput, id), { pinned: true, index: 0 });
@@ -96,15 +121,28 @@ async function switchTo(threadId: string): Promise<void> {
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
   }
 
-  function deleteWorkingSet(selection: ThreadSelection): void {
+  /** No thread tab, and the settings editor open; Settings' working set may hold it already. */
+  async function showSettings(): Promise<void> {
+    await closeThreadTabs(() => true);
+    await commands.executeCommand("workbench.action.openSettings2");
+  }
+
+  async function closeThreadTabs(stale: (editor: ThreadInput) => boolean): Promise<void> {
+    for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
+      const closing = group.editors.filter((editor) => editor instanceof ThreadInput && stale(editor));
+      if (closing.length > 0) await group.closeEditors(closing, { force: true });
+    }
+  }
+
+  function deleteWorkingSet(selection: Selection): void {
     for (const set of groups.getWorkingSets()) {
       if (set.name === workingSetName(selection)) groups.deleteWorkingSet(set);
     }
   }
 }
 
-function workingSetName({ environmentId, threadId }: ThreadSelection): string {
-  return `pult.thread/${environmentId}/${threadId}`;
+function workingSetName(selection: Selection): string {
+  return selection === SETTINGS ? "pult.settings" : `pult.thread/${selection.environmentId}/${selection.threadId}`;
 }
 
 /**
@@ -132,7 +170,7 @@ function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
 export async function restoreThreadSelection(): Promise<void> {
   const storage = await getService(IStorageService);
   const saved = storage.get(STORAGE_KEY, StorageScope.WORKSPACE);
-  if (saved !== undefined) selected = JSON.parse(saved) as ThreadSelection;
+  if (saved !== undefined) selected = JSON.parse(saved) as Selection;
   const groups = await getService(IEditorGroupsService);
   const editors = await getService(IEditorService);
   editors.onDidEditorsChange(() => {
@@ -141,7 +179,11 @@ export async function restoreThreadSelection(): Promise<void> {
   for (const listener of listeners) listener();
 }
 
-/** `pult-shell.selectThread [threadId]`: with no id, a quick pick of the environment's threads. */
+/**
+ * `pult-shell.selectThread [threadId]`: with no id, a quick pick of the
+ * environment's threads. `pult-shell.selectSettings`, on Cmd+, over the
+ * workbench's own binding, which would open the settings editor under the thread.
+ */
 export function registerSelectThreadCommand(): void {
   registerAction2(
     class extends Action2 {
@@ -165,9 +207,26 @@ export function registerSelectThreadCommand(): void {
         }));
         const picked = await quickInput.pick(items, {
           placeHolder: "Select a thread",
-          activeItem: items.find((item) => item.id === selected?.threadId),
+          activeItem: items.find((item) => item.id === selectedThread()?.threadId),
         });
         if (picked !== undefined) await selectThread(picked.id);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.selectSettings",
+          title: { value: "Show Settings", original: "Show Settings" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+          keybinding: { primary: KeyMod.CtrlCmd | KeyCode.Comma, weight: KeybindingWeight.WorkbenchContrib + 1 },
+        });
+      }
+
+      run(): Promise<void> {
+        return selectSettings();
       }
     },
   );
