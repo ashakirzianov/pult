@@ -73,5 +73,3 @@ patchedDependencies:
 peerDependencyRules:
   allowAny:
     - vite
-  allowedVersions:
-    vite: "*"
