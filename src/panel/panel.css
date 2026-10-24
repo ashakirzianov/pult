@@ -1,0 +1,203 @@
+/* The left panel (src/panel), themed on the workbench's sidebar colours. */
+.pult-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+}
+
+/* The logo in place of the sidebar's title while the cards show (`explorer.ts` sets the class). */
+.part.sidebar.pult-panel-cards-shown > .title > .title-label h2 {
+  width: 64px;
+  height: 21px;
+  margin-top: 7px;
+  color: transparent !important;
+  background: url("../../assets/pult/logo-white.svg") left center / contain no-repeat;
+}
+
+.pult-panel-cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 8px;
+  list-style: none;
+}
+
+.pult-panel-empty {
+  padding: 8px 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-panel-empty p {
+  margin: 0 0 8px;
+}
+
+.pult-card {
+  margin: 2px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.pult-card:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-card:focus-visible {
+  border-color: var(--vscode-focusBorder);
+}
+
+.pult-card-selected,
+.pult-card-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+  border-color: var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
+}
+
+.pult-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-project {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.pult-card-pin.codicon {
+  font-size: 12px;
+}
+
+.pult-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.pult-card-status .codicon {
+  font-size: 12px;
+}
+
+.pult-card-status-working {
+  color: var(--vscode-charts-blue, #4daafc);
+  font-weight: 500;
+}
+
+.pult-card-status-failed {
+  color: var(--vscode-errorForeground);
+  font-weight: 500;
+}
+
+.pult-card-title {
+  margin-top: 3px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 18px;
+}
+
+.pult-card-settled .pult-card-title {
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-details {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pult-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pult-card-row .codicon {
+  font-size: 12px;
+}
+
+.pult-panel-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pult-panel-button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pult-panel-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pult-panel-button .codicon {
+  font-size: 14px;
+}
+
+.pult-panel-footer {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
+}
+
+.pult-panel-footer-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-panel-footer-button:hover,
+.pult-panel-footer-button[aria-pressed="true"] {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.pult-panel-footer-button .codicon {
+  font-size: 16px;
+}

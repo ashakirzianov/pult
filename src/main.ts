@@ -25,6 +25,7 @@ import { Uri } from "monaco-editor";
 
 import defaultConfiguration from "./configuration.json?raw";
 import { installDebugHandle } from "./debug.ts";
+import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
@@ -47,6 +48,7 @@ registerFileSystemOverlay(1, memory);
 
 registerThreadPane();
 registerSelectThreadCommand();
+registerPanel();
 const pult = registerPultExtension();
 
 // The workbench owns the whole page; its parts are the layout (xaxis `pult/own-shell`).
