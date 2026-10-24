@@ -9,17 +9,35 @@ import type { Plugin } from "vite";
  * file's URL against the built-in extension (`src/pultExtension.ts`), so the
  * extension host loads `dist/web/extension.js` and the thread tabs their bundle
  * from here. Dev server only: a production build will copy the directory instead.
+ * It also resolves `pult-extension/thread-view` and its CSS to the thread view
+ * the extension builds for the shell (`dist/shell/`, `webview/shell/` there),
+ * which the thread pane imports (`src/threads/pane.tsx`); while that build is
+ * missing, to a module whose import fails saying so, which the pane shows.
  */
 export function pultExtension(extensionDir: string): Plugin {
   const virtualId = "virtual:pult-extension";
   const resolvedId = "\0" + virtualId;
   const base = "/pult-extension/";
+  const threadView: Record<string, string> = {
+    "pult-extension/thread-view": "dist/shell/thread.js",
+    "pult-extension/thread-view.css": "dist/shell/thread.css",
+  };
+  const missingId = "\0pult-extension-missing:";
   return {
     name: "pult-extension",
+    enforce: "pre",
     resolveId(id) {
-      return id === virtualId ? resolvedId : undefined;
+      if (id === virtualId) return resolvedId;
+      const file = threadView[id];
+      if (file === undefined) return undefined;
+      const resolved = path.join(extensionDir, file);
+      return fs.existsSync(resolved) ? resolved : missingId + resolved;
     },
     load(id) {
+      if (id.startsWith(missingId)) {
+        const message = `The extension's thread view is not built (${id.slice(missingId.length)} is missing). Run \`pnpm build\` in ${extensionDir}, then restart the dev server.`;
+        return `throw new Error(${JSON.stringify(message)});`;
+      }
       if (id !== resolvedId) return undefined;
       const manifest = JSON.parse(fs.readFileSync(path.join(extensionDir, "package.json"), "utf8"));
       const files = [...walk(extensionDir, ["dist", "media"]), "package.json"];

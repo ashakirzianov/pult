@@ -8,7 +8,7 @@ declare module "virtual:pult-extension" {
 
 /**
  * The thread view pult-extension builds for the shell (`webview/shell/main.tsx`
- * there), aliased in `vite.config.ts`; this is its shape as the shell uses it.
+ * there), resolved by `vite/pultExtension.ts`; this is its shape as the shell uses it.
  */
 declare module "pult-extension/thread-view" {
   import type * as Context from "effect/Context";
@@ -23,6 +23,9 @@ declare module "pult-extension/thread-view" {
     readonly environmentId: () => string | null;
     readonly openThread: (threadId: string) => void;
   }
+
+  /** The T3 Code commit the view was built against, its checkout's `vendor/t3code/COMMIT`; undefined before the extension exported it. */
+  export const VENDORED_COMMIT: string | undefined;
 
   export function startThreadView(
     host: ThreadViewHost,

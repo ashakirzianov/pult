@@ -8,13 +8,15 @@ import {
   SimpleEditorInput,
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
 import { connection } from "../connection/index.ts";
 import { threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
+const VENDORED_COMMIT = vendoredCommit.trim();
 
 let started: Promise<{ mount(element: HTMLElement, threadId: string): { dispose(): void } }> | undefined;
 
@@ -22,16 +24,25 @@ let started: Promise<{ mount(element: HTMLElement, threadId: string): { dispose(
  * Upstream's thread view, as pult-extension builds it for the shell, loaded
  * with the first pane and started once on the page's connection: its state
  * runtime runs on the connection runtime's services, so the view shares the
- * page's one socket. A thread it navigates to is selected in the shell.
+ * page's one socket. A thread it navigates to is selected in the shell. The
+ * view imports the shell's vendored packages, so it must be built against the
+ * same T3 Code commit; a view that is missing or built against another fails
+ * with a message the pane shows, and the next pane tries again.
  */
 function threadView() {
   started ??= (async () => {
-    const [{ startThreadView }] = await Promise.all([
+    const [view] = await Promise.all([
       import("pult-extension/thread-view"),
       import("pult-extension/thread-view.css"),
     ]);
+    if (view.VENDORED_COMMIT !== VENDORED_COMMIT) {
+      const built = view.VENDORED_COMMIT === undefined ? "an older pult-extension" : `T3 Code ${view.VENDORED_COMMIT.slice(0, 12)}`;
+      throw new Error(
+        `The extension's thread view is built against ${built}; this shell vendors T3 Code ${VENDORED_COMMIT.slice(0, 12)}. Bring the two to one pin and rebuild the extension, then reload.`,
+      );
+    }
     const workbench = document.querySelector(".monaco-workbench") ?? document.body;
-    return startThreadView(
+    return view.startThreadView(
       {
         connection: () => connection.context(),
         environmentId: () => connection.environment?.environmentId ?? null,
@@ -40,7 +51,10 @@ function threadView() {
       },
       workbench,
     );
-  })();
+  })().catch((error: unknown) => {
+    started = undefined;
+    throw error;
+  });
   return started;
 }
 
@@ -51,14 +65,21 @@ function ThreadContent({ threadId }: { threadId: string }) {
     () => connection.environment?.environmentId,
   );
   const element = useRef<HTMLDivElement>(null);
+  const [failure, setFailure] = useState<string>();
   useEffect(() => {
     const target = element.current;
     if (environmentId === undefined || target === null) return;
     let view: { dispose(): void } | undefined;
     let disposed = false;
-    void threadView().then(({ mount }) => {
-      if (!disposed) view = mount(target, threadId);
-    });
+    threadView().then(
+      ({ mount }) => {
+        if (!disposed) view = mount(target, threadId);
+      },
+      (error: unknown) => {
+        console.error("[pult-shell] the thread view did not start", error);
+        if (!disposed) setFailure(error instanceof Error ? error.message : String(error));
+      },
+    );
     return () => {
       disposed = true;
       // The view is a React root of its own, which cannot unmount while this one renders.
@@ -69,6 +90,7 @@ function ThreadContent({ threadId }: { threadId: string }) {
   if (environmentId === undefined) {
     return <div className="pult-thread-empty">Not connected. Run “Pult: Connect to Environment”.</div>;
   }
+  if (failure !== undefined) return <div className="pult-thread-empty">{failure}</div>;
   return <div ref={element} className="pult-thread-content" />;
 }
 

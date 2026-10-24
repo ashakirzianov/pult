@@ -12,9 +12,6 @@ export default defineConfig(({ mode }) => {
       env.PULT_EXTENSION_DIR ??
       path.join(import.meta.dirname, "../pult-extension/extension"),
   );
-  // The thread view the extension builds for the shell (`pnpm build` there,
-  // `webview/shell/`), imported by the thread pane (`src/threads/pane.tsx`).
-  const threadView = path.join(extensionDir, "dist/shell");
   return {
     build: { target: "esnext" },
     worker: { format: "es" },
@@ -49,10 +46,6 @@ export default defineConfig(({ mode }) => {
       fs: { allow: [".", extensionDir] },
     },
     resolve: {
-      alias: [
-        { find: /^pult-extension\/thread-view$/, replacement: path.join(threadView, "thread.js") },
-        { find: /^pult-extension\/thread-view\.css$/, replacement: path.join(threadView, "thread.css") },
-      ],
       // The thread view imports these rather than bundling them: one copy in the page.
       dedupe: ["vscode", "react", "react-dom", "effect", "@t3tools/client-runtime", "@t3tools/contracts", "@t3tools/shared"],
     },
