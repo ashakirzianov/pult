@@ -5,10 +5,12 @@
   "type": "module",
   "description": "Pult's own shell: VS Code's workbench vendored through @codingame/monaco-vscode-api, centred on threads.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "dev": "vp dev",
+    "build": "tsc --noEmit && vp build",
+    "preview": "vp preview",
+    "typecheck": "tsc --noEmit",
+    "vendor:sync": "node scripts/vendor.ts",
+    "vendor:check": "node scripts/vendor.ts --check"
   },
   "packageManager": "pnpm@11.21.0",
   "engines": {
@@ -77,18 +79,25 @@
     "@codingame/monaco-vscode-working-copy-service-override": "37.6.1",
     "@codingame/monaco-vscode-workspace-trust-service-override": "37.6.1",
     "@codingame/monaco-vscode-yaml-default-extension": "37.6.1",
+    "@t3tools/client-runtime": "workspace:*",
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:",
     "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@37.6.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "vscode": "npm:@codingame/monaco-vscode-api@37.6.1"
   },
   "devDependencies": {
+    "@effect/platform-node": "catalog:",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "playwright": "^1.64.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vite-plus": "catalog:",
+    "yaml": "catalog:"
   }
 }
