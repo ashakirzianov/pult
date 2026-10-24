@@ -24,6 +24,7 @@ import {
 import { Uri } from "monaco-editor";
 
 import defaultConfiguration from "./configuration.json?raw";
+import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
@@ -47,6 +48,7 @@ const memory = new RegisteredFileSystemProvider(false);
 memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ folders: [] }, null, 2)));
 registerFileSystemOverlay(1, memory);
 
+startConnection();
 registerThreadPane();
 registerSelectThreadCommand();
 registerPanel();
