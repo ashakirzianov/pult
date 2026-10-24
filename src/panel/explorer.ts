@@ -1,6 +1,7 @@
 import {
   getService,
   ILifecycleService,
+  INotificationService,
   IPaneCompositePartService,
   IViewDescriptorService,
   IWorkbenchLayoutService,
@@ -41,22 +42,35 @@ interface Folder {
 /**
  * The explorer at the thread's root, in place of the cards. The root is the
  * workspace's only folder while it shows: the explorer shows the workspace's
- * folders, and the extension's `pult:` provider serves them.
+ * folders, and the extension's `pult:` provider serves them. A thread with no
+ * project root has no explorer; its card says so.
  */
 export async function openThreadExplorer(threadId: string): Promise<void> {
-  mode = { kind: "thread", threadId };
-  await reroot();
-  await (await getService(IPaneCompositePartService)).openPaneComposite(EXPLORER_ID, ViewContainerLocation.Sidebar, true);
+  if (threadRoot(threadId) === undefined) {
+    (await getService(INotificationService)).info("Pult: this thread has no project folder to explore.");
+    return;
+  }
+  await openExplorer({ kind: "thread", threadId });
 }
 
 /** The explorer at the environment's roots, as a multi-root. */
-export async function openEnvironmentExplorer(): Promise<void> {
-  mode = { kind: "environment" };
-  await reroot();
+export function openEnvironmentExplorer(): Promise<void> {
+  return openExplorer({ kind: "environment" });
+}
+
+/** Sets the folders for `next`, then shows the explorer; a failure, already notified, leaves the sidebar as it was. */
+async function openExplorer(next: Mode): Promise<void> {
+  const previous = mode;
+  mode = next;
+  if (!(await reroot())) {
+    if (mode === next) mode = previous;
+    return;
+  }
+  if (mode !== next) return;
   await (await getService(IPaneCompositePartService)).openPaneComposite(EXPLORER_ID, ViewContainerLocation.Sidebar, true);
 }
 
-/** Back to the cards; the folders return to the environment's roots, so files of any of them still save. */
+/** Back to the cards; the folders widen to the environment's again, so files of any of its roots still save. */
 export async function closeExplorer(): Promise<void> {
   await (await getService(IPaneCompositePartService)).openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, true);
 }
@@ -66,51 +80,88 @@ function threadFolder(thread: ShellThread, environmentId: string): Folder | unde
   return thread.projectRoot === null ? undefined : { uri: pultUri(environmentId, thread.projectRoot), name: thread.projectName };
 }
 
-/** The environment's roots: the projects its threads run in, as the store reports them. */
-function environmentFolders(): ReadonlyArray<Folder> {
+/** The root of a thread of the connected environment; undefined for none, or a thread gone. */
+function threadRoot(threadId: string): Folder | undefined {
   const { environment, threads } = threadStore.get();
-  if (environment === null) return [];
-  const folders = new Map<string, Folder>();
-  for (const thread of threads) {
-    const folder = threadFolder(thread, environment.id);
-    if (folder !== undefined && !folders.has(folder.uri.path)) folders.set(folder.uri.path, folder);
-  }
-  return [...folders.values()];
+  const thread = threads.find((candidate) => candidate.id === threadId);
+  return environment === null || thread === undefined ? undefined : threadFolder(thread, environment.id);
 }
 
-/** A host path as a `pult:` URI, as the extension writes them: a Windows drive as `/c:/`. */
+/**
+ * A host path as a `pult:` URI, by the rules of the extension's `toUriPath`
+ * (keep the two in step): a Windows drive as `/c:/`, and no trailing slash
+ * but the root's or a drive's, as the workbench strips it from a folder.
+ */
 function pultUri(environmentId: string, hostPath: string): URI {
-  const path = /^[A-Za-z]:/.test(hostPath)
+  const drive = /^[A-Za-z]:([\\/]|$)/.test(hostPath)
     ? `/${hostPath.charAt(0).toLowerCase()}${hostPath.slice(1).replaceAll("\\", "/")}`
     : hostPath;
+  const path = drive.length > 1 && drive.endsWith("/") && !/^\/[A-Za-z]:\/$/.test(drive) ? drive.slice(0, -1) : drive;
   return URI.from({ scheme: "pult", authority: environmentId, path });
 }
 
-/** Sets the workspace folders to the mode's roots, when they differ. */
-async function reroot(): Promise<void> {
-  const wanted = wantedFolders();
-  if (wanted === undefined) return;
-  const workspace = await getService(IWorkspaceContextService);
-  const current = workspace.getWorkspace().folders;
-  const same =
-    current.length === wanted.length &&
-    current.every((folder, index) => folder.uri.toString() === wanted[index]!.uri.toString());
-  if (same) return;
-  const editing = await getService(IWorkspaceEditingService);
-  await editing.updateFolders(0, current.length, [...wanted], true);
+/** A folder's identity: the URI's string form, which lowercases the authority as stored folders have it. */
+const keyOf = (uri: URI) => uri.toString();
 
-  /** Undefined leaves the folders alone: no environment, or a thread with no root. */
-  function wantedFolders(): ReadonlyArray<Folder> | undefined {
-    const environment = threadStore.get().environment;
-    if (environment === null) return undefined;
-    if (mode.kind !== "thread") {
-      const folders = environmentFolders();
-      return folders.length === 0 ? undefined : folders;
+let rerooting = Promise.resolve(true);
+/** True while `reroot` changes the folders, so a change from elsewhere tells itself apart. */
+let updating = false;
+
+/**
+ * Sets the workspace folders to the mode's, one update at a time: each reads
+ * the mode and the folders when its turn comes, after the previous update has
+ * landed. A thread's explorer narrows them to the thread's root; the cards and
+ * the environment's explorer keep every folder of the environment already
+ * there (one the extension added, as "Pult: Open Project" does) and add the
+ * threads' roots, never removing one. A thread gone or rootless sends its
+ * explorer back to the cards. A failure is notified. Resolves to whether the
+ * folders are the mode's.
+ */
+function reroot(): Promise<boolean> {
+  rerooting = rerooting.then(update).catch(async (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    (await getService(INotificationService)).error(`Pult could not set the explorer's folders: ${message}`);
+    return false;
+  });
+  return rerooting;
+
+  async function update(): Promise<boolean> {
+    const { environment, threads } = threadStore.get();
+    if (environment === null) return true;
+    const root = mode.kind === "thread" ? threadRoot(mode.threadId) : undefined;
+    if (mode.kind === "thread" && root === undefined) {
+      mode = { kind: "cards" };
+      await closeExplorer();
     }
-    const { threadId } = mode;
-    const thread = threadStore.get().threads.find((candidate) => candidate.id === threadId);
-    const folder = thread === undefined ? undefined : threadFolder(thread, environment.id);
-    return folder === undefined ? undefined : [folder];
+    const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
+    const wanted = new Map<string, Folder>();
+    if (root !== undefined) wanted.set(keyOf(root.uri), root);
+    else {
+      const environmentId = environment.id.toLowerCase();
+      for (const folder of current) {
+        if (folder.uri.scheme === "pult" && folder.uri.authority.toLowerCase() === environmentId) wanted.set(keyOf(folder.uri), folder);
+      }
+      for (const thread of threads) {
+        const folder = threadFolder(thread, environment.id);
+        if (folder !== undefined && !wanted.has(keyOf(folder.uri))) wanted.set(keyOf(folder.uri), folder);
+      }
+    }
+    const present = new Set(current.map((folder) => keyOf(folder.uri)));
+    const remove = current.filter((folder) => !wanted.has(keyOf(folder.uri))).map((folder) => folder.uri);
+    const add = [...wanted.entries()].filter(([key]) => !present.has(key)).map(([, folder]) => folder);
+    const editing = await getService(IWorkspaceEditingService);
+    updating = true;
+    try {
+      // Replacing every folder is one update; a folder kept stays in place, its tree as it was.
+      if (add.length > 0 && remove.length === current.length) await editing.updateFolders(0, current.length, add, true);
+      else {
+        if (remove.length > 0) await editing.removeFolders(remove, true);
+        if (add.length > 0) await editing.addFolders(add, true);
+      }
+    } finally {
+      updating = false;
+    }
+    return true;
   }
 }
 
@@ -118,7 +169,9 @@ async function reroot(): Promise<void> {
  * Follows the sidebar once the workbench is up. The stock explorer opened
  * any other way (Cmd+Shift+E, Reveal in Explorer) is the environment's; the
  * panel's container opened any way is the cards. A thread's explorer follows
- * the selection made elsewhere, and either explorer the thread model's roots.
+ * the selection made elsewhere, and becomes the environment's when a folder
+ * is added from elsewhere. Every change to the thread model re-roots,
+ * the cards included, so a file of any root saves without an explorer opened.
  * The explorer container shows the file view alone, and the sidebar starts on
  * the cards: an explorer restored from before a reload has lost its root.
  * Waits for the workbench to have restored its parts.
@@ -151,14 +204,19 @@ export async function followSidebar(): Promise<void> {
     mode = { kind: "thread", threadId: thread.threadId };
     void reroot();
   });
-  threadStore.subscribe(() => {
-    if (mode.kind !== "cards") void reroot();
+  // A folder added from elsewhere ("Pult: Open Project") while a thread's explorer shows makes it the environment's.
+  (await getService(IWorkspaceContextService)).onDidChangeWorkspaceFolders(({ added }) => {
+    if (updating || mode.kind !== "thread" || added.length === 0) return;
+    mode = { kind: "environment" };
+    void reroot();
   });
+  threadStore.subscribe(() => void reroot());
   const active = paneComposites.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
   markCards(active);
   if (layout.isVisible(Parts.SIDEBAR_PART) && active !== PANEL_ID) {
     await paneComposites.openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar);
   }
+  await reroot();
 }
 
 /** `pult-shell.closeExplorer`, the X in the explorer's title; the explorers' commands for the palette. */
