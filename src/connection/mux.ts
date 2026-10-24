@@ -83,7 +83,12 @@ export class SocketMux {
     );
   }
 
-  /** A frame from a client, rewritten and sent upstream; a ping is answered here. */
+  /**
+   * A frame from a client, rewritten and sent upstream; a ping is answered
+   * here. Only a client's requests, their acks and interrupts go upstream:
+   * any other tag is dropped, so no client can make the server answer with a
+   * connection-level defect, which would fail every request on the socket.
+   */
   fromClient(clientId: number, frame: string): void {
     const client = this.clients.get(clientId);
     const messages = decodeFrame(frame);
@@ -105,12 +110,11 @@ export class SocketMux {
           upstream.push({ ...message, id });
           break;
         }
-        default:
-          upstream.push(
-            message.requestId === undefined
-              ? message
-              : { ...message, requestId: clientRequestId(clientId, message.requestId) },
-          );
+        case "Ack":
+        case "Interrupt":
+          if (message.requestId === undefined) break;
+          upstream.push({ ...message, requestId: clientRequestId(clientId, message.requestId) });
+          break;
       }
     }
     if (upstream.length > 0) this.write(encodeFrame(upstream));
