@@ -92,9 +92,14 @@ class ShellConnection {
     return this.current;
   }
 
-  /** The bearer of the connected environment, for requests the shell makes on a bridged client's behalf. */
-  get bearer(): string | undefined {
-    return this.saved?.token;
+  /**
+   * The environment's bearer and the server it belongs to, for requests the
+   * shell sends on a bridged client's behalf: set together, the moment the
+   * page switches, so the bearer never goes to the server it is not for.
+   */
+  get credential() {
+    const saved = this.saved;
+    return saved && { label: saved.profile.label, httpBaseUrl: saved.profile.httpBaseUrl, token: saved.token };
   }
 
   onDidChange(listener: () => void): () => void {

@@ -65,6 +65,49 @@ function fromBase64(text: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
+ * The environment's routes `pult-shell.fetch` forwards, by method: what the
+ * Pult extension calls. Every other route, `/api/auth/*` and `/api/connect/*`
+ * among them, is refused, since any extension can run the command.
+ */
+const ROUTES: ReadonlyArray<readonly [method: string, path: RegExp]> = [
+  // The environment's descriptor, which the extension's runtime reads as it connects; public.
+  ["GET", /^\/\.well-known\/t3\/environment$/],
+  // The thread list's snapshot.
+  ["GET", /^\/api\/orchestration\/shell$/],
+  // A thread tab's snapshots and history.
+  ["GET", /^\/api\/orchestration\/threads\/[^/]+(\/bounded|\/history)?$/],
+  // Signed asset URLs: the projects' favicons, the bytes of `pult:` files, a thread tab's images.
+  ["GET", /^\/api\/assets\/./],
+  // A draft tab's composer attachments and a thread tab's pull request diffs.
+  ["POST", /^\/api\/attachments\/upload$/],
+  ["POST", /^\/api\/pull-requests\/diff$/],
+];
+
+/**
+ * The extension's runtime asks for a socket ticket before it dials; its
+ * socket is a bridged one (`pult-shell.socket.open`), which ignores the URL
+ * the ticket goes in, so the shell answers with a stand-in and a real ticket
+ * never leaves the page.
+ */
+const TICKET_ROUTE = "/api/auth/websocket-ticket";
+
+function standInTicket(): BridgedResponse {
+  const ticket = { ticket: "pult-shell", expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() };
+  return {
+    status: 200,
+    statusText: "OK",
+    headers: [["content-type", "application/json"]],
+    body: btoa(JSON.stringify(ticket)),
+  };
+}
+
+/** Whether the shell forwards a request to this path; encoded separators and dots never pass. */
+function forwards(method: string, path: string): boolean {
+  if (/%(2e|2f|5c)/i.test(path)) return false;
+  return ROUTES.some(([allowed, pattern]) => allowed === method && pattern.test(path));
+}
+
+/**
  * The page's connection offered to the Pult extension over main-thread
  * commands, the pattern of `pult-shell.threads`: in Pult the extension runs
  * its runtime over a socket the shell multiplexes onto the page's one socket
@@ -110,14 +153,20 @@ export function registerConnectionBridge(): void {
   CommandsRegistry.registerCommand(
     "pult-shell.fetch",
     async (_accessor, request: BridgedRequest): Promise<BridgedResponse> => {
-      const environment = connection.environment;
-      const bearer = connection.bearer;
-      if (environment === null || bearer === undefined) throw new Error("Pult is not connected to an environment.");
-      if (new URL(request.url).origin !== new URL(environment.httpBaseUrl).origin) {
-        throw new Error(`Pult only forwards requests to ${environment.label}.`);
+      const credential = connection.credential;
+      if (credential === undefined) throw new Error("Pult is not connected to an environment.");
+      // The bearer's own server, which a switch changes together with the bearer.
+      const url = new URL(request.url);
+      if (url.origin !== new URL(credential.httpBaseUrl).origin) {
+        throw new Error(`Pult only forwards requests to ${credential.label}.`);
+      }
+      if (request.method === "POST" && url.pathname === TICKET_ROUTE) return standInTicket();
+      if (!forwards(request.method, url.pathname)) {
+        console.warn(`[pult-shell] refused ${request.method} ${url.pathname} for an extension`);
+        throw new Error(`Pult does not forward ${request.method} ${url.pathname}.`);
       }
       const headers = new Headers(request.headers.map(([name, value]) => [name, value]));
-      if (headers.has("authorization")) headers.set("authorization", `Bearer ${bearer}`);
+      if (headers.has("authorization")) headers.set("authorization", `Bearer ${credential.token}`);
       const response = await fetch(request.url, {
         method: request.method,
         headers,
