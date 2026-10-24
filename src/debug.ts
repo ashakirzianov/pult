@@ -21,6 +21,7 @@ export function installDebugHandle(): void {
     pult: {
       Uri,
       connection: () => connection.environment,
+      bridgedSockets: () => connection.socket.clientCount,
       threads: () => threadStore.get(),
       selected: () => selectedThread(),
       // The editor part's tabs, per group in grid order; `*` marks the active one.
@@ -36,6 +37,11 @@ export function installDebugHandle(): void {
       },
       exec: async (id: string, ...args: unknown[]) => (await getService(ICommandService)).executeCommand(id, ...args),
       commands: (prefix = "pult.") => [...CommandsRegistry.getCommands().keys()].filter((id) => id.startsWith(prefix)),
+      // What VS Code's "Developer: Restart Extension Host" does, which this workbench does not register.
+      restartExtensionHost: async () => {
+        const service = await getService(IExtensionService);
+        if (await service.stopExtensionHosts("window.pult")) await service.startExtensionHosts();
+      },
       extensions: async () => (await getService(IExtensionService)).extensions.map((e) => e.identifier.value),
       status: async () => {
         const service = await getService(IExtensionService);

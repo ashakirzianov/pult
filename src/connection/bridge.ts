@@ -1,17 +1,19 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 
-import { connection, type ShellEnvironment } from "./connection.ts";
+import { connection } from "./connection.ts";
 import type { VirtualSocket } from "./socket.ts";
 
 /**
  * What the shell tells the Pult extension, in order, through its command
- * `pult.shellEvents`: the environment as it changes, and the events of the
- * sockets the extension opened. The shape is shared with pult-extension's
+ * `pult.shellEvents`: that the environment changed, which the extension then
+ * reads with `pult-shell.environment` (any extension can run its command, so
+ * the event carries nothing to trust), and the events of the sockets the
+ * extension opened. The shape is shared with pult-extension's
  * `src/connection/shell.ts`.
  */
 export type ShellEvent =
-  | { readonly type: "environment"; readonly environment: ShellEnvironment | null }
+  | { readonly type: "environment" }
   | { readonly type: "socket.opened"; readonly socketId: string }
   | { readonly type: "socket.message"; readonly socketId: string; readonly data: string }
   | { readonly type: "socket.closed"; readonly socketId: string; readonly code: number; readonly reason: string };
@@ -118,15 +120,20 @@ function forwards(method: string, path: string): boolean {
  */
 export function registerConnectionBridge(): void {
   let subscribed = false;
+  const sockets = new Map<string, VirtualSocket>();
   connection.onDidChange(() => {
-    if (subscribed) emit({ type: "environment", environment: connection.environment });
+    if (subscribed) emit({ type: "environment" });
   });
+  // Called once by each extension instance as it starts: the sockets a
+  // previous one opened, before its host restarted or crashed, close with it.
   CommandsRegistry.registerCommand("pult-shell.connection", () => {
     subscribed = true;
+    for (const socket of sockets.values()) socket.close();
+    sockets.clear();
     return connection.environment;
   });
+  CommandsRegistry.registerCommand("pult-shell.environment", () => connection.environment);
 
-  const sockets = new Map<string, VirtualSocket>();
   // The caller names the socket, so its events can never arrive before it knows the id.
   CommandsRegistry.registerCommand("pult-shell.socket.open", (_accessor, socketId: string) => {
     if (typeof socketId !== "string" || sockets.has(socketId)) throw new Error("pult-shell.socket.open takes a new socket id.");

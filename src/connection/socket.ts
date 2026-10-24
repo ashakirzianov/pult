@@ -109,6 +109,11 @@ export class PageSocket {
     return new TappedWebSocket(new WebSocket(url, options), this);
   };
 
+  /** How many bridged clients are open, attached or waiting: `window.pult.bridgedSockets()`. */
+  get clientCount(): number {
+    return this.clients.size;
+  }
+
   open(events: VirtualSocketEvents): VirtualSocket {
     const clientId = this.nextClientId++;
     const client: Client = { events, socket: undefined };
