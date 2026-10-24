@@ -39,8 +39,9 @@ installWorkers();
 // User data (settings, keybindings, storage) persists in IndexedDB across reloads.
 await createIndexedDBProviders();
 
-// An empty workspace file: the Pult extension adds `pult:` folders to it when
-// a project is opened, and VS Code keeps the editor layout per workspace.
+// An empty workspace file: the panel sets its `pult:` folders to the thread
+// model's roots (`src/panel/explorer.ts`), "Pult: Open Project" adds to them,
+// and VS Code keeps the editor layout per workspace.
 const workspaceFile = Uri.file("/pult.code-workspace");
 const memory = new RegisteredFileSystemProvider(false);
 memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ folders: [] }, null, 2)));
