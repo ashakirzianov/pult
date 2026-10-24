@@ -1,4 +1,4 @@
-import { type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
+import { getService, ICommandService, type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
 import {
   type EditorInput,
   EditorInputCapabilities,
@@ -8,18 +8,75 @@ import {
   SimpleEditorInput,
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+import { connection } from "../connection/index.ts";
 import { threadStore } from "./store.ts";
-import { ThreadView } from "./ThreadView.tsx";
 
 const PANE_ID = "pult.shell.threadPane";
+
+let started: Promise<{ mount(element: HTMLElement, threadId: string): { dispose(): void } }> | undefined;
+
+/**
+ * Upstream's thread view, as pult-extension builds it for the shell, loaded
+ * with the first pane and started once on the page's connection: its state
+ * runtime runs on the connection runtime's services, so the view shares the
+ * page's one socket. A thread it navigates to is selected in the shell.
+ */
+function threadView() {
+  started ??= (async () => {
+    const [{ startThreadView }] = await Promise.all([
+      import("pult-extension/thread-view"),
+      import("pult-extension/thread-view.css"),
+    ]);
+    const workbench = document.querySelector(".monaco-workbench") ?? document.body;
+    return startThreadView(
+      {
+        connection: () => connection.context(),
+        environmentId: () => connection.environment?.environmentId ?? null,
+        openThread: (threadId) =>
+          void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.selectThread", threadId)),
+      },
+      workbench,
+    );
+  })();
+  return started;
+}
+
+/** The thread's turns and composer while the page is connected, mounted again when its environment changes. */
+function ThreadContent({ threadId }: { threadId: string }) {
+  const environmentId = useSyncExternalStore(
+    (listener) => connection.onDidChange(listener),
+    () => connection.environment?.environmentId,
+  );
+  const element = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const target = element.current;
+    if (environmentId === undefined || target === null) return;
+    let view: { dispose(): void } | undefined;
+    let disposed = false;
+    void threadView().then(({ mount }) => {
+      if (!disposed) view = mount(target, threadId);
+    });
+    return () => {
+      disposed = true;
+      // The view is a React root of its own, which cannot unmount while this one renders.
+      const mounted = view;
+      if (mounted !== undefined) queueMicrotask(() => mounted.dispose());
+    };
+  }, [environmentId, threadId]);
+  if (environmentId === undefined) {
+    return <div className="pult-thread-empty">Not connected. Run “Pult: Connect to Environment”.</div>;
+  }
+  return <div ref={element} className="pult-thread-content" />;
+}
 
 /**
  * An editor pane the shell renders itself, registered below the extension API
  * with the workbench's own `EditorPane` and `EditorInput`. The pane mounts a
- * React root in the element the editor group hands it; the group handles tabs,
- * drag and restore as for any editor. `selection.ts` opens it as the selected
+ * React root in the element the editor group hands it, and the thread view in
+ * it, in-process; the group handles tabs, drag and restore as for any editor. `selection.ts` opens it as the selected
  * thread's leftmost tab.
  */
 class ThreadPane extends SimpleEditorPane {
@@ -40,7 +97,7 @@ class ThreadPane extends SimpleEditorPane {
     const threadId = input instanceof ThreadInput ? input.threadId : "";
     this.root?.unmount();
     this.root = createRoot(this.container);
-    this.root.render(<ThreadView threadId={threadId} />);
+    this.root.render(<ThreadContent threadId={threadId} />);
     return {
       dispose: () => {
         this.root?.unmount();
