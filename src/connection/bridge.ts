@@ -84,8 +84,9 @@ export function registerConnectionBridge(): void {
   });
 
   const sockets = new Map<string, VirtualSocket>();
-  CommandsRegistry.registerCommand("pult-shell.socket.open", () => {
-    const socketId = crypto.randomUUID();
+  // The caller names the socket, so its events can never arrive before it knows the id.
+  CommandsRegistry.registerCommand("pult-shell.socket.open", (_accessor, socketId: string) => {
+    if (typeof socketId !== "string" || sockets.has(socketId)) throw new Error("pult-shell.socket.open takes a new socket id.");
     sockets.set(
       socketId,
       connection.socket.open({
@@ -97,7 +98,6 @@ export function registerConnectionBridge(): void {
         },
       }),
     );
-    return socketId;
   });
   CommandsRegistry.registerCommand("pult-shell.socket.send", (_accessor, socketId: string, data: string) => {
     sockets.get(socketId)?.send(data);
