@@ -10,7 +10,11 @@
   font-size: 13px;
 }
 
-/* The logo in place of the sidebar's title while the cards show (`explorer.ts` sets the class). */
+/*
+ * The logo in place of the sidebar's title while the cards show (`explorer.ts` sets the class).
+ * The title's DOM is the workbench's own, built by `compositePart.js` (`createTitleArea`), not an
+ * API: check this selector after a VS Code bump.
+ */
 .part.sidebar.pult-panel-cards-shown > .title > .title-label h2 {
   width: 64px;
   height: 21px;
@@ -39,19 +43,30 @@
 
 .pult-card {
   margin: 2px 0;
-  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
-  cursor: pointer;
-  outline: none;
 }
 
 .pult-card:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-.pult-card:focus-visible {
+.pult-card:has(.pult-card-select:focus-visible) {
   border-color: var(--vscode-focusBorder);
+}
+
+/* The card's selecting part: project, status and title, the whole card's width. */
+.pult-card-select {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
 }
 
 .pult-card-selected,
@@ -119,7 +134,7 @@
 }
 
 .pult-card-details {
-  margin-top: 8px;
+  padding: 0 10px 8px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -143,6 +158,11 @@
 
 .pult-card-row .codicon {
   font-size: 12px;
+}
+
+.pult-card-note {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
 }
 
 .pult-panel-button {

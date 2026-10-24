@@ -13,6 +13,10 @@ function selectionSnapshot(): string | undefined {
   return isSettingsSelected() ? "settings" : selectedThread()?.threadId;
 }
 
+/** The thread store for `useSyncExternalStore`, at module level so a render does not re-subscribe. */
+const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
+const threadsSnapshot = () => threadStore.get();
+
 /**
  * The panel's view, under the sidebar's title row (the logo and the
  * collapse chevron): the environment's threads as cards, and a footer with
@@ -20,10 +24,7 @@ function selectionSnapshot(): string | undefined {
  * pinned first. The selected card expands with its details.
  */
 export function PanelView() {
-  const state = useSyncExternalStore(
-    (listener) => threadStore.subscribe(listener),
-    () => threadStore.get(),
-  );
+  const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const threads = [...state.threads].sort((a, b) => Number(b.pinned) - Number(a.pinned));
@@ -72,8 +73,9 @@ export function PanelView() {
 
 /**
  * T3 Code's thread card without its bottom row: project, pin and status, then
- * the title. Selected, it expands with the row (branch, environment) and the
- * button that opens the explorer at the thread's root.
+ * the title, as the button that selects the thread. Selected, it expands with
+ * the row (branch, environment) and the button that opens the explorer at the
+ * thread's root, or a note when the thread has none.
  */
 function ThreadCard({
   thread,
@@ -86,27 +88,21 @@ function ThreadCard({
   selected: boolean;
   now: number;
 }) {
-  const select = () => run("pult-shell.selectThread", thread.id);
   return (
-    <li
-      className={`pult-card${selected ? " pult-card-selected" : ""}${thread.settled ? " pult-card-settled" : ""}`}
-      role="button"
-      tabIndex={0}
-      aria-current={selected || undefined}
-      onClick={select}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          select();
-        }
-      }}
-    >
-      <div className="pult-card-top">
-        <span className="pult-card-project">{thread.projectName}</span>
-        {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
-        <Status thread={thread} now={now} />
-      </div>
-      <div className="pult-card-title">{thread.title}</div>
+    <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.settled ? " pult-card-settled" : ""}`}>
+      <button
+        type="button"
+        className="pult-card-select"
+        aria-current={selected || undefined}
+        onClick={() => run("pult-shell.selectThread", thread.id)}
+      >
+        <span className="pult-card-top">
+          <span className="pult-card-project">{thread.projectName}</span>
+          {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
+          <Status thread={thread} now={now} />
+        </span>
+        <span className="pult-card-title">{thread.title}</span>
+      </button>
       {selected ? (
         <div className="pult-card-details">
           <div className="pult-card-row">
@@ -123,18 +119,14 @@ function ThreadCard({
               </span>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="pult-panel-button"
-            disabled={thread.projectRoot === null}
-            onClick={(event) => {
-              event.stopPropagation();
-              run("pult-shell.openThreadExplorer", thread.id);
-            }}
-          >
-            <i className="codicon codicon-files" aria-hidden />
-            Open explorer
-          </button>
+          {thread.projectRoot === null ? (
+            <span className="pult-card-note">No project folder to explore.</span>
+          ) : (
+            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.openThreadExplorer", thread.id)}>
+              <i className="codicon codicon-files" aria-hidden />
+              Open explorer
+            </button>
+          )}
         </div>
       ) : null}
     </li>
