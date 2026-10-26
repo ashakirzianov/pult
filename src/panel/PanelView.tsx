@@ -22,9 +22,6 @@ const threadsSnapshot = () => threadStore.get();
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 
-/** A card lists this many subagents, then the rest behind "Show more". */
-const SUBAGENTS_SHOWN = 6;
-
 /** Each thread's subagents, nested ones too, by the thread at the top of their lineage: working first, then newest first. */
 function subagentsByRoot(threads: ReadonlyArray<ShellThread>): Map<string, ShellThread[]> {
   const byRoot = new Map<string, ShellThread[]>();
@@ -88,12 +85,12 @@ export function PanelView() {
           listed.map(card)
         )}
         {snoozed.length > 0 ? (
-          <Shelf name="snoozed" label="Snoozed">
+          <Shelf name="snoozed" label="Snoozed" count={snoozed.length}>
             {snoozed.map(card)}
           </Shelf>
         ) : null}
         {settled.length > 0 ? (
-          <Shelf name="settled" label="Settled">
+          <Shelf name="settled" label="Settled" count={settled.length}>
             <SettledTail threads={settled} selection={selectedCard} render={card} />
           </Shelf>
         ) : null}
@@ -103,19 +100,40 @@ export function PanelView() {
 }
 
 /**
- * A shelf under upstream's collapsible header (label, rule, chevron), its
- * threads shown while expanded. Whether it is expanded persists in
- * localStorage, per shelf, as upstream keeps its own.
+ * Upstream's collapsible header: the label and its count, a rule, the
+ * chevron. A shelf's and a card's Finished subagents'.
  */
-function Shelf({ name, label, children }: { name: ShelfName; label: string; children: React.ReactNode }) {
-  const [expanded, setExpanded] = useShelfExpanded(name);
+function CollapsibleHeader({
+  label,
+  count,
+  expanded,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={onToggle}>
+      <span className="pult-shelf-label">{label}</span>
+      <span className="pult-shelf-count">{count}</span>
+      <span className="pult-shelf-rule" aria-hidden />
+      <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-up"}`} aria-hidden />
+    </button>
+  );
+}
+
+/**
+ * A shelf under its collapsible header, its threads shown while expanded.
+ * Whether it is expanded persists in localStorage, per shelf, as upstream
+ * keeps its own.
+ */
+function Shelf({ name, label, count, children }: { name: ShelfName; label: string; count: number; children: React.ReactNode }) {
+  const [expanded, setExpanded] = useExpanded(`pult-shell.panel.${name}-expanded`);
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
-      <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-        <span className="pult-shelf-label">{label}</span>
-        <span className="pult-shelf-rule" aria-hidden />
-        <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-up"}`} aria-hidden />
-      </button>
+      <CollapsibleHeader label={label} count={count} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
       {expanded ? <ul className="pult-shelf-cards">{children}</ul> : null}
     </li>
   );
@@ -153,8 +171,8 @@ function SettledTail({
   );
 }
 
-function useShelfExpanded(name: ShelfName): [boolean, (expanded: boolean) => void] {
-  const key = `pult-shell.panel.${name}-expanded`;
+/** A collapsible's state, kept in localStorage under `key`; collapsed until opened. */
+function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
   const [expanded, setExpanded] = useState(() => localStorage.getItem(key) === "true");
   return [
     expanded,
@@ -236,8 +254,9 @@ function ThreadCard({
 
 /**
  * The expanded card's subagents, each a row that selects its thread: its
- * status, then its title. The first few, then the rest behind "Show more";
- * the selected one always.
+ * status, then its title. Working ones always; finished ones behind the
+ * Finished toggle, collapsed until opened, for every card at once; the
+ * selected one shown even then.
  */
 function Subagents({
   subagents,
@@ -248,33 +267,32 @@ function Subagents({
   selection: string | undefined;
   now: number;
 }) {
-  const [all, setAll] = useState(false);
-  const visible = all ? [...subagents] : subagents.slice(0, SUBAGENTS_SHOWN);
-  const beyond = subagents.slice(visible.length).find((subagent) => subagent.id === selection);
-  if (beyond !== undefined) visible.push(beyond);
-  const hidden = subagents.length - visible.length;
+  const [expanded, setExpanded] = useExpanded("pult-shell.panel.finished-expanded");
+  const working = subagents.filter((subagent) => subagent.working);
+  const finished = subagents.filter((subagent) => !subagent.working);
+  const shownFinished = expanded ? finished : finished.filter((subagent) => subagent.id === selection);
+  const row = (subagent: ShellThread) => (
+    <li key={subagent.id}>
+      <button
+        type="button"
+        className={`pult-subagent${subagent.id === selection ? " pult-subagent-selected" : ""}`}
+        aria-current={subagent.id === selection || undefined}
+        title={subagent.title}
+        onClick={() => run("pult-shell.selectThread", subagent.id)}
+      >
+        <i className={`codicon ${subagent.working ? "codicon-loading codicon-modifier-spin" : "codicon-hubot"}`} aria-hidden />
+        <span className="pult-subagent-title">{subagent.title}</span>
+        <Status thread={subagent} now={now} />
+      </button>
+    </li>
+  );
   return (
     <ul className="pult-card-subagents" aria-label="Subagents">
-      {visible.map((subagent) => (
-        <li key={subagent.id}>
-          <button
-            type="button"
-            className={`pult-subagent${subagent.id === selection ? " pult-subagent-selected" : ""}`}
-            aria-current={subagent.id === selection || undefined}
-            title={subagent.title}
-            onClick={() => run("pult-shell.selectThread", subagent.id)}
-          >
-            <i className={`codicon ${subagent.working ? "codicon-loading codicon-modifier-spin" : "codicon-hubot"}`} aria-hidden />
-            <span className="pult-subagent-title">{subagent.title}</span>
-            <Status thread={subagent} now={now} />
-          </button>
-        </li>
-      ))}
-      {hidden > 0 ? (
-        <li>
-          <button type="button" className="pult-subagent pult-subagent-more" onClick={() => setAll(true)}>
-            Show {hidden} more
-          </button>
+      {working.map(row)}
+      {finished.length > 0 ? (
+        <li className="pult-subagents-finished">
+          <CollapsibleHeader label="Finished" count={finished.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+          {shownFinished.length > 0 ? <ul className="pult-subagents-list">{shownFinished.map(row)}</ul> : null}
         </li>
       ) : null}
     </ul>

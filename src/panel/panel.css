@@ -255,6 +255,20 @@
   flex: none;
 }
 
+.pult-shelf-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .pult-shelf-rule {
   flex: 1;
   min-width: 8px;
@@ -331,6 +345,15 @@
   white-space: nowrap;
 }
 
-.pult-subagent-more {
-  color: var(--vscode-textLink-foreground);
+/* The Finished toggle inside a card: the shelves' header, a step smaller. */
+.pult-subagents-finished .pult-shelf-header {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.pult-subagents-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
