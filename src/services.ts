@@ -66,12 +66,16 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getStorageServiceOverride({
       fallbackOverride: {
         "workbench.activity.showAccounts": false,
-        // The left panel's tabs until the user pins otherwise: Search and Extensions stay
-        // registered, off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
+        // The left panel's tabs until the user pins otherwise: Search, Extensions and the
+        // extension's own container (its thread tree, for VS Code proper) stay registered,
+        // off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
         "workbench.activity.pinnedViewlets2": JSON.stringify([
           { id: "workbench.view.search", pinned: false, visible: false, order: 1 },
           { id: "workbench.view.extensions", pinned: false, visible: false, order: 4 },
+          { id: "workbench.view.extension.pult", pinned: false, visible: false, order: 5 },
         ]),
+        // The first tab of a fresh profile: the registry's default is the explorer, registered first.
+        "workbench.sidebar.activeviewletid": "pult.panel",
       },
     }),
     ...getSecretStorageServiceOverride(),
