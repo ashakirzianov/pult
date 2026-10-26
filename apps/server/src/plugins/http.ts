@@ -20,26 +20,25 @@ import {
 } from "../auth/http.ts";
 import * as PluginLoader from "./PluginLoader.ts";
 
-const authenticate = (scope: AuthEnvironmentScope) =>
-  Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
-      Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-        failEnvironmentAuthInvalid(
-          EnvironmentAuth.serverAuthCredentialReason(error),
-          EnvironmentAuth.serverAuthDpopFailureReason(error),
-        ),
+const authenticate = Effect.fn("plugins.authenticate")(function* (scope: AuthEnvironmentScope) {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+  const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
+    Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
+      failEnvironmentAuthInvalid(
+        EnvironmentAuth.serverAuthCredentialReason(error),
+        EnvironmentAuth.serverAuthDpopFailureReason(error),
       ),
-      Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-        failEnvironmentInternal("internal_error", error),
-      ),
-    );
-    if (!session.scopes.includes(scope)) {
-      return yield* failEnvironmentScopeRequired(scope);
-    }
-    return session;
-  });
+    ),
+    Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+      failEnvironmentInternal("internal_error", error),
+    ),
+  );
+  if (!session.scopes.includes(scope)) {
+    return yield* failEnvironmentScopeRequired(scope);
+  }
+  return session;
+});
 
 const decodeReloadBody = Schema.decodeUnknownEffect(Schema.Struct({ build: Schema.String }));
 

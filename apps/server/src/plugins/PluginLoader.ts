@@ -1,9 +1,7 @@
 /**
  * Loads in-process plugins from `<baseDir>/plugins/<name>/builds/<build>/main.mjs`
- * and swaps them on request. A plugin's `activate(host)` runs with the server's
- * whole context in a scope this loader owns; a reload imports the new build
- * first, points `current` at it on success, then closes the old build's scope.
- * See docs/internals/plugins.md.
+ * and swaps them on request: a reload imports the new build first, points
+ * `current` at it on success, then closes the old build's scope. See docs/internals/plugins.md.
  */
 import * as NodeModule from "node:module";
 import * as NodeURL from "node:url";
@@ -292,26 +290,25 @@ const make = Effect.gen(function* () {
     ),
   );
 
-  const runActivate = (
+  const runActivate = Effect.fn("PluginLoader.runActivate")(function* (
     activate: (host: PluginHost) => unknown,
     host: PluginHost,
     scope: Scope.Closeable,
-  ) =>
-    Effect.gen(function* () {
-      const activated = activate(host);
-      if (isActivationEffect(activated)) {
-        yield* activated.pipe(Scope.provide(scope), Effect.provide(context));
-        return;
-      }
-      const resolved = yield* Effect.promise(() => Promise.resolve(activated));
-      if (typeof resolved === "function") {
-        const dispose = resolved as () => unknown;
-        yield* Scope.addFinalizer(
-          scope,
-          Effect.promise(() => Promise.resolve(dispose())).pipe(Effect.ignore),
-        );
-      }
-    });
+  ) {
+    const activated = activate(host);
+    if (isActivationEffect(activated)) {
+      yield* activated.pipe(Scope.provide(scope), Effect.provide(context));
+      return;
+    }
+    const resolved = yield* Effect.promise(() => Promise.resolve(activated));
+    if (typeof resolved === "function") {
+      const dispose = resolved as () => unknown;
+      yield* Scope.addFinalizer(
+        scope,
+        Effect.promise(() => Promise.resolve(dispose())).pipe(Effect.ignore),
+      );
+    }
+  });
 
   const loadBuild = Effect.fn("PluginLoader.loadBuild")(function* (name: string, build: string) {
     const mainPath = path.join(pluginsDir, name, "builds", build, "main.mjs");
@@ -377,8 +374,8 @@ const make = Effect.gen(function* () {
    * Repoints `current` atomically. A failure here fails the reload: a build that
    * `current` does not name would be gone at the next startup, so it is not loaded.
    */
-  const pointCurrent = (name: string, build: string) =>
-    Effect.gen(function* () {
+  const pointCurrent = Effect.fn("PluginLoader.pointCurrent")(
+    function* (name: string, build: string) {
       const currentPath = path.join(pluginsDir, name, "current");
       const tmpPath = `${currentPath}.tmp`;
       yield* fs.remove(tmpPath).pipe(Effect.ignore);
@@ -386,34 +383,38 @@ const make = Effect.gen(function* () {
       yield* fs
         .rename(tmpPath, currentPath)
         .pipe(Effect.tapError(() => fs.remove(tmpPath).pipe(Effect.ignore)));
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.fail(new PluginCurrentLinkError({ name, build, cause: Cause.squash(cause) })),
+    },
+    (effect, name, build) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.fail(new PluginCurrentLinkError({ name, build, cause: Cause.squash(cause) })),
+        ),
       ),
-    );
+  );
 
-  const swapIn = (name: string, running: RunningBuild) =>
-    Effect.gen(function* () {
-      const entry = record(name);
-      const previous = entry.running;
-      entry.running = running;
-      entry.lastError = undefined;
-      if (previous !== undefined) {
-        yield* Scope.close(previous.scope, Exit.void);
-      }
-      yield* Effect.logInfo("plugin loaded", { name, build: running.build });
-    });
+  const swapIn = Effect.fn("PluginLoader.swapIn")(function* (name: string, running: RunningBuild) {
+    const entry = record(name);
+    const previous = entry.running;
+    entry.running = running;
+    entry.lastError = undefined;
+    if (previous !== undefined) {
+      yield* Scope.close(previous.scope, Exit.void);
+    }
+    yield* Effect.logInfo("plugin loaded", { name, build: running.build });
+  });
 
-  const noteFailure = (name: string, error: PluginLoadError) =>
-    Effect.gen(function* () {
-      const described = describeLoadError(error);
-      record(name).lastError = described;
-      yield* Effect.logWarning("plugin failed to load", {
-        name,
-        build: error.build,
-        error: described,
-      });
+  const noteFailure = Effect.fn("PluginLoader.noteFailure")(function* (
+    name: string,
+    error: PluginLoadError,
+  ) {
+    const described = describeLoadError(error);
+    record(name).lastError = described;
+    yield* Effect.logWarning("plugin failed to load", {
+      name,
+      build: error.build,
+      error: described,
     });
+  });
 
   const reload: PluginLoader["Service"]["reload"] = (name, build) =>
     mutex.withPermits(1)(
@@ -444,8 +445,8 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const loadCurrent = (name: string) =>
-    Effect.gen(function* () {
+  const loadCurrent = Effect.fn("PluginLoader.loadCurrent")(
+    function* (name: string) {
       const target = yield* fs.readLink(path.join(pluginsDir, name, "current")).pipe(Effect.option);
       if (target._tag === "None") {
         record(name);
@@ -456,7 +457,9 @@ const make = Effect.gen(function* () {
         Effect.tapError((error) => noteFailure(name, error)),
       );
       yield* swapIn(name, running);
-    }).pipe(Effect.ignore);
+    },
+    (effect) => Effect.ignore(effect),
+  );
 
   const list = Effect.gen(function* () {
     const names = new Set([...(yield* installedNames), ...records.keys()]);

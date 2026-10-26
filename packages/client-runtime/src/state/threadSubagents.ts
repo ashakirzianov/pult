@@ -26,19 +26,35 @@ function orderKey(subagent: Subagent): number {
   return DateTime.toEpochMillis(subagent.startedAt ?? subagent.updatedAt);
 }
 
+/**
+ * The pill and sheet include the active run's agents, or the most recently updated agent's run when idle.
+ * Include agents still working from other runs so background work stays counted and reachable.
+ * Exclude rolled-back runs, matching the Waiting strip.
+ */
 export function deriveThreadTurnSubagents(
   projection: Pick<Projection, "runs" | "subagents">,
 ): ThreadTurnSubagents | null {
-  if (projection.subagents.length === 0) return null;
+  const rolledBackRunIds = new Set(
+    projection.runs.filter((run) => run.status === "rolled_back").map((run) => run.id),
+  );
+  const eligible = projection.subagents.filter(
+    (subagent) => subagent.runId === null || !rolledBackRunIds.has(subagent.runId),
+  );
+  const [first] = eligible;
+  if (first === undefined) return null;
   const activeRun = resolveActiveThreadRun(projection);
-  const latestUpdated = projection.subagents.reduce((latest, subagent) =>
-    DateTime.toEpochMillis(subagent.updatedAt) > DateTime.toEpochMillis(latest.updatedAt)
-      ? subagent
-      : latest,
+  const latestUpdated = eligible.reduce(
+    (latest, subagent) =>
+      DateTime.toEpochMillis(subagent.updatedAt) > DateTime.toEpochMillis(latest.updatedAt)
+        ? subagent
+        : latest,
+    first,
   );
   const runId = activeRun?.id ?? latestUpdated.runId;
   const subagents = copySorted(
-    projection.subagents.filter((subagent) => subagent.runId === runId),
+    eligible.filter(
+      (subagent) => subagent.runId === runId || isActiveSubagentStatus(subagent.status),
+    ),
     (left, right) => orderKey(left) - orderKey(right) || left.id.localeCompare(right.id),
   );
   if (subagents.length === 0) return null;

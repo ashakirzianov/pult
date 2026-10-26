@@ -98,6 +98,7 @@ const startWatch = Effect.fn(function* (root: string) {
   );
   yield* Effect.race(
     takeUntil(batches, "probe.txt"),
+    // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- the OS watcher gives no ready signal, so the probe repeats on the real clock until the watch reports it.
     writeFile(root, "probe.txt").pipe(Effect.repeat(Schedule.spaced("50 millis")), Effect.orDie),
   );
   return { batches, fiber };

@@ -261,8 +261,7 @@ export type ProjectSearchEntriesResult = typeof ProjectSearchEntriesResult.Type;
 
 export const ProjectSearchContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  // Whitespace is significant in content queries (" foo", regex trailing
-  // spaces), so the query is deliberately not trimmed on the wire.
+  // Preserve whitespace because it is significant in content queries.
   query: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
   limit: PositiveInt.check(Schema.isLessThanOrEqualTo(PROJECT_SEARCH_CONTENTS_MAX_LIMIT)),
   caseSensitive: Schema.Boolean,
@@ -329,16 +328,33 @@ export type ProjectEntryChange = typeof ProjectEntryChange.Type;
 
 /**
  * One batch of changes, naming each path at most once and leaving out any
- * `.git` or `node_modules` directory and everything in it.
- * `truncated` means more changed than the batch names, so re-read whatever is
- * open. Changes around the moment a subscription starts may or may not be
- * reported, so re-read open files after subscribing.
+ * `.git` or `node_modules` directory and everything in it. `truncated` means
+ * more changed than the batch names, so re-read whatever is open; so may changes
+ * around the moment a subscription starts, so re-read open files after subscribing.
  */
 export const ProjectWatchEntriesEvent = Schema.Struct({
   changes: Schema.Array(ProjectEntryChange),
   truncated: Schema.Boolean,
 });
 export type ProjectWatchEntriesEvent = typeof ProjectWatchEntriesEvent.Type;
+// Untracked files git ignores. Wholly ignored folders such as `node_modules`
+// are left out, so the list stays small enough to pick from.
+export const ProjectListIgnoredFilesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectListIgnoredFilesInput = typeof ProjectListIgnoredFilesInput.Type;
+
+export const ProjectIgnoredFile = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  byteLength: NonNegativeInt,
+});
+export type ProjectIgnoredFile = typeof ProjectIgnoredFile.Type;
+
+export const ProjectListIgnoredFilesResult = Schema.Struct({
+  files: Schema.Array(ProjectIgnoredFile),
+  truncated: Schema.Boolean,
+});
+export type ProjectListIgnoredFilesResult = typeof ProjectListIgnoredFilesResult.Type;
 
 export const ProjectEntriesFailure = Schema.Literals([
   "workspace_root_not_found",
@@ -474,9 +490,10 @@ export class ProjectWatchEntriesError extends Schema.TaggedError<ProjectWatchEnt
 
 export const ProjectReadFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  // Workspace-relative, or an absolute host path for a file outside the
-  // workspace. Only workspace-relative paths can be written back.
+  // Workspace-relative or absolute host path; only workspace-relative paths are writable.
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  // Optional files can be absent without failing the read.
+  allowMissing: Schema.optional(Schema.Boolean),
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
@@ -498,6 +515,8 @@ export const ProjectReadFileResult = Schema.Struct({
   // make a later write conflict, never let it overwrite. Absent when
   // `truncated`, since writing these contents back would drop the rest.
   version: Schema.optional(ProjectFileVersion),
+  // Omitted by older servers; false only for an absent optional file.
+  exists: Schema.optional(Schema.Boolean),
 });
 export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 
@@ -763,11 +782,10 @@ export class ProjectDeleteEntryError extends Schema.TaggedError<ProjectDeleteEnt
 }
 
 /**
- * Moves a path within the workspace, creating missing parents of the new
- * path. An entry already at the new path is never replaced, except the same
- * entry renamed to another case on a case-insensitive filesystem. The check
- * and the move are separate steps, since Node has no rename that refuses to
- * replace: an entry created at the new path between them is replaced.
+ * Moves a path within the workspace, creating missing parents of the new path.
+ * An entry already at the new path is never replaced, except the same entry renamed
+ * to another case on a case-insensitive filesystem. The check and the move are separate
+ * steps, since Node has no rename that refuses to replace: an entry created between them is replaced.
  */
 export const ProjectRenameEntryInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,

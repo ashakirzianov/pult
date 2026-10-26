@@ -1,13 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - FileSystem.watch cannot skip directories, and
 // Node's recursive watcher on Linux otherwise walks every entry under the root.
 /**
- * WorkspaceTreeWatcher - one OS watcher over a workspace tree.
- *
- * Reports raw changes anywhere under a root, never inside `.git` or
- * `node_modules`. WorkspaceEntries shares one per root between subscribers
- * and turns its changes into batches.
- *
- * @module WorkspaceTreeWatcher
+ * One OS watcher over a workspace tree: raw changes anywhere under a root,
+ * never inside `.git` or `node_modules`. WorkspaceEntries shares one per root
+ * between subscribers and turns its changes into batches.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -73,11 +69,10 @@ export class WorkspaceTreeWatcher extends Context.Service<
      */
     readonly watch: (root: string) => Stream.Stream<WorkspaceTreeChange, WorkspaceTreeWatchError>;
     /**
-     * Whether the OS watcher walks `.git` and `node_modules` as well, and only
-     * their events are dropped: on Linux, where Node walks the tree itself,
-     * when this Node lacks `ignore`. The server then leaves
-     * `projectWatchEntries` out of its config, so clients do not start a
-     * synchronous walk that takes an inotify watch per entry of a large tree.
+     * Whether the watcher walks `.git` and `node_modules` too, dropping only their
+     * events: on Linux, where Node walks the tree itself, when this Node lacks `ignore`.
+     * The server then leaves `projectWatchEntries` out of its config, so no client
+     * starts a synchronous walk that takes an inotify watch per entry of a large tree.
      */
     readonly walksIgnoredDirectories: boolean;
   }
@@ -90,25 +85,17 @@ const watch: WorkspaceTreeWatcher["Service"]["watch"] = (root) =>
         try: () => {
           // FSEvents names the root by the basename of its real path.
           const rootName = NodePath.basename(NodeFS.realpathSync(root));
-          // On Linux, Node walks the tree here, synchronously, with one inotify
-          // watch per entry; `ignore` keeps it out of skipped directories.
-          // Elsewhere the OS watches the tree and `ignore` only filters events.
-          // Node before 24.14 and 25.5 drops the option and walks everything
-          // (`walksIgnoredDirectories`), so events are filtered here as well.
-          // The walk stops at the first error, such as an unreadable directory
-          // or the inotify watch limit, and Node swallows it, leaving the rest
-          // of the tree unwatched.
-          // A variable, since @types/node does not declare `ignore` yet.
+          // On Linux Node walks the tree here, synchronously, one inotify watch per
+          // entry, stopping silently at the first error; `ignore` keeps it out of skipped
+          // directories, while elsewhere it only filters events. Node before 24.14 and 25.5
+          // drops the option (`walksIgnoredDirectories`), so events are filtered here too. A variable: @types/node lacks `ignore`.
           const options = { recursive: true, ignore: isIgnoredPath };
           const watcher = NodeFS.watch(root, options, (eventType, filename) => {
             if (filename === null || isIgnoredPath(filename)) return;
-            // The root's own events. On macOS a change to the root, such as a
-            // chmod, and its deletion or move arrive as `change` naming its
-            // basename, as an edit to a child of that name can, while a child's
-            // creation, deletion or move arrives as `rename`. On Linux the
-            // root's deletion arrives as `""`. Once the root is gone nothing
-            // is left to watch; while it stands, the name is reported only if
-            // a child has it.
+            // The root's own events: on macOS a change to the root and its deletion or
+            // move arrive as `change` naming its basename, as an edit to a child of that
+            // name can; on Linux the root's deletion arrives as `""`. Once the root is gone
+            // nothing is left to watch; while it stands, the name is reported only if a child has it.
             if (filename === "" || (eventType === "change" && filename === rootName)) {
               if (!NodeFS.existsSync(root)) {
                 Queue.endUnsafe(queue);
