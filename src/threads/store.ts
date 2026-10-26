@@ -60,18 +60,47 @@ type Listener = (state: ThreadState) => void;
  * channel from the extension host into Pult's own UI, with no webview between.
  */
 class ThreadStore {
-  private state: ThreadState = { environment: null, threads: [] };
+  private pushed: ThreadState = { environment: null, threads: [] };
+  private state: ThreadState = this.pushed;
+  /**
+   * Whether threads work, as the mounted thread view knows from its
+   * projection (`reportActivity`): a provider's native subagent has no run, so
+   * the extension's push always reads it idle. Laid over the push; kept
+   * across thread switches, the last word on each thread until the next.
+   */
+  private readonly activity = new Map<string, boolean>();
   private readonly listeners = new Set<Listener>();
 
   constructor() {
     CommandsRegistry.registerCommand("pult-shell.threads", (_accessor, payload: ThreadState) => {
-      this.state = payload;
-      for (const listener of this.listeners) listener(payload);
+      this.pushed = payload;
+      this.update();
     });
   }
 
   get(): ThreadState {
     return this.state;
+  }
+
+  /** What the thread view reports of its lineage's activity; a change re-renders, a repeat does not. */
+  reportActivity(activity: ReadonlyArray<{ readonly threadId: string; readonly working: boolean }>): void {
+    let changed = false;
+    for (const { threadId, working } of activity) {
+      if (this.activity.get(threadId) === working) continue;
+      this.activity.set(threadId, working);
+      changed = true;
+    }
+    if (changed) this.update();
+  }
+
+  private update(): void {
+    const threads = this.pushed.threads.map((thread) => {
+      const working = this.activity.get(thread.id);
+      // A run the push sees working wins; the view's word fills in where the push has none.
+      return working === undefined || thread.working ? thread : { ...thread, working };
+    });
+    this.state = { ...this.pushed, threads };
+    for (const listener of this.listeners) listener(this.state);
   }
 
   subscribe(listener: Listener): () => void {

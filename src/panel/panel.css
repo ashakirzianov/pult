@@ -294,10 +294,9 @@
 
 /* The expanded card's subagents: a row each, selecting its thread. */
 .pult-card-subagents {
-  margin: 8px 0 0;
-  padding: 6px 0 0;
+  margin: 0 0 8px;
+  padding: 0;
   list-style: none;
-  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
 }
 
 .pult-subagent {

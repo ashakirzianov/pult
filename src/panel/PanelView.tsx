@@ -186,9 +186,10 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
 /**
  * T3 Code's thread card without its bottom row: project icon and name, pin and status, then
  * the title, as the button that selects the thread. Selected, it expands with
- * one row: Explorer, the button that opens the Explorer tab narrowed to the
- * thread's root, or a note when the thread has none, then the branch and the
- * environment; and its subagents below, each selecting its own thread.
+ * its subagents, each selecting its own thread, then one row: the branch
+ * when the server records one, Explorer, the button that opens the Explorer
+ * tab narrowed to the thread's root (a note when the thread has none), and
+ * the environment.
  */
 function ThreadCard({
   thread,
@@ -223,7 +224,14 @@ function ThreadCard({
       </button>
       {selected ? (
         <div className="pult-card-details">
+          {subagents.length > 0 ? <Subagents subagents={subagents} selection={selection} now={now} /> : null}
           <div className="pult-card-row">
+            {thread.branch ? (
+              <span className="pult-card-branch">
+                <i className="codicon codicon-git-branch" aria-hidden />
+                {thread.branch}
+              </span>
+            ) : null}
             {thread.projectRoot === null ? (
               <span className="pult-card-note">No project folder</span>
             ) : (
@@ -232,12 +240,6 @@ function ThreadCard({
                 Explorer
               </button>
             )}
-            {thread.branch ? (
-              <span className="pult-card-branch">
-                <i className="codicon codicon-git-branch" aria-hidden />
-                {thread.branch}
-              </span>
-            ) : null}
             {environment ? (
               <span className="pult-card-environment">
                 <i className="codicon codicon-vm" aria-hidden />
@@ -245,7 +247,6 @@ function ThreadCard({
               </span>
             ) : null}
           </div>
-          {subagents.length > 0 ? <Subagents subagents={subagents} selection={selection} now={now} /> : null}
         </div>
       ) : null}
     </li>

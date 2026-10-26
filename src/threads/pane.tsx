@@ -58,6 +58,8 @@ function threadView() {
         // The extension's changes view: the Source Control view over the thread's project.
         openChanges: (threadId, path) =>
           void getService(ICommandService).then((commands) => commands.executeCommand("pult.showChanges", threadId, path)),
+        // A native subagent's work is a runless turn the extension's push cannot see; the view's projection can.
+        reportActivity: (activity) => threadStore.reportActivity(activity),
       },
       workbench,
     );
