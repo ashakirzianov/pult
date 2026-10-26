@@ -4,7 +4,7 @@
   "workbench.startupEditor": "none",
   "workbench.editor.useModal": "off",
   "workbench.tips.enabled": false,
-  "workbench.activityBar.location": "top",
+  "workbench.activityBar.location": "default",
   "workbench.statusBar.visible": false,
   "workbench.layoutControl.enabled": false,
   "window.commandCenter": false,

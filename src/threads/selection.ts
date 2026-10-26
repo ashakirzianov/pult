@@ -10,6 +10,7 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { CommandsRegistry, type ICommandHandler } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
@@ -182,9 +183,11 @@ export async function restoreThreadSelection(): Promise<void> {
 /**
  * `pult-shell.selectThread [threadId]`: with no id, a quick pick of the
  * environment's threads. `pult-shell.selectSettings`, on Cmd+, over the
- * workbench's own binding, which would open the settings editor under the thread.
+ * workbench's own binding, which would open the settings editor under the
+ * thread; and the workbench's own Settings command routed the same way.
  */
 export function registerSelectThreadCommand(): void {
+  routeOpenSettings();
   registerAction2(
     class extends Action2 {
       constructor() {
@@ -230,4 +233,35 @@ export function registerSelectThreadCommand(): void {
       }
     },
   );
+}
+
+/**
+ * `workbench.action.openSettings`, the stock Settings (the activity bar's
+ * Manage menu, the palette's "Preferences: Open Settings", the links that
+ * open a setting by query), selects Settings first: left alone it would open
+ * the settings editor among the selected thread's tabs. The stock handler
+ * then runs with the arguments, so a query or the JSON editor still reach it.
+ * The stock command registers when the preferences contribution starts, after
+ * the shell's registrations, and the registry's latest registration wins, so
+ * the route goes on top of it then, and again if it is ever registered anew.
+ */
+function routeOpenSettings(): void {
+  const id = "workbench.action.openSettings";
+  let stock: ICommandHandler | undefined;
+  const route: ICommandHandler = async (accessor, ...args) => {
+    // Services are read before any await; the accessor is only valid synchronously.
+    const instantiation = accessor.get(IInstantiationService);
+    await selectSettings();
+    return stock === undefined ? undefined : instantiation.invokeFunction(stock, ...args);
+  };
+  const place = () => {
+    const current = CommandsRegistry.getCommand(id);
+    if (current === undefined || current.handler === route) return;
+    stock = current.handler;
+    CommandsRegistry.registerCommand({ id, handler: route });
+  };
+  CommandsRegistry.onDidRegisterCommand((registered) => {
+    if (registered === id) place();
+  });
+  place();
 }
