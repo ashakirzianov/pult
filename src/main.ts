@@ -69,7 +69,7 @@ const options: IWorkbenchConstructionOptions = {
   remoteAuthority,
   connectionToken,
   secretStorageProvider: localStorageSecrets,
-  // The shell's defaults, under the user's own settings: chrome off, editor stock.
+  // The shell's defaults, under the user's own settings: chrome off but the sidebar's tabs, editor stock.
   configurationDefaults: JSON.parse(defaultConfiguration) as Record<string, unknown>,
   productConfiguration: {
     nameShort: "Pult",

@@ -63,7 +63,17 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getMarkersServiceOverride(),
     ...getOutputServiceOverride(),
     ...getAccessibilityServiceOverride(),
-    ...getStorageServiceOverride({ fallbackOverride: { "workbench.activity.showAccounts": false } }),
+    ...getStorageServiceOverride({
+      fallbackOverride: {
+        "workbench.activity.showAccounts": false,
+        // The left panel's tabs until the user pins otherwise: Search and Extensions stay
+        // registered, off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
+        "workbench.activity.pinnedViewlets2": JSON.stringify([
+          { id: "workbench.view.search", pinned: false, visible: false, order: 1 },
+          { id: "workbench.view.extensions", pinned: false, visible: false, order: 4 },
+        ]),
+      },
+    }),
     ...getSecretStorageServiceOverride(),
     ...getLifecycleServiceOverride(),
     ...getEnvironmentServiceOverride(),
