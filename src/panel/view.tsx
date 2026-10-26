@@ -7,6 +7,7 @@ import { registerCustomView, ViewContainerLocation } from "@codingame/monaco-vsc
 import { createRoot } from "react-dom/client";
 
 import markUrl from "../../assets/pult/mark.svg?no-inline";
+import { allowNativeScroll } from "../nativeScroll.ts";
 import { followExplorerScope, PANEL_ID, registerExplorerCommands } from "./explorer.ts";
 import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
@@ -42,6 +43,8 @@ export function registerPanel(): void {
     canMoveView: false,
     renderBody(container) {
       container.style.height = "100%";
+      // The cards' list is a native scroller.
+      allowNativeScroll(container);
       const root = createRoot(container);
       root.render(<PanelView />);
       return { dispose: () => root.unmount() };

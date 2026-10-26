@@ -13,6 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
 import { connection } from "../connection/index.ts";
+import { allowNativeScroll } from "../nativeScroll.ts";
 import { threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
@@ -112,6 +113,8 @@ class ThreadPane extends SimpleEditorPane {
   initialize(): HTMLElement {
     const element = document.createElement("div");
     element.className = "pult-thread-pane";
+    // The view's timeline is a native scroller.
+    allowNativeScroll(element);
     return element;
   }
 
