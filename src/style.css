@@ -26,6 +26,18 @@ body,
 }
 
 
+/* The thread view's stylesheet (upstream's, loaded with the view) resets the
+   whole page in its base layer, box-sizing: border-box on every element and
+   pseudo-element among it, which the workbench never asked for: an icon
+   label's icon is a 16px pseudo-element plus padding. This unlayered rule of
+   no specificity gives the workbench outside the view the browser's default
+   back, and loses to every rule of the workbench's own. */
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *)),
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::before,
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::after {
+  box-sizing: content-box;
+}
+
 /* The thread's tab (src/threads/pane.tsx) carries the view's header: its title set apart from file names. */
 .monaco-workbench .tab .monaco-icon-label.pult-thread-tab .label-name {
   font-weight: 600;
