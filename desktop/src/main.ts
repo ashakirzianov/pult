@@ -88,10 +88,16 @@ function openWindow(): void {
     openOutside(url);
     return { action: "deny" };
   });
-  window.webContents.on("will-navigate", (event, url) => {
-    if (sameOrigin(url)) return;
+  window.webContents.on("will-navigate", (event) => {
+    if (sameOrigin(event.url)) return;
     event.preventDefault();
-    openOutside(url);
+    openOutside(event.url);
+  });
+  // A same-origin navigation the server redirects elsewhere is held to the same rule.
+  window.webContents.on("will-redirect", (event) => {
+    if (!event.isMainFrame || sameOrigin(event.url)) return;
+    event.preventDefault();
+    openOutside(event.url);
   });
 
   // The dev server may not be up yet: show the empty window and say so; View, Reload loads it once it is.
