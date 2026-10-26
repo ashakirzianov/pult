@@ -20,7 +20,7 @@ const STATUS_BAR_VISIBLE = "workbench.statusBar.visible";
 export async function syncStatusBarWithEditors(): Promise<void> {
   const editors = await getService(IEditorService);
   const configuration = await getService(IConfigurationService);
-  await placeStatusBarUnderEditors();
+  await placeStatusBarUnderEditors(configuration.getValue(STATUS_BAR_VISIBLE) === true);
   const update = () => {
     if (isSwitchingThread()) return;
     const active = editors.activeEditor;
@@ -53,11 +53,15 @@ interface LayoutGrid {
  * Moves the status bar from the bottom of the window to the bottom of the
  * editor part, so it runs under the tabs' content and not under the sidebar.
  * The workbench offers no setting for it; its layout moves the panel the
- * same way, and the grid keeps the status bar at its fixed height.
+ * same way, and the grid keeps the status bar at its fixed height. A moved
+ * view comes back visible, while the layout keeps its own idea of whether
+ * the bar is hidden and skips a hide it thinks is done, so the move ends by
+ * setting the view's visibility to the setting's.
  */
-async function placeStatusBarUnderEditors(): Promise<void> {
+async function placeStatusBarUnderEditors(visible: boolean): Promise<void> {
   const layout = (await getService(IWorkbenchLayoutService)) as unknown as Partial<LayoutGrid>;
   const { workbenchGrid, editorPartView, statusBarPartView } = layout;
   if (workbenchGrid === undefined || editorPartView === undefined || statusBarPartView === undefined) return;
   workbenchGrid.moveView(statusBarPartView, STATUS_BAR_HEIGHT, editorPartView, Direction.Down);
+  workbenchGrid.setViewVisible(statusBarPartView, visible);
 }
