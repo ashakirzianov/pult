@@ -6,7 +6,8 @@ import type { PultDesktop } from "./api.ts";
  * The desktop's title strip. On macOS the wrapper draws no title bar
  * (`desktop/src/main.ts`), so the window's traffic lights sit over the page,
  * and the page leaves them a strip above the workbench, in the theme's title
- * bar colour, which drags the window as a title bar does. The strip goes
+ * bar colour and with no edge of its own, which drags the window as a title
+ * bar does. The strip goes
  * while the window is full screen, where macOS hides the lights. Nothing
  * where the wrapper reports no inset: a frame of the OS's own.
  */
@@ -31,7 +32,6 @@ export function installDesktopTitleBar(desktop: PultDesktop): void {
     const paint = () => {
       const theme = themes.getColorTheme();
       strip.style.background = theme.getColor("titleBar.activeBackground")?.toString() ?? "";
-      strip.style.borderBottomColor = theme.getColor("titleBar.border")?.toString() ?? "transparent";
     };
     paint();
     themes.onDidColorThemeChange(paint);
