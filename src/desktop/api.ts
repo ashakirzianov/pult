@@ -18,6 +18,17 @@ export interface PultDesktop {
     delete(key: string): Promise<void>;
     keys(): Promise<string[]>;
   };
+  /**
+   * The window's title bar, where the wrapper draws none: on macOS the
+   * traffic lights sit over the page's top-left, centred in `inset` pixels
+   * that the page leaves them (`src/desktop/titleBar.ts`), except in full
+   * screen, where macOS hides them. `inset` is 0 where the frame is the OS's.
+   */
+  readonly titleBar: {
+    readonly inset: number;
+    isFullScreen(): Promise<boolean>;
+    onFullScreenChange(listener: (fullScreen: boolean) => void): () => void;
+  };
 }
 
 declare global {

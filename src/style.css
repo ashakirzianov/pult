@@ -14,6 +14,19 @@ body,
   color: #ccc;
 }
 
+/* The desktop's title strip (src/desktop/titleBar.ts) above the workbench, the inset's height while it is there. */
+.pult-titlebar {
+  box-sizing: border-box;
+  height: var(--pult-titlebar-inset, 0px);
+  border-bottom: 1px solid transparent;
+  background: #181818;
+  -webkit-app-region: drag;
+}
+
+#workbench {
+  height: calc(100% - var(--pult-titlebar-inset, 0px));
+}
+
 
 /* The shell-rendered thread pane (src/threads): the thread view fills it. */
 .pult-thread-pane {

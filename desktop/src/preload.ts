@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import type { PultDesktop } from "../../src/desktop/api.ts";
-import { Channel, VERSION_ARG, type Reply } from "./ipc.ts";
+import { Channel, TITLE_BAR_INSET, VERSION_ARG, type Reply } from "./ipc.ts";
 
 async function invoke<T>(channel: string, ...args: string[]): Promise<T> {
   const reply: Reply<T> = await ipcRenderer.invoke(channel, ...args);
@@ -21,6 +21,15 @@ const pultDesktop: PultDesktop = {
     set: (key, value) => invoke(Channel.secretsSet, key, value),
     delete: (key) => invoke(Channel.secretsDelete, key),
     keys: () => invoke(Channel.secretsKeys),
+  },
+  titleBar: {
+    inset: TITLE_BAR_INSET,
+    isFullScreen: () => invoke(Channel.windowIsFullScreen),
+    onFullScreenChange(listener) {
+      const handler = (_event: unknown, fullScreen: boolean) => listener(fullScreen);
+      ipcRenderer.on(Channel.windowFullScreen, handler);
+      return () => ipcRenderer.off(Channel.windowFullScreen, handler);
+    },
   },
 };
 

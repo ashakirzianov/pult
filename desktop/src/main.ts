@@ -11,7 +11,7 @@ import * as NodePath from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type IpcMainInvokeEvent } from "electron";
 
 import { appDisplayName, appUserDataName } from "../../src/identity.ts";
-import { Channel, VERSION_ARG, type Reply } from "./ipc.ts";
+import { Channel, TITLE_BAR_INSET, VERSION_ARG, type Reply } from "./ipc.ts";
 import { openSecretStore } from "./secretStore.ts";
 import { windowState } from "./windowState.ts";
 
@@ -42,6 +42,7 @@ void app.whenReady().then(() => {
   Menu.setApplicationMenu(applicationMenu());
   handlePermissions();
   handleSecrets();
+  handleWindowState();
   openWindow();
   // macOS keeps the app running with no window; the Dock icon opens one again.
   app.on("activate", () => {
@@ -92,6 +93,11 @@ function openWindow(): void {
     show: false,
     title: app.name,
     backgroundColor: "#1f1f1f",
+    // The page's chrome runs to the window's top edge (`TITLE_BAR_INSET`): on macOS no title bar, the
+    // traffic lights 12px in and centred in the inset the page leaves them.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 12, y: TITLE_BAR_INSET / 2 - 6 } }
+      : {}),
     webPreferences: {
       preload: NodePath.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -104,6 +110,9 @@ function openWindow(): void {
   if (maximized) window.maximize();
   state.track(window);
   window.once("ready-to-show", () => window.show());
+  // The page hides its title strip while the traffic lights are hidden (`window.pultDesktop.titleBar`).
+  window.on("enter-full-screen", () => window.webContents.send(Channel.windowFullScreen, true));
+  window.on("leave-full-screen", () => window.webContents.send(Channel.windowFullScreen, false));
 
   // Links leave for the user's browser; nothing navigates the window off the page.
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -166,26 +175,34 @@ function handlePermissions(): void {
   );
 }
 
-/**
- * Answers `window.pultDesktop.secrets` (`src/desktop/api.ts`), only for the
- * page itself: a top frame at the page's origin. A refusal or a failure is a
- * message for the page to show.
- */
+/** Answers `window.pultDesktop.secrets` (`src/desktop/api.ts`). */
 function handleSecrets(): void {
-  const handle = <T>(channel: string, answer: (...args: string[]) => T) =>
-    ipcMain.handle(channel, (event, ...args: unknown[]): Reply<T> => {
-      if (!fromPage(event)) return { ok: false, error: `Pult refused ${channel} from ${event.senderFrame?.origin ?? "a closed frame"}.` };
-      if (!args.every((arg) => typeof arg === "string")) return { ok: false, error: `${channel} takes strings.` };
-      try {
-        return { ok: true, value: answer(...args) };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    });
-  handle(Channel.secretsGet, (key) => secrets.get(key));
-  handle(Channel.secretsSet, (key, value) => secrets.set(key, value));
-  handle(Channel.secretsDelete, (key) => secrets.delete(key));
+  handle(Channel.secretsGet, (_event, key) => secrets.get(key));
+  handle(Channel.secretsSet, (_event, key, value) => secrets.set(key, value));
+  handle(Channel.secretsDelete, (_event, key) => secrets.delete(key));
   handle(Channel.secretsKeys, () => secrets.keys());
+}
+
+/** Answers `window.pultDesktop.titleBar.isFullScreen`, for the page's own window. */
+function handleWindowState(): void {
+  handle(Channel.windowIsFullScreen, (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false);
+}
+
+/**
+ * One handler of `window.pultDesktop`'s calls, answering only the page
+ * itself: a top frame at the page's origin, sending strings. A refusal or a
+ * failure is a message for the page to show.
+ */
+function handle<T>(channel: string, answer: (event: IpcMainInvokeEvent, ...args: string[]) => T): void {
+  ipcMain.handle(channel, (event, ...args: unknown[]): Reply<T> => {
+    if (!fromPage(event)) return { ok: false, error: `Pult refused ${channel} from ${event.senderFrame?.origin ?? "a closed frame"}.` };
+    if (!args.every((arg) => typeof arg === "string")) return { ok: false, error: `${channel} takes strings.` };
+    try {
+      return { ok: true, value: answer(event, ...args) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 }
 
 function fromPage(event: IpcMainInvokeEvent): boolean {

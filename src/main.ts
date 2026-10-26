@@ -26,6 +26,7 @@ import { Uri } from "monaco-editor";
 import defaultConfiguration from "./configuration.json?raw";
 import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
+import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
@@ -54,7 +55,8 @@ registerSelectThreadCommand();
 registerPanel();
 const pult = registerPultExtension();
 
-// The workbench owns the whole page; its parts are the layout (xaxis `pult/own-shell`).
+// The workbench owns the whole page but the desktop's title strip; its parts are the layout (xaxis `pult/own-shell`).
+if (window.pultDesktop) installDesktopTitleBar(window.pultDesktop);
 const container = document.createElement("div");
 container.id = "workbench";
 document.body.append(container);
