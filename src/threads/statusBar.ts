@@ -9,11 +9,13 @@ import { isSwitchingThread, onDidSelectThread } from "./selection.ts";
 const STATUS_BAR_VISIBLE = "workbench.statusBar.visible";
 
 /**
- * Shows VS Code's status bar while any editor other than a thread tab is open,
- * in any group, and hides it otherwise. The layout service has no public way
- * to hide the status bar (`setPartHidden` has no case for it), so this sets the
- * setting it follows in the in-memory configuration layer: never written to
- * the user's settings, and above them. Started once the workbench is up.
+ * Shows VS Code's status bar while the active editor is one other than a
+ * thread tab, and hides it otherwise: the bar belongs to the file shown, so
+ * the thread tab has none even with files open beside it. The layout
+ * service has no public way to hide the status bar (`setPartHidden` has no
+ * case for it), so this sets the setting it follows in the in-memory
+ * configuration layer: never written to the user's settings, and above
+ * them. Started once the workbench is up.
  */
 export async function syncStatusBarWithEditors(): Promise<void> {
   const editors = await getService(IEditorService);
@@ -21,11 +23,13 @@ export async function syncStatusBarWithEditors(): Promise<void> {
   await placeStatusBarUnderEditors();
   const update = () => {
     if (isSwitchingThread()) return;
-    const visible = editors.editors.some((editor) => !(editor instanceof ThreadInput));
+    const active = editors.activeEditor;
+    const visible = active !== undefined && !(active instanceof ThreadInput);
     if (configuration.getValue(STATUS_BAR_VISIBLE) !== visible) {
       void configuration.updateValue(STATUS_BAR_VISIBLE, visible, ConfigurationTarget.MEMORY);
     }
   };
+  editors.onDidActiveEditorChange(update);
   editors.onDidEditorsChange(update);
   onDidSelectThread(update);
   update();
