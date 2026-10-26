@@ -70,8 +70,12 @@ async function connect(): Promise<void> {
   }
 }
 
-/** Probes and connects with progress, showing a failure with its cause. */
-async function attach(target: ResolvedRemotePairingTarget): Promise<"connected" | ProbeError["kind"]> {
+/**
+ * Probes and connects with progress, showing a failure with its cause: the
+ * probe's, or the secret storage's when it cannot keep the bearer (the
+ * desktop wrapper refuses to store it without the system keychain).
+ */
+async function attach(target: ResolvedRemotePairingTarget): Promise<"connected" | "failed" | ProbeError["kind"]> {
   const host = new URL(target.httpBaseUrl).host;
   const progress = await getService(IProgressService);
   try {
@@ -80,8 +84,9 @@ async function attach(target: ResolvedRemotePairingTarget): Promise<"connected" 
     );
     return "connected";
   } catch (error) {
-    if (!(error instanceof ProbeError)) throw error;
-    (await getService(INotificationService)).error(`Pult could not connect to ${host}. ${error.detail}`);
-    return error.kind;
+    if (!(error instanceof Error)) throw error;
+    const detail = error instanceof ProbeError ? error.detail : error.message;
+    (await getService(INotificationService)).error(`Pult could not connect to ${host}. ${detail}`);
+    return error instanceof ProbeError ? error.kind : "failed";
   }
 }

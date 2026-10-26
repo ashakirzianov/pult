@@ -31,7 +31,7 @@ import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
 import { syncStatusBarWithEditors } from "./threads/statusBar.ts";
-import { localStorageSecrets } from "./secrets.ts";
+import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { installWorkers } from "./workers.ts";
 
@@ -68,7 +68,8 @@ const connectionToken = params.get("connectionToken") ?? undefined;
 const options: IWorkbenchConstructionOptions = {
   remoteAuthority,
   connectionToken,
-  secretStorageProvider: localStorageSecrets,
+  // In the desktop wrapper (`desktop/`) its preload's keychain-backed store; in a browser tab localStorage.
+  secretStorageProvider: window.pultDesktop ? desktopSecrets(window.pultDesktop) : localStorageSecrets,
   // The shell's defaults, under the user's own settings: chrome off but the sidebar's tabs, editor stock.
   configurationDefaults: JSON.parse(defaultConfiguration) as Record<string, unknown>,
   productConfiguration: {
