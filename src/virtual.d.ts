@@ -24,6 +24,8 @@ declare module "pult-extension/thread-view" {
     readonly openThread: (threadId: string) => void;
     /** A file the view would show in its right panel: relative to the thread's project root, or an absolute host path. */
     readonly openFile: (threadId: string, path: string, line: number | null) => void;
+    /** The thread's changes, with a file's path when one was named: the extension's changes view. */
+    readonly openChanges: (threadId: string, path: string | null) => void;
   }
 
   /** The T3 Code commit the view was built against, its checkout's `vendor/t3code/COMMIT`; undefined before the extension exported it. */

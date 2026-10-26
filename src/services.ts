@@ -22,6 +22,7 @@ import getOutputServiceOverride from "@codingame/monaco-vscode-output-service-ov
 import getPreferencesServiceOverride from "@codingame/monaco-vscode-preferences-service-override";
 import getQuickAccessServiceOverride from "@codingame/monaco-vscode-quickaccess-service-override";
 import getRemoteAgentServiceOverride from "@codingame/monaco-vscode-remote-agent-service-override";
+import getScmServiceOverride from "@codingame/monaco-vscode-scm-service-override";
 import getSearchServiceOverride from "@codingame/monaco-vscode-search-service-override";
 import getSecretStorageServiceOverride from "@codingame/monaco-vscode-secret-storage-service-override";
 import getSnippetServiceOverride from "@codingame/monaco-vscode-snippets-service-override";
@@ -40,8 +41,9 @@ import getWorkspaceTrustOverride from "@codingame/monaco-vscode-workspace-trust-
  * The workbench's services: the full workbench (layout, editor groups, views)
  * with what the Pult extension needs below it (a worker extension host, secrets,
  * storage, files, configuration) and the editor's own (themes, grammars,
- * languages, search, markers). Terminal, SCM, debug, testing, notebooks, chat
- * and the rest are left out on purpose.
+ * languages, search, markers) and source control, for the extension's
+ * changes view. Terminal, debug, testing, notebooks, chat and the rest are
+ * left out on purpose.
  */
 export function workbenchServices(): IEditorOverrideServices {
   return {
@@ -89,6 +91,7 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getMultiDiffEditorServiceOverride(),
     ...getTimelineServiceOverride(),
     ...getExplorerServiceOverride(),
+    ...getScmServiceOverride(),
     ...getBannerServiceOverride(),
     ...getStatusBarServiceOverride(),
     // Question 5: the remote agent path, for a Node extension host on the environment.

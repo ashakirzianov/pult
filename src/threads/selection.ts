@@ -111,6 +111,7 @@ async function switchTo(next: Selection): Promise<void> {
     switching = false;
   }
   for (const listener of listeners) listener();
+  tellExtension(commands);
 
   /** The thread's tab in the first group, leftmost; other threads' tabs leave. */
   async function showThreadTab(id: string): Promise<void> {
@@ -140,6 +141,16 @@ async function switchTo(next: Selection): Promise<void> {
       if (set.name === workingSetName(selection)) groups.deleteWorkingSet(set);
     }
   }
+}
+
+/**
+ * The extension's changes view follows the selection: told on each switch,
+ * and asked at its start through `pult-shell.selectedThread`, since the
+ * extension may start after the selection is restored. Before it starts
+ * the command is missing, which is fine.
+ */
+function tellExtension(commands: ICommandService): void {
+  void commands.executeCommand("pult.threadSelected", selectedThread()?.threadId ?? null).catch(() => undefined);
 }
 
 function workingSetName(selection: Selection): string {
@@ -188,6 +199,7 @@ export async function restoreThreadSelection(): Promise<void> {
  */
 export function registerSelectThreadCommand(): void {
   routeOpenSettings();
+  CommandsRegistry.registerCommand("pult-shell.selectedThread", () => selectedThread()?.threadId ?? null);
   registerAction2(
     class extends Action2 {
       constructor() {
