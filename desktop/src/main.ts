@@ -17,7 +17,7 @@ import { windowState } from "./windowState.ts";
 
 const isDevelopment = !app.isPackaged;
 const DEFAULT_PAGE_URL = new URL("http://localhost:5190");
-const pageUrl = new URL(process.env.PULT_DEV_SERVER_URL || DEFAULT_PAGE_URL);
+const pageUrl = devServerUrl(process.env.PULT_DEV_SERVER_URL);
 // The checkout this bundle (`desktop/dist/main.cjs`) was built in.
 const repoRoot = NodePath.resolve(__dirname, "../..");
 
@@ -47,6 +47,27 @@ void app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) openWindow();
   });
 });
+
+/**
+ * The page's URL: the default dev server's, or `PULT_DEV_SERVER_URL` when it
+ * is a loopback `http://` or any `https://` URL, since the page's secrets
+ * travel over it. Anything else is an error box, and the app quits.
+ */
+function devServerUrl(value: string | undefined): URL {
+  if (!value) return DEFAULT_PAGE_URL;
+  const url = URL.canParse(value) ? new URL(value) : undefined;
+  if (url?.protocol === "https:" || (url?.protocol === "http:" && isLoopback(url.hostname))) return url;
+  const message = `PULT_DEV_SERVER_URL is ${JSON.stringify(value)}, which Pult does not load: it takes a loopback http:// URL, as http://localhost:5194, or an https:// one, since the page's secrets travel over it.`;
+  console.error(`[pult-desktop] ${message}`);
+  // Safe before `ready`; it blocks until dismissed.
+  dialog.showErrorBox(appDisplayName(isDevelopment), message);
+  process.exit(1);
+}
+
+// A function, not a const: `devServerUrl` runs at module load, above it.
+function isLoopback(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "[::1]" || /^127(\.\d+){3}$/.test(hostname);
+}
 
 /**
  * `pult-dev`, or `pult-dev-<host>-<port>` for a page on another dev server
