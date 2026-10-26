@@ -8,7 +8,7 @@
  */
 import * as NodePath from "node:path";
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type IpcMainInvokeEvent } from "electron";
 
 import { appDisplayName, appUserDataName } from "../../src/identity.ts";
 import { Channel, VERSION_ARG, type Reply } from "./ipc.ts";
@@ -40,6 +40,7 @@ void app.whenReady().then(() => {
   }
   app.dock?.setIcon(NodePath.join(repoRoot, "assets/pult/dev/macos-1024.png"));
   Menu.setApplicationMenu(applicationMenu());
+  handlePermissions();
   handleSecrets();
   openWindow();
   // macOS keeps the app running with no window; the Dock icon opens one again.
@@ -130,6 +131,39 @@ function openWindow(): void {
   });
   // A failed load is reported above, so its rejected promise is not.
   window.loadURL(pageUrl.href).catch(() => undefined);
+}
+
+/**
+ * What the page's own origin is granted, as the workbench uses it: copying to
+ * the clipboard and fullscreen in any of its frames, and reading the clipboard
+ * in its top frame only, for the editor's Paste command and context menu
+ * (Cmd+V, the menu's paste, needs no permission).
+ */
+const PAGE_PERMISSIONS = new Map([
+  ["clipboard-sanitized-write", "any frame"],
+  ["fullscreen", "any frame"],
+  ["clipboard-read", "top frame"],
+]);
+
+/**
+ * Electron grants every permission by default (camera, microphone, location,
+ * notifications, clipboard reads), cross-origin frames included; the default
+ * session denies all but `PAGE_PERMISSIONS`, and those to the page's origin
+ * only. A denied request is logged on main's stderr, to tell what to grant.
+ */
+function handlePermissions(): void {
+  const granted = (permission: string, url: string, isMainFrame: boolean) => {
+    const frames = PAGE_PERMISSIONS.get(permission);
+    return frames !== undefined && sameOrigin(url) && (frames === "any frame" || isMainFrame);
+  };
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, { requestingUrl, isMainFrame }) => {
+    const grant = granted(permission, requestingUrl, isMainFrame);
+    if (!grant) console.warn(`[pult-desktop] denied ${permission} to ${requestingUrl}${isMainFrame ? "" : " (a subframe)"}`);
+    callback(grant);
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, { isMainFrame }) =>
+    granted(permission, requestingOrigin, isMainFrame),
+  );
 }
 
 /**
