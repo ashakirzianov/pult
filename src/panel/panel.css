@@ -1,4 +1,12 @@
-/* The left panel (src/panel), themed on the workbench's sidebar colours. */
+/* The left panel (src/panel), themed on the workbench's sidebar colours. Its own box model, as the shell's UI
+   is React in the page and the workbench's default is the browser's (src/style.css). */
+.pult-panel,
+.pult-panel *,
+.pult-panel *::before,
+.pult-panel *::after {
+  box-sizing: border-box;
+}
+
 .pult-panel {
   display: flex;
   flex-direction: column;
@@ -128,18 +136,39 @@
 
 .pult-card-details {
   padding: 0 10px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
 }
 
+/* The selected card's row: the Explorer button first, then the branch and the environment. */
 .pult-card-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px 12px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  font-size: 11px;
+  line-height: 14px;
+  cursor: pointer;
+}
+
+.pult-card-action:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pult-card-action .codicon {
+  font-size: 12px;
 }
 
 .pult-card-row > span {
@@ -154,7 +183,7 @@
 }
 
 .pult-card-note {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
 

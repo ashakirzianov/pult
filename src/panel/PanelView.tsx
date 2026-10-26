@@ -143,8 +143,9 @@ function useShelfExpanded(name: ShelfName): [boolean, (expanded: boolean) => voi
 /**
  * T3 Code's thread card without its bottom row: project icon and name, pin and status, then
  * the title, as the button that selects the thread. Selected, it expands with
- * the row (branch, environment) and the button that opens the Explorer tab
- * narrowed to the thread's root, or a note when the thread has none.
+ * one row: Explorer, the button that opens the Explorer tab narrowed to the
+ * thread's root, or a note when the thread has none, then the branch and the
+ * environment.
  */
 function ThreadCard({
   thread,
@@ -176,6 +177,14 @@ function ThreadCard({
       {selected ? (
         <div className="pult-card-details">
           <div className="pult-card-row">
+            {thread.projectRoot === null ? (
+              <span className="pult-card-note">No project folder</span>
+            ) : (
+              <button type="button" className="pult-card-action" onClick={() => run("pult-shell.openThreadExplorer")}>
+                <i className="codicon codicon-files" aria-hidden />
+                Explorer
+              </button>
+            )}
             {thread.branch ? (
               <span className="pult-card-branch">
                 <i className="codicon codicon-git-branch" aria-hidden />
@@ -189,14 +198,6 @@ function ThreadCard({
               </span>
             ) : null}
           </div>
-          {thread.projectRoot === null ? (
-            <span className="pult-card-note">No project folder to explore.</span>
-          ) : (
-            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.openThreadExplorer")}>
-              <i className="codicon codicon-files" aria-hidden />
-              Open explorer
-            </button>
-          )}
         </div>
       ) : null}
     </li>
