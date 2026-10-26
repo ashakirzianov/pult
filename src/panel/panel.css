@@ -10,19 +10,6 @@
   font-size: 13px;
 }
 
-/*
- * The logo in place of the sidebar's title while the cards show (`explorer.ts` sets the class).
- * The title's DOM is the workbench's own, built by `compositePart.js` (`createTitleArea`), not an
- * API: check this selector after a VS Code bump.
- */
-.part.sidebar.pult-panel-cards-shown > .title > .title-label h2 {
-  width: 64px;
-  height: 21px;
-  margin-top: 7px;
-  color: transparent !important;
-  background: url("../../assets/pult/logo-white.svg") left center / contain no-repeat;
-}
-
 .pult-panel-cards {
   flex: 1;
   min-height: 0;
@@ -190,34 +177,4 @@
 
 .pult-panel-button .codicon {
   font-size: 14px;
-}
-
-.pult-panel-footer {
-  flex: none;
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
-}
-
-.pult-panel-footer-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.pult-panel-footer-button:hover,
-.pult-panel-footer-button[aria-pressed="true"] {
-  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
-}
-
-.pult-panel-footer-button .codicon {
-  font-size: 16px;
 }

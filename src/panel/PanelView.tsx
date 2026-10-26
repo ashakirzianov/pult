@@ -18,10 +18,9 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * The panel's view, under the sidebar's title row (the logo and the
- * collapse chevron): the environment's threads as cards, and a footer with
- * Settings and the environment's explorer. A flat list in the store's order,
- * pinned first. The selected card expands with its details.
+ * The Threads tab's view, under the sidebar's title row: the environment's
+ * threads as cards, a flat list in the store's order, pinned first. The
+ * selected card expands with its details.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -52,21 +51,6 @@ export function PanelView() {
           ))
         )}
       </ul>
-      <footer className="pult-panel-footer">
-        <button
-          type="button"
-          className="pult-panel-footer-button"
-          aria-pressed={selection === "settings"}
-          onClick={() => run("pult-shell.selectSettings")}
-        >
-          <i className="codicon codicon-settings-gear" aria-hidden />
-          Settings
-        </button>
-        <button type="button" className="pult-panel-footer-button" onClick={() => run("pult-shell.openEnvironmentExplorer")}>
-          <i className="codicon codicon-files" aria-hidden />
-          Explorer
-        </button>
-      </footer>
     </div>
   );
 }
@@ -74,8 +58,8 @@ export function PanelView() {
 /**
  * T3 Code's thread card without its bottom row: project, pin and status, then
  * the title, as the button that selects the thread. Selected, it expands with
- * the row (branch, environment) and the button that opens the explorer at the
- * thread's root, or a note when the thread has none.
+ * the row (branch, environment) and the button that opens the Explorer tab
+ * narrowed to the thread's root, or a note when the thread has none.
  */
 function ThreadCard({
   thread,
@@ -122,7 +106,7 @@ function ThreadCard({
           {thread.projectRoot === null ? (
             <span className="pult-card-note">No project folder to explore.</span>
           ) : (
-            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.openThreadExplorer", thread.id)}>
+            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.openThreadExplorer")}>
               <i className="codicon codicon-files" aria-hidden />
               Open explorer
             </button>
