@@ -6,12 +6,13 @@ import { readJson, writeJsonAtomic } from "./files.ts";
  * The workbench's secrets, as main keeps them for `window.pultDesktop.secrets`:
  * one JSON file, each value encrypted by safeStorage (whose key sits in the OS
  * keychain) and base64-encoded, the file rewritten atomically on each change.
- * With no encryption on offer it refuses to store rather than write plain
- * text (pult/decisions, `desktop-secrets`). Used only after `app` is ready.
+ * Every call reads the file afresh, so two windows on one profile do not drop
+ * each other's writes. With no encryption on offer it refuses to store rather
+ * than write plain text (pult/decisions, `desktop-secrets`). Used only after
+ * `app` is ready.
  */
 export function openSecretStore(file: string) {
-  let sealed: Map<string, string> | undefined;
-  const load = () => (sealed ??= decode(readJson(file), file));
+  const load = () => decode(readJson(file), file);
   const save = (values: Map<string, string>) => writeJsonAtomic(file, Object.fromEntries(values));
 
   return {

@@ -16,14 +16,15 @@ import { openSecretStore } from "./secretStore.ts";
 import { windowState } from "./windowState.ts";
 
 const isDevelopment = !app.isPackaged;
-const pageUrl = new URL(process.env.PULT_DEV_SERVER_URL || "http://localhost:5190");
+const DEFAULT_PAGE_URL = new URL("http://localhost:5190");
+const pageUrl = new URL(process.env.PULT_DEV_SERVER_URL || DEFAULT_PAGE_URL);
 // The checkout this bundle (`desktop/dist/main.cjs`) was built in.
 const repoRoot = NodePath.resolve(__dirname, "../..");
 
 // The identity goes first: userData decides where Chromium keeps the profile,
 // and the name is the macOS menu's and the Keychain item's.
 app.setName(appDisplayName(isDevelopment));
-app.setPath("userData", NodePath.join(app.getPath("appData"), appUserDataName(isDevelopment)));
+app.setPath("userData", NodePath.join(app.getPath("appData"), userDataName()));
 
 const secrets = openSecretStore(NodePath.join(app.getPath("userData"), "secrets.json"));
 const state = windowState(NodePath.join(app.getPath("userData"), "window.json"));
@@ -46,6 +47,19 @@ void app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) openWindow();
   });
 });
+
+/**
+ * `pult-dev`, or `pult-dev-<host>-<port>` for a page on another dev server
+ * (`pult-dev-localhost-5193`), so a run beside another keeps its own Chromium
+ * profile and secrets file rather than writing over the other's.
+ */
+function userDataName(): string {
+  const name = appUserDataName(isDevelopment);
+  if (pageUrl.origin === DEFAULT_PAGE_URL.origin) return name;
+  const host = pageUrl.hostname.replace(/[^\w.]+/g, "-").replace(/^-|-$/g, "");
+  const port = pageUrl.port || (pageUrl.protocol === "https:" ? "443" : "80");
+  return `${name}-${host}-${port}`;
+}
 
 function openWindow(): void {
   const { maximized, ...bounds } = state.restore();
