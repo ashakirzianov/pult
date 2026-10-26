@@ -1,6 +1,12 @@
-# The shell is the root package; the vendored protocol packages are the workspace's others.
+# The shell is the root package; the desktop wrapper and the vendored protocol packages are the workspace's others.
 packages:
+  - desktop
   - vendor/t3code/packages/*
+
+# The desktop's tools run their install scripts: Electron's fetches its binary (else its first use does), esbuild's checks its platform binary.
+allowBuilds:
+  electron: true
+  esbuild: true
 
 # T3 Code Extensible's catalog at the pin, written by scripts/vendor.ts.
 catalog:

@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vp build",
     "preview": "vp preview",
     "typecheck": "tsc --noEmit",
+    "desktop:dev": "pnpm --filter pult-desktop dev",
     "vendor:sync": "node scripts/vendor.ts",
     "vendor:check": "node scripts/vendor.ts --check"
   },

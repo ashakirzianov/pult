@@ -1,0 +1,19 @@
+{
+  "name": "pult-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Pult's desktop: a thin Electron wrapper around the shell page.",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "dev": "node scripts/dev.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "electron": "44.4.5",
+    "esbuild": "0.28.2",
+    "typescript": "catalog:"
+  }
+}
