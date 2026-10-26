@@ -72,6 +72,12 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.pult-card-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
 .pult-card-project {
   flex: 1;
   min-width: 0;

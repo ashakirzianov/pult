@@ -1,6 +1,7 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { projectIconUri } from "../threads/projectIcon.ts";
 import { isSettingsSelected, onDidSelectThread, selectedThread } from "../threads/selection.ts";
 import { type ShelfName, type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
 
@@ -140,7 +141,7 @@ function useShelfExpanded(name: ShelfName): [boolean, (expanded: boolean) => voi
 }
 
 /**
- * T3 Code's thread card without its bottom row: project, pin and status, then
+ * T3 Code's thread card without its bottom row: project icon and name, pin and status, then
  * the title, as the button that selects the thread. Selected, it expands with
  * the row (branch, environment) and the button that opens the Explorer tab
  * narrowed to the thread's root, or a note when the thread has none.
@@ -165,6 +166,7 @@ function ThreadCard({
         onClick={() => run("pult-shell.selectThread", thread.id)}
       >
         <span className="pult-card-top">
+          <img className="pult-card-icon" src={projectIconUri(thread.projectName, thread.projectIcon).toString(true)} alt="" />
           <span className="pult-card-project">{thread.projectName}</span>
           {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
           <Status thread={thread} now={now} />
