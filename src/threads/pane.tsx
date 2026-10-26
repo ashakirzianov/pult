@@ -8,13 +8,15 @@ import {
   SimpleEditorInput,
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
+import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
-import { threadStore } from "./store.ts";
+import { projectIconUri } from "./projectIcon.ts";
+import { type ShellThread, threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
 const VENDORED_COMMIT = vendoredCommit.trim();
@@ -133,26 +135,63 @@ class ThreadPane extends SimpleEditorPane {
 }
 
 /**
- * The selected thread's tab. It cannot be closed: it leaves the editor part
- * only when another thread is selected, which swaps the whole part with
- * `force`. It is a singleton: Split Editor skips it and a drag moves it rather
- * than copies it, so a second copy never appears that could not be closed.
- * Its name follows the thread's title, since a tab restored at startup is
- * created before the extension has pushed the threads.
+ * The selected thread's tab, which carries the thread view's header: the
+ * project's icon, the thread's title as its name and the project as its
+ * description, shown always (`ForceDescription`), the `pult-thread-tab`
+ * class for its look (`src/style.css`). It cannot be closed: it leaves the
+ * editor part only when another thread is selected, which swaps the whole
+ * part with `force`. It is a singleton: Split Editor skips it and a drag
+ * moves it rather than copies it, so a second copy never appears that could
+ * not be closed. Its label follows the store, since a tab restored at
+ * startup is created before the extension has pushed the threads.
  */
 export class ThreadInput extends SimpleEditorInput {
+  private icon: { key: string; uri: URI } | undefined;
+
   constructor(readonly threadId: string) {
     super(undefined);
-    this.addCapability(EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton);
-    this.setDescription("Pult");
-    this.updateName();
-    const unsubscribe = threadStore.subscribe(() => this.updateName());
+    this.addCapability(
+      EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
+    );
+    this.updateLabel();
+    const unsubscribe = threadStore.subscribe(() => this.updateLabel());
     this._register({ dispose: unsubscribe });
   }
 
-  private updateName(): void {
-    const title = threadStore.get().threads.find((thread) => thread.id === this.threadId)?.title ?? "Thread";
-    if (title !== this.getName()) this.setName(title);
+  private thread(): ShellThread | undefined {
+    return threadStore.get().threads.find((thread) => thread.id === this.threadId);
+  }
+
+  /** The name is the title; setting it fires the label change that redraws the description and icon too. */
+  private updateLabel(): void {
+    const thread = this.thread();
+    const title = thread?.title ?? "Thread";
+    const description = thread?.projectName;
+    if (title !== this.getName() || description !== this.getDescription()) {
+      this.setDescription(description ?? "");
+      this.setName(title);
+    }
+  }
+
+  override getDescription(): string {
+    return this.thread()?.projectName ?? "";
+  }
+
+  override getTitle(): string {
+    const thread = this.thread();
+    return thread === undefined ? "Thread" : `${thread.projectName}: ${thread.title}`;
+  }
+
+  override getIcon(): URI | undefined {
+    const thread = this.thread();
+    if (thread === undefined) return undefined;
+    const key = `${thread.projectName}|${JSON.stringify(thread.projectIcon)}`;
+    if (this.icon?.key !== key) this.icon = { key, uri: projectIconUri(thread.projectName, thread.projectIcon) };
+    return this.icon.uri;
+  }
+
+  override getLabelExtraClasses(): string[] {
+    return ["pult-thread-tab"];
   }
 
   override get typeId(): string {

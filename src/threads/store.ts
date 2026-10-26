@@ -1,4 +1,5 @@
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
+import type { ProjectIconOverride } from "@t3tools/contracts";
 
 /** Upstream's sidebar shelves, in its order; the extension puts every listed thread on one. */
 export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
@@ -15,6 +16,8 @@ export interface ShellThread {
   readonly projectName: string;
   /** The project's root on the environment host, for `pult:` URIs. */
   readonly projectRoot: string | null;
+  /** The project's chosen icon; null for the one upstream derives from its name. */
+  readonly projectIcon: ProjectIconOverride | null;
   readonly title: string;
   readonly branch: string | null;
   readonly createdAt: string;

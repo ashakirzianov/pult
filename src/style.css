@@ -26,6 +26,11 @@ body,
 }
 
 
+/* The thread's tab (src/threads/pane.tsx) carries the view's header: its title set apart from file names. */
+.monaco-workbench .tab .monaco-icon-label.pult-thread-tab .label-name {
+  font-weight: 600;
+}
+
 /* The shell-rendered thread pane (src/threads): the thread view fills it. */
 .pult-thread-pane {
   height: 100%;
