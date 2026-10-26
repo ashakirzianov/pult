@@ -3,7 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { projectIconUri } from "../threads/projectIcon.ts";
 import { isSettingsSelected, onDidSelectThread, selectedThread } from "../threads/selection.ts";
-import { type ShelfName, type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
+import { isSubagent, type ShelfName, type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -22,12 +22,31 @@ const threadsSnapshot = () => threadStore.get();
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 
+/** A card lists this many subagents, then the rest behind "Show more". */
+const SUBAGENTS_SHOWN = 6;
+
+/** Each thread's subagents, nested ones too, by the thread at the top of their lineage: working first, then newest first. */
+function subagentsByRoot(threads: ReadonlyArray<ShellThread>): Map<string, ShellThread[]> {
+  const byRoot = new Map<string, ShellThread[]>();
+  for (const thread of threads) {
+    if (!isSubagent(thread)) continue;
+    const list = byRoot.get(thread.rootId) ?? [];
+    list.push(thread);
+    byRoot.set(thread.rootId, list);
+  }
+  for (const list of byRoot.values()) {
+    list.sort((a, b) => Number(b.working) - Number(a.working) || Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }
+  return byRoot;
+}
+
 /**
  * The Threads tab's view, under the sidebar's title row: the environment's
  * threads as cards, in the store's order, which is upstream's: pinned and
  * active as one flat list, then the Snoozed and Settled shelves, each under
  * a collapsible header, collapsed until opened. The selected card expands
- * with its details.
+ * with its details and its subagents; a subagent has no card, so while one
+ * is selected its root's card is the expanded one.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -36,12 +55,18 @@ export function PanelView() {
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
+  const subagents = subagentsByRoot(state.threads);
+  // The card the selection expands: the selected thread's own, or for a subagent its root's.
+  const selectedThread = state.threads.find((thread) => thread.id === selection);
+  const selectedCard = selectedThread !== undefined && isSubagent(selectedThread) ? selectedThread.rootId : selection;
   const card = (thread: ShellThread) => (
     <ThreadCard
       key={thread.id}
       thread={thread}
+      subagents={subagents.get(thread.id) ?? []}
       environment={state.environment}
-      selected={thread.id === selection}
+      selected={thread.id === selectedCard}
+      selection={selection}
       now={now}
     />
   );
@@ -69,7 +94,7 @@ export function PanelView() {
         ) : null}
         {settled.length > 0 ? (
           <Shelf name="settled" label="Settled">
-            <SettledTail threads={settled} selection={selection} render={card} />
+            <SettledTail threads={settled} selection={selectedCard} render={card} />
           </Shelf>
         ) : null}
       </ul>
@@ -145,17 +170,21 @@ function useShelfExpanded(name: ShelfName): [boolean, (expanded: boolean) => voi
  * the title, as the button that selects the thread. Selected, it expands with
  * one row: Explorer, the button that opens the Explorer tab narrowed to the
  * thread's root, or a note when the thread has none, then the branch and the
- * environment.
+ * environment; and its subagents below, each selecting its own thread.
  */
 function ThreadCard({
   thread,
+  subagents,
   environment,
   selected,
+  selection,
   now,
 }: {
   thread: ShellThread;
+  subagents: ReadonlyArray<ShellThread>;
   environment: ShellEnvironment | null;
   selected: boolean;
+  selection: string | undefined;
   now: number;
 }) {
   return (
@@ -198,9 +227,57 @@ function ThreadCard({
               </span>
             ) : null}
           </div>
+          {subagents.length > 0 ? <Subagents subagents={subagents} selection={selection} now={now} /> : null}
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * The expanded card's subagents, each a row that selects its thread: its
+ * status, then its title. The first few, then the rest behind "Show more";
+ * the selected one always.
+ */
+function Subagents({
+  subagents,
+  selection,
+  now,
+}: {
+  subagents: ReadonlyArray<ShellThread>;
+  selection: string | undefined;
+  now: number;
+}) {
+  const [all, setAll] = useState(false);
+  const visible = all ? [...subagents] : subagents.slice(0, SUBAGENTS_SHOWN);
+  const beyond = subagents.slice(visible.length).find((subagent) => subagent.id === selection);
+  if (beyond !== undefined) visible.push(beyond);
+  const hidden = subagents.length - visible.length;
+  return (
+    <ul className="pult-card-subagents" aria-label="Subagents">
+      {visible.map((subagent) => (
+        <li key={subagent.id}>
+          <button
+            type="button"
+            className={`pult-subagent${subagent.id === selection ? " pult-subagent-selected" : ""}`}
+            aria-current={subagent.id === selection || undefined}
+            title={subagent.title}
+            onClick={() => run("pult-shell.selectThread", subagent.id)}
+          >
+            <i className={`codicon ${subagent.working ? "codicon-loading codicon-modifier-spin" : "codicon-hubot"}`} aria-hidden />
+            <span className="pult-subagent-title">{subagent.title}</span>
+            <Status thread={subagent} now={now} />
+          </button>
+        </li>
+      ))}
+      {hidden > 0 ? (
+        <li>
+          <button type="button" className="pult-subagent pult-subagent-more" onClick={() => setAll(true)}>
+            Show {hidden} more
+          </button>
+        </li>
+      ) : null}
+    </ul>
   );
 }
 

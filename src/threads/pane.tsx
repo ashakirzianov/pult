@@ -17,7 +17,7 @@ import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { openThreadFile } from "./files.ts";
 import { projectIconUri } from "./projectIcon.ts";
-import { type ShellThread, threadStore } from "./store.ts";
+import { isSubagent, type ShellThread, threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
 const VENDORED_COMMIT = vendoredCommit.trim();
@@ -154,6 +154,7 @@ class ThreadPane extends SimpleEditorPane {
  */
 export class ThreadInput extends SimpleEditorInput {
   private icon: { key: string; uri: URI } | undefined;
+  private labelKey: string | undefined;
 
   constructor(readonly threadId: string) {
     super(undefined);
@@ -169,24 +170,27 @@ export class ThreadInput extends SimpleEditorInput {
     return threadStore.get().threads.find((thread) => thread.id === this.threadId);
   }
 
-  /** The name is the title; setting it fires the label change that redraws the description and icon too. */
+  /** The name is the title; setting it fires the label change that redraws the description, title and icon too. */
   private updateLabel(): void {
-    const thread = this.thread();
-    const title = thread?.title ?? "Thread";
-    const description = thread?.projectName;
-    if (title !== this.getName() || description !== this.getDescription()) {
-      this.setDescription(description ?? "");
-      this.setName(title);
-    }
+    const key = JSON.stringify([this.thread()?.title, this.getDescription(), this.getTitle(), this.thread()?.projectIcon]);
+    if (key === this.labelKey) return;
+    this.labelKey = key;
+    this.setName(this.thread()?.title ?? "Thread");
   }
 
+  /** The project, and for a subagent's thread that it is one. */
   override getDescription(): string {
-    return this.thread()?.projectName ?? "";
+    const thread = this.thread();
+    if (thread === undefined) return "";
+    return isSubagent(thread) ? `${thread.projectName} · subagent` : thread.projectName;
   }
 
   override getTitle(): string {
     const thread = this.thread();
-    return thread === undefined ? "Thread" : `${thread.projectName}: ${thread.title}`;
+    if (thread === undefined) return "Thread";
+    const parent = thread.parentId === null ? undefined : threadStore.get().threads.find((candidate) => candidate.id === thread.parentId);
+    const lineage = isSubagent(thread) && parent !== undefined ? ` (a subagent of ${parent.title})` : "";
+    return `${thread.projectName}: ${thread.title}${lineage}`;
   }
 
   override getIcon(): URI | undefined {

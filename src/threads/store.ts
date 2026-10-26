@@ -11,7 +11,12 @@ export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
  */
 export interface ShellThread {
   readonly id: string;
-  readonly shelf: ShelfName;
+  /** Its shelf; null for a subagent, which the panel lists under its root's card. */
+  readonly shelf: ShelfName | null;
+  /** The thread that spawned or forked it; null for a thread of its own. */
+  readonly parentId: string | null;
+  /** The top of its lineage, itself for a thread of its own. */
+  readonly rootId: string;
   readonly projectId: string;
   readonly projectName: string;
   /** The project's root on the environment host, for `pult:` URIs. */
@@ -36,8 +41,13 @@ export interface ShellEnvironment {
 
 export interface ThreadState {
   readonly environment: ShellEnvironment | null;
-  /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them. */
+  /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them; then the subagents, on no shelf. */
   readonly threads: ReadonlyArray<ShellThread>;
+}
+
+/** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
+export function isSubagent(thread: ShellThread): boolean {
+  return thread.shelf === null && thread.parentId !== null;
 }
 
 type Listener = (state: ThreadState) => void;

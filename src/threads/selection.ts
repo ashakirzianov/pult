@@ -1,6 +1,7 @@
 import {
   getService,
   ICommandService,
+  IContextKeyService,
   type IEditorGroup,
   IEditorGroupsService,
   IInstantiationService,
@@ -8,8 +9,10 @@ import {
   IStorageService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
+import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { CommandsRegistry, type ICommandHandler } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
@@ -17,7 +20,7 @@ import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/se
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { ThreadInput } from "./pane.tsx";
-import { threadStore } from "./store.ts";
+import { isSubagent, threadStore } from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
 export interface ThreadSelection {
@@ -30,6 +33,17 @@ const SETTINGS = "settings";
 type Selection = ThreadSelection | typeof SETTINGS;
 
 const STORAGE_KEY = "pult.shell.selectedThread";
+
+/** Whether the selected thread is a subagent's: the thread tab's title then offers its way back to the parent. */
+const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelected", false);
+
+/** The selected thread's parent, when the selected thread is a subagent's and the parent is known. */
+function selectedParentId(): string | undefined {
+  const threadId = selectedThread()?.threadId;
+  const thread = threadStore.get().threads.find((candidate) => candidate.id === threadId);
+  if (thread === undefined || !isSubagent(thread) || thread.parentId === null) return undefined;
+  return threadStore.get().threads.some((candidate) => candidate.id === thread.parentId) ? thread.parentId : undefined;
+}
 
 let selected: Selection | undefined;
 let switching = false;
@@ -189,6 +203,12 @@ export async function restoreThreadSelection(): Promise<void> {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
   });
   for (const listener of listeners) listener();
+  // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
+  const subagentKey = SubagentSelectedContext.bindTo(await getService(IContextKeyService));
+  const updateSubagentKey = () => subagentKey.set(selectedParentId() !== undefined);
+  onDidSelectThread(updateSubagentKey);
+  threadStore.subscribe(updateSubagentKey);
+  updateSubagentKey();
 }
 
 /**
@@ -218,13 +238,39 @@ export function registerSelectThreadCommand(): void {
         const items = threadStore.get().threads.map((thread) => ({
           id: thread.id,
           label: thread.title,
-          description: thread.projectName,
+          description: isSubagent(thread) ? `${thread.projectName} · subagent` : thread.projectName,
         }));
         const picked = await quickInput.pick(items, {
           placeHolder: "Select a thread",
           activeItem: items.find((item) => item.id === selectedThread()?.threadId),
         });
         if (picked !== undefined) await selectThread(picked.id);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.selectParentThread",
+          title: { value: "Back to Parent Thread", original: "Back to Parent Thread" },
+          category: { value: "Pult", original: "Pult" },
+          icon: Codicon.arrowUp,
+          f1: true,
+          precondition: SubagentSelectedContext,
+          // In the thread tab's title, left of Split Editor, while a subagent's thread tab is the active one.
+          menu: {
+            id: MenuId.EditorTitle,
+            when: ContextKeyExpr.and(SubagentSelectedContext, ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane")),
+            group: "navigation",
+            order: -100,
+          },
+        });
+      }
+
+      async run(): Promise<void> {
+        const parentId = selectedParentId();
+        if (parentId !== undefined) await selectThread(parentId);
       }
     },
   );
