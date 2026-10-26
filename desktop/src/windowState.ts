@@ -13,7 +13,7 @@ const DEFAULT_SIZE = { width: 1440, height: 900 };
 export function windowState(file: string) {
   return {
     restore() {
-      const saved = decode(readJson(file));
+      const saved = decode(readSaved(file));
       if (saved === undefined || !screen.getAllDisplays().some(({ bounds }) => contains(bounds, saved))) {
         return { ...DEFAULT_SIZE, maximized: false };
       }
@@ -38,6 +38,16 @@ export function windowState(file: string) {
       window.on("close", save);
     },
   };
+}
+
+/** The saved state as read; a file that cannot be read or parsed counts as none, so the window still opens. */
+function readSaved(file: string): unknown {
+  try {
+    return readJson(file);
+  } catch (error) {
+    console.warn(`[pult-desktop] ${file} is unreadable, so the window opens at the default size:`, error);
+    return undefined;
+  }
 }
 
 function contains(display: Rectangle, window: Rectangle): boolean {
