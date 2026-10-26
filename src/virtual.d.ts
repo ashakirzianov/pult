@@ -22,6 +22,8 @@ declare module "pult-extension/thread-view" {
     readonly connection: () => Promise<Context.Context<never>>;
     readonly environmentId: () => string | null;
     readonly openThread: (threadId: string) => void;
+    /** A file the view would show in its right panel: relative to the thread's project root, or an absolute host path. */
+    readonly openFile: (threadId: string, path: string, line: number | null) => void;
   }
 
   /** The T3 Code commit the view was built against, its checkout's `vendor/t3code/COMMIT`; undefined before the extension exported it. */

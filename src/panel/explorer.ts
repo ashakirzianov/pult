@@ -118,7 +118,7 @@ function effectiveRoot(): Folder | undefined {
  * (keep the two in step): a Windows drive as `/c:/`, and no trailing slash
  * but the root's or a drive's, as the workbench strips it from a folder.
  */
-function pultUri(environmentId: string, hostPath: string): URI {
+export function pultUri(environmentId: string, hostPath: string): URI {
   const drive = /^[A-Za-z]:([\\/]|$)/.test(hostPath)
     ? `/${hostPath.charAt(0).toLowerCase()}${hostPath.slice(1).replaceAll("\\", "/")}`
     : hostPath;

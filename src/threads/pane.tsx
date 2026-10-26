@@ -15,6 +15,7 @@ import { createRoot, type Root } from "react-dom/client";
 import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { openThreadFile } from "./files.ts";
 import { projectIconUri } from "./projectIcon.ts";
 import { type ShellThread, threadStore } from "./store.ts";
 
@@ -27,7 +28,8 @@ let started: Promise<{ mount(element: HTMLElement, threadId: string): { dispose(
  * Upstream's thread view, as pult-extension builds it for the shell, loaded
  * with the first pane and started once on the page's connection: its state
  * runtime runs on the connection runtime's services, so the view shares the
- * page's one socket. A thread it navigates to is selected in the shell. The
+ * page's one socket. A thread it navigates to is selected in the shell, and
+ * a file it would show in its right panel opens as a tab (`files.ts`). The
  * view imports the shell's vendored packages, so it must be built against the
  * same T3 Code commit; a view that is missing or built against another fails
  * with a message the pane shows, and the next pane tries again.
@@ -51,6 +53,7 @@ function threadView() {
         environmentId: () => connection.environment?.environmentId ?? null,
         openThread: (threadId) =>
           void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.selectThread", threadId)),
+        openFile: (threadId, path, line) => void openThreadFile(threadId, path, line),
       },
       workbench,
     );
