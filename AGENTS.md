@@ -1,6 +1,6 @@
 # Pult
 
-This repo is **Pult**'s shell: VS Code's workbench, vendored through `@codingame/monaco-vscode-api`, in a Vite page centred on threads, with the Pult extension (`../pult-extension`) built in and connected to a T3 Code Extensible server. It runs no server. It is one repo of the **Pult track** (xaxis `pult/about`), beside `../pult-extension` and the fork `../t3code-extensible`. Cross-track conventions live in `../axis/AGENTS.md`.
+This repo is **Pult**'s shell: VS Code's workbench, vendored through `@codingame/monaco-vscode-api`, in a Vite page centred on threads, with the Pult extension (`../pult-extension`) built in and connected to a T3 Code Extensible server. It runs no server. It is one repo of the **Pult track** (xaxis `pult/about`), beside `../pult-extension`, `../pult-star` (the Stars' generative art, local only) and the fork `../t3code-extensible`. Cross-track conventions live in `../axis/AGENTS.md`.
 
 - Read xaxis `pult/rfc-0` (human-written, never edited by agents) before anything else, then `pult/rfc-2`, the current direction, and the design on `pult/own-shell`. The track's decisions are xaxis `pult/decisions`; its design principles `pult/taste`.
 - The history started fresh on 2026-10-23. The previous line, a web client and an Electron shell, is archived as `ashakirzianov/pult-app`; copy from it by hand when something there is wanted (the vendoring script, the icon renderer, the desktop shell).
