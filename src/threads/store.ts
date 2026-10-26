@@ -1,5 +1,8 @@
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 
+/** Upstream's sidebar shelves, in its order; the extension puts every listed thread on one. */
+export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
+
 /**
  * A thread as the extension reports it to the shell: the fields of its
  * `EnvironmentThreadShell` the pane shows, serialised over a command call.
@@ -7,6 +10,7 @@ import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platfor
  */
 export interface ShellThread {
   readonly id: string;
+  readonly shelf: ShelfName;
   readonly projectId: string;
   readonly projectName: string;
   /** The project's root on the environment host, for `pult:` URIs. */
@@ -17,8 +21,6 @@ export interface ShellThread {
   readonly updatedAt: string;
   readonly working: boolean;
   readonly pinned: boolean;
-  readonly settled: boolean;
-  readonly snoozed: boolean;
   readonly latestRun: { status: string; startedAt: string | null; finishedAt: string | null } | null;
   readonly goal: string | null;
 }
@@ -31,6 +33,7 @@ export interface ShellEnvironment {
 
 export interface ThreadState {
   readonly environment: ShellEnvironment | null;
+  /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them. */
   readonly threads: ReadonlyArray<ShellThread>;
 }
 

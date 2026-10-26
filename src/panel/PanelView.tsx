@@ -2,7 +2,7 @@ import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { isSettingsSelected, onDidSelectThread, selectedThread } from "../threads/selection.ts";
-import { type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
+import { type ShelfName, type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -17,16 +17,33 @@ function selectionSnapshot(): string | undefined {
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
 const threadsSnapshot = () => threadStore.get();
 
+/** Upstream's settled tail: this many settled threads at first, then a page more per click. */
+const SETTLED_TAIL_INITIAL_COUNT = 10;
+const SETTLED_TAIL_PAGE_COUNT = 25;
+
 /**
  * The Threads tab's view, under the sidebar's title row: the environment's
- * threads as cards, a flat list in the store's order, pinned first. The
- * selected card expands with its details.
+ * threads as cards, in the store's order, which is upstream's: pinned and
+ * active as one flat list, then the Snoozed and Settled shelves, each under
+ * a collapsible header, collapsed until opened. The selected card expands
+ * with its details.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
-  const threads = [...state.threads].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
+  const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
+  const settled = state.threads.filter((thread) => thread.shelf === "settled");
+  const card = (thread: ShellThread) => (
+    <ThreadCard
+      key={thread.id}
+      thread={thread}
+      environment={state.environment}
+      selected={thread.id === selection}
+      now={now}
+    />
+  );
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
@@ -37,22 +54,89 @@ export function PanelView() {
               Connect to Environment
             </button>
           </li>
-        ) : threads.length === 0 ? (
+        ) : state.threads.length === 0 ? (
           <li className="pult-panel-empty">No threads in {state.environment.label}.</li>
+        ) : listed.length === 0 ? (
+          <li className="pult-panel-empty">No active threads.</li>
         ) : (
-          threads.map((thread) => (
-            <ThreadCard
-              key={thread.id}
-              thread={thread}
-              environment={state.environment}
-              selected={thread.id === selection}
-              now={now}
-            />
-          ))
+          listed.map(card)
         )}
+        {snoozed.length > 0 ? (
+          <Shelf name="snoozed" label="Snoozed">
+            {snoozed.map(card)}
+          </Shelf>
+        ) : null}
+        {settled.length > 0 ? (
+          <Shelf name="settled" label="Settled">
+            <SettledTail threads={settled} selection={selection} render={card} />
+          </Shelf>
+        ) : null}
       </ul>
     </div>
   );
+}
+
+/**
+ * A shelf under upstream's collapsible header (label, rule, chevron), its
+ * threads shown while expanded. Whether it is expanded persists in
+ * localStorage, per shelf, as upstream keeps its own.
+ */
+function Shelf({ name, label, children }: { name: ShelfName; label: string; children: React.ReactNode }) {
+  const [expanded, setExpanded] = useShelfExpanded(name);
+  return (
+    <li className={`pult-shelf pult-shelf-${name}`}>
+      <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+        <span className="pult-shelf-label">{label}</span>
+        <span className="pult-shelf-rule" aria-hidden />
+        <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-up"}`} aria-hidden />
+      </button>
+      {expanded ? <ul className="pult-shelf-cards">{children}</ul> : null}
+    </li>
+  );
+}
+
+/**
+ * The settled shelf's tail: the first few threads, a page more per "Show
+ * more", and the selected thread even when it lies beyond.
+ */
+function SettledTail({
+  threads,
+  selection,
+  render,
+}: {
+  threads: ReadonlyArray<ShellThread>;
+  selection: string | undefined;
+  render: (thread: ShellThread) => React.ReactNode;
+}) {
+  const [count, setCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
+  const visible = threads.slice(0, count);
+  const beyond = threads.slice(count).find((thread) => thread.id === selection);
+  if (beyond !== undefined) visible.push(beyond);
+  const hidden = threads.length - visible.length;
+  return (
+    <>
+      {visible.map(render)}
+      {hidden > 0 ? (
+        <li className="pult-shelf-more">
+          <button type="button" className="pult-panel-button" onClick={() => setCount(count + SETTLED_TAIL_PAGE_COUNT)}>
+            Show {Math.min(hidden, SETTLED_TAIL_PAGE_COUNT)} more
+          </button>
+        </li>
+      ) : null}
+    </>
+  );
+}
+
+function useShelfExpanded(name: ShelfName): [boolean, (expanded: boolean) => void] {
+  const key = `pult-shell.panel.${name}-expanded`;
+  const [expanded, setExpanded] = useState(() => localStorage.getItem(key) === "true");
+  return [
+    expanded,
+    (next) => {
+      localStorage.setItem(key, String(next));
+      setExpanded(next);
+    },
+  ];
 }
 
 /**
@@ -73,7 +157,7 @@ function ThreadCard({
   now: number;
 }) {
   return (
-    <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.settled ? " pult-card-settled" : ""}`}>
+    <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}>
       <button
         type="button"
         className="pult-card-select"
@@ -121,14 +205,14 @@ function ThreadCard({
 function Status({ thread, now }: { thread: ShellThread; now: number }) {
   if (thread.working) return <span className="pult-card-status pult-card-status-working">Working</span>;
   if (thread.latestRun?.status === "failed") return <span className="pult-card-status pult-card-status-failed">Failed</span>;
-  if (thread.snoozed) {
+  if (thread.shelf === "snoozed") {
     return (
       <span className="pult-card-status">
         <i className="codicon codicon-bell-slash" aria-hidden /> Snoozed
       </span>
     );
   }
-  if (thread.settled) {
+  if (thread.shelf === "settled") {
     return (
       <span className="pult-card-status">
         <i className="codicon codicon-check" aria-hidden /> {age(thread.updatedAt, now)}
