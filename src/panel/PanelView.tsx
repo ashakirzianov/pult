@@ -129,25 +129,28 @@ export function PanelView() {
 }
 
 /**
- * Upstream's collapsible header: the label and its count, a rule, the
- * chevron. A shelf's and a card's Finished subagents'.
+ * Upstream's collapsible header: the label and its count, a rule, a status
+ * when one is given, the chevron. A shelf's and a card's subagents'.
  */
 function CollapsibleHeader({
   label,
   count,
   expanded,
   onToggle,
+  status = null,
 }: {
   label: string;
   count: number;
   expanded: boolean;
   onToggle: () => void;
+  status?: React.ReactNode;
 }) {
   return (
     <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={onToggle}>
       <span className="pult-shelf-label">{label}</span>
       <span className="pult-shelf-count">{count}</span>
       <span className="pult-shelf-rule" aria-hidden />
+      {status}
       <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-up"}`} aria-hidden />
     </button>
   );
@@ -213,12 +216,12 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
 }
 
 /**
- * T3 Code's thread card without its bottom row: project icon and name, pin and status, then
- * the title, as the button that selects the thread. Selected, it expands with
- * its subagents, each selecting its own thread, then one row: the branch
- * when the server records one, Explorer, the button that opens the Explorer
- * tab narrowed to the thread's root (a note when the thread has none), and
- * the environment.
+ * T3 Code's thread card without its bottom row: project icon and name, pin
+ * and status, then the title, as the button that selects the thread.
+ * Selected, it expands with its subagents under their header, each selecting
+ * its own thread, then one row: the branch when the server records one,
+ * Explorer, the button that opens the Explorer tab narrowed to the thread's
+ * root (a note when the thread has none), and the environment.
  */
 function ThreadCard({
   thread,
@@ -285,10 +288,11 @@ function ThreadCard({
 }
 
 /**
- * The expanded card's subagents, each a row that selects its thread: its
- * title, then its status. Active ones always; finished ones behind the
- * Finished toggle, collapsed until opened, for every card at once; the
- * selected one shown even then.
+ * The expanded card's subagents under one collapsible header, their count
+ * and, while any works, Working with the longest elapsed time; collapsed
+ * until opened, for every card at once. Each a row that selects its thread:
+ * its title, then its status, a working one's being its elapsed time alone.
+ * Active ones first; the selected one shown even while collapsed.
  */
 function Subagents({
   subagents,
@@ -301,11 +305,15 @@ function Subagents({
   selection: string | undefined;
   now: number;
 }) {
-  const [expanded, setExpanded] = useExpanded("pult-shell.panel.finished-expanded");
+  const [expanded, setExpanded] = useExpanded("pult-shell.panel.subagents-expanded");
   const activity = (subagent: ShellThread) => activities.get(subagent.id) ?? null;
-  const active = subagents.filter((subagent) => activity(subagent) !== null);
-  const finished = subagents.filter((subagent) => activity(subagent) === null);
-  const shownFinished = expanded ? finished : finished.filter((subagent) => subagent.id === selection);
+  const working = subagents.filter((subagent) => activity(subagent) === "working");
+  // The longest elapsed time is the earliest start.
+  const since = working
+    .map((subagent) => subagent.workingSince)
+    .filter((start) => start !== null)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  const shown = expanded ? subagents : subagents.filter((subagent) => subagent.id === selection);
   const row = (subagent: ShellThread) => (
     <li key={subagent.id}>
       <button
@@ -317,20 +325,37 @@ function Subagents({
       >
         <i className="codicon codicon-hubot" aria-hidden />
         <span className="pult-subagent-title">{subagent.title}</span>
-        <Status thread={subagent} activity={activity(subagent)} now={now} />
+        {activity(subagent) === "working" && subagent.workingSince !== null ? (
+          <span className="pult-card-status pult-card-status-working">
+            <Elapsed since={subagent.workingSince} />
+          </span>
+        ) : (
+          <Status thread={subagent} activity={activity(subagent)} now={now} />
+        )}
       </button>
     </li>
   );
   return (
-    <ul className="pult-card-subagents" aria-label="Subagents">
-      {active.map(row)}
-      {finished.length > 0 ? (
-        <li className="pult-subagents-finished">
-          <CollapsibleHeader label="Finished" count={finished.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
-          {shownFinished.length > 0 ? <ul className="pult-subagents-list">{shownFinished.map(row)}</ul> : null}
-        </li>
+    <div className="pult-card-subagents">
+      <CollapsibleHeader
+        label="Subagents"
+        count={subagents.length}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        status={
+          working.length === 0 ? null : (
+            <span className="pult-card-status pult-card-status-working">
+              Working{since === undefined ? null : <Elapsed since={since} />}
+            </span>
+          )
+        }
+      />
+      {shown.length > 0 ? (
+        <ul className="pult-subagents-list" aria-label="Subagents">
+          {shown.map(row)}
+        </ul>
       ) : null}
-    </ul>
+    </div>
   );
 }
 

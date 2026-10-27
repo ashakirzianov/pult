@@ -304,8 +304,6 @@
 /* The expanded card's subagents: a row each, selecting its thread. */
 .pult-card-subagents {
   margin: 0 0 8px;
-  padding: 0;
-  list-style: none;
 }
 
 .pult-subagent {
@@ -353,8 +351,8 @@
   white-space: nowrap;
 }
 
-/* The Finished toggle inside a card: the shelves' header, a step smaller. */
-.pult-subagents-finished .pult-shelf-header {
+/* The subagents' header inside a card: the shelves' header, a step smaller. */
+.pult-card-subagents .pult-shelf-header {
   height: 22px;
   padding: 0 4px;
   font-size: 11px;
