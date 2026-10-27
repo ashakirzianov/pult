@@ -14,12 +14,12 @@ import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/com
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { CommandsRegistry, type ICommandHandler } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
-import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
+import { KeybindingsRegistry, KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
-import { ThreadInput } from "./pane.tsx";
+import { DraftInput, isLeadTab, onDidPromoteDraft, ThreadInput } from "./pane.tsx";
 import { isSubagent, threadStore } from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
@@ -28,9 +28,19 @@ export interface ThreadSelection {
   readonly threadId: string;
 }
 
+/** A project's draft of a new thread, one per project, as upstream reuses a project's draft. */
+export interface DraftSelection {
+  readonly environmentId: string;
+  readonly projectId: string;
+}
+
 /** Settings, content of its own beside the threads: VS Code's settings editor with a tab set of its own. */
 const SETTINGS = "settings";
-type Selection = ThreadSelection | typeof SETTINGS;
+type Selection = ThreadSelection | DraftSelection | typeof SETTINGS;
+
+function isDraft(selection: Selection | undefined): selection is DraftSelection {
+  return typeof selection === "object" && "projectId" in selection;
+}
 
 const STORAGE_KEY = "pult.shell.selectedThread";
 
@@ -50,9 +60,14 @@ let switching = false;
 let queue = Promise.resolve();
 const listeners = new Set<() => void>();
 
-/** The selected thread; undefined while Settings is selected. */
+/** The selected thread; undefined while Settings or a draft is selected. */
 export function selectedThread(): ThreadSelection | undefined {
-  return selected === SETTINGS ? undefined : selected;
+  return typeof selected === "object" && "threadId" in selected ? selected : undefined;
+}
+
+/** The selected draft of a new thread, if one is. */
+export function selectedDraft(): DraftSelection | undefined {
+  return isDraft(selected) ? selected : undefined;
 }
 
 export function isSettingsSelected(): boolean {
@@ -96,6 +111,60 @@ export function selectSettings(): Promise<void> {
   return enqueue(() => switchTo(SETTINGS));
 }
 
+/**
+ * Selects the project's draft of a new thread as a thread is selected: its
+ * own tab set, led by the draft's tab (`DraftInput`), whose pane mounts
+ * upstream's composer on the draft the view remembers for the project, or a
+ * new one. The draft's tabs are kept as a working set like a thread's.
+ */
+export function selectDraft(projectId: string): Promise<void> {
+  return enqueue(() => {
+    const environmentId = threadStore.get().environment?.id;
+    if (environmentId === undefined) throw new Error("Connect to an environment before starting a thread.");
+    return switchTo({ environmentId, projectId });
+  });
+}
+
+/**
+ * The selected draft became `threadId` on the server: the thread is selected
+ * in its place, with the draft's tabs as they are, its tab replaced by the
+ * thread's in the same pane, which keeps the view mounted (`pane.tsx`); the
+ * draft's selection and working set are gone. A draft no longer selected
+ * changes nothing.
+ */
+function promoteDraft(projectId: string, threadId: string): Promise<void> {
+  return enqueue(async () => {
+    const draft = selectedDraft();
+    if (draft === undefined || draft.projectId !== projectId) return;
+    const groups = await getService(IEditorGroupsService);
+    const storage = await getService(IStorageService);
+    const instantiation = await getService(IInstantiationService);
+    const commands = await getService(ICommandService);
+    const next: ThreadSelection = { environmentId: draft.environmentId, threadId };
+    switching = true;
+    try {
+      deleteWorkingSet(groups, draft);
+      for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
+        const tab = group.editors.find((editor) => editor instanceof DraftInput);
+        if (tab === undefined) continue;
+        await group.replaceEditors([{ editor: tab, replacement: instantiation.createInstance(ThreadInput, threadId) }]);
+      }
+      selected = next;
+      storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+    } finally {
+      switching = false;
+    }
+    for (const listener of listeners) listener();
+    tellExtension(commands);
+  });
+}
+
+function deleteWorkingSet(groups: IEditorGroupsService, selection: Selection): void {
+  for (const set of groups.getWorkingSets()) {
+    if (set.name === workingSetName(selection)) groups.deleteWorkingSet(set);
+  }
+}
+
 function enqueue(run: () => Promise<void>): Promise<void> {
   const next = queue.then(run);
   queue = next.catch(() => undefined);
@@ -112,7 +181,7 @@ async function switchTo(next: Selection): Promise<void> {
   try {
     // With nothing selected yet, the open editors become the new selection's tabs.
     if (selected !== undefined && workingSetName(selected) !== workingSetName(next)) {
-      deleteWorkingSet(selected);
+      deleteWorkingSet(groups, selected);
       groups.saveWorkingSet(workingSetName(selected));
       const saved = groups.getWorkingSets().find((set) => set.name === workingSetName(next));
       await groups.applyWorkingSet(saved ?? "empty", { preserveFocus: true });
@@ -120,39 +189,40 @@ async function switchTo(next: Selection): Promise<void> {
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
     if (next === SETTINGS) await showSettings();
-    else await showThreadTab(next.threadId);
+    else await showLeadTab(next);
   } finally {
     switching = false;
   }
   for (const listener of listeners) listener();
   tellExtension(commands);
 
-  /** The thread's tab in the first group, leftmost; other threads' tabs leave. */
-  async function showThreadTab(id: string): Promise<void> {
-    await closeThreadTabs((editor) => editor.threadId !== id);
+  /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave. */
+  async function showLeadTab(lead: ThreadSelection | DraftSelection): Promise<void> {
+    const isOwn = (editor: ThreadInput | DraftInput) =>
+      isDraft(lead)
+        ? editor instanceof DraftInput && editor.projectId === lead.projectId
+        : editor instanceof ThreadInput && editor.threadId === lead.threadId;
+    await closeLeadTabs((editor) => !isOwn(editor));
     const first = groups.getGroups(GroupsOrder.GRID_APPEARANCE)[0] ?? groups.activeGroup;
-    if (!first.editors.some((editor) => editor instanceof ThreadInput)) {
-      await first.openEditor(instantiation.createInstance(ThreadInput, id), { pinned: true, index: 0 });
+    if (!first.editors.some(isLeadTab)) {
+      const tab = isDraft(lead)
+        ? instantiation.createInstance(DraftInput, lead.projectId)
+        : instantiation.createInstance(ThreadInput, lead.threadId);
+      await first.openEditor(tab, { pinned: true, index: 0 });
     }
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
   }
 
   /** No thread tab, and the settings editor open; Settings' working set may hold it already. */
   async function showSettings(): Promise<void> {
-    await closeThreadTabs(() => true);
+    await closeLeadTabs(() => true);
     await commands.executeCommand("workbench.action.openSettings2");
   }
 
-  async function closeThreadTabs(stale: (editor: ThreadInput) => boolean): Promise<void> {
+  async function closeLeadTabs(stale: (editor: ThreadInput | DraftInput) => boolean): Promise<void> {
     for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
-      const closing = group.editors.filter((editor) => editor instanceof ThreadInput && stale(editor));
+      const closing = group.editors.filter((editor) => isLeadTab(editor) && stale(editor));
       if (closing.length > 0) await group.closeEditors(closing, { force: true });
-    }
-  }
-
-  function deleteWorkingSet(selection: Selection): void {
-    for (const set of groups.getWorkingSets()) {
-      if (set.name === workingSetName(selection)) groups.deleteWorkingSet(set);
     }
   }
 }
@@ -168,17 +238,20 @@ function tellExtension(commands: ICommandService): void {
 }
 
 function workingSetName(selection: Selection): string {
-  return selection === SETTINGS ? "pult.settings" : `pult.thread/${selection.environmentId}/${selection.threadId}`;
+  if (selection === SETTINGS) return "pult.settings";
+  return isDraft(selection)
+    ? `pult.draft/${selection.environmentId}/${selection.projectId}`
+    : `pult.thread/${selection.environmentId}/${selection.threadId}`;
 }
 
 /**
- * Moves a thread tab back to the left edge of its group. Not sticky: a sticky
- * tab offers an unpin button, and a dragged editor can still land before it,
- * so the shell puts it back after every change instead.
+ * Moves a thread's or draft's tab back to the left edge of its group. Not
+ * sticky: a sticky tab offers an unpin button, and a dragged editor can still
+ * land before it, so the shell puts it back after every change instead.
  */
 function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
   for (const group of groups) {
-    const tab = group.editors.find((editor) => editor instanceof ThreadInput);
+    const tab = group.editors.find(isLeadTab);
     if (tab !== undefined && group.getIndexOfEditor(tab) !== 0) {
       group.moveEditor(tab, group, { index: 0 });
     }
@@ -216,10 +289,14 @@ export async function restoreThreadSelection(): Promise<void> {
  * environment's threads. `pult-shell.selectSettings`, on Cmd+, over the
  * workbench's own binding, which would open the settings editor under the
  * thread; and the workbench's own Settings command routed the same way.
+ * `pult-shell.newThread`, a project's draft; a draft's promotion selects
+ * its thread.
  */
 export function registerSelectThreadCommand(): void {
   routeOpenSettings();
+  onDidPromoteDraft((projectId, threadId) => void promoteDraft(projectId, threadId));
   CommandsRegistry.registerCommand("pult-shell.selectedThread", () => selectedThread()?.threadId ?? null);
+  registerNewThreadCommand();
   registerAction2(
     class extends Action2 {
       constructor() {
@@ -291,6 +368,27 @@ export function registerSelectThreadCommand(): void {
       }
     },
   );
+}
+
+/**
+ * `pult-shell.newThread [projectId]`: with a project, selects its draft;
+ * without, the extension's `pult.newThread`, the palette's "Pult: New
+ * Thread", which picks a project, the selected thread's first, and comes
+ * back here with it. Not in the palette itself, which has the extension's;
+ * the Threads tab's title (`src/panel/view.tsx`) and Cmd+N run it, the
+ * latter bound to the extension's command over the workbench's New Untitled
+ * File, as upstream binds `chat.new`, so the palette shows the key.
+ */
+function registerNewThreadCommand(): void {
+  CommandsRegistry.registerCommand("pult-shell.newThread", async (accessor, projectId?: unknown) => {
+    if (typeof projectId === "string") return selectDraft(projectId);
+    await accessor.get(ICommandService).executeCommand("pult.newThread");
+  });
+  KeybindingsRegistry.registerKeybindingRule({
+    id: "pult.newThread",
+    primary: KeyMod.CtrlCmd | KeyCode.KeyN,
+    weight: KeybindingWeight.WorkbenchContrib + 1,
+  });
 }
 
 /**

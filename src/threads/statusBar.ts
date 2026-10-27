@@ -3,14 +3,14 @@ import { Direction, type Grid, type IView } from "@codingame/monaco-vscode-api/v
 import { ConfigurationTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
-import { ThreadInput } from "./pane.tsx";
+import { isLeadTab } from "./pane.tsx";
 import { isSwitchingThread, onDidSelectThread } from "./selection.ts";
 
 const STATUS_BAR_VISIBLE = "workbench.statusBar.visible";
 
 /**
  * Shows VS Code's status bar while the active editor is one other than a
- * thread tab, and hides it otherwise: the bar belongs to the file shown, so
+ * thread's or draft's tab, and hides it otherwise: the bar belongs to the file shown, so
  * the thread tab has none even with files open beside it. The layout
  * service has no public way to hide the status bar (`setPartHidden` has no
  * case for it), so this sets the setting it follows in the in-memory
@@ -24,7 +24,7 @@ export async function syncStatusBarWithEditors(): Promise<void> {
   const update = () => {
     if (isSwitchingThread()) return;
     const active = editors.activeEditor;
-    const visible = active !== undefined && !(active instanceof ThreadInput);
+    const visible = active !== undefined && !isLeadTab(active);
     if (configuration.getValue(STATUS_BAR_VISIBLE) !== visible) {
       void configuration.updateValue(STATUS_BAR_VISIBLE, visible, ConfigurationTarget.MEMORY);
     }

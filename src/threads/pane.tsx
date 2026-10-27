@@ -9,6 +9,7 @@ import {
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
+import type { ThreadViewMounts } from "pult-extension/thread-view";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -17,19 +18,37 @@ import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { openThreadFile } from "./files.ts";
 import { projectIconUri } from "./projectIcon.ts";
-import { isSubagent, type ShellThread, threadStore } from "./store.ts";
+import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
+/** The draft tab's input type, which its serialiser is registered under; its pane is the thread's. */
+const DRAFT_TYPE_ID = "pult.shell.draft";
 const VENDORED_COMMIT = vendoredCommit.trim();
 
-let started: Promise<{ mount(element: HTMLElement, threadId: string): { dispose(): void } }> | undefined;
+let started: Promise<ThreadViewMounts> | undefined;
+
+/** What a pane shows: a thread, or a project's draft of a new thread. */
+type PaneTarget = { readonly kind: "thread"; readonly threadId: string } | { readonly kind: "draft"; readonly projectId: string };
+
+const promotionListeners = new Set<(projectId: string, threadId: string) => void>();
+
+/** Called when a project's draft, mounted in a pane, has become a thread on the server; `selection.ts` follows it. */
+export function onDidPromoteDraft(listener: (projectId: string, threadId: string) => void): () => void {
+  promotionListeners.add(listener);
+  return () => promotionListeners.delete(listener);
+}
+
+function run(command: string, ...args: unknown[]): void {
+  void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
+}
 
 /**
  * Upstream's thread view, as pult-extension builds it for the shell, loaded
  * with the first pane and started once on the page's connection: its state
  * runtime runs on the connection runtime's services, so the view shares the
- * page's one socket. A thread it navigates to is selected in the shell, a
- * file it would show in its right panel opens as a tab (`files.ts`), and
+ * page's one socket. A thread it navigates to is selected in the shell, and
+ * so is a draft of a new thread, as its project's draft; a file it would
+ * show in its right panel opens as a tab (`files.ts`), and
  * its diff is the extension's changes view, the Source Control view. The
  * view imports the shell's vendored packages, so it must be built against the
  * same T3 Code commit; a view that is missing or built against another fails
@@ -52,12 +71,12 @@ function threadView() {
       {
         connection: () => connection.context(),
         environmentId: () => connection.environment?.environmentId ?? null,
-        openThread: (threadId) =>
-          void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.selectThread", threadId)),
+        openThread: (threadId) => run("pult-shell.selectThread", threadId),
+        // A draft the view went to, which it remembered as the project's.
+        openDraft: (projectId) => run("pult-shell.newThread", projectId),
         openFile: (threadId, path, line) => void openThreadFile(threadId, path, line),
         // The extension's changes view: the Source Control view over the thread's project.
-        openChanges: (threadId, path) =>
-          void getService(ICommandService).then((commands) => commands.executeCommand("pult.showChanges", threadId, path)),
+        openChanges: (threadId, path) => run("pult.showChanges", threadId, path),
         // A native subagent's work is a runless turn the extension's push cannot see; the view's projection can.
         reportActivity: (activity) => threadStore.reportActivity(activity),
       },
@@ -70,22 +89,42 @@ function threadView() {
   return started;
 }
 
-/** The thread's turns and composer while the page is connected, mounted again when its environment changes. */
-function ThreadContent({ threadId }: { threadId: string }) {
+/**
+ * The thread's turns and composer, or the project's draft, while the page is
+ * connected. Mounted again when its environment or `generation` changes, and
+ * not when only `target` does, which is a draft's promotion: the view
+ * mounted for the draft is the new thread's already.
+ */
+function ThreadContent({
+  target,
+  generation,
+  onPromoted,
+}: {
+  target: PaneTarget;
+  generation: number;
+  onPromoted: (threadId: string) => void;
+}) {
   const environmentId = useSyncExternalStore(
     (listener) => connection.onDidChange(listener),
     () => connection.environment?.environmentId,
   );
   const element = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<string>();
+  const latest = useRef({ target, onPromoted });
+  latest.current = { target, onPromoted };
   useEffect(() => {
-    const target = element.current;
-    if (environmentId === undefined || target === null) return;
+    const host = element.current;
+    if (environmentId === undefined || host === null) return;
     let view: { dispose(): void } | undefined;
     let disposed = false;
     threadView().then(
-      ({ mount }) => {
-        if (!disposed) view = mount(target, threadId);
+      (mounts) => {
+        if (disposed) return;
+        const shown = latest.current.target;
+        if (shown.kind === "thread") view = mounts.mount(host, shown.threadId);
+        else if (mounts.mountDraft === undefined) {
+          setFailure("This build of the extension's thread view cannot start a thread. Rebuild the extension, then reload.");
+        } else view = mounts.mountDraft(host, shown.projectId, (threadId) => latest.current.onPromoted(threadId));
       },
       (error: unknown) => {
         console.error("[pult-shell] the thread view did not start", error);
@@ -98,7 +137,7 @@ function ThreadContent({ threadId }: { threadId: string }) {
       const mounted = view;
       if (mounted !== undefined) queueMicrotask(() => mounted.dispose());
     };
-  }, [environmentId, threadId]);
+  }, [environmentId, generation]);
   if (environmentId === undefined) {
     return <div className="pult-thread-empty">Not connected. Run “Pult: Connect to Environment”.</div>;
   }
@@ -111,11 +150,14 @@ function ThreadContent({ threadId }: { threadId: string }) {
  * with the workbench's own `EditorPane` and `EditorInput`. The pane mounts a
  * React root in the element the editor group hands it, and the thread view in
  * it, in-process; the group handles tabs, drag and restore as for any editor. `selection.ts` opens it as the selected
- * thread's leftmost tab.
+ * thread's or draft's leftmost tab.
  */
 class ThreadPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
   private root: Root | undefined;
+  /** The input the view is mounted for, and the thread its draft became, which the pane then shows without mounting again. */
+  private shown: { readonly input: EditorInput; promotedTo?: string } | undefined;
+  private generation = 0;
 
   constructor(group: IEditorGroup) {
     super(ThreadPane.ID, group);
@@ -129,18 +171,61 @@ class ThreadPane extends SimpleEditorPane {
     return element;
   }
 
+  /**
+   * Mounts the input's thread or draft. The tab of the thread a draft
+   * became, which replaces the draft's (`selection.ts`), keeps the view
+   * mounted as it is.
+   */
   async renderInput(input: EditorInput) {
-    const threadId = input instanceof ThreadInput ? input.threadId : "";
-    this.root?.unmount();
-    this.root = createRoot(this.container);
-    this.root.render(<ThreadContent threadId={threadId} />);
+    const target: PaneTarget =
+      input instanceof DraftInput
+        ? { kind: "draft", projectId: input.projectId }
+        : { kind: "thread", threadId: input instanceof ThreadInput ? input.threadId : "" };
+    const adopted = target.kind === "thread" && this.shown?.promotedTo === target.threadId;
+    if (!adopted || this.root === undefined) {
+      this.root?.unmount();
+      this.root = createRoot(this.container);
+      this.generation += 1;
+    }
+    const shown: { readonly input: EditorInput; promotedTo?: string } = { input };
+    this.shown = shown;
+    const promoted = (threadId: string) => {
+      if (this.shown !== shown || target.kind !== "draft") return;
+      shown.promotedTo = threadId;
+      for (const listener of promotionListeners) listener(target.projectId, threadId);
+    };
+    this.root.render(<ThreadContent target={target} generation={this.generation} onPromoted={promoted} />);
     return {
+      // Disposed as the group clears the input, before the next one renders. A
+      // draft become a thread keeps its view for that thread's tab, which
+      // replaces it next; it goes if the pane is hidden or shows another input instead.
       dispose: () => {
-        this.root?.unmount();
-        this.root = undefined;
+        if (this.shown === shown && shown.promotedTo === undefined) this.release();
       },
     };
   }
+
+  override setVisible(visible: boolean): void {
+    super.setVisible(visible);
+    // Hidden with its input cleared: a view kept for a promotion has no tab coming.
+    if (!visible && this.input === undefined) this.release();
+  }
+
+  override dispose(): void {
+    this.release();
+    super.dispose();
+  }
+
+  private release(): void {
+    this.root?.unmount();
+    this.root = undefined;
+    this.shown = undefined;
+  }
+}
+
+/** Whether `editor` is a selection's own leftmost tab: a thread's, or a draft's. */
+export function isLeadTab(editor: unknown): editor is ThreadInput | DraftInput {
+  return editor instanceof ThreadInput || editor instanceof DraftInput;
 }
 
 /**
@@ -216,14 +301,81 @@ export class ThreadInput extends SimpleEditorInput {
   }
 }
 
+/**
+ * The selected draft's tab, a project's new thread: "New Thread" with the
+ * project's icon and name, as the thread tab shows a thread's, in the same
+ * pane, which mounts upstream's composer for the draft. Like the thread tab
+ * it cannot be closed and is a singleton; when the draft becomes a thread,
+ * `selection.ts` replaces it with that thread's tab.
+ */
+export class DraftInput extends SimpleEditorInput {
+  private icon: { key: string; uri: URI } | undefined;
+  private labelKey: string | undefined;
+
+  constructor(readonly projectId: string) {
+    super(undefined);
+    this.addCapability(
+      EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
+    );
+    this.updateLabel();
+    const unsubscribe = threadStore.subscribe(() => this.updateLabel());
+    this._register({ dispose: unsubscribe });
+  }
+
+  private project(): ShellProject | undefined {
+    return threadStore.project(this.projectId);
+  }
+
+  /** Setting the name fires the label change that redraws the description, title and icon. */
+  private updateLabel(): void {
+    const key = JSON.stringify([this.project()?.name, this.project()?.icon]);
+    if (key === this.labelKey) return;
+    this.labelKey = key;
+    this.setName("New Thread");
+  }
+
+  override getDescription(): string {
+    return this.project()?.name ?? "";
+  }
+
+  override getTitle(): string {
+    const project = this.project();
+    return project === undefined ? "New Thread" : `${project.name}: New Thread`;
+  }
+
+  override getIcon(): URI | undefined {
+    const project = this.project();
+    if (project === undefined) return undefined;
+    const key = `${project.name}|${JSON.stringify(project.icon)}`;
+    if (this.icon?.key !== key) this.icon = { key, uri: projectIconUri(project.name, project.icon) };
+    return this.icon.uri;
+  }
+
+  override getLabelExtraClasses(): string[] {
+    return ["pult-thread-tab"];
+  }
+
+  override get typeId(): string {
+    return DRAFT_TYPE_ID;
+  }
+
+  override matches(other: unknown): boolean {
+    return other instanceof DraftInput && other.projectId === this.projectId;
+  }
+}
+
 interface SerializedThreadInput {
   readonly threadId: string;
 }
 
+interface SerializedDraftInput {
+  readonly projectId: string;
+}
+
 export function registerThreadPane(): void {
-  registerEditorPane(PANE_ID, "Pult Thread", ThreadPane, [ThreadInput]);
-  // Serialisable, so the editor part's saved state and the per-thread working
-  // sets (`selection.ts`) restore the thread's tab with the rest.
+  registerEditorPane(PANE_ID, "Pult Thread", ThreadPane, [ThreadInput, DraftInput]);
+  // Serialisable, so the editor part's saved state and the per-selection working
+  // sets (`selection.ts`) restore the thread's or draft's tab with the rest.
   registerEditorSerializer(
     PANE_ID,
     class implements IEditorSerializer {
@@ -236,6 +388,21 @@ export function registerThreadPane(): void {
       deserialize(instantiation: IInstantiationService, serialized: string): EditorInput {
         const { threadId } = JSON.parse(serialized) as SerializedThreadInput;
         return instantiation.createInstance(ThreadInput, threadId);
+      }
+    },
+  );
+  registerEditorSerializer(
+    DRAFT_TYPE_ID,
+    class implements IEditorSerializer {
+      canSerialize(): boolean {
+        return true;
+      }
+      serialize(editor: DraftInput): string {
+        return JSON.stringify({ projectId: editor.projectId } satisfies SerializedDraftInput);
+      }
+      deserialize(instantiation: IInstantiationService, serialized: string): EditorInput {
+        const { projectId } = JSON.parse(serialized) as SerializedDraftInput;
+        return instantiation.createInstance(DraftInput, projectId);
       }
     },
   );

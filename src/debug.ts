@@ -12,7 +12,7 @@ import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/se
 import { Uri } from "monaco-editor";
 
 import { connection } from "./connection/index.ts";
-import { selectedThread } from "./threads/selection.ts";
+import { selectedDraft, selectedThread } from "./threads/selection.ts";
 import { threadStore } from "./threads/store.ts";
 
 /** `window.pult`: a handle for driving the spike from the console. */
@@ -23,7 +23,7 @@ export function installDebugHandle(): void {
       connection: () => connection.environment,
       bridgedSockets: () => connection.socket.clientCount,
       threads: () => threadStore.get(),
-      selected: () => selectedThread(),
+      selected: () => selectedThread() ?? selectedDraft(),
       // The editor part's tabs, per group in grid order; `*` marks the active one.
       tabs: async () =>
         (await getService(IEditorGroupsService)).getGroups(GroupsOrder.GRID_APPEARANCE).map((group) =>
