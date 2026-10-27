@@ -89,9 +89,10 @@ const ROUTES: ReadonlyArray<readonly [method: string, path: RegExp]> = [
  * The extension's runtime asks for a socket ticket before it dials; its
  * socket is a bridged one (`pult-shell.socket.open`), which ignores the URL
  * the ticket goes in, so the shell answers with a stand-in and a real ticket
- * never leaves the page.
+ * never leaves the page. The path is bare, or names the ticket's use
+ * (`/api/auth/websocket-ticket/rpc`).
  */
-const TICKET_ROUTE = "/api/auth/websocket-ticket";
+const TICKET_ROUTE = /^\/api\/auth\/websocket-ticket(\/[a-z-]+)?$/;
 
 function standInTicket(): BridgedResponse {
   const ticket = { ticket: "pult-shell", expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() };
@@ -167,7 +168,7 @@ export function registerConnectionBridge(): void {
       if (url.origin !== new URL(credential.httpBaseUrl).origin) {
         throw new Error(`Pult only forwards requests to ${credential.label}.`);
       }
-      if (request.method === "POST" && url.pathname === TICKET_ROUTE) return standInTicket();
+      if (request.method === "POST" && TICKET_ROUTE.test(url.pathname)) return standInTicket();
       if (!forwards(request.method, url.pathname)) {
         console.warn(`[pult-shell] refused ${request.method} ${url.pathname} for an extension`);
         throw new Error(`Pult does not forward ${request.method} ${url.pathname}.`);
