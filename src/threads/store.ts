@@ -34,6 +34,8 @@ export interface ShellThread {
   /** When its current work started, while it works and the server knows. */
   readonly workingSince: string | null;
   readonly pinned: boolean;
+  /** Whether it may be snoozed now, as of the push: no pending approval or input, no queued turn start. */
+  readonly canSnooze: boolean;
   readonly latestRun: { status: string; startedAt: string | null; finishedAt: string | null } | null;
   readonly goal: string | null;
 }
@@ -44,8 +46,16 @@ export interface ShellEnvironment {
   readonly phase: string;
 }
 
+/** What the environment's server lets a client do to a thread; each off until it says. */
+export interface ThreadFeatures {
+  readonly settlement: boolean;
+  readonly snooze: boolean;
+  readonly pinning: boolean;
+}
+
 export interface ThreadState {
   readonly environment: ShellEnvironment | null;
+  readonly features: ThreadFeatures;
   /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them; then the subagents, on no shelf. */
   readonly threads: ReadonlyArray<ShellThread>;
 }
@@ -72,7 +82,11 @@ type Listener = (state: ThreadState) => void;
  * channel from the extension host into Pult's own UI, with no webview between.
  */
 class ThreadStore {
-  private pushed: ThreadState = { environment: null, threads: [] };
+  private pushed: ThreadState = {
+    environment: null,
+    features: { settlement: false, snooze: false, pinning: false },
+    threads: [],
+  };
   private state: ThreadState = this.pushed;
   /**
    * Whether threads work, as the mounted thread view knows from its
