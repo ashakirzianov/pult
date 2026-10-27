@@ -37,9 +37,15 @@ declare module "pult-extension/thread-view" {
   /** The T3 Code commit the view was built against, its checkout's `vendor/t3code/COMMIT`; undefined before the extension exported it. */
   export const VENDORED_COMMIT: string | undefined;
 
+  /** A mounted view; its composer bar, which takes entries of the shell's own, is undefined from a build before it offered one. */
+  export interface MountedView {
+    dispose(): void;
+    readonly bar?: HTMLElement;
+  }
+
   export interface ThreadViewMounts {
     /** The thread's turns and composer. */
-    mount(element: HTMLElement, threadId: string): { dispose(): void };
+    mount(element: HTMLElement, threadId: string): MountedView;
     /**
      * The project's draft of a new thread, upstream's composer, which stays
      * mounted as the thread it creates and names it to `onPromoted`;
@@ -49,7 +55,7 @@ declare module "pult-extension/thread-view" {
       element: HTMLElement,
       projectId: string,
       onPromoted: (threadId: string) => void,
-    ) => { dispose(): void };
+    ) => MountedView;
   }
 
   export function startThreadView(host: ThreadViewHost, workbench: Element): ThreadViewMounts;

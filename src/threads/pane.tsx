@@ -9,13 +9,14 @@ import {
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import type { ThreadViewMounts } from "pult-extension/thread-view";
+import type { MountedView, ThreadViewMounts } from "pult-extension/thread-view";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { ThreadBarEntries } from "./barEntries.tsx";
 import { openThreadFile } from "./files.ts";
 import { projectIconUri } from "./projectIcon.ts";
 import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./store.ts";
@@ -93,7 +94,8 @@ function threadView() {
  * The thread's turns and composer, or the project's draft, while the page is
  * connected. Mounted again when its environment or `generation` changes, and
  * not when only `target` does, which is a draft's promotion: the view
- * mounted for the draft is the new thread's already.
+ * mounted for the draft is the new thread's already. A thread's place
+ * (`ThreadBarEntries`) joins the view's composer bar.
  */
 function ThreadContent({
   target,
@@ -110,12 +112,13 @@ function ThreadContent({
   );
   const element = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<string>();
+  const [bar, setBar] = useState<HTMLElement>();
   const latest = useRef({ target, onPromoted });
   latest.current = { target, onPromoted };
   useEffect(() => {
     const host = element.current;
     if (environmentId === undefined || host === null) return;
-    let view: { dispose(): void } | undefined;
+    let view: MountedView | undefined;
     let disposed = false;
     threadView().then(
       (mounts) => {
@@ -125,6 +128,7 @@ function ThreadContent({
         else if (mounts.mountDraft === undefined) {
           setFailure("This build of the extension's thread view cannot start a thread. Rebuild the extension, then reload.");
         } else view = mounts.mountDraft(host, shown.projectId, (threadId) => latest.current.onPromoted(threadId));
+        setBar(view?.bar);
       },
       (error: unknown) => {
         console.error("[pult-shell] the thread view did not start", error);
@@ -133,6 +137,7 @@ function ThreadContent({
     );
     return () => {
       disposed = true;
+      setBar(undefined);
       // The view is a React root of its own, which cannot unmount while this one renders.
       const mounted = view;
       if (mounted !== undefined) queueMicrotask(() => mounted.dispose());
@@ -142,7 +147,12 @@ function ThreadContent({
     return <div className="pult-thread-empty">Not connected. Run “Pult: Connect to Environment”.</div>;
   }
   if (failure !== undefined) return <div className="pult-thread-empty">{failure}</div>;
-  return <div ref={element} className="pult-thread-content" />;
+  return (
+    <>
+      <div ref={element} className="pult-thread-content" />
+      {bar !== undefined && target.kind === "thread" ? <ThreadBarEntries bar={bar} threadId={target.threadId} /> : null}
+    </>
+  );
 }
 
 /**

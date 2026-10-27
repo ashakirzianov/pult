@@ -60,3 +60,47 @@ body,
   padding: 2rem;
   opacity: 0.7;
 }
+
+/* The thread's place in its pane's composer bar (src/threads/barEntries.tsx):
+   Explorer, its branch and environment, in the bar's text. */
+.pult-bar-entries {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.pult-bar-entry {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.pult-bar-entry .codicon {
+  font-size: 13px;
+}
+
+.pult-bar-entry-label {
+  min-width: 0;
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pult-bar-button {
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-bar-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}

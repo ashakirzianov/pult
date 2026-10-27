@@ -222,54 +222,6 @@
   padding: 0 10px 8px;
 }
 
-/* The selected card's row: the Explorer button first, then the branch and the environment; inset as the subagents' header. */
-.pult-card-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 0 4px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-
-/* A bare button, read as the row's other items until hovered. */
-.pult-card-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.pult-card-action:hover {
-  color: var(--vscode-foreground);
-}
-
-.pult-card-action .codicon {
-  font-size: 12px;
-}
-
-.pult-card-row > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.pult-card-row .codicon {
-  font-size: 12px;
-}
-
-.pult-card-note {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-
 .pult-panel-button {
   display: inline-flex;
   align-items: center;

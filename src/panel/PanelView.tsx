@@ -8,7 +8,6 @@ import { isSettingsSelected, onDidSelectThread, selectedDraft, selectedThread } 
 import {
   isSubagent,
   type ShelfName,
-  type ShellEnvironment,
   type ShellThread,
   type ThreadFeatures,
   threadStore,
@@ -106,7 +105,6 @@ export function PanelView() {
       thread={thread}
       subagents={subagents.get(thread.id) ?? []}
       activities={activities}
-      environment={state.environment}
       features={state.features}
       selected={thread.id === selectedCard}
       selection={selection}
@@ -239,15 +237,13 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
  * hover or keyboard focus the status gives way to the thread's actions
  * (`StatusSlot`), and a right-click opens its menu (`showThreadMenu`).
  * Selected, it expands with its subagents under their header, each selecting
- * its own thread, then one row: Explorer, the button that opens the
- * Explorer tab narrowed to the thread's root (a note when the thread has
- * none), the branch when the server records one, and the environment.
+ * its own thread; the thread's place, Explorer, its branch and environment,
+ * is in its pane's composer bar (`src/threads/barEntries.tsx`).
  */
 function ThreadCard({
   thread,
   subagents,
   activities,
-  environment,
   features,
   selected,
   selection,
@@ -256,7 +252,6 @@ function ThreadCard({
   thread: ShellThread;
   subagents: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
-  environment: ShellEnvironment | null;
   features: ThreadFeatures;
   selected: boolean;
   selection: string | undefined;
@@ -292,31 +287,9 @@ function ThreadCard({
         </span>
         <span className="pult-card-title">{thread.title}</span>
       </div>
-      {selected ? (
+      {selected && subagents.length > 0 ? (
         <div className="pult-card-details">
-          {subagents.length > 0 ? <Subagents subagents={subagents} activities={activities} selection={selection} now={now} /> : null}
-          <div className="pult-card-row">
-            {thread.projectRoot === null ? (
-              <span className="pult-card-note">No project folder</span>
-            ) : (
-              <button type="button" className="pult-card-action" onClick={() => run("pult-shell.openThreadExplorer")}>
-                <i className="codicon codicon-files" aria-hidden />
-                Explorer
-              </button>
-            )}
-            {thread.branch ? (
-              <span className="pult-card-branch">
-                <i className="codicon codicon-git-branch" aria-hidden />
-                {thread.branch}
-              </span>
-            ) : null}
-            {environment ? (
-              <span className="pult-card-environment">
-                <i className="codicon codicon-vm" aria-hidden />
-                {environment.label}
-              </span>
-            ) : null}
-          </div>
+          <Subagents subagents={subagents} activities={activities} selection={selection} now={now} />
         </div>
       ) : null}
     </li>
