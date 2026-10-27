@@ -2,7 +2,8 @@
 //   node scripts/drive.ts [--url http://localhost:5190/] [--profile dir] step...
 // Steps: `eval:<js>` prints the value; `fire:<js>` runs it without waiting (for
 // commands that open a prompt); `type:<text>` types into the focused element;
-// `fill:<selector>=<text>`; `press:<key>`; `click:<selector>`; `wait:<ms>`;
+// `fill:<selector>=<text>`; `press:<key>`; `click:<selector>`; `wheel:<selector>=<dy>`
+// scrolls with the mouse over the element; `wait:<ms>`;
 // `shot:<path>` saves a screenshot. The browser profile persists in
 // `.playwright/`, so user data (IndexedDB) and the connection survive runs.
 import * as path from "node:path";
@@ -55,6 +56,12 @@ for (const step of args) {
     case "press":
       await page.keyboard.press(rest);
       break;
+    case "wheel": {
+      const eq = rest.lastIndexOf("=");
+      await page.hover(rest.slice(0, eq));
+      await page.mouse.wheel(0, Number(rest.slice(eq + 1)));
+      break;
+    }
     case "click":
       await page.click(rest);
       break;
