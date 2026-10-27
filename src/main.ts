@@ -30,6 +30,7 @@ import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
+import { registerParkCommands } from "./threads/park.ts";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
 import { syncStatusBarWithEditors } from "./threads/statusBar.ts";
 import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
@@ -52,6 +53,7 @@ registerFileSystemOverlay(1, memory);
 startConnection();
 registerThreadPane();
 registerSelectThreadCommand();
+registerParkCommands();
 registerPanel();
 const pult = registerPultExtension();
 
