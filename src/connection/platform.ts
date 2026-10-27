@@ -13,7 +13,6 @@ import {
 import { ClientCapabilities, Persistence, PlatformConnectionSource } from "@t3tools/client-runtime/platform";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { layerRemoteHttpClient } from "@t3tools/client-runtime/rpc";
-import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -90,7 +89,6 @@ const NO_CONNECT = "T3 Connect is not available in Pult.";
 const layerCapabilities = Layer.mergeAll(
   Layer.succeed(ClientCapabilities.ClientPresentation, {
     metadata: { label: "Pult", deviceType: "desktop" },
-    scopes: AuthStandardClientScopes,
   }),
   Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, { bearerToken: Effect.succeedNone }),
   Layer.succeed(ClientCapabilities.CloudSession, { identity: Effect.succeedNone, clerkToken: unsupported(NO_CONNECT) }),
