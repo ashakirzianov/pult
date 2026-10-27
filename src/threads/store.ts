@@ -53,11 +53,23 @@ export interface ThreadFeatures {
   readonly pinning: boolean;
 }
 
+/** A project of the environment, threads or none: what a new thread's draft shows of it. */
+export interface ShellProject {
+  readonly id: string;
+  readonly name: string;
+  /** Its root on the environment host, for `pult:` URIs; null when only a thread's word on it, without one, is known. */
+  readonly root: string | null;
+  /** Its chosen icon; null for the one upstream derives from its name. */
+  readonly icon: ProjectIconOverride | null;
+}
+
 export interface ThreadState {
   readonly environment: ShellEnvironment | null;
   readonly features: ThreadFeatures;
   /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them; then the subagents, on no shelf. */
   readonly threads: ReadonlyArray<ShellThread>;
+  /** The environment's projects; empty from an extension that does not push them. */
+  readonly projects: ReadonlyArray<ShellProject>;
 }
 
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
@@ -86,6 +98,7 @@ class ThreadStore {
     environment: null,
     features: { settlement: false, snooze: false, pinning: false },
     threads: [],
+    projects: [],
   };
   private state: ThreadState = this.pushed;
   /**
@@ -99,7 +112,7 @@ class ThreadStore {
 
   constructor() {
     CommandsRegistry.registerCommand("pult-shell.threads", (_accessor, payload: ThreadState) => {
-      this.pushed = payload;
+      this.pushed = { ...payload, projects: payload.projects ?? [] };
       this.update();
     });
   }
@@ -129,6 +142,15 @@ class ThreadStore {
     });
     this.state = { ...this.pushed, threads };
     for (const listener of this.listeners) listener(this.state);
+  }
+
+  /** A project by id: the pushed one, or else what a thread of it says, for an extension that does not push them. */
+  project(projectId: string): ShellProject | undefined {
+    const project = this.state.projects.find((candidate) => candidate.id === projectId);
+    if (project !== undefined) return project;
+    const thread = this.state.threads.find((candidate) => candidate.projectId === projectId);
+    if (thread === undefined) return undefined;
+    return { id: projectId, name: thread.projectName, root: thread.projectRoot, icon: thread.projectIcon };
   }
 
   subscribe(listener: Listener): () => void {
