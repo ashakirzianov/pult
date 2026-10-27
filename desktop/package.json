@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "electron": "44.4.5",
+    "electron": "44.9.1",
     "esbuild": "0.28.2",
     "typescript": "catalog:"
   }
