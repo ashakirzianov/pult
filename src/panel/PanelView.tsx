@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
 import { projectIconUri } from "../threads/projectIcon.ts";
-import { isSettingsSelected, onDidSelectThread, selectedThread } from "../threads/selection.ts";
+import { isSettingsSelected, onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import {
   isSubagent,
   type ShelfName,
@@ -13,15 +13,20 @@ import {
   type ThreadFeatures,
   threadStore,
 } from "../threads/store.ts";
+import { DraftCard } from "./DraftCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
-/** What the editor part shows, as a stable snapshot: a thread id, `settings`, or nothing. */
+/** What the editor part shows, as a stable snapshot: a thread id, `settings`, a project's draft, or nothing. */
 function selectionSnapshot(): string | undefined {
-  return isSettingsSelected() ? "settings" : selectedThread()?.threadId;
+  if (isSettingsSelected()) return "settings";
+  const draft = selectedDraft();
+  return draft === undefined ? selectedThread()?.threadId : `${DRAFT_PREFIX}${draft.projectId}`;
 }
+
+const DRAFT_PREFIX = "draft:";
 
 /** The thread store for `useSyncExternalStore`, at module level so a render does not re-subscribe. */
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
@@ -79,12 +84,14 @@ function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<st
  * active as one flat list, then the Snoozed and Settled shelves, each under
  * a collapsible header, collapsed until opened. The selected card expands
  * with its details and its subagents; a subagent has no card, so while one
- * is selected its root's card is the expanded one.
+ * is selected its root's card is the expanded one. A selected draft of a
+ * new thread has a card of its own at the top.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
+  const draftProjectId = selection?.startsWith(DRAFT_PREFIX) ? selection.slice(DRAFT_PREFIX.length) : undefined;
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
@@ -109,6 +116,7 @@ export function PanelView() {
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
+        {state.environment !== null && draftProjectId !== undefined ? <DraftCard projectId={draftProjectId} /> : null}
         {state.environment === null ? (
           <li className="pult-panel-empty">
             <p>Not connected.</p>

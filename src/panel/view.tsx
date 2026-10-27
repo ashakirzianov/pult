@@ -1,6 +1,6 @@
 import { getService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
-import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { Action2, MenuId, MenuRegistry, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
 import { registerCustomView, ViewContainerLocation } from "@codingame/monaco-vscode-workbench-service-override/common";
@@ -23,8 +23,8 @@ const THREADS_ORDER = -1;
 /**
  * The left panel: the activity bar and the sidebar part, VS Code's own, the
  * bar switching the sidebar between view containers. The Threads tab is the
- * shell's own container, with one React view (the thread cards), and Pult's
- * mark as its icon; the Explorer tab is VS Code's, rooted by `explorer.ts`.
+ * shell's own container, with one React view (the thread cards), Pult's
+ * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`.
  * Settings is in the bar's Manage menu, routed through the shell's own
  * selection (`src/threads/selection.ts`). Collapsing is the sidebar's:
  * Cmd+B and the palette's Collapse Panel, and a chevron in the editor's
@@ -50,10 +50,25 @@ export function registerPanel(): void {
       return { dispose: () => root.unmount() };
     },
   });
+  registerNewThreadAction();
   registerExplorerCommands();
   void followExplorerScope();
   registerSidebarToggle("pult-shell.collapsePanel", "Collapse Panel", true);
   registerSidebarToggle("pult-shell.expandPanel", "Expand Panel", false);
+}
+
+/**
+ * New Thread, a plus in the Threads tab's title: `pult-shell.newThread`
+ * (`src/threads/selection.ts`), which picks a project. The palette's entry
+ * is the extension's "Pult: New Thread", so this one stays out of it.
+ */
+function registerNewThreadAction(): void {
+  MenuRegistry.appendMenuItem(MenuId.ViewTitle, {
+    command: { id: "pult-shell.newThread", title: { value: "New Thread", original: "New Thread" }, icon: Codicon.add },
+    when: ContextKeyExpr.equals("view", PANEL_ID),
+    group: "navigation",
+    order: -1,
+  });
 }
 
 /** Collapse is the palette's and Cmd+B's; Expand is also a chevron in the editor's title while the sidebar is collapsed. */

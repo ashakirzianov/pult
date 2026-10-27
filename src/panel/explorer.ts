@@ -17,7 +17,7 @@ import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 
-import { onDidSelectThread, selectedThread } from "../threads/selection.ts";
+import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
 /** The panel's own view container, and its one view, in the sidebar: the Threads tab. */
@@ -41,8 +41,8 @@ const ScopeContext = new RawContextKey<Scope>("pult.explorerScope", "environment
 /** Whether the scope's thread has a root to narrow to: the toggle's and "Open explorer"'s precondition. */
 const ThreadHasFolderContext = new RawContextKey<boolean>("pult.threadHasFolder", false);
 
-/** The thread selected last; it stays the scope's thread while Settings is selected. */
-let lastThreadId: string | undefined;
+/** The thread or draft selected last; it stays the scope's while Settings is selected. */
+let lastSelected: ThreadSelection | DraftSelection | undefined;
 
 interface Folder {
   readonly uri: URI;
@@ -100,12 +100,21 @@ function threadFolder(thread: ShellThread, environmentId: string): Folder | unde
   return thread.projectRoot === null ? undefined : { uri: pultUri(environmentId, thread.projectRoot), name: thread.projectName };
 }
 
-/** The root of the scope's thread, the selected one, in the connected environment; undefined for none, or a thread gone. */
+/**
+ * The root of the scope's thread, the selected one, in the connected
+ * environment, or for a draft of a new thread its project's; undefined for
+ * none, or a thread gone.
+ */
 function threadRootOfScope(): Folder | undefined {
-  const threadId = selectedThread()?.threadId ?? lastThreadId;
   const { environment, threads } = threadStore.get();
+  if (environment === null || lastSelected === undefined) return undefined;
+  if ("projectId" in lastSelected) {
+    const project = threadStore.project(lastSelected.projectId);
+    return project?.root == null ? undefined : { uri: pultUri(environment.id, project.root), name: project.name };
+  }
+  const { threadId } = lastSelected;
   const thread = threads.find((candidate) => candidate.id === threadId);
-  return environment === null || thread === undefined ? undefined : threadFolder(thread, environment.id);
+  return thread === undefined ? undefined : threadFolder(thread, environment.id);
 }
 
 /** The one root the folders narrow to, or undefined for the environment's: the thread scope falls back to it while its thread has no root. */
@@ -216,8 +225,7 @@ export async function followExplorerScope(): Promise<void> {
     for (const id of HIDDEN_VIEW_IDS) model.setVisible(id, false);
   }
   const followSelection = () => {
-    const thread = selectedThread();
-    if (thread !== undefined) lastThreadId = thread.threadId;
+    lastSelected = selectedThread() ?? selectedDraft() ?? lastSelected;
   };
   followSelection();
   onDidSelectThread(() => {
