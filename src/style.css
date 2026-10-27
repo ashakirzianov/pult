@@ -83,7 +83,7 @@ body,
 }
 
 .pult-bar-entry .codicon {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .pult-bar-entry-label {
@@ -93,7 +93,12 @@ body,
   text-overflow: ellipsis;
 }
 
+/* An icon button, as the bar's own (the extension's shell.css): its size, radius and hover colour. */
 .pult-bar-button {
+  justify-content: center;
+  width: var(--pult-bar-button-size, 26px);
+  height: var(--pult-bar-button-size, 26px);
+  padding: 0;
   border: none;
   border-radius: 6px;
   background: none;
@@ -102,6 +107,6 @@ body,
 }
 
 .pult-bar-button:hover {
-  background: var(--vscode-toolbar-hoverBackground);
+  background: var(--accent, var(--vscode-toolbar-hoverBackground));
   color: var(--vscode-foreground);
 }
