@@ -103,6 +103,8 @@
   position: absolute;
   right: 0;
   opacity: 0;
+  /* Positioned, it paints over the actions; clicks go through it to them. */
+  pointer-events: none;
 }
 
 .pult-card-actions button {
