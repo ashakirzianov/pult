@@ -64,6 +64,79 @@
   outline: none;
 }
 
+/* The card's border shows its keyboard focus; the workbench's ring on focused `tabindex` elements does not. */
+.pult-panel .pult-card .pult-card-select:focus {
+  outline: none;
+}
+
+/* The status slot: the status, and the thread's actions laid over it, hidden until the card is hovered or an action has keyboard focus. */
+.pult-card-slot {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  height: 18px;
+}
+
+.pult-card-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hovered, focused or with its menu open, the actions take the slot and the status steps out of it. */
+.pult-card:hover .pult-card-actions,
+.pult-card-actions:has(:focus-visible),
+.pult-card-slot-open .pult-card-actions {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pult-card:hover .pult-card-slot > .pult-card-status,
+.pult-card-slot:has(.pult-card-actions :focus-visible) > .pult-card-status,
+.pult-card-slot-open > .pult-card-status {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+}
+
+.pult-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The last action's glyph lines up with the status's right edge. */
+.pult-card-actions button:last-child {
+  margin-right: -4px;
+}
+
+.pult-card-actions button:hover,
+.pult-card-slot-open .pult-card-actions button[aria-expanded="true"] {
+  color: var(--vscode-foreground);
+}
+
+.pult-card-actions button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-card-actions .codicon {
+  font-size: 12px;
+}
+
 .pult-card-selected,
 .pult-card-selected:hover {
   background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));

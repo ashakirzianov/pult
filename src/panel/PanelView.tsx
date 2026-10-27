@@ -1,9 +1,18 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
+import { parkActions } from "../threads/parking.ts";
 import { projectIconUri } from "../threads/projectIcon.ts";
 import { isSettingsSelected, onDidSelectThread, selectedThread } from "../threads/selection.ts";
-import { isSubagent, type ShelfName, type ShellEnvironment, type ShellThread, threadStore } from "../threads/store.ts";
+import {
+  isSubagent,
+  type ShelfName,
+  type ShellEnvironment,
+  type ShellThread,
+  type ThreadFeatures,
+  threadStore,
+} from "../threads/store.ts";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -91,6 +100,7 @@ export function PanelView() {
       subagents={subagents.get(thread.id) ?? []}
       activities={activities}
       environment={state.environment}
+      features={state.features}
       selected={thread.id === selectedCard}
       selection={selection}
       now={now}
@@ -217,7 +227,9 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
 
 /**
  * T3 Code's thread card without its bottom row: project icon and name, pin
- * and status, then the title, as the button that selects the thread.
+ * and status, then the title, as the button that selects the thread; on
+ * hover or keyboard focus the status gives way to the thread's actions
+ * (`StatusSlot`), and a right-click opens its menu (`showThreadMenu`).
  * Selected, it expands with its subagents under their header, each selecting
  * its own thread, then one row: Explorer, the button that opens the
  * Explorer tab narrowed to the thread's root (a note when the thread has
@@ -228,6 +240,7 @@ function ThreadCard({
   subagents,
   activities,
   environment,
+  features,
   selected,
   selection,
   now,
@@ -236,26 +249,41 @@ function ThreadCard({
   subagents: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
   environment: ShellEnvironment | null;
+  features: ThreadFeatures;
   selected: boolean;
   selection: string | undefined;
   now: number;
 }) {
+  const select = () => run("pult-shell.selectThread", thread.id);
   return (
     <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}>
-      <button
-        type="button"
+      {/* A button by role, as upstream's card: its actions are buttons inside it. */}
+      <div
+        role="button"
+        tabIndex={0}
         className="pult-card-select"
         aria-current={selected || undefined}
-        onClick={() => run("pult-shell.selectThread", thread.id)}
+        onClick={select}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          select();
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          void showThreadMenu(thread, { x: event.clientX, y: event.clientY });
+        }}
       >
         <span className="pult-card-top">
           <img className="pult-card-icon" src={projectIconUri(thread.projectName, thread.projectIcon).toString(true)} alt="" />
           <span className="pult-card-project">{thread.projectName}</span>
           {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
-          <Status thread={thread} activity={activities.get(thread.id) ?? null} now={now} />
+          <StatusSlot thread={thread} features={features}>
+            <Status thread={thread} activity={activities.get(thread.id) ?? null} now={now} />
+          </StatusSlot>
         </span>
         <span className="pult-card-title">{thread.title}</span>
-      </button>
+      </div>
       {selected ? (
         <div className="pult-card-details">
           {subagents.length > 0 ? <Subagents subagents={subagents} activities={activities} selection={selection} now={now} /> : null}
@@ -359,7 +387,65 @@ function Subagents({
   );
 }
 
-/** The card's top-right slot: the run state when it says something, else the thread's age. */
+/**
+ * The card's top-right slot: its status, giving way on hover or keyboard
+ * focus to the thread's actions, as upstream's card: on a pinned or active
+ * card the snooze clock (while the thread can be snoozed now) and Settle, on
+ * a snoozed one Wake, on a settled one Un-settle, each while the server has
+ * the feature. The actions stay shown while the clock's menu is open, and a
+ * click on one does not select the card.
+ */
+function StatusSlot({ thread, features, children }: { thread: ShellThread; features: ThreadFeatures; children: React.ReactNode }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const offered = parkActions(thread, features);
+  const onCard = thread.shelf === "pinned" || thread.shelf === "active";
+  const actions = [
+    onCard && offered.snooze && thread.canSnooze ? (
+      <button
+        key="snooze"
+        type="button"
+        title="Snooze"
+        aria-label="Snooze thread"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={(event) => {
+          setMenuOpen(true);
+          void showSnoozeMenu(thread.id, event.currentTarget, () => setMenuOpen(false));
+        }}
+      >
+        <i className="codicon codicon-clock" aria-hidden />
+      </button>
+    ) : null,
+    onCard && offered.settle ? (
+      <button key="settle" type="button" title="Settle thread" onClick={() => void settleThread(thread.id)}>
+        <i className="codicon codicon-check" aria-hidden />
+        Settle
+      </button>
+    ) : null,
+    offered.wake ? (
+      <button key="wake" type="button" title="Wake thread" aria-label="Wake thread" onClick={() => wakeThread(thread.id)}>
+        <i className="codicon codicon-bell" aria-hidden />
+      </button>
+    ) : null,
+    offered.unsettle ? (
+      <button key="unsettle" type="button" title="Un-settle thread" aria-label="Un-settle thread" onClick={() => unsettleThread(thread.id)}>
+        <i className="codicon codicon-discard" aria-hidden />
+      </button>
+    ) : null,
+  ].filter((action) => action !== null);
+  if (actions.length === 0) return <>{children}</>;
+  return (
+    <span className={`pult-card-slot${menuOpen ? " pult-card-slot-open" : ""}`}>
+      {children}
+      {/* Clicks stop here, short of the card that selects the thread. */}
+      <span className="pult-card-actions" onClick={(event) => event.stopPropagation()}>
+        {actions}
+      </span>
+    </span>
+  );
+}
+
+/** A card's or a subagent's status: the run state when it says something, else the thread's age. */
 function Status({ thread, activity, now }: { thread: ShellThread; activity: Activity; now: number }) {
   if (activity === "working") {
     return (
