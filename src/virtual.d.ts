@@ -26,8 +26,10 @@ declare module "pult-extension/thread-view" {
     readonly openFile: (threadId: string, path: string, line: number | null) => void;
     /** The thread's changes, with a file's path when one was named: the extension's changes view. */
     readonly openChanges: (threadId: string, path: string | null) => void;
-    /** Whether threads of the mounted thread's lineage work, from its projection: its subagents', and its own as a native subagent. */
-    readonly reportActivity: (activity: ReadonlyArray<{ readonly threadId: string; readonly working: boolean }>) => void;
+    /** Whether threads of the mounted thread's lineage work, and since when, from its projection: its subagents', and its own as a native subagent. */
+    readonly reportActivity: (
+      activity: ReadonlyArray<{ readonly threadId: string; readonly working: boolean; readonly workingSince: string | null }>,
+    ) => void;
   }
 
   /** The T3 Code commit the view was built against, its checkout's `vendor/t3code/COMMIT`; undefined before the extension exported it. */

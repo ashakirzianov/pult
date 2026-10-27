@@ -22,8 +22,34 @@ const threadsSnapshot = () => threadStore.get();
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 
-/** Each thread's subagents, nested ones too, by the thread at the top of their lineage: working first, then newest first. */
-function subagentsByRoot(threads: ReadonlyArray<ShellThread>): Map<string, ShellThread[]> {
+/** What a thread is doing, as its status reads: Working, Waiting on background work, or neither. */
+type Activity = "working" | "waiting" | null;
+
+/**
+ * Each thread's activity: Waiting when upstream parks it on background work,
+ * or while it does nothing itself but a subagent below it works; Working
+ * while it works.
+ */
+function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Activity> {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const waitingOnSubagents = new Set<string>();
+  for (const thread of threads) {
+    if (!thread.working) continue;
+    // Its ancestors up the lineage; one already marked has its own marked too.
+    for (let id = thread.parentId; id !== null && !waitingOnSubagents.has(id); id = byId.get(id)?.parentId ?? null) {
+      waitingOnSubagents.add(id);
+    }
+  }
+  return new Map(
+    threads.map((thread): [string, Activity] => [
+      thread.id,
+      thread.working ? (thread.waiting ? "waiting" : "working") : waitingOnSubagents.has(thread.id) ? "waiting" : null,
+    ]),
+  );
+}
+
+/** Each thread's subagents, nested ones too, by the thread at the top of their lineage: active first, then newest first. */
+function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<string, Activity>): Map<string, ShellThread[]> {
   const byRoot = new Map<string, ShellThread[]>();
   for (const thread of threads) {
     if (!isSubagent(thread)) continue;
@@ -32,7 +58,8 @@ function subagentsByRoot(threads: ReadonlyArray<ShellThread>): Map<string, Shell
     byRoot.set(thread.rootId, list);
   }
   for (const list of byRoot.values()) {
-    list.sort((a, b) => Number(b.working) - Number(a.working) || Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    const active = (thread: ShellThread) => Number(activities.get(thread.id) != null);
+    list.sort((a, b) => active(b) - active(a) || Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }
   return byRoot;
 }
@@ -52,7 +79,8 @@ export function PanelView() {
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
-  const subagents = subagentsByRoot(state.threads);
+  const activities = threadActivities(state.threads);
+  const subagents = subagentsByRoot(state.threads, activities);
   // The card the selection expands: the selected thread's own, or for a subagent its root's.
   const selectedThread = state.threads.find((thread) => thread.id === selection);
   const selectedCard = selectedThread !== undefined && isSubagent(selectedThread) ? selectedThread.rootId : selection;
@@ -61,6 +89,7 @@ export function PanelView() {
       key={thread.id}
       thread={thread}
       subagents={subagents.get(thread.id) ?? []}
+      activities={activities}
       environment={state.environment}
       selected={thread.id === selectedCard}
       selection={selection}
@@ -194,6 +223,7 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
 function ThreadCard({
   thread,
   subagents,
+  activities,
   environment,
   selected,
   selection,
@@ -201,6 +231,7 @@ function ThreadCard({
 }: {
   thread: ShellThread;
   subagents: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
   environment: ShellEnvironment | null;
   selected: boolean;
   selection: string | undefined;
@@ -218,13 +249,13 @@ function ThreadCard({
           <img className="pult-card-icon" src={projectIconUri(thread.projectName, thread.projectIcon).toString(true)} alt="" />
           <span className="pult-card-project">{thread.projectName}</span>
           {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
-          <Status thread={thread} now={now} />
+          <Status thread={thread} activity={activities.get(thread.id) ?? null} now={now} />
         </span>
         <span className="pult-card-title">{thread.title}</span>
       </button>
       {selected ? (
         <div className="pult-card-details">
-          {subagents.length > 0 ? <Subagents subagents={subagents} selection={selection} now={now} /> : null}
+          {subagents.length > 0 ? <Subagents subagents={subagents} activities={activities} selection={selection} now={now} /> : null}
           <div className="pult-card-row">
             {thread.branch ? (
               <span className="pult-card-branch">
@@ -255,22 +286,25 @@ function ThreadCard({
 
 /**
  * The expanded card's subagents, each a row that selects its thread: its
- * status, then its title. Working ones always; finished ones behind the
+ * title, then its status. Active ones always; finished ones behind the
  * Finished toggle, collapsed until opened, for every card at once; the
  * selected one shown even then.
  */
 function Subagents({
   subagents,
+  activities,
   selection,
   now,
 }: {
   subagents: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
   selection: string | undefined;
   now: number;
 }) {
   const [expanded, setExpanded] = useExpanded("pult-shell.panel.finished-expanded");
-  const working = subagents.filter((subagent) => subagent.working);
-  const finished = subagents.filter((subagent) => !subagent.working);
+  const activity = (subagent: ShellThread) => activities.get(subagent.id) ?? null;
+  const active = subagents.filter((subagent) => activity(subagent) !== null);
+  const finished = subagents.filter((subagent) => activity(subagent) === null);
   const shownFinished = expanded ? finished : finished.filter((subagent) => subagent.id === selection);
   const row = (subagent: ShellThread) => (
     <li key={subagent.id}>
@@ -281,15 +315,15 @@ function Subagents({
         title={subagent.title}
         onClick={() => run("pult-shell.selectThread", subagent.id)}
       >
-        <i className={`codicon ${subagent.working ? "codicon-loading codicon-modifier-spin" : "codicon-hubot"}`} aria-hidden />
+        <i className="codicon codicon-hubot" aria-hidden />
         <span className="pult-subagent-title">{subagent.title}</span>
-        <Status thread={subagent} now={now} />
+        <Status thread={subagent} activity={activity(subagent)} now={now} />
       </button>
     </li>
   );
   return (
     <ul className="pult-card-subagents" aria-label="Subagents">
-      {working.map(row)}
+      {active.map(row)}
       {finished.length > 0 ? (
         <li className="pult-subagents-finished">
           <CollapsibleHeader label="Finished" count={finished.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
@@ -301,8 +335,15 @@ function Subagents({
 }
 
 /** The card's top-right slot: the run state when it says something, else the thread's age. */
-function Status({ thread, now }: { thread: ShellThread; now: number }) {
-  if (thread.working) return <span className="pult-card-status pult-card-status-working">Working</span>;
+function Status({ thread, activity, now }: { thread: ShellThread; activity: Activity; now: number }) {
+  if (activity === "working") {
+    return (
+      <span className="pult-card-status pult-card-status-working">
+        Working{thread.workingSince === null ? null : <Elapsed since={thread.workingSince} />}
+      </span>
+    );
+  }
+  if (activity === "waiting") return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
   if (thread.latestRun?.status === "failed") return <span className="pult-card-status pult-card-status-failed">Failed</span>;
   if (thread.shelf === "snoozed") {
     return (
@@ -330,6 +371,29 @@ function age(iso: string, now: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * The time since `since`, ticking each second, in upstream's subagent form:
+ * `45s`, `3m 05s`, `1h 02m`. Its own clock, so a tick re-renders only it.
+ */
+function Elapsed({ since }: { since: string }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - Date.parse(since)) / 1_000));
+  if (Number.isNaN(seconds)) return null;
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const text =
+    minutes === 0
+      ? `${seconds}s`
+      : hours === 0
+        ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`
+        : `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+  return <span className="pult-card-elapsed">{text}</span>;
 }
 
 /** The current time, updated once a minute, so the ages do not go stale. */

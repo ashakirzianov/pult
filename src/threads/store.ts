@@ -27,7 +27,12 @@ export interface ShellThread {
   readonly branch: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** In motion: working, or waiting on background work that will wake it. */
   readonly working: boolean;
+  /** Upstream's Waiting: stopped, its run held open by background work, such as subagents, that will wake it. */
+  readonly waiting: boolean;
+  /** When its current work started, while it works and the server knows. */
+  readonly workingSince: string | null;
   readonly pinned: boolean;
   readonly latestRun: { status: string; startedAt: string | null; finishedAt: string | null } | null;
   readonly goal: string | null;
@@ -50,6 +55,13 @@ export function isSubagent(thread: ShellThread): boolean {
   return thread.shelf === null && thread.parentId !== null;
 }
 
+/** What the mounted thread view knows of a thread's activity, from its projection. */
+export interface ReportedActivity {
+  readonly threadId: string;
+  readonly working: boolean;
+  readonly workingSince: string | null;
+}
+
 type Listener = (state: ThreadState) => void;
 
 /**
@@ -68,7 +80,7 @@ class ThreadStore {
    * the extension's push always reads it idle. Laid over the push; kept
    * across thread switches, the last word on each thread until the next.
    */
-  private readonly activity = new Map<string, boolean>();
+  private readonly activity = new Map<string, ReportedActivity>();
   private readonly listeners = new Set<Listener>();
 
   constructor() {
@@ -83,11 +95,12 @@ class ThreadStore {
   }
 
   /** What the thread view reports of its lineage's activity; a change re-renders, a repeat does not. */
-  reportActivity(activity: ReadonlyArray<{ readonly threadId: string; readonly working: boolean }>): void {
+  reportActivity(activity: ReadonlyArray<ReportedActivity>): void {
     let changed = false;
-    for (const { threadId, working } of activity) {
-      if (this.activity.get(threadId) === working) continue;
-      this.activity.set(threadId, working);
+    for (const report of activity) {
+      const known = this.activity.get(report.threadId);
+      if (known?.working === report.working && known.workingSince === report.workingSince) continue;
+      this.activity.set(report.threadId, report);
       changed = true;
     }
     if (changed) this.update();
@@ -95,9 +108,10 @@ class ThreadStore {
 
   private update(): void {
     const threads = this.pushed.threads.map((thread) => {
-      const working = this.activity.get(thread.id);
+      const reported = this.activity.get(thread.id);
       // A run the push sees working wins; the view's word fills in where the push has none.
-      return working === undefined || thread.working ? thread : { ...thread, working };
+      if (reported === undefined || thread.working) return thread;
+      return { ...thread, working: reported.working, workingSince: reported.working ? reported.workingSince : null };
     });
     this.state = { ...this.pushed, threads };
     for (const listener of this.listeners) listener(this.state);

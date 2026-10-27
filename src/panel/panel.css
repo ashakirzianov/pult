@@ -116,6 +116,15 @@
   font-weight: 500;
 }
 
+.pult-card-status-waiting {
+  font-weight: 500;
+}
+
+/* Working's elapsed time, a step back from the label. */
+.pult-card-elapsed {
+  font-weight: 400;
+}
+
 .pult-card-status-failed {
   color: var(--vscode-errorForeground);
   font-weight: 500;
@@ -310,7 +319,7 @@
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
   text-align: left;
   cursor: pointer;
 }
