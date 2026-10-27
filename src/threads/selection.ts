@@ -43,6 +43,7 @@ function isDraft(selection: Selection | undefined): selection is DraftSelection 
 }
 
 const STORAGE_KEY = "pult.shell.selectedThread";
+const BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
 
 /** Whether the selected thread is a subagent's: the thread tab's title then offers its way back to the parent. */
 const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelected", false);
@@ -56,6 +57,8 @@ function selectedParentId(): string | undefined {
 }
 
 let selected: Selection | undefined;
+/** The thread or draft Settings was selected from, which closing Settings' last tab goes back to. */
+let beforeSettings: ThreadSelection | DraftSelection | undefined;
 let switching = false;
 let queue = Promise.resolve();
 const listeners = new Set<() => void>();
@@ -105,7 +108,9 @@ export function selectThread(threadId: string): Promise<void> {
 /**
  * Selects Settings as a thread is selected: the selected thread's tabs are
  * saved, and the editor part shows Settings' own tab set, the settings editor
- * alone the first time. Selecting a thread again restores that thread's tabs.
+ * alone the first time. Selecting a thread again restores that thread's tabs,
+ * and so does closing Settings' last tab, for the thread or draft Settings
+ * was selected from.
  */
 export function selectSettings(): Promise<void> {
   return enqueue(() => switchTo(SETTINGS));
@@ -185,6 +190,10 @@ async function switchTo(next: Selection): Promise<void> {
       groups.saveWorkingSet(workingSetName(selected));
       const saved = groups.getWorkingSets().find((set) => set.name === workingSetName(next));
       await groups.applyWorkingSet(saved ?? "empty", { preserveFocus: true });
+    }
+    if (next === SETTINGS && selected !== undefined && selected !== SETTINGS) {
+      beforeSettings = selected;
+      storage.store(BEFORE_SETTINGS_KEY, JSON.stringify(selected), StorageScope.WORKSPACE, StorageTarget.MACHINE);
     }
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
@@ -270,10 +279,19 @@ export async function restoreThreadSelection(): Promise<void> {
   const storage = await getService(IStorageService);
   const saved = storage.get(STORAGE_KEY, StorageScope.WORKSPACE);
   if (saved !== undefined) selected = JSON.parse(saved) as Selection;
+  const savedBefore = storage.get(BEFORE_SETTINGS_KEY, StorageScope.WORKSPACE);
+  if (savedBefore !== undefined) beforeSettings = JSON.parse(savedBefore) as ThreadSelection | DraftSelection;
   const groups = await getService(IEditorGroupsService);
   const editors = await getService(IEditorService);
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
+  });
+  // Closing Settings' last tab goes back to the thread or draft it was opened from, in the same environment.
+  editors.onDidCloseEditor(() => {
+    const back = beforeSettings;
+    if (switching || selected !== SETTINGS || editors.count > 0) return;
+    if (back === undefined || back.environmentId !== threadStore.get().environment?.id) return;
+    void enqueue(() => (selected === SETTINGS && editors.count === 0 ? switchTo(back) : Promise.resolve()));
   });
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
