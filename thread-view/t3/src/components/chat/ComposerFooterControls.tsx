@@ -146,12 +146,17 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
  */
 export const ComposerControlsSlot = createContext<HTMLElement | null>(null);
 
-export function ComposerControlsSlotItem(props: { item: string; children: ReactNode }) {
+export function ComposerControlsSlotItem(props: {
+  item: string;
+  heavy?: boolean;
+  children: ReactNode;
+}) {
   const slot = useContext(ComposerControlsSlot);
   if (slot === null) return props.children;
   return createPortal(
     <div
       data-chat-composer-slot-item={props.item}
+      data-heavy={props.heavy || undefined}
       data-chat-composer-resting-controls="true"
       className="flex min-w-0 items-center gap-1"
     >
@@ -159,6 +164,17 @@ export function ComposerControlsSlotItem(props: { item: string; children: ReactN
     </div>,
     slot,
   );
+}
+
+/**
+ * Pult: from this many tokens in context the bar's meter turns orange
+ * (`data-heavy` on its slot item), short of upstream's red past 90%.
+ */
+const HEAVY_CONTEXT_TOKENS = 150_000;
+
+function isHeavyContext(usage: ContextWindowSnapshot | null): boolean {
+  if (usage === null || (usage.usedPercentage ?? 0) > 90) return false;
+  return usage.usedTokens >= HEAVY_CONTEXT_TOKENS;
 }
 
 export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
@@ -204,7 +220,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
 }) {
   return (
     <>
-      <ComposerControlsSlotItem item="meter">
+      <ComposerControlsSlotItem item="meter" heavy={isHeavyContext(props.activeContextWindow)}>
       {props.activeContextWindow ? (
         <ContextWindowMeter
           usage={props.activeContextWindow}
