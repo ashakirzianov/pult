@@ -196,6 +196,19 @@ class ShellConnection {
     await this.use(undefined);
   }
 
+  /**
+   * Runs an effect on the environment's supervisor: RPCs go to its live
+   * session, and fail with `EnvironmentRpcUnavailableError` while there is
+   * none, or at once while the page has no environment.
+   */
+  run<A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>): Promise<A> {
+    const environmentId = this.saved?.profile.environmentId;
+    if (environmentId === undefined) return Promise.reject(new Error("Pult is not connected to an environment."));
+    return this.runtime.runPromise(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.run(environmentId, effect))),
+    );
+  }
+
   /** Retries a connection waiting between attempts. */
   retryNow(): Promise<void> {
     const environmentId = this.saved?.profile.environmentId;
