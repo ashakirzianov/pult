@@ -30,7 +30,7 @@ const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsV
 
 /**
  * What the Explorer tab is rooted at, as the user chose it: the selected
- * thread's root alone, or every root of the environment. Kept in workspace
+ * thread's root alone, or every root of the held environments. Kept in workspace
  * storage; `thread` until the user widens it.
  */
 type Scope = "thread" | "environment";
@@ -69,7 +69,7 @@ export async function openThreadExplorer(): Promise<void> {
   await openExplorer("thread");
 }
 
-/** The Explorer tab at the environment's roots, as a multi-root. */
+/** The Explorer tab at every held environment's roots, as a multi-root. */
 export function openEnvironmentExplorer(): Promise<void> {
   return openExplorer("environment");
 }
@@ -96,26 +96,34 @@ async function setScope(next: Scope): Promise<void> {
   (await getService(IStorageService)).store(SCOPE_STORAGE_KEY, next, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 }
 
-/** The thread's own root: its project's, since the store carries no worktree yet. */
-function threadFolder(thread: ShellThread, environmentId: string): Folder | undefined {
-  return thread.projectRoot === null ? undefined : { uri: pultUri(environmentId, thread.projectRoot), name: thread.projectName };
+/**
+ * The thread's own root: its project's, since the store carries no worktree
+ * yet; named with its environment's label too while the page holds several,
+ * when `named` (the environment scope's folders).
+ */
+function threadFolder(thread: ShellThread, named = false): Folder | undefined {
+  if (thread.projectRoot === null) return undefined;
+  const label = named ? threadStore.distinguishing(thread.environmentId) : undefined;
+  return {
+    uri: pultUri(thread.environmentId, thread.projectRoot),
+    name: label === undefined ? thread.projectName : `${thread.projectName} (${label})`,
+  };
 }
 
 /**
- * The root of the scope's thread, the selected one, in the connected
- * environment, or for a draft of a new thread its project's; undefined for
- * none, or a thread gone.
+ * The root of the scope's thread, the selected one, in its environment, or
+ * for a draft of a new thread its project's; undefined for none, a thread
+ * gone, or one of an environment the page no longer holds.
  */
 function threadRootOfScope(): Folder | undefined {
-  const { environment, threads } = threadStore.get();
-  if (environment === null || lastSelected === undefined) return undefined;
+  if (lastSelected === undefined) return undefined;
+  const { environmentId } = lastSelected;
   if ("projectId" in lastSelected) {
-    const project = threadStore.project(lastSelected.projectId);
-    return project?.root == null ? undefined : { uri: pultUri(environment.id, project.root), name: project.name };
+    const project = threadStore.project(environmentId, lastSelected.projectId);
+    return project?.root == null ? undefined : { uri: pultUri(environmentId, project.root), name: project.name };
   }
-  const { threadId } = lastSelected;
-  const thread = threads.find((candidate) => candidate.id === threadId);
-  return thread === undefined ? undefined : threadFolder(thread, environment.id);
+  const thread = threadStore.thread(environmentId, lastSelected.threadId);
+  return thread === undefined ? undefined : threadFolder(thread);
 }
 
 /** The one root the folders narrow to, or undefined for the environment's: the thread scope falls back to it while its thread has no root. */
@@ -142,8 +150,10 @@ let updateContextKeys = () => {};
  * the scope and the folders when its turn comes, after the previous update
  * has landed. The thread scope narrows them to the selected thread's root;
  * the environment scope, and the thread scope of a thread without one, keep
- * every folder of the environment already there (one "Pult: Open Project"
- * added) and add the threads' roots, never removing one.
+ * every folder of the held environments already there (one "Pult: Open
+ * Project" added) and add every environment's threads' roots, never removing
+ * one but an environment's the page let go of; a thread's root is renamed
+ * as the number of environments makes its name carry its environment's or not.
  * A failure is notified. Resolves to whether the folders are the scope's.
  */
 function reroot(): Promise<boolean> {
@@ -156,25 +166,37 @@ function reroot(): Promise<boolean> {
 
   async function update(): Promise<boolean> {
     updateContextKeys();
-    const { environment, threads } = threadStore.get();
-    if (environment === null) return true;
+    const { environments, threads } = threadStore.get();
+    if (environments.length === 0) return true;
     const root = effectiveRoot();
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
     const wanted = new Map<string, Folder>();
-    if (root !== undefined) wanted.set(keyOf(root.uri), root);
+    // The thread's root keeps its folder, and its tree, under whichever name it has.
+    if (root !== undefined) wanted.set(keyOf(root.uri), current.find((folder) => keyOf(folder.uri) === keyOf(root.uri)) ?? root);
     else {
-      const environmentId = environment.id.toLowerCase();
+      const held = new Set(environments.map((environment) => environment.id.toLowerCase()));
       for (const folder of current) {
-        if (folder.uri.scheme === PULT_SCHEME && folder.uri.authority.toLowerCase() === environmentId) wanted.set(keyOf(folder.uri), folder);
+        if (folder.uri.scheme === PULT_SCHEME && held.has(folder.uri.authority.toLowerCase())) wanted.set(keyOf(folder.uri), folder);
       }
+      const roots = new Set<string>();
       for (const thread of threads) {
-        const folder = threadFolder(thread, environment.id);
-        if (folder !== undefined && !wanted.has(keyOf(folder.uri))) wanted.set(keyOf(folder.uri), folder);
+        const folder = threadFolder(thread, true);
+        if (folder === undefined || roots.has(keyOf(folder.uri))) continue;
+        roots.add(keyOf(folder.uri));
+        wanted.set(keyOf(folder.uri), folder);
       }
     }
-    const present = new Set(current.map((folder) => keyOf(folder.uri)));
-    const remove = current.filter((folder) => !wanted.has(keyOf(folder.uri))).map((folder) => folder.uri);
-    const add = [...wanted.entries()].filter(([key]) => !present.has(key)).map(([, folder]) => folder);
+    // A folder kept under another name is replaced.
+    const renamed = (folder: Folder) => {
+      const next = wanted.get(keyOf(folder.uri));
+      return next !== undefined && next.name !== folder.name;
+    };
+    const present = new Map(current.map((folder) => [keyOf(folder.uri), folder]));
+    const remove = current.filter((folder) => !wanted.has(keyOf(folder.uri)) || renamed(folder)).map((folder) => folder.uri);
+    const add = [...wanted.entries()].flatMap(([key, folder]) => {
+      const existing = present.get(key);
+      return existing === undefined || renamed(existing) ? [folder] : [];
+    });
     const editing = await getService(IWorkspaceEditingService);
     updating = true;
     try {
@@ -296,7 +318,7 @@ export function registerExplorerCommands(): void {
           toggled: {
             condition: ScopeContext.isEqualTo("thread"),
             icon: Codicon.filterFilled,
-            tooltip: "Only this thread's folder: on. Show every folder of the environment",
+            tooltip: "Only this thread's folder: on. Show every environment's folders",
           },
           f1: true,
           precondition: ThreadHasFolderContext,
