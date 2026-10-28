@@ -78,7 +78,7 @@ export interface WatchListener {
 }
 
 /**
- * What the workspace asks of the connected environment: the vendored project RPCs,
+ * What the workspace asks of its environment: the vendored project RPCs,
  * the asset route and the server's features. A call rejects with the RPC's
  * error, or with `EnvironmentRpcUnavailableError` while the page has no live
  * connection.
@@ -139,7 +139,7 @@ export interface Change {
   readonly kind: "created" | "changed" | "deleted";
 }
 
-/** The page the files serve. Every path is a `pult:` URI path on the connected environment. */
+/** The page the files serve. Every path is a `pult:` URI path on its environment. */
 export interface WorkspaceFilesHost {
   /** The workspace folders: the roots browsed, watched and written under. */
   readonly roots: () => ReadonlyArray<string>;

@@ -31,7 +31,7 @@ import type {
 import type { ReviewDiffPreviewSource, ReviewDiffPreviewSourceKind } from "@t3tools/contracts";
 
 import { pultUri } from "../panel/explorer.ts";
-import { onDidSelectThread, selectedThread, selectThread } from "../threads/selection.ts";
+import { onDidSelectThread, selectedThread, selectThread, type ThreadSelection } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 import { changesServer } from "./server.ts";
@@ -213,8 +213,10 @@ type Services = {
  * "Pult: Refresh Changes".
  */
 class ChangesView {
-  private repository: { readonly repository: ISCMRepository; readonly provider: ChangesProvider; readonly key: string } | undefined;
-  private threadId: string | null = null;
+  private repository:
+    | { readonly repository: ISCMRepository; readonly provider: ChangesProvider; readonly environmentId: string; readonly key: string }
+    | undefined;
+  private selection: ThreadSelection | null = null;
   private finishedAt: string | null = null;
   private generation = 0;
   private pending: Promise<void> = Promise.resolve();
@@ -251,7 +253,7 @@ class ChangesView {
       onDidChange: view.decorationsChanged.event,
       provideDecorations: (uri) => view.decoration(uri),
     });
-    onDidSelectThread(() => view.select(selectedThread()?.threadId ?? null));
+    onDidSelectThread(() => view.select(selectedThread() ?? null));
     // The store may load after the selection, and a finished run changes the files.
     threadStore.subscribe(() => {
       const finishedAt = view.selected()?.latestRun?.finishedAt ?? null;
@@ -259,17 +261,18 @@ class ChangesView {
       view.finishedAt = finishedAt;
       view.sync(finished);
     });
-    view.select(selectedThread()?.threadId ?? null);
+    view.select(selectedThread() ?? null);
     return view;
   }
 
   private selected() {
-    return this.threadId === null ? undefined : threadStore.get().threads.find((thread) => thread.id === this.threadId);
+    const selection = this.selection;
+    return selection === null ? undefined : threadStore.thread(selection.environmentId, selection.threadId);
   }
 
-  /** The thread whose project the view shows; its root decides the source control. */
-  select(threadId: string | null): void {
-    this.threadId = threadId;
+  /** The thread whose project the view shows, in its environment; its root decides the source control. */
+  select(selection: ThreadSelection | null): void {
+    this.selection = selection;
     this.finishedAt = this.selected()?.latestRun?.finishedAt ?? null;
     this.sync(true);
   }
@@ -277,8 +280,9 @@ class ChangesView {
   /** The source control follows the selected thread's root as the store knows it; `refresh` reloads an unchanged one too. */
   private sync(refresh: boolean): void {
     const thread = this.selected();
-    const environmentId = threadStore.get().environment?.id;
-    const root = thread === undefined ? undefined : (thread.projectRoot ?? threadStore.project(thread.projectId)?.root ?? undefined);
+    const environmentId = thread?.environmentId;
+    const root =
+      thread === undefined ? undefined : (thread.projectRoot ?? threadStore.project(thread.environmentId, thread.projectId)?.root ?? undefined);
     if (thread === undefined || environmentId === undefined || root === undefined) {
       if (this.repository === undefined) return;
       this.generation += 1;
@@ -299,14 +303,17 @@ class ChangesView {
     const provider = new ChangesProvider(root, pultUri(environmentId, root), thread.projectName, input, extUri);
     const repository = scm.registerSCMProvider(provider);
     repository.input.visible = false;
-    this.repository = { repository, provider, key };
+    this.repository = { repository, provider, environmentId, key };
     this.apply([]);
     this.refresh();
   }
 
-  /** The Source Control view, on `threadId` selected, with the change of `path` open when the view has it. */
-  async show(threadId: string | null, path: string | null): Promise<void> {
-    if (threadId !== null && threadId !== selectedThread()?.threadId) await selectThread(threadId);
+  /** The Source Control view, on `thread` selected, with the change of `path` open when the view has it. */
+  async show(thread: ThreadSelection | null, path: string | null): Promise<void> {
+    const selected = selectedThread();
+    if (thread !== null && (thread.threadId !== selected?.threadId || thread.environmentId !== selected.environmentId)) {
+      await selectThread(thread.environmentId, thread.threadId);
+    }
     await this.services.commands.executeCommand("workbench.view.scm");
     if (path === null) return;
     await this.pending;
@@ -319,7 +326,7 @@ class ChangesView {
     const current = this.repository;
     if (current === undefined) return;
     const generation = ++this.generation;
-    this.pending = changesServer.diffPreview({ cwd: current.provider.root }).then(
+    this.pending = changesServer(current.environmentId).diffPreview({ cwd: current.provider.root }).then(
       (preview) => {
         if (generation !== this.generation) return;
         this.failure = null;
@@ -375,10 +382,10 @@ class ChangesView {
 
   private async sideContents(uri: URI): Promise<string> {
     const { change, side } = JSON.parse(uri.query) as Side;
-    const key = JSON.stringify([change.cwd, change.sourceKind, change.baseRef, change.headRef, change.previousPath, change.path]);
+    const key = JSON.stringify([uri.authority, change.cwd, change.sourceKind, change.baseRef, change.headRef, change.previousPath, change.path]);
     let loading = this.contents.get(key);
     if (loading === undefined) {
-      loading = changesServer.diffFileContents({
+      loading = changesServer(uri.authority).diffFileContents({
         cwd: change.cwd,
         sourceKind: change.sourceKind,
         changeType: change.changeType,
@@ -394,7 +401,7 @@ class ChangesView {
   }
 
   private decoration(uri: URI) {
-    if (uri.scheme !== "pult") return undefined;
+    if (uri.scheme !== "pult" || uri.authority.toLowerCase() !== this.environmentId().toLowerCase()) return undefined;
     const change = this.byPath.get(uri.path);
     if (change === undefined) return undefined;
     const { badge, color, label } = BADGES[change.changeType];
@@ -414,14 +421,15 @@ class ChangesView {
   }
 
   private environmentId(): string {
-    return this.repository?.provider.rootUri.authority ?? threadStore.get().environment?.id ?? "";
+    return this.repository?.environmentId ?? "";
   }
 
   /** What the view shows and why, for the console. */
   state() {
     const provider = this.repository?.provider;
     return {
-      threadId: this.threadId,
+      environmentId: this.selection?.environmentId ?? null,
+      threadId: this.selection?.threadId ?? null,
       root: provider?.root ?? null,
       groups: Object.fromEntries((provider?.groups ?? []).map((group) => [group.id, group.resources.length])),
       failure: this.failure,
@@ -457,12 +465,12 @@ function joinPath(root: string, relativePath: string): string {
 let started: Promise<ChangesView> | undefined;
 
 /**
- * Opens the Source Control view on `threadId`, selecting it first if another
+ * Opens the Source Control view on `thread`, selecting it first if another
  * is selected, with the change of `path`, relative to its project's root,
  * open when the view lists it: the thread view's "Open diff".
  */
-export async function showChanges(threadId: string | null, path: string | null): Promise<void> {
-  await (await started)?.show(threadId, path);
+export async function showChanges(thread: ThreadSelection | null, path: string | null): Promise<void> {
+  await (await started)?.show(thread, path);
 }
 
 /** What the changes view shows and why, for the console's `pult.changes()`. */
@@ -472,15 +480,20 @@ export async function changesState() {
 
 /**
  * The changes view, started once the workbench's services are up, with
- * `pult-shell.showChanges <threadId> <path|null>` and "Pult: Refresh
- * Changes" (`pult-shell.refreshChanges`, also in the Source Control view's
- * title).
+ * `pult-shell.showChanges <environmentId|null> <threadId|null> <path|null>`
+ * and "Pult: Refresh Changes" (`pult-shell.refreshChanges`, also in the
+ * Source Control view's title).
  */
 export function registerChanges(): void {
   started = ChangesView.start();
   started.catch((error: unknown) => console.error("[pult-shell] the changes view did not start", error));
-  CommandsRegistry.registerCommand("pult-shell.showChanges", (_accessor, threadId: unknown, path: unknown) =>
-    showChanges(typeof threadId === "string" ? threadId : null, typeof path === "string" ? path : null),
+  CommandsRegistry.registerCommand(
+    "pult-shell.showChanges",
+    (_accessor, environmentId: unknown, threadId: unknown, path: unknown) =>
+      showChanges(
+        typeof environmentId === "string" && typeof threadId === "string" ? { environmentId, threadId } : null,
+        typeof path === "string" ? path : null,
+      ),
   );
   registerAction2(
     class extends Action2 {

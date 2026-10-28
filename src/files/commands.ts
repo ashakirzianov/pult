@@ -17,10 +17,11 @@ import { buildProjectCreateCommand } from "@t3tools/client-runtime/operations/pr
 import { request } from "@t3tools/client-runtime/rpc";
 import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
 
-import { connection, ConnectedContext } from "../connection/index.ts";
+import { connection, ConnectedContext, pickEnvironment } from "../connection/index.ts";
+import { threadStore } from "../threads/store.ts";
 import { baseName, joinPath, parentOf, toHostPath, toUriPath } from "./paths.ts";
 import { type ProjectRoot, projectRoots } from "./projects.ts";
-import { connectionServer } from "./server.ts";
+import { environmentServer } from "./server.ts";
 import { environmentShell, pultFolders, pultResource } from "./workspace.ts";
 
 const SEARCH_DELAY_MS = 150;
@@ -37,7 +38,7 @@ async function goToFile(accessor: ServicesAccessor): Promise<void> {
     accessor,
     { placeholder: "Search files by name", searchEmpty: true },
     async (query, folder) => {
-      const { entries } = await connectionServer.searchEntries({
+      const { entries } = await environmentServer(folder.uri.authority).searchEntries({
         cwd: toHostPath(folder.uri.path),
         query: query.trim().slice(0, 256),
         limit: ENTRY_LIMIT,
@@ -65,7 +66,7 @@ async function searchInFiles(accessor: ServicesAccessor): Promise<void> {
     accessor,
     { placeholder: "Search file contents", searchEmpty: false },
     async (query, folder) => {
-      const { matches } = await connectionServer.searchContents({
+      const { matches } = await environmentServer(folder.uri.authority).searchContents({
         cwd: toHostPath(folder.uri.path),
         query: query.slice(0, 256),
         limit: CONTENT_LIMIT,
@@ -160,17 +161,24 @@ type ProjectItem = IQuickPickItem & { readonly root?: ProjectRoot; readonly crea
 const HOST_PATH = /^(\/|~\/|[A-Za-z]:[\\/])/;
 
 /**
- * "Pult: Open Project…": a project of the environment, or a worktree its
- * threads run in, added as a workspace folder; or a path typed in, added to
- * the environment as a project first, as upstream's Add Project does.
+ * "Pult: Open Project…": a project of an environment, picked first while the
+ * page holds several, or a worktree its threads run in, added as a workspace
+ * folder, named with the environment's label too while there are several;
+ * or a path typed in, added to the environment as a project first, as
+ * upstream's Add Project does.
  */
 async function openProject(accessor: ServicesAccessor): Promise<void> {
+  // Services are read before any await; the accessor is only valid synchronously.
   const commands = accessor.get(ICommandService);
-  const environment = connection.environment;
-  if (environment === null) return void commands.executeCommand("pult-shell.connect");
   const quickInput = accessor.get(IQuickInputService);
   const notifications = accessor.get(INotificationService);
-  const roots = projectRoots(environmentShell());
+  if (connection.environments.length === 0) return void commands.executeCommand("pult-shell.connect");
+  const environment = await pickEnvironment(connection.environments, "Open a project of an environment");
+  if (environment === undefined) return;
+  const environmentId = environment.environmentId;
+  const label = threadStore.distinguishing(environmentId);
+  const named = (name: string) => (label === undefined ? name : `${name} (${label})`);
+  const roots = projectRoots(environmentShell(environmentId));
   const listed: Array<ProjectItem | IQuickPickSeparator> = [];
   for (const root of roots) {
     if (root.worktree === null) listed.push({ type: "separator", label: root.project });
@@ -206,10 +214,11 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
   if (picked === undefined) return;
   let folder: { uri: URI; name: string };
   if (picked.root !== undefined) {
-    folder = { uri: pultResource(toUriPath(picked.root.path)), name: picked.root.name };
+    folder = { uri: pultResource(environmentId, toUriPath(picked.root.path)), name: named(picked.root.name) };
   } else if (picked.create !== undefined) {
     try {
       const project = await connection.run(
+        environmentId,
         request(
           WS_METHODS.projectsMutate,
           buildProjectCreateCommand({
@@ -219,13 +228,13 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
           }),
         ),
       );
-      folder = { uri: pultResource(toUriPath(project.workspaceRoot)), name: project.title };
+      folder = { uri: pultResource(environmentId, toUriPath(project.workspaceRoot)), name: named(project.title) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return void notifications.error(`Pult could not add ${picked.create} as a project: ${message}`);
     }
   } else return;
-  if (pultFolders().some((existing) => existing.uri.path === folder.uri.path)) {
+  if (pultFolders(environmentId).some((existing) => existing.uri.path === folder.uri.path)) {
     return void commands.executeCommand("revealInExplorer", folder.uri);
   }
   await (await getService(IWorkspaceEditingService)).addFolders([folder]);

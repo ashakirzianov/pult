@@ -20,84 +20,90 @@ import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
-import { connection, type ShellEnvironment } from "../connection/index.ts";
+import { connection } from "../connection/index.ts";
 import { featuresOf, type WorkspaceServer } from "./files.ts";
 
-/** How long a call waits for a connecting page before it fails as unavailable. */
+/** How long a call waits for a connecting environment before it fails as unavailable. */
 const READY_TIMEOUT_MS = 15_000;
 const RESUBSCRIBE_DELAY = "1 second";
 
-/** An RPC the page sends on the environment's session. */
-function call<Tag extends Exclude<EnvironmentUnaryRpcTag, ClientGuardedRpcTag>>(tag: Tag, input: EnvironmentRpcInput<Tag>) {
-  return whenReady().then(() => connection.run(request(tag, input)));
+/**
+ * A workspace's server: the page's connection to `environmentId`, as a
+ * `pult:` authority names it. A call made while the environment connects, as
+ * when the workbench restores `pult:` folders before the saved environments
+ * are back, waits for it; an environment offline, blocked or not held fails
+ * the call at once.
+ */
+export function environmentServer(environmentId: string): WorkspaceServer {
+  /** An RPC the page sends on the environment's session. */
+  const call = <Tag extends Exclude<EnvironmentUnaryRpcTag, ClientGuardedRpcTag>>(tag: Tag, input: EnvironmentRpcInput<Tag>) =>
+    whenReady(environmentId).then(() => connection.run(environmentId, request(tag, input)));
+  return {
+    features: async () => {
+      await whenReady(environmentId);
+      return featuresOf(await connection.run(environmentId, getInitialServerConfig()));
+    },
+    listEntries: (input) => call(WS_METHODS.projectsListEntries, input),
+    readFile: (input) => call(WS_METHODS.projectsReadFile, input),
+    statEntry: (input) => call(WS_METHODS.projectsStatEntry, input),
+    writeFile: (input) => call(WS_METHODS.projectsWriteFile, input),
+    createDirectory: (input) => call(WS_METHODS.projectsCreateDirectory, input),
+    deleteEntry: (input) => call(WS_METHODS.projectsDeleteEntry, input),
+    renameEntry: (input) => call(WS_METHODS.projectsRenameEntry, input),
+    searchEntries: (input) => call(WS_METHODS.projectsSearchEntries, input),
+    searchContents: (input) => call(WS_METHODS.projectsSearchContents, input),
+    // A signed download URL, valid an hour: minted per read and never handed on.
+    readAsset: async (cwd, relativePath) => {
+      const { relativeUrl } = await call(WS_METHODS.assetsCreateUrl, {
+        resource: { _tag: "draft-workspace-file", cwd, path: relativePath },
+      });
+      // The bearer and its server are held together, so the bearer goes only to the server it is for.
+      const credential = connection.credential(environmentId);
+      if (credential === undefined) throw unavailable(environmentId);
+      const response = await fetch(new URL(relativeUrl, credential.httpBaseUrl), {
+        headers: { authorization: `Bearer ${credential.token}` },
+      });
+      if (!response.ok) {
+        throw new Error(`The server refused the bytes of ${relativePath}: HTTP ${response.status}.`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    watchEntries: (cwd, listener) => {
+      const stop = connection.follow(environmentId, watchStream(cwd), (item) => {
+        switch (item._tag) {
+          case "subscribed":
+            return void listener.subscribed();
+          case "changed":
+            return listener.changed(item.event);
+          case "gone":
+            return listener.gone();
+        }
+      });
+      return { dispose: stop };
+    },
+  };
 }
 
 /**
- * The workspace's server: the page's connection. A call made while the page
- * connects, as when the workbench restores `pult:` folders before the saved
- * environment is back, waits for it; a page offline, blocked or holding no
- * environment fails the call at once.
+ * Resolves once the page's connection to `environmentId` is ready; rejects
+ * at once for an environment offline, blocked or not held (but while the
+ * page restores the saved ones), and after a wait for one that never
+ * connects.
  */
-export const connectionServer: WorkspaceServer = {
-  features: async () => {
-    await whenReady();
-    return featuresOf(await connection.run(getInitialServerConfig()));
-  },
-  listEntries: (input) => call(WS_METHODS.projectsListEntries, input),
-  readFile: (input) => call(WS_METHODS.projectsReadFile, input),
-  statEntry: (input) => call(WS_METHODS.projectsStatEntry, input),
-  writeFile: (input) => call(WS_METHODS.projectsWriteFile, input),
-  createDirectory: (input) => call(WS_METHODS.projectsCreateDirectory, input),
-  deleteEntry: (input) => call(WS_METHODS.projectsDeleteEntry, input),
-  renameEntry: (input) => call(WS_METHODS.projectsRenameEntry, input),
-  searchEntries: (input) => call(WS_METHODS.projectsSearchEntries, input),
-  searchContents: (input) => call(WS_METHODS.projectsSearchContents, input),
-  // A signed download URL, valid an hour: minted per read and never handed on.
-  readAsset: async (cwd, relativePath) => {
-    const { relativeUrl } = await call(WS_METHODS.assetsCreateUrl, {
-      resource: { _tag: "draft-workspace-file", cwd, path: relativePath },
-    });
-    // The bearer and its server are set together, so the bearer goes only to the server it is for.
-    const credential = connection.credential;
-    if (credential === undefined) throw unavailable(connection.environment);
-    const response = await fetch(new URL(relativeUrl, credential.httpBaseUrl), {
-      headers: { authorization: `Bearer ${credential.token}` },
-    });
-    if (!response.ok) {
-      throw new Error(`The server refused the bytes of ${relativePath}: HTTP ${response.status}.`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  },
-  watchEntries: (cwd, listener) => {
-    const stop = connection.follow(watchStream(cwd), (item) => {
-      switch (item._tag) {
-        case "subscribed":
-          return void listener.subscribed();
-        case "changed":
-          return listener.changed(item.event);
-        case "gone":
-          return listener.gone();
-      }
-    });
-    return { dispose: stop };
-  },
-};
-
-/** Resolves once the page is connected; rejects at once for a page offline, blocked or with no environment, and after a wait for one that never connects. */
-export function whenReady(): Promise<void> {
+export function whenReady(environmentId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const settle = () => {
-      const environment = connection.environment;
+      const environment = connection.environment(environmentId);
       if (environment?.phase === "ready") {
         resolve();
         return true;
       }
       const waiting =
-        environment === null
+        environment === undefined
           ? connection.connecting
           : environment.phase === "connecting" || environment.phase === "reconnecting";
       if (waiting) return false;
-      reject(unavailable(environment));
+      reject(unavailable(environmentId));
       return true;
     };
     if (settle()) return;
@@ -108,20 +114,22 @@ export function whenReady(): Promise<void> {
     });
     const timer = setTimeout(() => {
       stop();
-      reject(unavailable(connection.environment));
+      reject(unavailable(environmentId));
     }, READY_TIMEOUT_MS);
   });
 }
 
-function unavailable(environment: ShellEnvironment | null) {
+function unavailable(environmentId: string) {
+  const environment = connection.environment(environmentId);
   return new EnvironmentRpcUnavailableError({
-    environmentId: environment?.environmentId ?? "",
+    environmentId,
     message:
-      environment === null
-        ? "Pult is not connected to an environment."
+      environment === undefined
+        ? "Pult is not connected to this environment: connect to it to open its files."
         : (environment.error ?? `${environment.label} is ${environment.phase}.`),
   });
 }
+
 
 type WatchItem =
   | { readonly _tag: "subscribed" }

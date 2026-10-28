@@ -36,10 +36,11 @@ const ERROR_CODES: Record<FilesErrorCode, FileSystemProviderErrorCode> = {
 
 /**
  * The `pult:` file system provider, on the workbench's own file service: its
- * face of `WorkspaceFiles`. It serves the connected environment's URIs and
- * refuses another environment's, since the page holds one connection. A call
- * made while the page connects waits for it, as the workbench restores
- * `pult:` folders and tabs before the saved environment is back.
+ * face of `WorkspaceFiles`. It serves each held environment's URIs from that
+ * environment's files, the URI's authority naming it, and refuses one the
+ * page does not hold. A call made while its environment connects waits for
+ * it, as the workbench restores `pult:` folders and tabs before the saved
+ * environments are back.
  */
 export class PultFileSystemProvider
   implements IFileSystemProviderWithFileReadWriteCapability, IFileSystemProviderWithFileFolderCopyCapability
@@ -88,26 +89,30 @@ export class PultFileSystemProvider
 
   /** The file service deletes an existing target itself before an overwriting move. */
   rename(from: URI, to: URI): Promise<void> {
-    return this.call(to, () => this.call(from, (files, path) => files.rename(path, to.path)));
+    return this.call(to, () => this.call(from, (files, path) => files.rename(path, to.path), to));
   }
 
   /** The file service copies through this rather than a read and a write; see `WorkspaceFiles.copy`. */
   copy(from: URI, to: URI, options: IFileOverwriteOptions): Promise<void> {
-    return this.call(to, () => this.call(from, (files, path) => files.copy(path, to.path, { overwrite: options.overwrite })));
+    return this.call(to, () => this.call(from, (files, path) => files.copy(path, to.path, { overwrite: options.overwrite }), to));
   }
 
-  private async call<A>(resource: URI, operation: (files: WorkspaceFiles, path: string) => Promise<A>): Promise<A> {
+  /** Runs `operation` on the files of the environment `resource` names; a move or copy (`across`) stays within one environment. */
+  private async call<A>(
+    resource: URI,
+    operation: (files: WorkspaceFiles, path: string) => Promise<A>,
+    across?: URI,
+  ): Promise<A> {
     try {
-      await whenReady();
-      const environment = connection.environment;
-      if (environment !== null && !namesEnvironment(resource.authority, environment.environmentId)) {
+      if (across !== undefined && !namesEnvironment(resource.authority, across.authority)) {
         throw createFileSystemProviderError(
-          `${resource.toString()} is on another environment than Pult's ${environment.label}. The page holds one environment: connect to that one to open it.`,
-          FileSystemProviderErrorCode.Unavailable,
+          `${across.toString()} and ${resource.toString()} are on different environments, and Pult moves and copies files only within one.`,
+          FileSystemProviderErrorCode.NoPermissions,
         );
       }
-      await Promise.all([servicesReady, whenListed()]);
-      return await operation(workspaceFiles(), resource.path);
+      await whenReady(resource.authority);
+      await Promise.all([servicesReady, whenListed(resource.authority)]);
+      return await operation(workspaceFiles(resource.authority), resource.path);
     } catch (error) {
       if (error instanceof FileSystemProviderError) throw error;
       const failure = toFilesError(error, resource.path);
@@ -140,10 +145,8 @@ export const workspaceDecorations: IDecorationsProvider = {
   label: "Pult",
   onDidChange: decorationChanges.event,
   provideDecorations: (resource) => {
-    if (resource.scheme !== PULT_SCHEME) return undefined;
-    const environmentId = connection.environment?.environmentId;
-    if (environmentId === undefined || !namesEnvironment(resource.authority, environmentId)) return undefined;
-    const files = workspaceFiles();
+    if (resource.scheme !== PULT_SCHEME || connection.environment(resource.authority) === undefined) return undefined;
+    const files = workspaceFiles(resource.authority);
     if (files.isGone(resource.path)) {
       return { weight: 10, letter: "!", tooltip: "Gone from the host", color: "list.errorForeground" };
     }
