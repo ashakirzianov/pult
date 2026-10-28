@@ -24,6 +24,7 @@ import {
 import { Uri } from "monaco-editor";
 
 import defaultConfiguration from "./configuration.json?raw";
+import { registerChanges } from "./changes/view.ts";
 import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
@@ -59,6 +60,7 @@ startThreadModel();
 registerThreadPane();
 registerSelectThreadCommand();
 registerParkCommands();
+registerChanges();
 registerPanel();
 const pult = registerPultExtension();
 
