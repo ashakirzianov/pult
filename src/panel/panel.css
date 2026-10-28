@@ -18,13 +18,25 @@
   font-size: 13px;
 }
 
+/* A column, so the shelves after the cards can sit at its bottom. */
 .pult-panel-cards {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   margin: 0;
   padding: 4px 8px;
   list-style: none;
+}
+
+.pult-panel-cards > * {
+  flex: none;
+}
+
+/* The cards' margins, which a column does not collapse, as a list's would. */
+.pult-panel-cards > .pult-card + .pult-card {
+  margin-top: 0;
 }
 
 .pult-panel-empty {
@@ -271,6 +283,14 @@
 /* A shelf (Snoozed, Settled): upstream's collapsible header, label, rule and chevron, then its cards. */
 .pult-shelf {
   margin-top: 6px;
+}
+
+/* The first shelf after the cards (Working, Snoozed or Settled) takes the
+   room the cards leave, as upstream's lower shelves sit at its sidebar's
+   bottom; the rest follow it. */
+.pult-panel-cards > :not(.pult-shelf) + .pult-shelf {
+  margin-top: auto;
+  padding-top: 6px;
 }
 
 .pult-shelf-header {

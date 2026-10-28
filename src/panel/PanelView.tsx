@@ -102,6 +102,7 @@ export function PanelView() {
   const now = useMinuteClock();
   const draft = selection?.startsWith(DRAFT_PREFIX) ? selectedDraft() : undefined;
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
+  const working = state.threads.filter((thread) => thread.shelf === "working");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
   const activities = threadActivities(state.threads);
@@ -148,13 +149,18 @@ export function PanelView() {
         ) : (
           listed.map(card)
         )}
+        {working.length > 0 ? (
+          <Shelf name="working" label="Working" threads={working} selection={selectedCard} render={card}>
+            {working.map(card)}
+          </Shelf>
+        ) : null}
         {snoozed.length > 0 ? (
-          <Shelf name="snoozed" label="Snoozed" count={snoozed.length}>
+          <Shelf name="snoozed" label="Snoozed" threads={snoozed} selection={selectedCard} render={card}>
             {snoozed.map(card)}
           </Shelf>
         ) : null}
         {settled.length > 0 ? (
-          <Shelf name="settled" label="Settled" count={settled.length}>
+          <Shelf name="settled" label="Settled" threads={settled} selection={selectedCard} render={card}>
             <SettledTail threads={settled} selection={selectedCard} render={card} />
           </Shelf>
         ) : null}
@@ -186,22 +192,42 @@ function CollapsibleHeader({
       <span className="pult-shelf-count">{count}</span>
       <span className="pult-shelf-rule" aria-hidden />
       {status}
-      <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-up"}`} aria-hidden />
+      <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-right"}`} aria-hidden />
     </button>
   );
 }
 
 /**
- * A shelf under its collapsible header, its threads shown while expanded.
- * Whether it is expanded persists in localStorage, per shelf, as upstream
- * keeps its own.
+ * A shelf under its collapsible header with its threads' count: its threads
+ * (`children`) while expanded, and while collapsed the selected card alone
+ * when it is one of them, as upstream's shelves keep the open thread's row,
+ * so a thread selected as it starts working stays in view. Whether it is
+ * expanded persists in localStorage, per shelf, as upstream keeps its own.
+ * The first shelf after the cards sits at the panel's bottom while the cards
+ * leave room (`panel.css`).
  */
-function Shelf({ name, label, count, children }: { name: ShelfName; label: string; count: number; children: React.ReactNode }) {
+function Shelf({
+  name,
+  label,
+  threads,
+  selection,
+  render,
+  children,
+}: {
+  name: ShelfName;
+  label: string;
+  threads: ReadonlyArray<ShellThread>;
+  selection: string | undefined;
+  render: (thread: ShellThread) => React.ReactNode;
+  children: React.ReactNode;
+}) {
   const [expanded, setExpanded] = useExpanded(`pult-shell.panel.${name}-expanded`);
+  const selected = expanded ? undefined : threads.find((thread) => keyOf(thread) === selection);
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
-      <CollapsibleHeader label={label} count={count} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      <CollapsibleHeader label={label} count={threads.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
       {expanded ? <ul className="pult-shelf-cards">{children}</ul> : null}
+      {selected !== undefined ? <ul className="pult-shelf-cards">{render(selected)}</ul> : null}
     </li>
   );
 }
@@ -403,7 +429,7 @@ function Subagents({
 function StatusSlot({ thread, features, children }: { thread: ShellThread; features: ThreadFeatures; children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const offered = parkActions(thread, features);
-  const onCard = thread.shelf === "pinned" || thread.shelf === "active";
+  const onCard = thread.shelf === "pinned" || thread.shelf === "active" || thread.shelf === "working";
   const actions = [
     onCard && offered.snooze && thread.canSnooze ? (
       <button

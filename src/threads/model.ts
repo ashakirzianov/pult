@@ -2,6 +2,7 @@ import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { getInitialServerConfig } from "@t3tools/client-runtime/rpc";
 import { type EnvironmentThreadShell, presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { makeEnvironmentShellState } from "@t3tools/client-runtime/state/shell";
+import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
 import { EnvironmentId, type OrchestrationV2ShellSnapshot } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -49,14 +50,18 @@ function followShellSnapshot(environmentId: EnvironmentId, publish: (snapshot: O
  * features each server advertises are read on each connect; an
  * environment's threads wait for them, so that none shows on the wrong shelf
  * first. A snooze ending is a change too, since it moves a thread off its
- * shelf and may show it Woke.
+ * shelf and may show it Woke, and so is a thread's moment of grace on the
+ * working shelf ending (`inboxReturns`).
  */
 class ThreadsModel {
   /** By environment id, as the connection holds them. */
   private readonly followed = new Map<string, Followed>();
   private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Which threads work, held a moment after a run ends, as upstream's sidebar holds them on its working shelf. */
+  private readonly inboxReturns = createInboxReturnTracker();
 
   start(): void {
+    this.inboxReturns.subscribe(() => this.publish());
     connection.onDidChange(() => this.followEnvironments());
     this.followEnvironments();
   }
@@ -139,7 +144,11 @@ class ThreadsModel {
         phase: environment.phase,
         features: followed.features ?? NO_THREAD_FEATURES,
       })),
-      threads: shellThreads(loaded, new Date().toISOString()),
+      threads: shellThreads(
+        loaded,
+        new Date().toISOString(),
+        this.inboxReturns.observe(loaded.flatMap((environment) => environment.threads)),
+      ),
       projects: environments.flatMap(
         ({ environment, followed }) =>
           followed.held?.snapshot.projects.map((project) => shellProject(environment.environmentId, project)) ?? [],

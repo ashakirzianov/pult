@@ -48,7 +48,13 @@ const RETIRED_SETTINGS_WORKING_SET = "pult.settings";
 /** Whether the selected thread is a subagent's: the thread tab's title then offers its way back to the parent. */
 const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelected", false);
 
-const SHELF_LABELS: Record<ShelfName, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
+const SHELF_LABELS: Record<ShelfName, string> = {
+  pinned: "Pinned",
+  active: "Active",
+  working: "Working",
+  snoozed: "Snoozed",
+  settled: "Settled",
+};
 
 /** The selected thread's parent, when the selected thread is a subagent's and the parent is known. */
 function selectedParent(): ThreadSelection | undefined {

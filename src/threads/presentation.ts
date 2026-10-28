@@ -3,12 +3,9 @@
 // and their order, its row status, and the store's flattened threads. Ported
 // from pult-extension's `src/threads/presentation.ts` and `src/shellBridge.ts`.
 import { type EnvironmentThreadShell, resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { isThreadWorking, sortInboxThreadsByReturn, sortWorkingThreadsBySend } from "@t3tools/client-runtime/state/thread-inbox";
 import { canSnooze, effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import {
-  sortActiveThreadsByOrderKey,
-  sortPinnedThreadsByOrderKey,
-  sortSettledThreads,
-} from "@t3tools/client-runtime/state/thread-sort";
+import { sortPinnedThreadsByOrderKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 
 import { scopedKey, type ShellProject, type ShellThread, type ShelfName, type ThreadFeatures } from "./store.ts";
@@ -24,11 +21,26 @@ export const NO_THREAD_FEATURES: ThreadFeatures = { settlement: false, snooze: f
 export interface Shelves {
   readonly pinned: ReadonlyArray<EnvironmentThreadShell>;
   readonly active: ReadonlyArray<EnvironmentThreadShell>;
+  readonly working: ReadonlyArray<EnvironmentThreadShell>;
   readonly snoozed: ReadonlyArray<EnvironmentThreadShell>;
   readonly settled: ReadonlyArray<EnvironmentThreadShell>;
 }
 
-const SHELF_ORDER: ReadonlyArray<ShelfName> = ["pinned", "active", "snoozed", "settled"];
+const SHELF_ORDER: ReadonlyArray<ShelfName> = ["pinned", "active", "working", "snoozed", "settled"];
+
+/**
+ * Which of the threads an active shelf would hold work, and when one came
+ * back from working: an observation of upstream's inbox return tracker
+ * (`createInboxReturnTracker`), which holds a thread on the working shelf a
+ * moment after its run ends, as an orchestrator's next run may follow at once.
+ * Without one, a thread works while it reads as working.
+ */
+export interface WorkingObservation {
+  readonly isWorking: (thread: EnvironmentThreadShell) => boolean;
+  readonly returnedAt: (thread: EnvironmentThreadShell) => number | undefined;
+}
+
+const UNOBSERVED: WorkingObservation = { isWorking: isThreadWorking, returnedAt: () => undefined };
 
 /** Not archived or deleted: a thread the panel shows, on a shelf or under its root's card. */
 function isPresent(thread: EnvironmentThreadShell): boolean {
@@ -54,24 +66,30 @@ export function shelfOf(thread: EnvironmentThreadShell, now: string, features: T
 /**
  * The threads on upstream's shelves (`shelfOf`), each under its own
  * environment's features, every shelf merging the environments as
- * upstream's sidebar does. Pinned and active follow their arranged order,
- * snoozed the soonest wake, settled the newest settlement.
+ * upstream's sidebar does with its working shelf on: an active thread that
+ * works sits on the working shelf instead (`observation`). Pinned follow
+ * their arranged order, active the latest return (made, unsettled, sent to
+ * or finished), working the latest message sent, snoozed the soonest wake,
+ * settled the newest settlement.
  */
 export function shelve(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   now: string,
   featuresOf: (environmentId: string) => ThreadFeatures,
+  observation: WorkingObservation = UNOBSERVED,
 ): Shelves {
-  const shelves: Record<ShelfName, Array<EnvironmentThreadShell>> = { pinned: [], active: [], snoozed: [], settled: [] };
+  const shelves: Record<ShelfName, Array<EnvironmentThreadShell>> = { pinned: [], active: [], working: [], snoozed: [], settled: [] };
   for (const thread of threads) {
     const shelf = shelfOf(thread, now, featuresOf(thread.environmentId));
-    if (shelf !== null) shelves[shelf].push(thread);
+    if (shelf === "active" && observation.isWorking(thread)) shelves.working.push(thread);
+    else if (shelf !== null) shelves[shelf].push(thread);
   }
-  const { pinned, active, snoozed, settled } = shelves;
+  const { pinned, active, working, snoozed, settled } = shelves;
   const wakeMs = (thread: EnvironmentThreadShell) => Date.parse(thread.snoozedUntil ?? "") || 0;
   return {
     pinned: sortPinnedThreadsByOrderKey(pinned),
-    active: sortActiveThreadsByOrderKey(active),
+    active: sortInboxThreadsByReturn(active, observation.returnedAt),
+    working: sortWorkingThreadsBySend(working),
     snoozed: snoozed.toSorted((left, right) => wakeMs(left) - wakeMs(right)),
     settled: sortSettledThreads(settled),
   };
@@ -187,10 +205,14 @@ export interface EnvironmentShell {
  * the panel under their root's card, on no shelf. Archived and deleted ones
  * go nowhere.
  */
-export function shellThreads(environments: ReadonlyArray<EnvironmentShell>, now: string): Array<ShellThread> {
+export function shellThreads(
+  environments: ReadonlyArray<EnvironmentShell>,
+  now: string,
+  observation: WorkingObservation = UNOBSERVED,
+): Array<ShellThread> {
   const threads = environments.flatMap((environment) => environment.threads);
   const features = new Map(environments.map((environment) => [environment.environmentId, environment.features]));
-  const shelves = shelve(threads, now, (environmentId) => features.get(environmentId) ?? NO_THREAD_FEATURES);
+  const shelves = shelve(threads, now, (environmentId) => features.get(environmentId) ?? NO_THREAD_FEATURES, observation);
   const subagents = threads.filter((thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent");
   const byId = new Map(
     environments.flatMap((environment) =>

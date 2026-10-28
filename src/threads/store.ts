@@ -1,7 +1,7 @@
 import type { ProjectIconOverride } from "@t3tools/contracts";
 
 /** Upstream's sidebar shelves, in its order; the model puts every listed thread on one. */
-export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
+export type ShelfName = "pinned" | "active" | "working" | "snoozed" | "settled";
 
 /** A thread as the panel and the pane show it: the fields of its `EnvironmentThreadShell` they read (`shellThreads` in `presentation.ts`). */
 export interface ShellThread {
