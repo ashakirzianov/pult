@@ -1,3 +1,5 @@
+import { resolveCustomSnooze } from "@t3tools/client-runtime/state/thread-settled";
+
 import type { ShellThread, ThreadFeatures } from "./store.ts";
 
 /** What can be done to a thread's place in the list: each true when the server has the feature and the thread's shelf allows it. */
@@ -47,4 +49,19 @@ export function nextAfterParking(
       (thread) => (thread.shelf === "pinned" || thread.shelf === "active") && thread.id !== parked && !parking.has(thread.id),
     )?.id ?? null
   );
+}
+
+const DURATION_UNITS = { m: "minutes", h: "hours", d: "days" } as const;
+
+/** A typed snooze, through upstream's resolver: "45m", "2h", "3d", or a local "YYYY-MM-DD HH:MM"; null unless in the future. */
+export function parseCustomSnooze(text: string, now: Date): string | null {
+  const value = text.trim();
+  const duration = /^(\d+(?:\.\d+)?)\s*([mhd])$/i.exec(value);
+  if (duration !== null) {
+    const unit = DURATION_UNITS[duration[2]!.toLowerCase() as keyof typeof DURATION_UNITS];
+    return resolveCustomSnooze({ mode: "duration", amount: duration[1]!, unit }, now);
+  }
+  const date = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/.exec(value);
+  if (date !== null) return resolveCustomSnooze({ mode: "date", date: date[1]!, time: date[2]! }, now);
+  return null;
 }

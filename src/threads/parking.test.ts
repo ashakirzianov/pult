@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { nextAfterParking, parkActions } from "./parking.ts";
+import { nextAfterParking, parkActions, parseCustomSnooze } from "./parking.ts";
 import type { ShelfName } from "./store.ts";
 
 const list = (...threads: Array<[string, ShelfName | null]>) => threads.map(([id, shelf]) => ({ id, shelf }));
@@ -60,4 +60,15 @@ test("actions follow the shelf and the server's features", () => {
     unpin: false,
   });
   assert.ok(Object.values(parkActions({ shelf: null, pinned: false }, all)).every((offered) => !offered));
+});
+
+test("a custom snooze is a duration or a local time, in the future", () => {
+  const now = new Date(2026, 9, 20, 9, 0);
+  assert.equal(parseCustomSnooze("45m", now), new Date(2026, 9, 20, 9, 45).toISOString());
+  assert.equal(parseCustomSnooze(" 2H ", now), new Date(2026, 9, 20, 11, 0).toISOString());
+  assert.equal(parseCustomSnooze("2026-10-21 08:30", now), new Date(2026, 9, 21, 8, 30).toISOString());
+  assert.equal(parseCustomSnooze("2026-10-19 08:30", now), null);
+  assert.equal(parseCustomSnooze("2026-02-30 08:30", now), null);
+  assert.equal(parseCustomSnooze("0m", now), null);
+  assert.equal(parseCustomSnooze("soon", now), null);
 });
