@@ -5,6 +5,7 @@ import {
   type IEditorGroup,
   IEditorGroupsService,
   IInstantiationService,
+  INotificationService,
   IQuickInputService,
   IStorageService,
   type ServicesAccessor,
@@ -390,23 +391,58 @@ export function registerSelectThreadCommand(): void {
 
 /**
  * `pult-shell.newThread [projectId]`: with a project, selects its draft;
- * without, the extension's `pult.newThread`, the palette's "Pult: New
- * Thread", which picks a project, the selected thread's first, and comes
- * back here with it. Not in the palette itself, which has the extension's;
- * the Threads tab's title (`src/panel/view.tsx`) and Cmd+N run it, the
- * latter bound to the extension's command over the workbench's New Untitled
- * File, as upstream binds `chat.new`, so the palette shows the key.
+ * without, picks one first in the shell's quick input, the selected thread's
+ * or draft's project first, then by name; one project needs no pick. The
+ * Threads tab's title (`src/panel/view.tsx`) runs it; so do the palette's
+ * "Pult: New Thread" and Cmd+N, through `pult.newThread`, the extension's
+ * command, which the shell's handler sits on top of while the extension still
+ * registers it, the palette entry still the extension's contribution. Cmd+N
+ * is bound over the workbench's New Untitled File, as upstream binds
+ * `chat.new`, so the palette shows the key.
  */
 function registerNewThreadCommand(): void {
-  CommandsRegistry.registerCommand("pult-shell.newThread", async (accessor, projectId?: unknown) => {
+  const newThread: ICommandHandler = async (accessor, projectId?: unknown) => {
     if (typeof projectId === "string") return selectDraft(projectId);
-    await accessor.get(ICommandService).executeCommand("pult.newThread");
-  });
+    // Services are read before any await; the accessor is only valid synchronously.
+    const quickInput = accessor.get(IQuickInputService);
+    const notifications = accessor.get(INotificationService);
+    const { environment, projects, threads } = threadStore.get();
+    if (environment === null) return notifications.info("Pult is not connected to an environment.");
+    const current = selectedDraft()?.projectId ?? threads.find((thread) => thread.id === selectedThread()?.threadId)?.projectId;
+    const sorted = projects.toSorted(
+      (left, right) => Number(right.id === current) - Number(left.id === current) || left.name.localeCompare(right.name),
+    );
+    if (sorted.length === 0) return notifications.info("This environment has no projects.");
+    const chosen =
+      sorted.length === 1
+        ? sorted[0]
+        : await quickInput.pick(
+            sorted.map((project) => ({ label: project.name, description: project.root ?? undefined, id: project.id })),
+            { placeHolder: "New thread in project" },
+          );
+    if (chosen !== undefined) await selectDraft(chosen.id);
+  };
+  CommandsRegistry.registerCommand("pult-shell.newThread", newThread);
+  keepOnTop("pult.newThread", newThread);
   KeybindingsRegistry.registerKeybindingRule({
     id: "pult.newThread",
     primary: KeyMod.CtrlCmd | KeyCode.KeyN,
     weight: KeybindingWeight.WorkbenchContrib + 1,
   });
+}
+
+/**
+ * Registers `handler` as `id`'s, and again on top of any later registration
+ * of the id, since the registry's latest registration wins.
+ */
+function keepOnTop(id: string, handler: ICommandHandler): void {
+  const place = () => {
+    if (CommandsRegistry.getCommand(id)?.handler !== handler) CommandsRegistry.registerCommand({ id, handler });
+  };
+  CommandsRegistry.onDidRegisterCommand((registered) => {
+    if (registered === id) place();
+  });
+  place();
 }
 
 /**
