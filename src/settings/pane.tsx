@@ -1,6 +1,5 @@
-import { getService, IContextKeyService, type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
+import { type IEditorGroup, IInstantiationService } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
-import { IMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions.service";
 import {
   type EditorInput,
   EditorInputCapabilities,
@@ -22,9 +21,8 @@ const PANE_ID = "pult.shell.settingsPane";
 /**
  * The Pult settings page (`SettingsPage.tsx`), an editor pane the shell
  * renders itself, as the thread's is: a React root in the element the
- * editor group hands it. The workbench's menu and context key services, and
- * the colour scheme, are read as the pane shows its input, when the
- * workbench is up.
+ * editor group hands it. The colour scheme is read as the pane shows its
+ * input, when the workbench is up.
  */
 class SettingsPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
@@ -45,14 +43,10 @@ class SettingsPane extends SimpleEditorPane {
   }
 
   async renderInput() {
-    const [menus, contextKeys, colorScheme] = await Promise.all([
-      getService(IMenuService),
-      getService(IContextKeyService),
-      colorSchemeChoice(),
-    ]);
+    const colorScheme = await colorSchemeChoice();
     this.root ??= createRoot(this.container);
-    this.root.render(<SettingsPage menus={menus} contextKeys={contextKeys} colorScheme={colorScheme} />);
-    // Disposed as the group clears the input: the page goes with its menu.
+    this.root.render(<SettingsPage colorScheme={colorScheme} />);
+    // Disposed as the group clears the input.
     return { dispose: () => this.release() };
   }
 
@@ -69,11 +63,10 @@ class SettingsPane extends SimpleEditorPane {
 
 /**
  * The Settings page's tab, "Settings" with VS Code's gear, a theme icon the
- * tab draws in its own colour, as it draws the stock settings editor's. The
- * Settings selection (`src/threads/selection.ts`) opens it leftmost in the
- * first group and keeps it there; closing it, and the stock editors beside
- * it, goes back to the thread or draft Settings was selected from. A
- * singleton: Split Editor skips it and a drag moves it rather than copies it.
+ * tab draws in its own colour, as it draws the stock settings editor's.
+ * `showSettings` (`src/threads/selection.ts`) opens it among the selected
+ * thread's tabs, where it closes like any tab. A singleton: Split Editor
+ * skips it and a drag moves it rather than copies it.
  */
 export class SettingsInput extends SimpleEditorInput {
   constructor() {
@@ -102,7 +95,7 @@ export function isSettingsTab(editor: unknown): editor is SettingsInput {
 }
 
 /**
- * The page's pane and its serialiser, so the Settings working set and the
+ * The page's pane and its serialiser, so the thread's working set and the
  * editor part's saved state restore the page with the rest. Registered
  * before the workbench starts.
  */

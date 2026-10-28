@@ -18,8 +18,8 @@
   font-size: 13px;
 }
 
-/* The workbench outlines any focused `tabindex="-1"` element inside it, at a higher specificity. */
-.monaco-workbench .pult-settings-pane:focus {
+/* The workbench outlines any focused `tabindex="-1"` element inside it, from a sheet loaded after this one. */
+.monaco-workbench .pult-settings-pane.pult-settings-pane:focus {
   outline: none;
 }
 
@@ -119,11 +119,6 @@
 }
 
 .pult-settings-button:focus-visible,
-.pult-settings-entry:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-
 /* The colour scheme's choices, joined into one control, the chosen one in the primary button's colours. */
 .pult-settings-segments {
   display: flex;
@@ -163,59 +158,4 @@
 .pult-settings-segment:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
-}
-
-/* The Manage menu's entries: a list per menu group, a submenu's nested under its label. */
-.pult-settings-entries {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pult-settings-entries + .pult-settings-entries {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--vscode-widget-border, transparent);
-}
-
-.pult-settings-entry {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5px 8px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.pult-settings-entry:hover:not(:disabled) {
-  background: var(--vscode-list-hoverBackground);
-}
-
-.pult-settings-entry:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.pult-settings-entry .codicon {
-  font-size: 14px;
-}
-
-.pult-settings-submenu-label {
-  padding: 5px 8px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.pult-settings-submenu .pult-settings-entries {
-  padding-left: 16px;
-}
-
-.pult-settings-submenu .pult-settings-entries + .pult-settings-entries {
-  margin-left: 16px;
-  padding-left: 0;
 }

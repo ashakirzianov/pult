@@ -1,9 +1,7 @@
-import { getService, ICommandService } from "@codingame/monaco-vscode-api";
-import { type IAction, Separator, SubmenuAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
-import { type IMenu, MenuId } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import type { IMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions.service";
-import type { IContextKeyService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey.service";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { getService, ICommandService, IContextKeyService } from "@codingame/monaco-vscode-api";
+import { MenuId } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
+import { useRef, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
@@ -13,25 +11,17 @@ function run(command: string, ...args: unknown[]): void {
 }
 
 /**
- * The Pult settings page, the Settings selection's leftmost tab
- * (`pane.tsx`): Pult's own settings first, then the workbench's Manage
- * menu, whose editors open beside the page in the Settings tab set.
+ * The Pult settings page, a tab among the selected thread's (`pane.tsx`):
+ * Pult's own settings first, then the workbench's Manage menu behind one
+ * button, whose editors open as tabs beside it.
  */
-export function SettingsPage({
-  menus,
-  contextKeys,
-  colorScheme,
-}: {
-  menus: IMenuService;
-  contextKeys: IContextKeyService;
-  colorScheme: ColorSchemeChoice;
-}) {
+export function SettingsPage({ colorScheme }: { colorScheme: ColorSchemeChoice }) {
   return (
     <div className="pult-settings">
       <h1 className="pult-settings-title">Settings</h1>
       <EnvironmentsSection />
       <AppearanceSection colorScheme={colorScheme} />
-      <VSCodeSection menus={menus} contextKeys={contextKeys} />
+      <VSCodeSection />
     </div>
   );
 }
@@ -143,93 +133,41 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
   );
 }
 
-/** The stock Settings command, routed to this page (`src/threads/selection.ts`), and the settings editor it would open. */
-const OPEN_SETTINGS = "workbench.action.openSettings";
-const OPEN_SETTINGS_EDITOR = "workbench.action.openSettings2";
-
-type MenuGroups = ReturnType<IMenu["getActions"]>;
-
 /**
- * The workbench's Manage menu (the activity bar's gear,
- * `MenuId.GlobalActivity`), live from the menu service, in its groups and
- * following its changes: in this build the Command Palette; Profiles,
- * Settings, Extensions, Keyboard Shortcuts, Snippets, Themes and, while the
- * modern UI is on, Layout Density; and the update entries, when there are
- * any. A submenu is a nested list, one level deep. The menu's Settings is
- * this page, so its entry here opens VS Code's settings editor instead.
+ * The workbench's Manage menu, which its activity bar gear would show were
+ * the gear not Pult's settings (`gear.ts`): one button opening it as the
+ * context menu the gear opens, so VS Code's settings editor, keyboard
+ * shortcuts, profiles, themes and extensions stay a click away.
  */
-function VSCodeSection({ menus, contextKeys }: { menus: IMenuService; contextKeys: IContextKeyService }) {
-  const [groups, setGroups] = useState<MenuGroups>([]);
-  useEffect(() => {
-    const menu = menus.createMenu(MenuId.GlobalActivity, contextKeys, { emitEventsForSubmenuChanges: true });
-    const read = () => setGroups(menu.getActions({ renderShortTitle: true }));
-    const listener = menu.onDidChange(read);
-    read();
-    return () => {
-      listener.dispose();
-      menu.dispose();
-    };
-  }, [menus, contextKeys]);
+function VSCodeSection() {
+  const button = useRef<HTMLButtonElement>(null);
+  const showManageMenu = async () => {
+    const anchor = button.current;
+    if (anchor === null) return;
+    const [contextMenus, contextKeys] = await Promise.all([getService(IContextMenuService), getService(IContextKeyService)]);
+    contextMenus.showContextMenu({
+      menuId: MenuId.GlobalActivity,
+      menuActionOptions: { renderShortTitle: true },
+      contextKeyService: contextKeys,
+      getAnchor: () => anchor,
+    });
+  };
   return (
     <section className="pult-settings-section">
       <h2>VS Code</h2>
-      {groups.map(([group, actions]) => (
-        <ul key={group} className="pult-settings-entries">
-          {actions.map((action) => (
-            <li key={action.id}>
-              {action instanceof SubmenuAction ? <Submenu submenu={action} /> : <Entry action={action} />}
-            </li>
-          ))}
-        </ul>
-      ))}
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">VS Code settings</div>
+          <div className="pult-settings-row-description">
+            The workbench's own settings, keyboard shortcuts, profiles, themes and extensions, as its Manage menu offers them.
+          </div>
+        </div>
+        <div className="pult-settings-row-actions">
+          <button ref={button} type="button" className="pult-settings-button" onClick={() => void showManageMenu()}>
+            Open Menu…
+          </button>
+        </div>
+      </div>
     </section>
-  );
-}
-
-/** A submenu's label, then its entries, its groups apart as the menu's separators set them; a deeper submenu's entries join its own. */
-function Submenu({ submenu }: { submenu: SubmenuAction }) {
-  const groups = [[]] as IAction[][];
-  const collect = (actions: readonly IAction[]) => {
-    for (const action of actions) {
-      if (action instanceof Separator) groups.push([]);
-      else if (action instanceof SubmenuAction) collect(action.actions);
-      else groups[groups.length - 1].push(action);
-    }
-  };
-  collect(submenu.actions);
-  return (
-    <div className="pult-settings-submenu">
-      <div className="pult-settings-submenu-label">{submenu.label}</div>
-      {groups
-        .filter((actions) => actions.length > 0)
-        .map((actions, index) => (
-          <ul key={index} className="pult-settings-entries">
-            {actions.map((action) => (
-              <li key={action.id}>
-                <Entry action={action} />
-              </li>
-            ))}
-          </ul>
-        ))}
-    </div>
-  );
-}
-
-/** One of the menu's entries, a button with its label running it; a toggle (a profile, a layout density) shows a check while it is on. */
-function Entry({ action }: { action: IAction }) {
-  const settings = action.id === OPEN_SETTINGS;
-  return (
-    <button
-      type="button"
-      className="pult-settings-entry"
-      disabled={!action.enabled}
-      aria-pressed={action.checked}
-      onClick={() => (settings ? run(OPEN_SETTINGS_EDITOR) : void action.run())}
-    >
-      {action.checked === undefined ? null : (
-        <span className={`codicon ${action.checked ? "codicon-check" : "codicon-blank"}`} aria-hidden />
-      )}
-      {action.label}
-    </button>
   );
 }
