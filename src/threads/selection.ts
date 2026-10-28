@@ -21,7 +21,7 @@ import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/se
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { DraftInput, isLeadTab, onDidPromoteDraft, ThreadInput } from "./pane.tsx";
-import { isSubagent, threadStore } from "./store.ts";
+import { isSubagent, type ShelfName, threadStore } from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
 export interface ThreadSelection {
@@ -48,6 +48,8 @@ const BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
 
 /** Whether the selected thread is a subagent's: the thread tab's title then offers its way back to the parent. */
 const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelected", false);
+
+const SHELF_LABELS: Record<ShelfName, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
 
 /** The selected thread's parent, when the selected thread is a subagent's and the parent is known. */
 function selectedParentId(): string | undefined {
@@ -291,8 +293,9 @@ export async function restoreThreadSelection(): Promise<void> {
 }
 
 /**
- * `pult-shell.selectThread [threadId]`: with no id, a quick pick of the
- * environment's threads. `pult-shell.selectSettings`, on Cmd+, over the
+ * `pult-shell.selectThread [threadId]`, the palette's "Pult: Open Thread…":
+ * with no id, a quick pick of the environment's threads in the cards' order,
+ * subagents left out. `pult-shell.selectSettings`, on Cmd+, over the
  * workbench's own binding, which would open the settings editor under the
  * thread; and the workbench's own Settings command routed the same way.
  * `pult-shell.newThread`, a project's draft; a draft's promotion selects
@@ -307,7 +310,7 @@ export function registerSelectThreadCommand(): void {
       constructor() {
         super({
           id: "pult-shell.selectThread",
-          title: { value: "Select Thread", original: "Select Thread" },
+          title: { value: "Open Thread…", original: "Open Thread…" },
           category: { value: "Pult", original: "Pult" },
           f1: true,
         });
@@ -317,13 +320,15 @@ export function registerSelectThreadCommand(): void {
         if (typeof threadId === "string") return selectThread(threadId);
         // Services are read before any await; the accessor is only valid synchronously.
         const quickInput = accessor.get(IQuickInputService);
-        const items = threadStore.get().threads.map((thread) => ({
-          id: thread.id,
-          label: thread.title,
-          description: isSubagent(thread) ? `${thread.projectName} · subagent` : thread.projectName,
-        }));
+        // The store lists the shelves in the cards' order, pinned and active first; a subagent has none.
+        const items = threadStore.get().threads.flatMap((thread) =>
+          thread.shelf === null
+            ? []
+            : [{ id: thread.id, label: thread.title, description: `${thread.projectName} · ${SHELF_LABELS[thread.shelf]}` }],
+        );
         const picked = await quickInput.pick(items, {
-          placeHolder: "Select a thread",
+          placeHolder: "Open a thread",
+          matchOnDescription: true,
           activeItem: items.find((item) => item.id === selectedThread()?.threadId),
         });
         if (picked !== undefined) await selectThread(picked.id);
