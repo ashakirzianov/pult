@@ -16,6 +16,7 @@ import type { MountedView, ThreadViewMounts } from "../../thread-view/shell/main
 
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { workbenchColorScheme } from "../theme.ts";
 import { ThreadBarEntries } from "./barEntries.tsx";
 import { openThreadFile } from "./files.ts";
 import { projectIconUri } from "./projectIcon.ts";
@@ -62,22 +63,21 @@ function run(command: string, ...args: unknown[]): void {
  */
 function threadView() {
   started ??= (async () => {
-    const view = await import("../../thread-view/shell/main.tsx");
-    const workbench = document.querySelector(".monaco-workbench") ?? document.body;
-    return view.startThreadView(
-      {
-        connection: () => connection.context(),
-        openThread: (environmentId, threadId) => run("pult-shell.selectThread", environmentId, threadId),
-        // A draft the view went to, which it remembered as the project's.
-        openDraft: (environmentId, projectId) => run("pult-shell.newThread", environmentId, projectId),
-        openFile: (environmentId, threadId, path, line) => void openThreadFile(environmentId, threadId, path, line),
-        // The changes view (`src/changes/`): the Source Control view over the thread's project.
-        openChanges: (environmentId, threadId, path) => run("pult-shell.showChanges", environmentId, threadId, path),
-        // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
-        reportActivity: (activity) => threadStore.reportActivity(activity),
-      },
-      workbench,
-    );
+    const [view, scheme] = await Promise.all([import("../../thread-view/shell/main.tsx"), workbenchColorScheme()]);
+    return view.startThreadView({
+      connection: () => connection.context(),
+      openThread: (environmentId, threadId) => run("pult-shell.selectThread", environmentId, threadId),
+      // A draft the view went to, which it remembered as the project's.
+      openDraft: (environmentId, projectId) => run("pult-shell.newThread", environmentId, projectId),
+      openFile: (environmentId, threadId, path, line) => void openThreadFile(environmentId, threadId, path, line),
+      // The changes view (`src/changes/`): the Source Control view over the thread's project.
+      openChanges: (environmentId, threadId, path) => run("pult-shell.showChanges", environmentId, threadId, path),
+      // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
+      reportActivity: (activity) => threadStore.reportActivity(activity),
+      // The view's System theme is the workbench theme's light or dark.
+      colorScheme: scheme.current,
+      onDidChangeColorScheme: scheme.onDidChange,
+    });
   })().catch((error: unknown) => {
     started = undefined;
     throw error;

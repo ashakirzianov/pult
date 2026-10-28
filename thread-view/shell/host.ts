@@ -11,8 +11,9 @@ import type { ShellConnectionServices } from "./connectionRuntime.ts";
  * to the thread's project root or an absolute host path, with a line to
  * reveal; the thread's changes, with a file's path when one was named; and
  * what the view knows of its lineage's activity. Each names its
- * environment, as a pane mounts the view on one (`ThreadViewMounts`). The
- * shell's side is its `src/threads/pane.tsx`.
+ * environment, as a pane mounts the view on one (`ThreadViewMounts`). It
+ * also hands the colour scheme the view takes as the system's. The shell's
+ * side is its `src/threads/pane.tsx`.
  */
 export interface ThreadViewHost {
   readonly connection: () => Promise<Context.Context<ShellConnectionServices>>;
@@ -38,6 +39,13 @@ export interface ThreadViewHost {
       readonly workingSince: string | null;
     }>,
   ) => void;
+  /**
+   * The colour scheme the view's theme follows in its System mode, as the
+   * system's: the workbench theme's, light or dark (`main.tsx`).
+   */
+  readonly colorScheme: () => "light" | "dark";
+  /** Calls `listener` when `colorScheme` changes; returns its removal. */
+  readonly onDidChangeColorScheme: (listener: () => void) => () => void;
 }
 
 let current: ThreadViewHost | undefined;

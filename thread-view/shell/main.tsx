@@ -5,10 +5,9 @@
 import "../t3/src/index.css";
 import "./shell.css";
 
-import { refreshTheme } from "../t3/src/hooks/useTheme";
+import { refreshTheme, setSystemColorSchemeSource } from "../t3/src/hooks/useTheme";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import { routeRightPanel } from "./rightPanel.ts";
-import { followColorScheme } from "./theme.ts";
 import { type MountedView, mountDraftView, mountThreadView } from "./ThreadView.tsx";
 
 export type { ThreadViewHost } from "./host.ts";
@@ -33,14 +32,14 @@ export interface ThreadViewMounts {
 
 /**
  * Starts the view on the page's connection; call once, before any pane
- * mounts, then mount a thread or a project's draft per pane. The view
- * follows the workbench's theme (`theme.ts`), and its files open in the
- * shell (`rightPanel.ts`).
+ * mounts, then mount a thread or a project's draft per pane. The view takes
+ * the host's colour scheme as the system's, and its files open in the shell
+ * (`rightPanel.ts`).
  */
-export function startThreadView(host: ThreadViewHost, workbench: Element): ThreadViewMounts {
+export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
-  followColorScheme(workbench, () => ["vs-dark", "hc-black"].some((name) => workbench.classList.contains(name)));
+  setSystemColorSchemeSource({ isDark: () => host.colorScheme() === "dark", onChange: host.onDidChangeColorScheme });
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
   return { mount: mountThreadView, mountDraft: mountDraftView };
