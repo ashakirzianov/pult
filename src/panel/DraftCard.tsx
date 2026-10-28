@@ -4,30 +4,34 @@ import { projectIconUri, useProjectIcons } from "../threads/projectIcon.ts";
 import { threadStore } from "../threads/store.ts";
 
 /**
- * The selected draft of a new thread, at the top of the cards while it is
- * selected: a thread card's look, the project's icon and name, its
- * `environment`'s label beside them while there are several, with a pen
- * where a thread's status sits, then "New thread". It has no card once
- * another selection is made; its project's New Thread brings it back.
+ * A project's draft of a new thread, Ready's first cards: a thread card's
+ * look, the project's icon and name, its `environment`'s label beside them
+ * while there are several, with a pen where a thread's status sits, then
+ * its `preview`, the prompt's first line, or "New thread" for an empty one.
+ * A click selects it (`pult-shell.newThread`).
  */
 export function DraftCard({
   environmentId,
   projectId,
   environment,
+  preview,
+  selected,
 }: {
   environmentId: string;
   projectId: string;
   environment: string | undefined;
+  preview: string;
+  selected: boolean;
 }) {
   const project = threadStore.project(environmentId, projectId);
   const name = project?.name ?? "Project";
   useProjectIcons();
   return (
-    <li className="pult-card pult-card-selected pult-card-draft">
+    <li className={`pult-card pult-card-draft${selected ? " pult-card-selected" : ""}`}>
       <button
         type="button"
         className="pult-card-select"
-        aria-current
+        aria-current={selected || undefined}
         onClick={() =>
           void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.newThread", environmentId, projectId))
         }
@@ -40,7 +44,7 @@ export function DraftCard({
             <i className="codicon codicon-edit" title="Draft" aria-label="Draft" />
           </span>
         </span>
-        <span className="pult-card-title">New thread</span>
+        <span className="pult-card-title">{preview.length > 0 ? preview : "New thread"}</span>
       </button>
     </li>
   );

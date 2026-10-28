@@ -25,6 +25,7 @@ import { useNewThreadHandler } from "../t3/src/hooks/useHandleNewThread";
 import { AppAtomRegistryProvider } from "../t3/src/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "../t3/src/state/entities";
 import { resolveThreadRouteTarget } from "../t3/src/threadRoutes";
+import { draftKey, heldDraft } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
@@ -33,22 +34,6 @@ import { closeThreadPanel } from "./rightPanel.ts";
 type ViewTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
-
-/**
- * A project's draft is the composer store's, minted by upstream's new-thread
- * handler and remembered here per project, in the page's localStorage beside
- * the store's own, so a reload or a later New Thread takes up the same draft.
- */
-const draftKey = (environmentId: string, projectId: string) =>
-  `pult-shell.draft:${environmentId}/${projectId}`;
-
-/** The project's remembered draft while the composer store still holds it. */
-function heldDraft(environmentId: string, projectId: string): DraftId | null {
-  const draftId = localStorage.getItem(draftKey(environmentId, projectId)) as DraftId | null;
-  const session =
-    draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId);
-  return session !== null && session.projectId === projectId ? draftId : null;
-}
 
 /** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
 function isPromotion(draft: Extract<ViewTarget, { kind: "draft" }>, environmentId: string, threadId: string): boolean {

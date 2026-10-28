@@ -15,6 +15,7 @@ import {
 } from "../threads/store.ts";
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
+import { type ProjectDraft, projectDrafts } from "./drafts.ts";
 import { ExplorerShelf } from "./ExplorerShelf.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -97,14 +98,16 @@ function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<st
  * header. While the page holds several environments, each card names its
  * own. The selected card expands with its details and its subagents; a
  * subagent has no card, so while one is selected its root's card is the
- * expanded one. The Explorer shelf comes first (`ExplorerShelf.tsx`), and a
- * selected draft of a new thread has a card of its own, Ready's first.
+ * expanded one. The Explorer shelf comes first (`ExplorerShelf.tsx`), and
+ * Ready's first cards are the projects' drafts of new threads that hold
+ * something (`drafts.ts`), newest first, and the selected draft.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const draft = selection?.startsWith(DRAFT_PREFIX) ? selectedDraft() : undefined;
+  const drafts = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
   const working = state.threads.filter((thread) => thread.shelf === "working");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
@@ -120,6 +123,25 @@ export function PanelView() {
     selectedThread !== undefined && isSubagent(selectedThread)
       ? scopedKey(selectedThread.environmentId, selectedThread.rootId)
       : selection;
+  // The drafts with something in them, and the selected one even while it is empty, first.
+  const isSelectedDraft = (candidate: ProjectDraft) =>
+    candidate.environmentId === draft?.environmentId && candidate.projectId === draft.projectId;
+  const heldDrafts = drafts.filter((candidate) => environments.has(candidate.environmentId));
+  const draftCards: ReadonlyArray<ProjectDraft> =
+    draft !== undefined && environments.has(draft.environmentId) && !heldDrafts.some(isSelectedDraft)
+      ? [{ environmentId: draft.environmentId, projectId: draft.projectId, preview: "", createdAt: "" }, ...heldDrafts]
+      : heldDrafts;
+  const draftCard = (candidate: ProjectDraft) => (
+    <DraftCard
+      key={`${DRAFT_PREFIX}${scopedKey(candidate.environmentId, candidate.projectId)}`}
+      environmentId={candidate.environmentId}
+      projectId={candidate.projectId}
+      environment={chip(candidate.environmentId)}
+      preview={candidate.preview}
+      selected={isSelectedDraft(candidate)}
+    />
+  );
+  const selectedDraftCard = draftCards.find(isSelectedDraft);
   const card = (thread: ShellThread) => (
     <ThreadCard
       key={keyOf(thread)}
@@ -152,13 +174,10 @@ export function PanelView() {
             selection={selectedCard}
             render={card}
             initiallyExpanded
-            lead={
-              draft !== undefined && environments.has(draft.environmentId) ? (
-                <DraftCard environmentId={draft.environmentId} projectId={draft.projectId} environment={chip(draft.environmentId)} />
-              ) : null
-            }
+            lead={draftCards.map(draftCard)}
+            selectedLead={selectedDraftCard === undefined ? null : draftCard(selectedDraftCard)}
           >
-            {state.threads.length === 0 ? (
+            {listed.length === 0 && draftCards.length > 0 ? null : state.threads.length === 0 ? (
               <li className="pult-panel-empty">No threads in {state.environments.map((environment) => environment.label).join(", ")}.</li>
             ) : listed.length === 0 ? (
               <li className="pult-panel-empty">No threads ready.</li>
@@ -189,9 +208,9 @@ export function PanelView() {
 
 /**
  * A shelf under its collapsible header with its threads' count, Ready's
- * without one: its `lead` (Ready's draft card) and threads (`children`)
- * while expanded, and while collapsed the lead and the selected card alone
- * when it is one of them, as upstream's shelves keep the open thread's row,
+ * without one: its `lead` (Ready's draft cards) and threads (`children`)
+ * while expanded, and while collapsed the selected card alone, the lead's
+ * (`selectedLead`) or one of the threads, as upstream's shelves keep the open thread's row,
  * so a thread selected as it starts working stays in view. Whether it is
  * expanded persists in localStorage, per shelf, as upstream keeps its own;
  * collapsed until opened, or `initiallyExpanded`. The shelf after Ready sits
@@ -205,6 +224,7 @@ function Shelf({
   render,
   initiallyExpanded = false,
   lead = null,
+  selectedLead = null,
   children,
 }: {
   name: "ready" | "working" | "snoozed" | "settled";
@@ -214,6 +234,7 @@ function Shelf({
   render: (thread: ShellThread) => React.ReactNode;
   initiallyExpanded?: boolean;
   lead?: React.ReactNode;
+  selectedLead?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useExpanded(`pult-shell.panel.${name}-expanded`, initiallyExpanded);
@@ -221,11 +242,13 @@ function Shelf({
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
       <CollapsibleHeader label={label} count={name === "ready" ? undefined : threads.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
-      {expanded || lead !== null || selected !== undefined ? (
+      {expanded ? (
         <ul className="pult-shelf-cards">
           {lead}
-          {expanded ? children : selected !== undefined ? render(selected) : null}
+          {children}
         </ul>
+      ) : selectedLead !== null || selected !== undefined ? (
+        <ul className="pult-shelf-cards">{selected !== undefined ? render(selected) : selectedLead}</ul>
       ) : null}
     </li>
   );
