@@ -185,3 +185,22 @@ body,
 .monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab:only-child:has(> .tab-label.pult-thread-tab) {
   border-right: none !important;
 }
+
+/* The Explorer tab's title, the workspace's name while the file view is the
+   tab's only view (the part carries VS Code's own class for that case), is
+   "Explorer" as the tab is named; and its buttons are New File, New Folder
+   and Collapse Folders: Refresh and "Views and More Actions…" go. */
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2 {
+  font-size: 0;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2::before {
+  content: "Explorer";
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(> .codicon-refresh),
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(.codicon-toolbar-more) {
+  display: none;
+}

@@ -417,3 +417,9 @@
   padding: 0;
   list-style: none;
 }
+
+/* Close, which the workbench lists among the tab's own actions, before its
+   view's (src/panel/view.tsx), goes last. */
+.part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label="Close"]) {
+  order: 1;
+}

@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 
 import markUrl from "../../assets/pult/mark.svg?no-inline";
 import { allowNativeScroll } from "../nativeScroll.ts";
-import { followExplorerScope, PANEL_ID, registerExplorerCommands } from "./explorer.ts";
+import { followExplorerScope, PANEL_ID, registerExplorerCommands, showThreads } from "./explorer.ts";
 import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
 
@@ -25,8 +25,8 @@ const THREADS_ORDER = -1;
  * bar switching the sidebar between view containers. The Threads tab is the
  * shell's own container, with one React view (the thread cards), Pult's
  * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`.
- * Settings is in the bar's Manage menu, routed through the shell's own
- * selection (`src/threads/selection.ts`). Collapsing is the sidebar's:
+ * Every other tab of the sidebar closes back to Threads, in Pult's mode. The
+ * activity bar's gear opens the Pult settings page (`src/settings/gear.ts`). Collapsing is the sidebar's:
  * Cmd+B and the palette's Collapse Panel, and a chevron in the editor's
  * title brings it back while it is collapsed. Registered before the
  * workbench starts.
@@ -51,6 +51,7 @@ export function registerPanel(): void {
     },
   });
   registerNewThreadAction();
+  registerCloseTabAction();
   registerExplorerCommands();
   void followExplorerScope();
   registerSidebarToggle("pult-shell.collapsePanel", "Collapse Panel", true);
@@ -69,6 +70,39 @@ function registerNewThreadAction(): void {
     group: "navigation",
     order: -1,
   });
+}
+
+/**
+ * Close, an X last in the title of every sidebar tab but Threads, the main
+ * one, which it shows instead; in Pult's mode only, as VS Code's tabs have
+ * none. Not in the palette: Pult: Show Threads is.
+ */
+function registerCloseTabAction(): void {
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.closeSidebarTab",
+          title: { value: "Close", original: "Close" },
+          icon: Codicon.close,
+          menu: {
+            id: MenuId.ViewContainerTitle,
+            when: ContextKeyExpr.and(
+              ContextKeyExpr.equals("viewContainerLocation", "sidebar"),
+              ContextKeyExpr.notEquals("viewContainer", PANEL_ID),
+              ContextKeyExpr.not("pult.vscodeMode"),
+            ),
+            group: "navigation",
+            order: 1000,
+          },
+        });
+      }
+
+      run(): Promise<void> {
+        return showThreads();
+      }
+    },
+  );
 }
 
 /** Collapse is the palette's and Cmd+B's; Expand is also a chevron in the editor's title while the sidebar is collapsed. */
