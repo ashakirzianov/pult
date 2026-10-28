@@ -2,9 +2,8 @@
 // Vendors the protocol packages from T3 Code Extensible at the commit pinned in
 // vendor/t3code/PIN: packages/{contracts,client-runtime,shared}, with the
 // workspace packages client-runtime depends on (source-control-*,
-// provider-core), land verbatim in vendor/t3code/packages/, and
-// vendor/t3code/COMMIT records the full hash. pnpm-workspace.yaml takes the
-// fork's `catalog:` block whole, and its
+// provider-core), land verbatim in vendor/t3code/packages/. pnpm-workspace.yaml
+// takes the fork's `catalog:` block whole, and its
 // `overrides:`, `packageExtensions:` and `patchedDependencies:` blocks kept to
 // the packages pnpm-lock.yaml installs, the patches vendored in
 // vendor/t3code/patches/. A bump that brings in a package one of them names
@@ -12,9 +11,9 @@
 // The checkout is PULT_T3CODE_CHECKOUT (environment or .env), by default
 // ~/repos/t3code-extensible; the pin is read from a temporary worktree of it,
 // so the checkout's own branch and working tree are never touched.
-// Adapted from the app line's scripts/pult/vendor.ts (`ashakirzianov/pult-app`),
-// as ../pult-extension/scripts/vendor.ts is; the shell runs in a page, so `ssh`
-// and `tailscale`, which spawn processes and open sockets, stay out.
+// Adapted from the app line's scripts/pult/vendor.ts (`ashakirzianov/pult-app`);
+// the shell runs in a page, so `ssh` and `tailscale`, which spawn processes and
+// open sockets, stay out.
 //
 //   pnpm vendor:sync     write the vendored tree
 //   pnpm vendor:check    fail if the vendored tree differs from the pin, or (by
@@ -317,7 +316,7 @@ export const checkVendored = Effect.fn("checkVendored")(function* (checkout: str
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const root = yield* repoRoot;
-  const { tree, commit, files, blocks } = yield* pinnedSource(root, checkout);
+  const { tree, files, blocks } = yield* pinnedSource(root, checkout);
   const drift: Array<string> = [];
 
   // This repo's side as git would commit it: tracked and untracked files, minus ignored ones.
@@ -347,12 +346,6 @@ export const checkVendored = Effect.fn("checkVendored")(function* (checkout: str
   drift.push(
     ...workspaceDrift(yield* fs.readFileString(path.join(root, "pnpm-workspace.yaml")), blocks),
   );
-
-  const commitFile = path.join(root, VENDOR_DIR, "COMMIT");
-  const recorded = (yield* fs.exists(commitFile))
-    ? (yield* fs.readFileString(commitFile)).trim()
-    : "";
-  if (recorded !== commit) drift.push(`changed   ${VENDOR_DIR}/COMMIT (want ${commit})`);
   return drift;
 }, Effect.scoped);
 
@@ -387,7 +380,6 @@ const sync = Effect.fn("sync")(function* (checkout: string) {
       yield* fs.readFileString(workspaceFile),
     ),
   );
-  yield* fs.writeFileString(path.join(root, VENDOR_DIR, "COMMIT"), `${commit}\n`);
   return { count: files.length, commit };
 }, Effect.scoped);
 
