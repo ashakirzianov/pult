@@ -38,8 +38,8 @@ import { startThreadModel } from "./threads/model.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerParkCommands } from "./threads/park.ts";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
-import { syncStatusBarWithEditors } from "./threads/statusBar.ts";
 import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
+import { registerStatusCommands, startStatusBar } from "./status/index.tsx";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { syncColorScheme } from "./theme.ts";
 import { installWorkers } from "./workers.ts";
@@ -66,6 +66,7 @@ registerSettingsPane();
 routeManageGear();
 registerColorSchemeCommand();
 registerMode();
+registerStatusCommands();
 registerSelectThreadCommand();
 registerParkCommands();
 registerChanges();
@@ -113,7 +114,7 @@ await initialize(workbenchServices(), container, options, {
 
 await syncColorScheme();
 await startMode();
-await syncStatusBarWithEditors();
+await startStatusBar();
 await restoreThreadSelection();
 
 console.info("[pult-shell] workbench up");

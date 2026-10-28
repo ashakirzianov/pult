@@ -1,0 +1,53 @@
+/* Pult's status strip under an open file (src/status), a grid view of the
+   workbench's layout: the thread view's bar's height and text, its entries
+   the shell's bar entries (src/style.css). */
+.pult-status-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--pult-bar-gap, 2px);
+  box-sizing: border-box;
+  height: 100%;
+  padding-inline: 8px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+}
+
+.pult-status-strip * {
+  box-sizing: border-box;
+}
+
+.pult-status-spacer {
+  flex: 1;
+}
+
+/* An entry is a button in the bar's text, lit on hover as the bar's icon buttons are. */
+.pult-status-entry {
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-status-entry:hover,
+.pult-status-strip .pult-bar-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.pult-status-entry:focus-visible,
+.pult-status-strip .pult-bar-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-status-entry .codicon-error {
+  color: var(--vscode-problemsErrorIcon-foreground);
+}
+
+.pult-status-entry .codicon-warning {
+  color: var(--vscode-problemsWarningIcon-foreground);
+}
