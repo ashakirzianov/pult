@@ -368,6 +368,16 @@
   font-size: 12px;
 }
 
+/* A shelf's chevron in a box as wide as the header's New Thread button, at the same right edge, so the two line up. */
+.pult-shelf > .pult-shelf-header {
+  padding-right: 0;
+}
+
+.pult-shelf > .pult-shelf-header > .codicon:last-child {
+  width: 26px;
+  text-align: center;
+}
+
 .pult-shelf-cards {
   margin: 0;
   padding: 0;
