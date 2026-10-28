@@ -14,7 +14,7 @@ import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
 
 /**
- * The tabs' order in the activity bar: Threads first, then the stock
+ * The tabs' order in the panel's bottom row: Pult first, then the stock
  * explorer at its own 0. Projects (`pult/projects-tab`) goes after the
  * explorer, below Search's 1; Search and Extensions are unpinned by default
  * (`src/services.ts`).
@@ -22,14 +22,17 @@ import "./panel.css";
 const THREADS_ORDER = -1;
 
 /**
- * The left panel: the activity bar and the sidebar part, VS Code's own, the
- * bar switching the sidebar between view containers. The Pult tab is the
+ * The left panel: the sidebar part, VS Code's own, between two rows of the
+ * shell's (`rows.tsx`), the header above (the desktop's traffic lights,
+ * Collapse Panel, Pult's logo and the gear, which opens the Pult settings
+ * page) and the tabs below, switching the sidebar between view containers
+ * in place of VS Code's activity bar (`PanelTabs.tsx`). The Pult tab is the
  * shell's own container, with one React view (the Explorer card and the thread cards), Pult's
  * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`, its filter a card above the tree (`filterCard.tsx`).
- * Every other tab of the sidebar closes back to the Pult tab, in Pult's mode. The
- * activity bar's gear opens the Pult settings page (`src/settings/gear.ts`). Collapsing is the sidebar's:
- * Cmd+B and the palette's Collapse Panel, and a chevron in the editor's
- * title brings it back while it is collapsed. Registered before the
+ * Every other tab of the sidebar closes back to the Pult tab, which in Pult's
+ * mode has no button of its own. Collapsing is the sidebar's: the header's
+ * toggle, Cmd+B and the palette's Collapse Panel, and the toggle in the
+ * editor's title brings it back while it is collapsed. Registered before the
  * workbench starts.
  */
 export function registerPanel(): void {
@@ -37,7 +40,7 @@ export function registerPanel(): void {
     id: PANEL_ID,
     name: "Pult",
     order: THREADS_ORDER,
-    // The composite bar masks the icon with the tab's colour; it takes a URI, not a path.
+    // The panel's tabs (`PanelTabs.tsx`) mask the icon with the tab's colour; it takes a URI, not a path.
     icon: new URL(markUrl, window.location.href).href,
     location: ViewContainerLocation.Sidebar,
     default: true,
@@ -107,7 +110,7 @@ function registerCloseTabAction(): void {
   );
 }
 
-/** Collapse is the palette's and Cmd+B's; Expand is also a chevron in the editor's title while the sidebar is collapsed. */
+/** Collapse is the panel header's, the palette's and Cmd+B's; Expand is also the toggle in the editor's title while the sidebar is collapsed. */
 function registerSidebarToggle(id: string, title: string, hide: boolean): void {
   const sidebarVisible = ContextKeyExpr.equals("sideBarVisible", true);
   const where = hide
@@ -125,7 +128,7 @@ function registerSidebarToggle(id: string, title: string, hide: boolean): void {
           id,
           title: { value: title, original: title },
           category: { value: "Pult", original: "Pult" },
-          icon: hide ? Codicon.chevronLeft : Codicon.chevronRight,
+          icon: hide ? Codicon.layoutSidebarLeft : Codicon.layoutSidebarLeftOff,
           f1: true,
           precondition: hide ? sidebarVisible : ContextKeyExpr.not("sideBarVisible"),
           menu: where,

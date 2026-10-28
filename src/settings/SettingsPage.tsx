@@ -173,9 +173,10 @@ function ModeSection({ mode }: { mode: ModeChoice }) {
 }
 
 /**
- * The workbench's Manage menu, which its activity bar gear would show were
- * the gear not Pult's settings (`gear.ts`): one button opening it as the
- * context menu the gear opens, so VS Code's settings editor, keyboard
+ * The workbench's Manage menu, which the stock activity bar's gear would
+ * show; the shell hides that bar, its own gear opening this page
+ * (`src/panel/rows.tsx`): one button opening the menu as the context menu
+ * the stock gear opens, so VS Code's settings editor, keyboard
  * shortcuts, profiles, themes and extensions stay a click away.
  */
 function VSCodeSection() {

@@ -204,3 +204,9 @@ body,
 .monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(.codicon-toolbar-more) {
   display: none;
 }
+
+/* The Pult tab's button in the left panel's bottom row (src/panel/PanelTabs.tsx):
+   every other tab's Close goes back to it. */
+.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tab[data-container="pult.panel"] {
+  display: none;
+}

@@ -586,3 +586,139 @@
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* The left panel's rows above and below the sidebar (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
+.pult-panel-header,
+.pult-panel-tabs-row {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  border-right: 1px solid var(--vscode-sideBar-border, transparent);
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+}
+
+.pult-panel-header *,
+.pult-panel-tabs-row * {
+  box-sizing: border-box;
+}
+
+/* The header drags the window in the desktop, as a title bar does; its buttons are buttons. */
+.pult-panel-header {
+  gap: 2px;
+  padding: 0 8px;
+  -webkit-app-region: drag;
+}
+
+.pult-panel-header-lights {
+  flex: none;
+  width: max(0px, calc(var(--pult-traffic-lights, 0px) - 8px));
+}
+
+.pult-panel-header-logo {
+  height: 14px;
+  margin-left: 4px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pult-panel-header-spacer {
+  flex: 1;
+}
+
+.pult-panel-header-button,
+.pult-panel-tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.pult-panel-header-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.pult-panel-header-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.pult-panel-header-button:focus-visible,
+.pult-panel-tab:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* The bottom row: the stock activity bar's colours for a bar at the sidebar's edge, the open tab's line on its top. */
+.pult-panel-tabs-row {
+  border-top: 1px solid var(--vscode-sideBar-border, transparent);
+}
+
+.pult-panel-tabs {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+}
+
+.pult-panel-tab {
+  position: relative;
+  height: 100%;
+  min-width: 32px;
+  padding: 0 8px;
+  color: var(--vscode-activityBarTop-inactiveForeground, var(--vscode-descriptionForeground));
+}
+
+.pult-panel-tab:hover,
+.pult-panel-tab-active {
+  color: var(--vscode-activityBarTop-foreground, var(--vscode-foreground));
+}
+
+.pult-panel-tab-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 6px auto;
+  height: 1px;
+  background: var(--vscode-activityBarTop-activeBorder, var(--vscode-focusBorder));
+}
+
+.pult-panel-tab .codicon {
+  font-size: 16px;
+}
+
+.pult-panel-tab-image {
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask: no-repeat 50% 50% / 16px;
+}
+
+.pult-panel-tab-label {
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pult-panel-tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--vscode-activityBarBadge-background);
+  color: var(--vscode-activityBarBadge-foreground);
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+}

@@ -30,9 +30,9 @@ import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerMode, startMode } from "./mode.ts";
 import { registerPultFiles } from "./files/index.ts";
+import { startPanelRows } from "./panel/rows.tsx";
 import { registerPanel } from "./panel/view.tsx";
 import { registerColorSchemeCommand } from "./settings/colorScheme.ts";
-import { routeManageGear } from "./settings/gear.ts";
 import { registerSettingsPane } from "./settings/pane.tsx";
 import { startThreadModel } from "./threads/model.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
@@ -63,7 +63,6 @@ registerPultFiles();
 startThreadModel();
 registerThreadPane();
 registerSettingsPane();
-routeManageGear();
 registerColorSchemeCommand();
 registerMode();
 registerStatusCommands();
@@ -89,7 +88,7 @@ const options: IWorkbenchConstructionOptions = {
   connectionToken,
   // In the desktop wrapper (`desktop/`) its preload's keychain-backed store; in a browser tab localStorage.
   secretStorageProvider: window.pultDesktop ? desktopSecrets(window.pultDesktop) : localStorageSecrets,
-  // The shell's defaults, under the user's own settings: chrome off but the sidebar's tabs, editor stock.
+  // The shell's defaults, under the user's own settings: chrome off, editor stock.
   configurationDefaults: JSON.parse(defaultConfiguration) as Record<string, unknown>,
   productConfiguration: {
     nameShort: "Pult",
@@ -115,6 +114,7 @@ await initialize(workbenchServices(), container, options, {
 await syncColorScheme();
 await startMode();
 await startStatusBar();
+await startPanelRows();
 await restoreThreadSelection();
 
 console.info("[pult-shell] workbench up");

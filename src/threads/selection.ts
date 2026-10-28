@@ -365,8 +365,8 @@ export async function restoreThreadSelection(): Promise<void> {
  * order, subagents left out, each one's environment named while the page
  * holds several. `pult-shell.selectSettings`, the palette's "Pult: Show
  * Settings", on Cmd+, over the workbench's own binding, opens the Pult
- * settings page among the thread's tabs; the activity bar's gear runs it
- * too (`src/settings/gear.ts`). `pult-shell.newThread`, a project's draft;
+ * settings page among the thread's tabs; the left panel's gear runs it
+ * too (`src/panel/rows.tsx`). `pult-shell.newThread`, a project's draft;
  * a draft's promotion selects its thread.
  */
 export function registerSelectThreadCommand(): void {
