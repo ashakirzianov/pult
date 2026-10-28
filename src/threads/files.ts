@@ -9,7 +9,7 @@ import { threadStore } from "./store.ts";
  * show it in the view's right panel: `path` relative to the thread's
  * project root, or an absolute host path, at `line` when given. The tab
  * goes beside the thread's, in the active group, as a preview that a second
- * file replaces; the extension's `pult:` provider serves it. A path the
+ * file replaces; the page's `pult:` provider serves it (`src/files/`). A path the
  * project does not have, as an agent's mention of a file in another repo,
  * is a notice rather than an editor that fails to open.
  */

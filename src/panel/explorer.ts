@@ -17,6 +17,7 @@ import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 
+import { PULT_SCHEME, toUriPath } from "../files/paths.ts";
 import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
@@ -57,7 +58,7 @@ export async function showThreads(): Promise<void> {
 /**
  * The Explorer tab, narrowed to the selected thread's root: the root is the
  * workspace's only folder then, as the explorer shows the workspace's folders
- * and the extension's `pult:` provider serves them. A thread with no project
+ * and the page's `pult:` provider serves them (`src/files/`). A thread with no project
  * root cannot narrow; its card says so.
  */
 export async function openThreadExplorer(): Promise<void> {
@@ -122,17 +123,9 @@ function effectiveRoot(): Folder | undefined {
   return scope === "thread" ? threadRootOfScope() : undefined;
 }
 
-/**
- * A host path as a `pult:` URI, by the rules of the extension's `toUriPath`
- * (keep the two in step): a Windows drive as `/c:/`, and no trailing slash
- * but the root's or a drive's, as the workbench strips it from a folder.
- */
+/** A host path as a `pult:` URI, as the page's provider serves it (`src/files/`). */
 export function pultUri(environmentId: string, hostPath: string): URI {
-  const drive = /^[A-Za-z]:([\\/]|$)/.test(hostPath)
-    ? `/${hostPath.charAt(0).toLowerCase()}${hostPath.slice(1).replaceAll("\\", "/")}`
-    : hostPath;
-  const path = drive.length > 1 && drive.endsWith("/") && !/^\/[A-Za-z]:\/$/.test(drive) ? drive.slice(0, -1) : drive;
-  return URI.from({ scheme: "pult", authority: environmentId, path });
+  return URI.from({ scheme: PULT_SCHEME, authority: environmentId, path: toUriPath(hostPath) });
 }
 
 /** A folder's identity: the URI's string form, which lowercases the authority as stored folders have it. */
@@ -172,7 +165,7 @@ function reroot(): Promise<boolean> {
     else {
       const environmentId = environment.id.toLowerCase();
       for (const folder of current) {
-        if (folder.uri.scheme === "pult" && folder.uri.authority.toLowerCase() === environmentId) wanted.set(keyOf(folder.uri), folder);
+        if (folder.uri.scheme === PULT_SCHEME && folder.uri.authority.toLowerCase() === environmentId) wanted.set(keyOf(folder.uri), folder);
       }
       for (const thread of threads) {
         const folder = threadFolder(thread, environment.id);
