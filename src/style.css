@@ -120,3 +120,10 @@ body,
 .monaco-workbench:not(.pult-mode-vscode) .part.editor .title .editor-actions .action-item:has(> .monaco-dropdown .codicon-toolbar-more) {
   display: none;
 }
+
+/* The light themes' depth shadows, inset on the editor part's edges so the
+   sidebar and panel seem to float above it: under files the strip's fade is
+   the seam, and the shadow read as a second one. */
+.monaco-workbench.vs:not(.pult-mode-vscode) .part.editor::after {
+  box-shadow: none;
+}

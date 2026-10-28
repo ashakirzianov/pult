@@ -58,7 +58,8 @@ let statusBarElement: HTMLElement | undefined;
  * "More": the stock status bar's other entries in a popover above `anchor`,
  * the workbench's sticky hover. The stock bar renders its entries whether or
  * not the layout shows it, so each row is a copy of an entry's label as the
- * bar draws it (its icons and text), named by its aria label, and a click
+ * bar draws it, its first icon in a slot of its own and its text, or its
+ * name when it is an icon alone, and a click
  * on a row clicks the entry itself, which runs its command; the entries the
  * strip draws, and those the user hid from the bar, are left out. Read when
  * opened, not live.
@@ -73,21 +74,21 @@ async function showMoreStatuses(anchor: HTMLElement): Promise<void> {
     const label = item.querySelector<HTMLElement>("a.statusbar-item-label");
     if (label === null || DRAWN.has(item.id) || item.style.display === "none" || label.style.display === "none") continue;
     if (label.textContent.trim() === "" && label.querySelector(".codicon") === null) continue;
+    // One shape per row, an icon's slot then the label: an entry's first icon, or none, and its text, or its name when it is an icon alone.
     const row = document.createElement("button");
     row.type = "button";
     row.className = "pult-status-more-item";
     const name = label.getAttribute("aria-label") ?? "";
+    const text = label.textContent.trim();
     row.title = name;
-    const copy = document.createElement("span");
-    copy.className = "pult-status-more-label";
-    copy.append(...[...label.childNodes].map((node) => node.cloneNode(true)));
-    row.append(copy);
-    if (name !== "" && name !== label.textContent.trim()) {
-      const hint = document.createElement("span");
-      hint.className = "pult-status-more-name";
-      hint.textContent = name;
-      row.append(hint);
-    }
+    const slot = document.createElement("span");
+    slot.className = "pult-status-more-icon";
+    const icon = label.querySelector(".codicon");
+    if (icon !== null) slot.append(icon.cloneNode(true));
+    const title = document.createElement("span");
+    title.className = "pult-status-more-label";
+    title.textContent = text !== "" ? text : name;
+    row.append(slot, title);
     row.addEventListener("click", () => {
       close.hover?.dispose();
       label.click();

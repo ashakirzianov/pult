@@ -106,15 +106,16 @@
   outline: none;
 }
 
-.pult-status-more-label {
+/* The icon's slot, a codicon's width, kept when the entry has none, so every label starts at one edge. */
+.pult-status-more-icon {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  flex: none;
+  width: 16px;
+  justify-content: center;
 }
 
-.pult-status-more-name {
-  margin-inline-start: auto;
-  color: var(--vscode-descriptionForeground);
+.pult-status-more-label {
+  white-space: nowrap;
 }
 
 .pult-status-more-empty {
