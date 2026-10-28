@@ -22,6 +22,7 @@ import { WS_METHODS } from "@t3tools/contracts";
 
 import { connection } from "../connection/index.ts";
 import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
+import { whenReady } from "../files/server.ts";
 import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
@@ -107,14 +108,14 @@ function threadFolder(thread: ShellThread): Folder | undefined {
   return { uri: pultUri(thread.environmentId, thread.projectRoot), name: thread.projectName };
 }
 
-/** Each environment's home directory, as its server resolves `~/`; a failed lookup is asked again next time. */
+/** Each environment's home directory, as its server resolves `~/` once connected; a failed lookup is asked again next time. */
 const homes = new Map<string, Promise<string>>();
 
 function homeOf(environmentId: string): Promise<string> {
   let home = homes.get(environmentId);
   if (home === undefined) {
-    home = connection
-      .run(environmentId, request(WS_METHODS.filesystemBrowse, { partialPath: "~/" }))
+    home = whenReady(environmentId)
+      .then(() => connection.run(environmentId, request(WS_METHODS.filesystemBrowse, { partialPath: "~/" })))
       .then(({ parentPath }) => parentPath);
     home.catch(() => homes.delete(environmentId));
     homes.set(environmentId, home);
@@ -175,9 +176,11 @@ let updateContextKeys = () => {};
  * the environment scope, and the thread scope of a thread without one, set
  * each held environment's home directory, keeping a folder of the held
  * environments already there outside its home (one "Pult: Open Project"
- * added); a home is renamed as the number of environments makes its name
- * carry its environment's or not. A failure, a home the server would not
- * name among them, is notified. Resolves to whether the folders are the scope's.
+ * added), or all of its folders while its home cannot be had; a home is
+ * renamed as the number of environments makes its name carry its
+ * environment's or not. Before the restored selection is known, the thread
+ * scope leaves the folders as they are. A failure is notified. Resolves to
+ * whether the folders are the scope's.
  */
 function reroot(): Promise<boolean> {
   rerooting = rerooting.then(update).catch(async (error: unknown) => {
@@ -190,14 +193,18 @@ function reroot(): Promise<boolean> {
   async function update(): Promise<boolean> {
     updateContextKeys();
     const { environments } = threadStore.get();
-    if (environments.length === 0) return true;
+    // Nothing to narrow to until the restored selection is known: the folders stay as the workspace kept them.
+    if (environments.length === 0 || (scope === "thread" && lastSelected === undefined)) return true;
     const root = effectiveRoot();
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
     const wanted = new Map<string, Folder>();
     // The thread's root keeps its folder, and its tree, under whichever name it has.
     if (root !== undefined) wanted.set(keyOf(root.uri), current.find((folder) => keyOf(folder.uri) === keyOf(root.uri)) ?? root);
     else {
-      const homeFolders = await Promise.all(environments.map((environment) => homeFolder(environment.id)));
+      // An environment whose home cannot be had (offline, its server not answering) keeps its folders as they are.
+      const homeFolders = (await Promise.all(environments.map((environment) => homeFolder(environment.id).catch(() => undefined)))).filter(
+        (home) => home !== undefined,
+      );
       for (const home of homeFolders) wanted.set(keyOf(home.uri), home);
       const held = new Set(environments.map((environment) => environment.id.toLowerCase()));
       for (const folder of current) {
