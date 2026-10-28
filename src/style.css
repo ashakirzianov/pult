@@ -111,3 +111,12 @@ body,
   background: var(--accent, var(--vscode-toolbar-hoverBackground));
   color: var(--vscode-foreground);
 }
+
+/* What Pult's default mode hides and VS Code mode shows (src/mode.ts puts
+   `pult-mode-vscode` on the workbench while that mode is on): rules for what
+   no setting or context key turns off. Each one names what it hides. */
+
+/* The editor tabs' row's "More Actions…" dropdown, the tail of the editor title's toolbar. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor .title .editor-actions .action-item:has(> .monaco-dropdown .codicon-toolbar-more) {
+  display: none;
+}

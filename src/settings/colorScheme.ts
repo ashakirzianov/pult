@@ -8,9 +8,8 @@ import {
   Action2,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { ConfigurationTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
-
 import { workbenchColorScheme } from "../theme.ts";
+import { writeUserValue } from "./userSetting.ts";
 
 /** The workbench's own theme settings, which the colour scheme reads and writes; Pult keeps none of its own. */
 const AUTO_DETECT = "window.autoDetectColorScheme";
@@ -72,20 +71,6 @@ export async function setColorScheme(scheme: ColorScheme): Promise<void> {
     configuration.getValue(PREFERRED_THEMES[scheme]),
   );
   await writeUserValue(configuration, AUTO_DETECT, false);
-}
-
-/** Writes a user setting, or removes it where the value is the default already, so the user's settings hold only what differs. */
-function writeUserValue(
-  configuration: IConfigurationService,
-  key: string,
-  value: unknown,
-): Promise<void> {
-  const { defaultValue } = configuration.inspect(key);
-  return configuration.updateValue(
-    key,
-    value === defaultValue ? undefined : value,
-    ConfigurationTarget.USER,
-  );
 }
 
 /** The palette's "Pult: Colour Scheme…" (`pult-shell.selectColorScheme`), a pick of the three with the current one active. */

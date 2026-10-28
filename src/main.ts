@@ -28,6 +28,7 @@ import { registerChanges } from "./changes/view.ts";
 import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
+import { registerMode, startMode } from "./mode.ts";
 import { registerPultFiles } from "./files/index.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerColorSchemeCommand } from "./settings/colorScheme.ts";
@@ -64,6 +65,7 @@ registerThreadPane();
 registerSettingsPane();
 routeManageGear();
 registerColorSchemeCommand();
+registerMode();
 registerSelectThreadCommand();
 registerParkCommands();
 registerChanges();
@@ -110,6 +112,7 @@ await initialize(workbenchServices(), container, options, {
 });
 
 await syncColorScheme();
+await startMode();
 await syncStatusBarWithEditors();
 await restoreThreadSelection();
 

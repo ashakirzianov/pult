@@ -118,8 +118,12 @@
   background: var(--vscode-button-hoverBackground);
 }
 
-.pult-settings-button:focus-visible,
-/* The colour scheme's choices, joined into one control, the chosen one in the primary button's colours. */
+.pult-settings-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* A setting's choices, joined into one control, the chosen one in the primary button's colours. */
 .pult-settings-segments {
   display: flex;
   flex-shrink: 0;

@@ -4,6 +4,7 @@ import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { useRef, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
+import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 
 function run(command: string, ...args: unknown[]): void {
@@ -15,12 +16,13 @@ function run(command: string, ...args: unknown[]): void {
  * Pult's own settings first, then the workbench's Manage menu behind one
  * button, whose editors open as tabs beside it.
  */
-export function SettingsPage({ colorScheme }: { colorScheme: ColorSchemeChoice }) {
+export function SettingsPage({ colorScheme, mode }: { colorScheme: ColorSchemeChoice; mode: ModeChoice }) {
   return (
     <div className="pult-settings">
       <h1 className="pult-settings-title">Settings</h1>
       <EnvironmentsSection />
       <AppearanceSection colorScheme={colorScheme} />
+      <ModeSection mode={mode} />
       <VSCodeSection />
     </div>
   );
@@ -123,6 +125,43 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
               className="pult-settings-segment"
               aria-pressed={scheme === current}
               onClick={() => void setColorScheme(scheme)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+type ModeChoice = Awaited<ReturnType<typeof modeChoice>>;
+
+/**
+ * The mode, Pult or VS Code (`src/mode.ts`), one button each, the current
+ * one pressed; the palette's Switch to VS Code Mode and Switch to Pult Mode
+ * are the same setting.
+ */
+function ModeSection({ mode }: { mode: ModeChoice }) {
+  const current = useSyncExternalStore(mode.onDidChange, mode.current);
+  return (
+    <section className="pult-settings-section">
+      <h2>Mode</h2>
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">Layout</div>
+          <div className="pult-settings-row-description">
+            Pult's own layout hides and rearranges much of VS Code; VS Code mode shows it all, for an extension that needs it.
+          </div>
+        </div>
+        <div className="pult-settings-segments" role="group" aria-label="Layout">
+          {MODES.map(({ mode: choice, label }) => (
+            <button
+              key={choice}
+              type="button"
+              className="pult-settings-segment"
+              aria-pressed={choice === current}
+              onClick={() => void setMode(choice)}
             >
               {label}
             </button>

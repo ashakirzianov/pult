@@ -12,6 +12,7 @@ import {
 import { createRoot, type Root } from "react-dom/client";
 
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { modeChoice } from "../mode.ts";
 import { colorSchemeChoice } from "./colorScheme.ts";
 import { SettingsPage } from "./SettingsPage.tsx";
 import "./settings.css";
@@ -21,8 +22,8 @@ const PANE_ID = "pult.shell.settingsPane";
 /**
  * The Pult settings page (`SettingsPage.tsx`), an editor pane the shell
  * renders itself, as the thread's is: a React root in the element the
- * editor group hands it. The colour scheme is read as the pane shows its
- * input, when the workbench is up.
+ * editor group hands it. The colour scheme and the mode are read as the
+ * pane shows its input, when the workbench is up.
  */
 class SettingsPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
@@ -43,9 +44,9 @@ class SettingsPane extends SimpleEditorPane {
   }
 
   async renderInput() {
-    const colorScheme = await colorSchemeChoice();
+    const [colorScheme, mode] = await Promise.all([colorSchemeChoice(), modeChoice()]);
     this.root ??= createRoot(this.container);
-    this.root.render(<SettingsPage colorScheme={colorScheme} />);
+    this.root.render(<SettingsPage colorScheme={colorScheme} mode={mode} />);
     // Disposed as the group clears the input.
     return { dispose: () => this.release() };
   }
