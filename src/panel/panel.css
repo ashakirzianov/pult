@@ -496,8 +496,8 @@
 }
 
 /* Close, which the workbench lists among the tab's own actions, before its
-   view's (src/panel/view.tsx), goes last. */
-.part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label="Close"]) {
+   view's (src/panel/view.tsx), goes last; its label names its key, "Close (Escape)". */
+.part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label^="Close"]) {
   order: 1;
 }
 

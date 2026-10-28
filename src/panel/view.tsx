@@ -1,7 +1,9 @@
 import { getService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
+import { KeyCode } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
 import { registerCustomView, ViewContainerLocation } from "@codingame/monaco-vscode-workbench-service-override/common";
 import { createRoot } from "react-dom/client";
@@ -66,9 +68,12 @@ export function registerPanel(): void {
 }
 
 /**
- * Close, an X last in the title of every sidebar tab but Threads, the main
- * one, which it shows instead; in Pult's mode only, as VS Code's tabs have
- * none. Not in the palette: Pult: Show Pult Tab is.
+ * Close, an X last in the title of every sidebar tab but Pult, the main
+ * one, which it shows instead, and Escape while the sidebar has focus, but
+ * not while an input does or a tree's find box is open, which take it
+ * first; a list's selection does not, or Escape would never get past it.
+ * In Pult's mode only, as VS Code's tabs have none. Not in the palette:
+ * Pult: Show Pult Tab is.
  */
 function registerCloseTabAction(): void {
   registerAction2(
@@ -78,6 +83,18 @@ function registerCloseTabAction(): void {
           id: "pult-shell.closeSidebarTab",
           title: { value: "Close", original: "Close" },
           icon: Codicon.close,
+          keybinding: {
+            primary: KeyCode.Escape,
+            when: ContextKeyExpr.and(
+              ContextKeyExpr.equals("sideBarFocus", true),
+              ContextKeyExpr.notEquals("activeViewlet", PANEL_ID),
+              ContextKeyExpr.not("inputFocus"),
+              ContextKeyExpr.not("treeFindOpen"),
+              ContextKeyExpr.not("pult.vscodeMode"),
+            ),
+            // Over the lists' own Escape, which clears their selection.
+            weight: KeybindingWeight.WorkbenchContrib + 1,
+          },
           menu: {
             id: MenuId.ViewContainerTitle,
             when: ContextKeyExpr.and(
