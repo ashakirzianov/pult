@@ -62,6 +62,7 @@ Before calling work done, walk this list and say which entries applied: the comm
 - Test meaningful logic or observable behaviour; do not add tests that mirror the implementation. A test that needs a sleep to pass is wrong.
 - **Do not run repo-wide checks** unless asked. There is no CI; the lead integrates by review.
 - User-visible changes get one pass in a real browser by the primary agent after integrating. Subagents do not launch their own dev servers unless their task says so.
+- Seeing a change on the live server is welcome, as its client, with care (`scripts/drive.ts`'s profile may hold a connection already): the user's threads are only read and selected, never sent to, settled, snoozed or pinned; test threads go in the "No project" scratch project (`~/.t3/scratch`), titled "Pult probe …", their turns trivial ("reply with OK") on a cheap model; settle or delete what you made when done, and say so in your report; anything server-wide (a project deleted, a setting changed) is asked first.
 
 ## Code conventions
 
