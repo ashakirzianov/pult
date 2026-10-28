@@ -1,30 +1,67 @@
-import { getService, INotificationService, IProgressService, IQuickInputService } from "@codingame/monaco-vscode-api";
-import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
+import {
+  getService,
+  INotificationService,
+  IProgressService,
+  IQuickInputService,
+  type ServicesAccessor,
+} from "@codingame/monaco-vscode-api";
+import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
 import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
 
 import { connection } from "./connection.ts";
+import { ConnectedContext } from "./contextKey.ts";
 import { parseConnectInput } from "./pairing.ts";
 import { ProbeError } from "./probe.ts";
 
 /**
- * `pult-shell.connect` and `pult-shell.disconnect`, with no palette entry of
- * their own: the extension's "Pult: Connect to Environment" and "Pult:
- * Disconnect" defer to them in Pult, so the palette has one entry each. The
- * prompts are the page's, so no extension can bind the page to a server of
- * its choosing; only a development build takes a pairing link as argument,
- * for `scripts/drive.ts`.
+ * The palette's "Pult: Connect to Environment" (`pult-shell.connect`) and
+ * "Pult: Disconnect" (`pult-shell.disconnect`, while the page holds an
+ * environment, which it forgets with its bearer). The prompts are the
+ * page's, so no extension can bind the page to a server of its choosing;
+ * only a development build takes a pairing link as argument, for
+ * `scripts/drive.ts`.
  */
 export function registerConnectionCommands(): void {
-  CommandsRegistry.registerCommand("pult-shell.connect", async (_accessor, pairingLink?: unknown) => {
-    if (import.meta.env.DEV && typeof pairingLink === "string") {
-      const input = parseConnectInput(pairingLink);
-      if (input._tag !== "PairingLink") throw new Error("pult-shell.connect takes a complete pairing link.");
-      return connection.connect(input.target);
-    }
-    return connect();
-  });
-  CommandsRegistry.registerCommand("pult-shell.disconnect", () => connection.disconnect());
+  const category = { value: "Pult", original: "Pult" };
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.connect",
+          title: { value: "Connect to Environment", original: "Connect to Environment" },
+          category,
+          f1: true,
+        });
+      }
+
+      async run(_accessor: ServicesAccessor, pairingLink?: unknown): Promise<void> {
+        if (import.meta.env.DEV && typeof pairingLink === "string") {
+          const input = parseConnectInput(pairingLink);
+          if (input._tag !== "PairingLink") throw new Error("pult-shell.connect takes a complete pairing link.");
+          return connection.connect(input.target);
+        }
+        return connect();
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.disconnect",
+          title: { value: "Disconnect", original: "Disconnect" },
+          category,
+          f1: true,
+          precondition: ConnectedContext,
+        });
+      }
+
+      run(): Promise<void> {
+        return connection.disconnect();
+      }
+    },
+  );
 }
 
 /** Connects the page, offering a retry or a disconnect first when it holds an environment already. */
