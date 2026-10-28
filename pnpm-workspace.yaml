@@ -80,7 +80,9 @@ catalog:
 overrides:
   mdast-util-math: 3.0.0
   micromark-extension-llm-math: 3.1.0
+  "@legendapp/list": 3.3.5
   "@pierre/diffs": 1.6.1
+  "@effect/atom-react": "catalog:"
   "@effect/platform-node": "catalog:"
   "@effect/platform-node-shared": "catalog:"
   "@effect/vitest": "catalog:"
@@ -89,9 +91,15 @@ overrides:
   # Resolve below remark-math so Vite, Metro and Node use the same tokenizer.
   "remark-math>micromark-extension-math": npm:micromark-extension-llm-math@3.1.0
   micromark-extension-gfm-table: 2.1.1
+  # Keep one copy of these native-binary packages. lightningcss ships 11 platform binaries per
+  # version, and the workspaces' tailwindcss ^4 ranges drift into two 4.3.x copies of the family.
+  "@tailwindcss/node": "catalog:"
+  "@tailwindcss/oxide": "catalog:"
+  "@tailwindcss/vite": "catalog:"
   "@types/node": "catalog:"
   effect: "catalog:"
   lightningcss: "catalog:"
+  tailwindcss: "catalog:"
   # Ranges from @effect/platform-node, jsdom, unifont, Expo and libsql otherwise
   # settle on two patch releases of each major. Older majors stay as they are.
   "@types/ws@^8": "catalog:"
@@ -113,6 +121,7 @@ patchedDependencies:
   micromark-extension-llm-math@3.1.0: vendor/t3code/patches/micromark-extension-llm-math@3.1.0.patch
   micromark-extension-gfm-table@2.1.1: vendor/t3code/patches/micromark-extension-gfm-table@2.1.1.patch
   "@effect/vitest@4.0.5": vendor/t3code/patches/@effect__vitest@4.0.5.patch
+  "@legendapp/list@3.3.5": vendor/t3code/patches/@legendapp__list@3.3.5.patch
   # Exports the dependency-light subpaths mobile and the web diff parser import, and keeps
   # measured wrapped-row heights above an edit (fileEditorVirtualization.test.ts).
   "@pierre/diffs@1.6.1": vendor/t3code/patches/@pierre%2Fdiffs@1.6.1.patch
