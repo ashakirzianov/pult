@@ -2,11 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { defineConfig, type Plugin } from "vite";
 // Vite+'s `fmt` and `lint` settings, which it declares on Vite's config.
 import type {} from "vite-plus";
 import { STUBS } from "./thread-view/stubs.ts";
-import { pultExtension } from "./vite/pultExtension.ts";
 
 // The thread view (`thread-view/`): the tracked copy of the fork's apps/web in
 // `t3/`, and the files of ours around it in `shell/`.
@@ -69,66 +68,54 @@ const threadViewEnv = {
   APP_VERSION: appVersion,
 };
 
-export default defineConfig(({ mode }) => {
-  // A built checkout of pult-extension (`pnpm i && pnpm build` in its `extension/`),
-  // named by `PULT_EXTENSION_DIR` in the environment or the checkout's `.env`.
-  const env = loadEnv(mode, import.meta.dirname, "");
-  const extensionDir = path.resolve(
-    process.env.PULT_EXTENSION_DIR ??
-      env.PULT_EXTENSION_DIR ??
-      path.join(import.meta.dirname, "../pult-extension/extension"),
-  );
-  return {
-    build: { target: "esnext" },
-    // Upstream's too: the view's file viewers start module workers.
-    worker: { format: "es" },
-    // The view's file viewers load WebAssembly decoders as assets.
-    assetsInclude: ["**/*.wasm"],
-    plugins: [
-      threadViewStubs(),
-      threadViewRelease(),
-      // The copy is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
-      react({ compiler: { sources: [threadView + path.sep] } }),
-      tailwindcss(),
-      pultExtension(extensionDir),
-      {
-        // The vendored workbench imports its CSS as strings and injects it itself.
-        name: "load-vscode-css-as-string",
-        enforce: "pre",
-        async resolveId(source, importer, options) {
-          const resolved = await this.resolve(source, importer, options);
-          if (resolved == null) return undefined;
-          if (/node_modules\/(@codingame\/monaco-vscode|vscode|monaco-editor).*\.css$/.test(resolved.id)) {
-            return { ...resolved, id: resolved.id + "?inline" };
-          }
-          return undefined;
-        },
+export default defineConfig({
+  build: { target: "esnext" },
+  // Upstream's too: the view's file viewers start module workers.
+  worker: { format: "es" },
+  // The view's file viewers load WebAssembly decoders as assets.
+  assetsInclude: ["**/*.wasm"],
+  plugins: [
+    threadViewStubs(),
+    threadViewRelease(),
+    // The copy is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
+    react({ compiler: { sources: [threadView + path.sep] } }),
+    tailwindcss(),
+    {
+      // The vendored workbench imports its CSS as strings and injects it itself.
+      name: "load-vscode-css-as-string",
+      enforce: "pre",
+      async resolveId(source, importer, options) {
+        const resolved = await this.resolve(source, importer, options);
+        if (resolved == null) return undefined;
+        if (/node_modules\/(@codingame\/monaco-vscode|vscode|monaco-editor).*\.css$/.test(resolved.id)) {
+          return { ...resolved, id: resolved.id + "?inline" };
+        }
+        return undefined;
       },
+    },
+  ],
+  define: Object.fromEntries(
+    Object.entries(threadViewEnv).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
+  ),
+  optimizeDeps: {
+    include: [
+      "@codingame/monaco-vscode-api/extensions",
+      "@codingame/monaco-vscode-api",
+      "@codingame/monaco-vscode-api/monaco",
     ],
-    define: Object.fromEntries(
-      Object.entries(threadViewEnv).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
-    ),
-    optimizeDeps: {
-      include: [
-        "@codingame/monaco-vscode-api/extensions",
-        "@codingame/monaco-vscode-api",
-        "@codingame/monaco-vscode-api/monaco",
-      ],
-    },
-    server: {
-      port: 5190,
-      strictPort: true,
-      fs: { allow: [".", extensionDir] },
-    },
-    // The fork's files, kept byte for byte (`scripts/vendor.ts`), and the copy, which merges
-    // upstream's changes (`scripts/merge.ts`) in upstream's format.
-    fmt: { ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"] },
-    lint: { ignorePatterns: ["vendor/t3code/packages/**", "thread-view/t3/**"] },
-    resolve: {
-      // The copy's imports of its own `src/`.
-      alias: [{ find: /^~\//, replacement: path.join(copy, "src") + "/" }],
-      // One copy of each in the page: the workbench's singletons, and the client runtime the view and the shell share.
-      dedupe: ["vscode", "react", "react-dom", "effect", "@t3tools/client-runtime", "@t3tools/contracts", "@t3tools/shared"],
-    },
-  };
+  },
+  server: {
+    port: 5190,
+    strictPort: true,
+  },
+  // The fork's files, kept byte for byte (`scripts/vendor.ts`), and the copy, which merges
+  // upstream's changes (`scripts/merge.ts`) in upstream's format.
+  fmt: { ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"] },
+  lint: { ignorePatterns: ["vendor/t3code/packages/**", "thread-view/t3/**"] },
+  resolve: {
+    // The copy's imports of its own `src/`.
+    alias: [{ find: /^~\//, replacement: path.join(copy, "src") + "/" }],
+    // One copy of each in the page: the workbench's singletons, and the client runtime the view and the shell share.
+    dedupe: ["vscode", "react", "react-dom", "effect", "@t3tools/client-runtime", "@t3tools/contracts", "@t3tools/shared"],
+  },
 });

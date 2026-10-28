@@ -30,7 +30,6 @@ import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerPultFiles } from "./files/index.ts";
 import { registerPanel } from "./panel/view.tsx";
-import { registerPultExtension } from "./pultExtension.ts";
 import { startThreadModel } from "./threads/model.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerParkCommands } from "./threads/park.ts";
@@ -62,7 +61,6 @@ registerSelectThreadCommand();
 registerParkCommands();
 registerChanges();
 registerPanel();
-const pult = registerPultExtension();
 
 // The workbench owns the whole page but the desktop's title strip; its parts are the layout (xaxis `pult/own-shell`).
 if (window.pultDesktop) installDesktopTitleBar(window.pultDesktop);
@@ -107,6 +105,5 @@ await initialize(workbenchServices(), container, options, {
 await syncStatusBarWithEditors();
 await restoreThreadSelection();
 
-await pult.whenReady();
-console.info("[pult-shell] workbench up; Pult extension registered as", pult.id);
+console.info("[pult-shell] workbench up");
 installDebugHandle();

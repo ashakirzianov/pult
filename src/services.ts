@@ -39,10 +39,10 @@ import getWorkspaceTrustOverride from "@codingame/monaco-vscode-workspace-trust-
 
 /**
  * The workbench's services: the full workbench (layout, editor groups, views)
- * with what the Pult extension needs below it (a worker extension host, secrets,
- * storage, files, configuration) and the editor's own (themes, grammars,
- * languages, search, markers) and source control, for the extension's
- * changes view. Terminal, debug, testing, notebooks, chat and the rest are
+ * with a worker extension host for the VSIXes the user installs from Open VSX,
+ * secrets, storage, files, configuration, the editor's own (themes, grammars,
+ * languages, search, markers) and source control, for the page's changes
+ * view. Terminal, debug, testing, notebooks, chat and the rest are
  * left out on purpose.
  */
 export function workbenchServices(): IEditorOverrideServices {
@@ -68,13 +68,11 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getStorageServiceOverride({
       fallbackOverride: {
         "workbench.activity.showAccounts": false,
-        // The left panel's tabs until the user pins otherwise: Search, Extensions and the
-        // extension's own container (its thread tree, for VS Code proper) stay registered,
-        // off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
+        // The left panel's tabs until the user pins otherwise: Search and Extensions stay
+        // registered, off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
         "workbench.activity.pinnedViewlets2": JSON.stringify([
           { id: "workbench.view.search", pinned: false, visible: false, order: 1 },
           { id: "workbench.view.extensions", pinned: false, visible: false, order: 4 },
-          { id: "workbench.view.extension.pult", pinned: false, visible: false, order: 5 },
         ]),
         // The first tab of a fresh profile: the registry's default is the explorer, registered first.
         "workbench.sidebar.activeviewletid": "pult.panel",

@@ -3,7 +3,7 @@
  * "Setup Worktree" action, or by hand in a worktree made with `git worktree
  * add`. Plain Node keeps one command working in every shell T3 Code spawns:
  * it installs dependencies, then links the main checkout's gitignored `.env`
- * (where `PULT_EXTENSION_DIR` lives) into this worktree.
+ * (where `PULT_T3CODE_CHECKOUT` lives, `scripts/checkout.ts`) into this worktree.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
