@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
 import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
-import { projectIconUri } from "../threads/projectIcon.ts";
+import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
 import { onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import {
   isSubagent,
@@ -280,6 +280,7 @@ function ThreadCard({
   now: number;
 }) {
   const select = () => run("pult-shell.selectThread", thread.environmentId, thread.id);
+  useProjectIcons();
   return (
     <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}>
       {/* A button by role, as upstream's card: its actions are buttons inside it. */}
@@ -300,7 +301,7 @@ function ThreadCard({
         }}
       >
         <span className="pult-card-top">
-          <img className="pult-card-icon" src={projectIconUri(thread.projectName, thread.projectIcon).toString(true)} alt="" />
+          <img className="pult-card-icon" src={projectIconUri(threadProjectIcon(thread)).toString(true)} alt="" />
           <span className="pult-card-project">{thread.projectName}</span>
           <EnvironmentChip label={environment} />
           {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}

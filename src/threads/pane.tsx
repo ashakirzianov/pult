@@ -20,7 +20,7 @@ import { isSettingsTab, type SettingsInput } from "../settings/pane.tsx";
 import { workbenchColorScheme } from "../theme.ts";
 import { ThreadBarEntries } from "./barEntries.tsx";
 import { openThreadFile } from "./files.ts";
-import { projectIconUri } from "./projectIcon.ts";
+import { projectIconUri, projectIcons, threadProjectIcon } from "./projectIcon.ts";
 import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./store.ts";
 
 const PANE_ID = "pult.shell.threadPane";
@@ -264,8 +264,8 @@ export function isShellTab(editor: unknown): editor is ThreadInput | DraftInput 
  * startup is created before the thread model has loaded the threads.
  */
 export class ThreadInput extends SimpleEditorInput {
-  private icon: { key: string; uri: URI } | undefined;
   private labelKey: string | undefined;
+  private labelIcon: URI | undefined;
 
   constructor(
     readonly environmentId: string,
@@ -278,6 +278,7 @@ export class ThreadInput extends SimpleEditorInput {
     this.updateLabel();
     const unsubscribe = threadStore.subscribe(() => this.updateLabel());
     this._register({ dispose: unsubscribe });
+    this._register({ dispose: projectIcons.onDidChange(() => this.updateLabel()) });
   }
 
   private thread(): ShellThread | undefined {
@@ -286,9 +287,11 @@ export class ThreadInput extends SimpleEditorInput {
 
   /** The name is the title; setting it fires the label change that redraws the description, title and icon too. */
   private updateLabel(): void {
-    const key = JSON.stringify([this.thread()?.title, this.getDescription(), this.getTitle(), this.thread()?.projectIcon]);
-    if (key === this.labelKey) return;
+    const key = JSON.stringify([this.thread()?.title, this.getDescription(), this.getTitle()]);
+    const icon = this.getIcon();
+    if (key === this.labelKey && icon === this.labelIcon) return;
     this.labelKey = key;
+    this.labelIcon = icon;
     this.setName(this.thread()?.title ?? "Thread");
   }
 
@@ -310,9 +313,7 @@ export class ThreadInput extends SimpleEditorInput {
   override getIcon(): URI | undefined {
     const thread = this.thread();
     if (thread === undefined) return undefined;
-    const key = `${thread.projectName}|${JSON.stringify(thread.projectIcon)}`;
-    if (this.icon?.key !== key) this.icon = { key, uri: projectIconUri(thread.projectName, thread.projectIcon) };
-    return this.icon.uri;
+    return projectIconUri(threadProjectIcon(thread));
   }
 
   override getLabelExtraClasses(): string[] {
@@ -336,8 +337,8 @@ export class ThreadInput extends SimpleEditorInput {
  * `selection.ts` replaces it with that thread's tab.
  */
 export class DraftInput extends SimpleEditorInput {
-  private icon: { key: string; uri: URI } | undefined;
   private labelKey: string | undefined;
+  private labelIcon: URI | undefined;
 
   constructor(
     readonly environmentId: string,
@@ -350,6 +351,7 @@ export class DraftInput extends SimpleEditorInput {
     this.updateLabel();
     const unsubscribe = threadStore.subscribe(() => this.updateLabel());
     this._register({ dispose: unsubscribe });
+    this._register({ dispose: projectIcons.onDidChange(() => this.updateLabel()) });
   }
 
   private project(): ShellProject | undefined {
@@ -358,9 +360,11 @@ export class DraftInput extends SimpleEditorInput {
 
   /** Setting the name fires the label change that redraws the description, title and icon. */
   private updateLabel(): void {
-    const key = JSON.stringify([this.project()?.name, this.project()?.icon]);
-    if (key === this.labelKey) return;
+    const key = this.project()?.name;
+    const icon = this.getIcon();
+    if (key === this.labelKey && icon === this.labelIcon) return;
     this.labelKey = key;
+    this.labelIcon = icon;
     this.setName("New Thread");
   }
 
@@ -376,9 +380,7 @@ export class DraftInput extends SimpleEditorInput {
   override getIcon(): URI | undefined {
     const project = this.project();
     if (project === undefined) return undefined;
-    const key = `${project.name}|${JSON.stringify(project.icon)}`;
-    if (this.icon?.key !== key) this.icon = { key, uri: projectIconUri(project.name, project.icon) };
-    return this.icon.uri;
+    return projectIconUri(project);
   }
 
   override getLabelExtraClasses(): string[] {

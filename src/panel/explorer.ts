@@ -17,11 +17,12 @@ import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 import { request } from "@t3tools/client-runtime/rpc";
-import { type ProjectIconOverride, WS_METHODS } from "@t3tools/contracts";
+import { WS_METHODS } from "@t3tools/contracts";
 
 import { connection } from "../connection/index.ts";
 import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
 import { whenReady } from "../files/server.ts";
+import { type ProjectIconSource, threadProjectIcon } from "../threads/projectIcon.ts";
 import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
@@ -293,8 +294,7 @@ export async function followExplorerScope(): Promise<void> {
  * draft of a new one, narrowed them (`filterCard.tsx`).
  */
 export interface ExplorerFilter {
-  readonly projectName: string;
-  readonly projectIcon: ProjectIconOverride | null;
+  readonly project: ProjectIconSource;
   readonly threadTitle: string | undefined;
   /** The root's host path, for the card's hover. */
   readonly path: string;
@@ -323,10 +323,11 @@ function filterOfScope(root: Folder): ExplorerFilter {
   const path = root.uri.path;
   if (lastSelected !== undefined && "threadId" in lastSelected) {
     const thread = threadStore.thread(lastSelected.environmentId, lastSelected.threadId);
-    if (thread !== undefined) return { projectName: thread.projectName, projectIcon: thread.projectIcon, threadTitle: thread.title, path };
+    if (thread !== undefined) return { project: threadProjectIcon(thread), threadTitle: thread.title, path };
   }
   const project = lastSelected !== undefined && "projectId" in lastSelected ? threadStore.project(lastSelected.environmentId, lastSelected.projectId) : undefined;
-  return { projectName: project?.name ?? root.name, projectIcon: project?.icon ?? null, threadTitle: undefined, path };
+  const source = project ?? { environmentId: root.uri.authority, name: root.name, root: null, icon: null, faviconPath: null };
+  return { project: source, threadTitle: undefined, path };
 }
 
 /**

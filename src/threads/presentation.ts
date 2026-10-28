@@ -162,7 +162,14 @@ function hasUnseenCompletion(thread: EnvironmentThreadShell): boolean {
 
 /** A project as the store has it. */
 export function shellProject(environmentId: string, project: OrchestrationProjectShell): ShellProject {
-  return { environmentId, id: project.id, name: project.title, root: project.workspaceRoot, icon: project.projectIcon ?? null };
+  return {
+    environmentId,
+    id: project.id,
+    name: project.title,
+    root: project.workspaceRoot,
+    icon: project.projectIcon ?? null,
+    faviconPath: project.faviconPath ?? null,
+  };
 }
 
 /** An environment's shell as the model holds it: its presented threads, its projects and its server's features. */
@@ -202,6 +209,7 @@ export function shellThreads(environments: ReadonlyArray<EnvironmentShell>, now:
       projectName: project?.title ?? thread.projectId,
       projectRoot: project?.workspaceRoot ?? null,
       projectIcon: project?.projectIcon ?? null,
+      projectFaviconPath: project?.faviconPath ?? null,
       title: thread.title,
       branch: thread.branch,
       createdAt: thread.createdAt,

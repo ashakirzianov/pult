@@ -18,8 +18,10 @@ export interface ShellThread {
   readonly projectName: string;
   /** The project's root on the environment host, for `pult:` URIs. */
   readonly projectRoot: string | null;
-  /** The project's chosen icon; null for the one upstream derives from its name. */
+  /** The project's chosen icon; null for its favicon or the one upstream derives from its name. */
   readonly projectIcon: ProjectIconOverride | null;
+  /** The project's chosen favicon file, relative to its root; null for the one the server finds. */
+  readonly projectFaviconPath: string | null;
   readonly title: string;
   readonly branch: string | null;
   readonly createdAt: string;
@@ -62,8 +64,10 @@ export interface ShellProject {
   readonly name: string;
   /** Its root on the environment host, for `pult:` URIs; null when only a thread's word on it, without one, is known. */
   readonly root: string | null;
-  /** Its chosen icon; null for the one upstream derives from its name. */
+  /** Its chosen icon; null for its favicon or the one upstream derives from its name. */
   readonly icon: ProjectIconOverride | null;
+  /** Its chosen favicon file, relative to its root; null for the one the server finds. */
+  readonly faviconPath: string | null;
 }
 
 export interface ThreadState {
@@ -178,7 +182,14 @@ class ThreadStore {
       (candidate) => candidate.projectId === projectId && candidate.environmentId === environmentId,
     );
     if (thread === undefined) return undefined;
-    return { environmentId, id: projectId, name: thread.projectName, root: thread.projectRoot, icon: thread.projectIcon };
+    return {
+      environmentId,
+      id: projectId,
+      name: thread.projectName,
+      root: thread.projectRoot,
+      icon: thread.projectIcon,
+      faviconPath: thread.projectFaviconPath,
+    };
   }
 
   subscribe(listener: Listener): () => void {

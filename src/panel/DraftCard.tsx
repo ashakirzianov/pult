@@ -1,6 +1,6 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 
-import { projectIconUri } from "../threads/projectIcon.ts";
+import { projectIconUri, useProjectIcons } from "../threads/projectIcon.ts";
 import { threadStore } from "../threads/store.ts";
 
 /**
@@ -21,6 +21,7 @@ export function DraftCard({
 }) {
   const project = threadStore.project(environmentId, projectId);
   const name = project?.name ?? "Project";
+  useProjectIcons();
   return (
     <li className="pult-card pult-card-selected pult-card-draft">
       <button
@@ -32,7 +33,7 @@ export function DraftCard({
         }
       >
         <span className="pult-card-top">
-          <img className="pult-card-icon" src={projectIconUri(name, project?.icon ?? null).toString(true)} alt="" />
+          <img className="pult-card-icon" src={projectIconUri(project ?? { environmentId, name, root: null, icon: null, faviconPath: null }).toString(true)} alt="" />
           <span className="pult-card-project">{name}</span>
           <EnvironmentChip label={environment} />
           <span className="pult-card-status">

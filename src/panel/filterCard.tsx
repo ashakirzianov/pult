@@ -3,7 +3,7 @@ import type { IDisposable } from "@codingame/monaco-vscode-api/vscode/vs/base/co
 import { useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import { projectIconUri } from "../threads/projectIcon.ts";
+import { projectIconUri, useProjectIcons } from "../threads/projectIcon.ts";
 import { explorerFilter } from "./explorer.ts";
 
 const FILE_VIEW_ID = "workbench.explorer.fileView";
@@ -17,12 +17,13 @@ const FILE_VIEW_ID = "workbench.explorer.fileView";
  */
 function FilterCard() {
   const filter = useSyncExternalStore(explorerFilter.subscribe, explorerFilter.get);
+  useProjectIcons();
   if (filter === undefined) return null;
   return (
     <div className="pult-explorer-card" title={`Only ${filter.path}`}>
       <span className="pult-card-top">
-        <img className="pult-card-icon" src={projectIconUri(filter.projectName, filter.projectIcon).toString(true)} alt="" />
-        <span className="pult-card-project">{filter.projectName}</span>
+        <img className="pult-card-icon" src={projectIconUri(filter.project).toString(true)} alt="" />
+        <span className="pult-card-project">{filter.project.name}</span>
         <button
           type="button"
           className="pult-explorer-card-clear codicon codicon-close"
