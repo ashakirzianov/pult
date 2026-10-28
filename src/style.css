@@ -167,16 +167,18 @@ body,
 }
 
 /* While a thread's or draft's tab is a group's only tab, its tabs' row is
-   the tab's colour, the editor's, with none of the tab's borders (its
-   right, and the 1px of `tab.activeBorder` at its bottom), so the tab and
-   the thread's canvas read as one. The row's background and the tab's
+   the tab's colour, the editor's, with no border at the tab's right, so
+   the tab and the thread's canvas read as one. The row's background and the tab's
    right border are inline styles the workbench sets from the theme, hence
    the `!important`. */
 .monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
   background-color: var(--vscode-editor-background) !important;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active:has(> .tab-label.pult-thread-tab) > .tab-border-bottom-container {
+/* The active tab's bottom line (`tab.activeBorder`, light grey in the light
+   themes): the last of the lines between the row and the content. The
+   workbench's rule names the row's wrapper too, so this one does. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container .tabs-container > .tab.active.tab-border-bottom > .tab-border-bottom-container {
   display: none;
 }
 
