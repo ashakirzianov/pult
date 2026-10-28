@@ -9,11 +9,11 @@ import {
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import type { MountedView, ThreadViewMounts } from "pult-extension/thread-view";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import vendoredCommit from "../../vendor/t3code/COMMIT?raw";
+import type { MountedView, ThreadViewMounts } from "../../thread-view/shell/main.tsx";
+
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { ThreadBarEntries } from "./barEntries.tsx";
@@ -24,7 +24,6 @@ import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./
 const PANE_ID = "pult.shell.threadPane";
 /** The draft tab's input type, which its serialiser is registered under; its pane is the thread's. */
 const DRAFT_TYPE_ID = "pult.shell.draft";
-const VENDORED_COMMIT = vendoredCommit.trim();
 
 let started: Promise<ThreadViewMounts> | undefined;
 
@@ -44,29 +43,18 @@ function run(command: string, ...args: unknown[]): void {
 }
 
 /**
- * Upstream's thread view, as pult-extension builds it for the shell, loaded
- * with the first pane and started once on the page's connection: its state
- * runtime runs on the connection runtime's services, so the view shares the
- * page's one socket. A thread it navigates to is selected in the shell, and
- * so is a draft of a new thread, as its project's draft; a file it would
- * show in its right panel opens as a tab (`files.ts`), and
- * its diff is the extension's changes view, the Source Control view. The
- * view imports the shell's vendored packages, so it must be built against the
- * same T3 Code commit; a view that is missing or built against another fails
- * with a message the pane shows, and the next pane tries again.
+ * Upstream's thread view (`thread-view/`), loaded with the first pane and
+ * started once on the page's connection: its state runtime runs on the
+ * connection runtime's services, so the view shares the page's one socket.
+ * A thread it navigates to is selected in the shell, and so is a draft of a
+ * new thread, as its project's draft; a file it would show in its right
+ * panel opens as a tab (`files.ts`), and its diff is the extension's changes
+ * view, the Source Control view. A view that fails to load fails with a
+ * message the pane shows, and the next pane tries again.
  */
 function threadView() {
   started ??= (async () => {
-    const [view] = await Promise.all([
-      import("pult-extension/thread-view"),
-      import("pult-extension/thread-view.css"),
-    ]);
-    if (view.VENDORED_COMMIT !== VENDORED_COMMIT) {
-      const built = view.VENDORED_COMMIT === undefined ? "an older pult-extension" : `T3 Code ${view.VENDORED_COMMIT.slice(0, 12)}`;
-      throw new Error(
-        `The extension's thread view is built against ${built}; this shell vendors T3 Code ${VENDORED_COMMIT.slice(0, 12)}. Bring the two to one pin and rebuild the extension, then reload.`,
-      );
-    }
+    const view = await import("../../thread-view/shell/main.tsx");
     const workbench = document.querySelector(".monaco-workbench") ?? document.body;
     return view.startThreadView(
       {
@@ -124,11 +112,11 @@ function ThreadContent({
       (mounts) => {
         if (disposed) return;
         const shown = latest.current.target;
-        if (shown.kind === "thread") view = mounts.mount(host, shown.threadId);
-        else if (mounts.mountDraft === undefined) {
-          setFailure("This build of the extension's thread view cannot start a thread. Rebuild the extension, then reload.");
-        } else view = mounts.mountDraft(host, shown.projectId, (threadId) => latest.current.onPromoted(threadId));
-        setBar(view?.bar);
+        view =
+          shown.kind === "thread"
+            ? mounts.mount(host, shown.threadId)
+            : mounts.mountDraft(host, shown.projectId, (threadId) => latest.current.onPromoted(threadId));
+        setBar(view.bar);
       },
       (error: unknown) => {
         console.error("[pult-shell] the thread view did not start", error);

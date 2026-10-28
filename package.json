@@ -6,9 +6,9 @@
   "description": "Pult's own shell: VS Code's workbench vendored through @codingame/monaco-vscode-api, centred on threads.",
   "scripts": {
     "dev": "vp dev",
-    "build": "tsc --noEmit && vp build",
+    "build": "tsc -b && vp build",
     "preview": "vp preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "desktop:dev": "pnpm --filter pult-desktop dev",
     "vendor:sync": "node scripts/vendor.ts",
     "vendor:check": "node scripts/vendor.ts --check"
