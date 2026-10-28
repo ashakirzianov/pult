@@ -148,24 +148,35 @@ body,
   pointer-events: none;
 }
 
-/* The active tab's top bar (`tab.activeBorderTop`): the tab's colour already
-   tells it apart. The selector mirrors the workbench's own, one step more
-   specific. */
+/* The active tab's top bar (`tab.activeBorderTop`) and its inset shadow
+   (`--vscode-shadow-active-tab`, a faint darkening at its top): the tab's
+   colour already tells it apart. The selectors mirror the workbench's own,
+   one step more specific. */
 .monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active.tab-border-top > .tab-border-top-container,
 .monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.selected.tab-border-top > .tab-border-top-container {
   display: none;
 }
 
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+  box-shadow: none;
+}
+
+/* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the fade is the seam. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container.tabs-border-bottom::after {
+  display: none;
+}
+
 /* While a thread's or draft's tab is a group's only tab, its tabs' row is
-   the tab's colour, the editor's, with no border under it and none at the
-   tab's right, so the tab and the thread's canvas read as one. The row's
-   background and the tab's right border are inline styles the workbench
-   sets from the theme, hence the `!important`. */
+   the tab's colour, the editor's, with none of the tab's borders (its
+   right, and the 1px of `tab.activeBorder` at its bottom), so the tab and
+   the thread's canvas read as one. The row's background and the tab's
+   right border are inline styles the workbench sets from the theme, hence
+   the `!important`. */
 .monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
   background-color: var(--vscode-editor-background) !important;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container.tabs-border-bottom:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab)::after {
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active:has(> .tab-label.pult-thread-tab) > .tab-border-bottom-container {
   display: none;
 }
 
