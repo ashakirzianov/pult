@@ -1,0 +1,179 @@
+/* The Pult settings page (src/settings), themed on the workbench's editor colours. Its own box model, as the shell's
+   UI is React in the page and the workbench's default is the browser's (src/style.css). */
+.pult-settings-pane,
+.pult-settings-pane *,
+.pult-settings-pane *::before,
+.pult-settings-pane *::after {
+  box-sizing: border-box;
+}
+
+/* The pane's element is the page's native scroller (src/nativeScroll.ts). */
+.pult-settings-pane {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+}
+
+.pult-settings-pane:focus {
+  outline: none;
+}
+
+.pult-settings {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.pult-settings-title {
+  margin: 0 0 24px;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.pult-settings-section {
+  margin-bottom: 32px;
+}
+
+.pult-settings-section h2 {
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--vscode-settings-headerBorder, var(--vscode-panel-border));
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pult-settings-note {
+  margin: 0 0 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* An environment's row: its name, host, phase and error, its actions at the right. */
+.pult-settings-rows {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.pult-settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.pult-settings-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pult-settings-row-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pult-settings-row-description {
+  margin-top: 2px;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+
+.pult-settings-row-error {
+  margin-top: 4px;
+  color: var(--vscode-errorForeground);
+  overflow-wrap: anywhere;
+}
+
+.pult-settings-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.pult-settings-button {
+  padding: 4px 12px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-settings-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pult-settings-button-primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.pult-settings-button-primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.pult-settings-button:focus-visible,
+.pult-settings-entry:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* The Manage menu's entries: a list per menu group, a submenu's nested under its label. */
+.pult-settings-entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pult-settings-entries + .pult-settings-entries {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.pult-settings-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-settings-entry:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-settings-entry:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pult-settings-entry .codicon {
+  font-size: 14px;
+}
+
+.pult-settings-submenu-label {
+  padding: 5px 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-settings-submenu .pult-settings-entries {
+  padding-left: 16px;
+}
+
+.pult-settings-submenu .pult-settings-entries + .pult-settings-entries {
+  margin-left: 16px;
+  padding-left: 0;
+}
