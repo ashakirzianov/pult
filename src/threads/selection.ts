@@ -130,15 +130,15 @@ function recordExplorerFiles(editors: IEditorService, storage: IStorageService):
 
 /**
  * Selects the Explorer workspace, the files of the environments opened under
- * no thread: its tab set as a thread's is, with no lead tab. With no file
- * open there, the sidebar shows the Explorer tab too, which shows every
- * environment's home while this workspace is selected (`src/panel/explorer.ts`).
+ * no thread: its tab set as a thread's is, with no lead tab. With
+ * `showExplorerTab`, the sidebar shows the Explorer tab too, which shows
+ * every environment's home while this workspace is selected
+ * (`src/panel/explorer.ts`).
  */
-export function selectExplorer(): Promise<void> {
+export function selectExplorer(showExplorerTab = false): Promise<void> {
   return enqueue(async () => {
     await switchTo(EXPLORER);
-    const editors = await getService(IEditorService);
-    if (editors.editors.length === 0) await (await getService(ICommandService)).executeCommand("workbench.view.explorer");
+    if (showExplorerTab) await (await getService(ICommandService)).executeCommand("workbench.view.explorer");
   });
 }
 
@@ -430,6 +430,22 @@ export function registerSelectThreadCommand(): void {
 
       run(_accessor: ServicesAccessor, resource?: unknown): Promise<void> {
         return typeof resource === "string" ? showExplorerFile(URI.parse(resource)) : selectExplorer();
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.exploreFiles",
+          title: { value: "Explore Files", original: "Explore Files" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+        });
+      }
+
+      run(): Promise<void> {
+        return selectExplorer(true);
       }
     },
   );

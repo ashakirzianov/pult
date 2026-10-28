@@ -502,22 +502,40 @@
 }
 
 /* The Explorer card (src/panel/ExplorerCard.tsx): its heading, then its open files, one compact row each. */
+/* The title, a button of its own that shows the Explorer tab too: an underline on hover tells it from the card. */
 .pult-card-heading {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  padding: 0;
+  border: none;
+  color: inherit;
+  font: inherit;
   line-height: 18px;
   font-weight: 500;
+  background: none;
+  cursor: pointer;
+}
+
+.pult-card-heading:hover > span,
+.pult-card-heading:focus-visible > span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pult-card-heading:focus-visible {
+  outline: none;
 }
 
 .pult-card-heading .codicon {
   font-size: 14px;
 }
 
+/* Inside the card's padding, each row reaching its edges. */
 .pult-explorer-files {
-  margin: -4px 0 0;
-  padding: 0 0 6px;
+  margin: 4px -6px 0;
+  padding: 0;
   list-style: none;
 }
 
@@ -527,7 +545,7 @@
   gap: 6px;
   width: 100%;
   height: 22px;
-  padding: 0 10px;
+  padding: 0 6px;
   border: none;
   border-radius: 6px;
   color: inherit;

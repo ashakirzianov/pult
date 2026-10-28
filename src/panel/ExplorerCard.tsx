@@ -12,32 +12,64 @@ function run(command: string, ...args: unknown[]): void {
 
 /**
  * The Explorer card, the panel's first: the Explorer workspace, files opened
- * under no thread (`pult-shell.selectExplorer`), then its open files, each
- * opening the workspace at its tab; selected while the workspace is.
+ * under no thread, then its open files. A click on the card selects the
+ * workspace (`pult-shell.selectExplorer`), on a file the workspace at its
+ * tab, and on the title the workspace with the sidebar's Explorer tab too
+ * (`pult-shell.exploreFiles`); selected while the workspace is. A button by
+ * role, as a thread card, its title and files buttons inside it.
  */
 export function ExplorerCard({ selected }: { selected: boolean }) {
   const files = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
+  const select = () => run("pult-shell.selectExplorer");
   return (
     <li className={`pult-card pult-card-explorer${selected ? " pult-card-selected" : ""}`}>
-      <button type="button" className="pult-card-select" aria-current={selected || undefined} onClick={() => run("pult-shell.selectExplorer")}>
-        <span className="pult-card-heading">
+      <div
+        role="button"
+        tabIndex={0}
+        className="pult-card-select"
+        aria-current={selected || undefined}
+        aria-label="Explorer workspace"
+        onClick={select}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          select();
+        }}
+      >
+        <button
+          type="button"
+          className="pult-card-heading"
+          title="Explore files"
+          onClick={(event) => {
+            event.stopPropagation();
+            run("pult-shell.exploreFiles");
+          }}
+        >
           <i className="codicon codicon-files" aria-hidden />
           <span>Explorer</span>
-        </span>
-      </button>
-      {files.length > 0 ? (
-        <ul className="pult-explorer-files">
-          {files.map((file) => (
-            <li key={file.toString()}>
-              <button type="button" className="pult-explorer-file" title={describe(file)} onClick={() => run("pult-shell.selectExplorer", file.toString())}>
-                <i className="codicon codicon-file" aria-hidden />
-                <span className="pult-explorer-file-name">{baseName(file)}</span>
-                <span className="pult-explorer-file-folder">{folderName(file)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+        </button>
+        {files.length > 0 ? (
+          <ul className="pult-explorer-files">
+            {files.map((file) => (
+              <li key={file.toString()}>
+                <button
+                  type="button"
+                  className="pult-explorer-file"
+                  title={describe(file)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    run("pult-shell.selectExplorer", file.toString());
+                  }}
+                >
+                  <i className="codicon codicon-file" aria-hidden />
+                  <span className="pult-explorer-file-name">{baseName(file)}</span>
+                  <span className="pult-explorer-file-folder">{folderName(file)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </li>
   );
 }
