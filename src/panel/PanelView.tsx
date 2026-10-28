@@ -170,8 +170,8 @@ export function PanelView() {
 }
 
 /**
- * Upstream's collapsible header: the label and its count, a rule, a status
- * when one is given, the chevron. A shelf's and a card's subagents'.
+ * A collapsible header after upstream's: the label and its count, a status
+ * when one is given, and the chevron at the far end. A shelf's and a card's subagents'.
  */
 function CollapsibleHeader({
   label,
@@ -190,7 +190,7 @@ function CollapsibleHeader({
     <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={onToggle}>
       <span className="pult-shelf-label">{label}</span>
       <span className="pult-shelf-count">{count}</span>
-      <span className="pult-shelf-rule" aria-hidden />
+      <span className="pult-shelf-spacer" aria-hidden />
       {status}
       <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-right"}`} aria-hidden />
     </button>

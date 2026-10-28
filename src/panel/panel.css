@@ -348,12 +348,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pult-shelf-rule {
+.pult-shelf-spacer {
   flex: 1;
   min-width: 8px;
-  height: 1px;
-  background: var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, currentColor));
-  opacity: 0.6;
 }
 
 .pult-shelf-header .codicon {
@@ -426,10 +423,6 @@
   height: 22px;
   padding: 0 4px;
   font-size: 11px;
-}
-
-.pult-card-subagents .pult-shelf-rule {
-  visibility: hidden;
 }
 
 .pult-subagents-list {
