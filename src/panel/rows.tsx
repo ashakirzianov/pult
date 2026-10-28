@@ -47,18 +47,18 @@ function RowButton({ title, icon, command }: { title: string; icon: string; comm
 
 /**
  * The left panel's header: room for the desktop's traffic lights
- * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel, New
- * Thread and, rightmost, Pult's logo. In the desktop it drags the window,
- * its buttons excepted.
+ * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
+ * Pult's logo and, rightmost, New Thread. In the desktop it drags the
+ * window, its buttons excepted.
  */
 function PanelHeader() {
   return (
     <>
       <span className="pult-panel-header-lights" />
       <RowButton title="Collapse Panel" icon="layout-sidebar-left" command="pult-shell.collapsePanel" />
-      <RowButton title="New Thread" icon="add" command="pult-shell.newThread" />
-      <span className="pult-panel-row-spacer" />
       <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
+      <span className="pult-panel-row-spacer" />
+      <RowButton title="New Thread" icon="add" command="pult-shell.newThread" />
     </>
   );
 }

@@ -634,7 +634,7 @@
 
 .pult-panel-header-logo {
   height: 14px;
-  margin-right: 4px;
+  margin-left: 4px;
   pointer-events: none;
   user-select: none;
 }
@@ -684,7 +684,6 @@
   display: flex;
   gap: 2px;
   min-width: 0;
-  overflow: hidden;
 }
 
 .pult-panel-tab {
