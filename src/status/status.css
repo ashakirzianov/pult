@@ -2,13 +2,13 @@
    workbench's layout: the thread view's bar's height and text, its entries
    the shell's bar entries (src/style.css). */
 .pult-status-strip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--pult-bar-gap, 2px);
   box-sizing: border-box;
   height: 100%;
   padding-inline: 8px;
-  overflow: hidden;
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
@@ -50,4 +50,74 @@
 
 .pult-status-entry .codicon-warning {
   color: var(--vscode-problemsWarningIcon-foreground);
+}
+
+/* The file fades into the strip as the thread's turns fade into its
+   composer (`thread-view/shell/shell.css`, the same stops): a fade to the
+   editor's canvas above the strip's edge, over the file's last lines. The
+   grid's cell clips its view, so the strip's is let overflow. */
+.monaco-workbench .split-view-view:has(> .pult-status-strip) {
+  overflow: visible;
+}
+
+.pult-status-strip::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: 1.5rem;
+  background: linear-gradient(
+    to top,
+    var(--vscode-editor-background) 0%,
+    color-mix(in srgb, var(--vscode-editor-background) 90%, transparent) 10%,
+    color-mix(in srgb, var(--vscode-editor-background) 70%, transparent) 24%,
+    color-mix(in srgb, var(--vscode-editor-background) 42%, transparent) 42%,
+    color-mix(in srgb, var(--vscode-editor-background) 18%, transparent) 62%,
+    color-mix(in srgb, var(--vscode-editor-background) 4%, transparent) 82%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* "More": the stock bar's other entries, one row each, in the workbench's hover. */
+.pult-status-more {
+  display: flex;
+  flex-direction: column;
+  min-width: 12em;
+  padding: 2px 0;
+}
+
+.pult-status-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: none;
+  background: none;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-status-more-item:hover,
+.pult-status-more-item:focus-visible {
+  background: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+.pult-status-more-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pult-status-more-name {
+  margin-inline-start: auto;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-status-more-empty {
+  padding: 4px 10px;
+  color: var(--vscode-descriptionForeground);
 }

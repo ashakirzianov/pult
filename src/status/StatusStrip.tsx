@@ -12,10 +12,10 @@ function run(command: string): void {
  * bar's height and type: errors and warnings on the left while there are
  * any, opening Problems; the cursor's line and column, with the selection's
  * size, opening Go to Line; the language, opening VS Code's language
- * picker; and rightmost "more", which swaps in VS Code's own status bar
- * with everything else. Each entry runs the command its stock twin runs.
+ * picker; and rightmost "more", a popover of the stock status bar's other
+ * entries (`index.tsx`). Each entry runs the command its stock twin runs.
  */
-export function StatusStrip({ status, onMore }: { status: FileStatusStore; onMore: () => void }) {
+export function StatusStrip({ status, onMore }: { status: FileStatusStore; onMore: (anchor: HTMLElement) => void }) {
   const file = useSyncExternalStore(status.subscribe, status.get);
   const position =
     file.line === null || file.column === null
@@ -57,7 +57,13 @@ export function StatusStrip({ status, onMore }: { status: FileStatusStore; onMor
           {file.language}
         </button>
       )}
-      <button type="button" className="pult-bar-entry pult-bar-button" title="More statuses" aria-label="More statuses" onClick={onMore}>
+      <button
+        type="button"
+        className="pult-bar-entry pult-bar-button"
+        title="More statuses"
+        aria-label="More statuses"
+        onClick={(event) => onMore(event.currentTarget)}
+      >
         <span className="codicon codicon-ellipsis" aria-hidden />
       </button>
     </>
