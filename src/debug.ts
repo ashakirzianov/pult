@@ -22,7 +22,6 @@ export function installDebugHandle(): void {
     pult: {
       Uri,
       connection: () => connection.environment,
-      bridgedSockets: () => connection.socket.clientCount,
       threads: () => threadStore.get(),
       selected: () => selectedThread() ?? selectedDraft(),
       // What the changes view shows and why: its thread, root, group sizes and last failure.

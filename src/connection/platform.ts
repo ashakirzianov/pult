@@ -20,8 +20,6 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
-import type { PageSocket } from "./socket.ts";
-
 const unsupported = (detail: string) => Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail }));
 
 /** Events of `target` as a stream of `value`, for the runtime's network and wakeup sources. */
@@ -108,22 +106,19 @@ const layerCapabilities = Layer.mergeAll(
 );
 
 /**
- * What the vendored connection runtime asks of the page: fetch, the page's one
- * socket (`socket.ts`), the browser's network events, the page coming back to
- * the foreground as the wakeup, and the environment the shell connects as the
- * one platform registration, the way a desktop-local backend is registered.
- * T3 Connect (an empty relay URL disables the relay client), SSH and a primary
- * local environment are off, as in pult-extension's host (`platform.ts`).
+ * What the vendored connection runtime asks of the page: fetch, the browser's
+ * WebSocket, which the runtime dials anew on each reconnect, the browser's
+ * network events, the page coming back to the foreground as the wakeup, and
+ * the environment the shell connects as the one platform registration, the way
+ * a desktop-local backend is registered. T3 Connect (an empty relay URL
+ * disables the relay client), SSH and a primary local environment are off.
  */
-export function platformLayer(
-  socket: PageSocket,
-  registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,
-) {
+export function platformLayer(registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>) {
   return ManagedRelay.layer({ relayUrl: "", clientId: "t3-web" }).pipe(
     Layer.provideMerge(
       Layer.mergeAll(
         layerRemoteHttpClient((input, init) => globalThis.fetch(input, init)),
-        Layer.succeed(Socket.WebSocketConstructor, socket.webSocketConstructor),
+        Socket.layerWebSocketConstructorGlobal,
         Connectivity.layer({
           status: Effect.sync(networkStatus),
           changes: domEvents<NetworkStatus>(window, [

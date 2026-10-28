@@ -26,11 +26,10 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { platformLayer } from "./platform.ts";
 import { probe } from "./probe.ts";
-import { PageSocket } from "./socket.ts";
 
 export type ConnectionPhase = "connecting" | "ready" | "reconnecting" | "offline" | "blocked";
 
-/** The page's environment as its connection stands: what the shell, the thread view and the extension see. */
+/** The page's environment as its connection stands: what the shell and the thread view see. */
 export interface ShellEnvironment {
   readonly environmentId: string;
   readonly label: string;
@@ -62,16 +61,13 @@ function registration(saved: typeof Saved.Type): BearerConnectionRegistration {
 
 /**
  * The page's one connection to an environment (`pult/decisions`,
- * `connection-owner`, moved from the extension host into the shell): the
- * vendored runtime, with the environment the shell connects as its one
- * platform registration, so the registry's supervisor dials the page's one
- * socket and reconnects it. The thread view runs on this runtime's services
- * (`context`), the thread model follows its shell snapshot and the thread
- * commands run their RPCs on it (`run`); the extension reaches it through
- * `bridge.ts`.
+ * `connection-owner`): the vendored runtime, with the environment the shell
+ * connects as its one platform registration, so the registry's supervisor
+ * dials the page's one socket and reconnects it. The thread view runs on this
+ * runtime's services (`context`), the thread model follows its shell snapshot
+ * and the thread commands run their RPCs on it (`run`).
  */
 class ShellConnection {
-  readonly socket = new PageSocket();
   private readonly registrations = Effect.runSync(
     SubscriptionRef.make<ReadonlyArray<PlatformConnectionRegistration>>([]),
   );
@@ -85,7 +81,7 @@ class ShellConnection {
       Connection.layerWithOptions({ environmentThemes: true, usageLimitSources: true, usageLimitsCommand: true }),
       // The shell snapshot's HTTP load, for the thread model (`src/threads/model.ts`).
       ShellSnapshotLoader.layer,
-    ).pipe(Layer.provideMerge(platformLayer(this.socket, SubscriptionRef.changes(this.registrations)))),
+    ).pipe(Layer.provideMerge(platformLayer(SubscriptionRef.changes(this.registrations)))),
   );
 
   constructor() {
@@ -103,8 +99,9 @@ class ShellConnection {
 
   /**
    * The environment's bearer and the server it belongs to, for requests the
-   * shell sends on a bridged client's behalf: set together, the moment the
-   * page switches, so the bearer never goes to the server it is not for.
+   * page sends outside the runtime (an asset's bytes, `src/files/server.ts`):
+   * set together, the moment the page switches, so the bearer never goes to
+   * the server it is not for.
    */
   get credential() {
     const saved = this.saved;
