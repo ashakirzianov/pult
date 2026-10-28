@@ -418,38 +418,91 @@
   list-style: none;
 }
 
-/* The Explorer tab's filter, a pill in its title (src/panel/explorer.ts): a
-   title action without an icon, the only one the sidebar's titles have, which
-   the toolbar draws as its text, the narrowed root's name. The clear mark is
-   the codicon font's close, the whole pill one button. */
-.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon) {
-  position: relative;
-  display: block;
+/* The Explorer tab's filter (src/panel/filterRow.tsx), a row of the shell's
+   own before the file view's tree, the body laid out as a column so the
+   tree takes what is left. The row is the tree's 22px: the tree, laid out
+   for the whole body, keeps as much empty space below its last item. */
+.pane-body:has(> .pult-explorer-filter) {
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-body:has(> .pult-explorer-filter) > .explorer-folders-view {
+  flex: 1;
+  min-height: 0;
+}
+
+.pult-explorer-filter {
+  flex: none;
+  display: flex;
+  align-items: center;
   box-sizing: border-box;
-  max-width: 140px;
-  height: 20px;
-  margin-right: 4px;
-  padding: 0 20px 0 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-radius: 10px;
+  height: 22px;
+  padding: 0 8px 0 12px;
+}
+
+.pult-explorer-filter:empty {
+  display: none;
+}
+
+.pult-explorer-filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 18px;
+  padding: 0 2px 0 6px;
+  border-radius: 9px;
   font-size: 11px;
-  line-height: 20px;
-  color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground));
+  line-height: 18px;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 18%, transparent);
 }
 
-.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon):hover {
-  background: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
+.pult-explorer-filter-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
 }
 
-.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon)::after {
-  position: absolute;
-  top: 4px;
-  right: 5px;
-  font: normal normal normal 12px/1 codicon;
-  content: "\ea76";
+.pult-explorer-filter-project {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.pult-explorer-filter-thread {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-explorer-filter-clear.codicon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  font-size: 11px;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.pult-explorer-filter-clear.codicon:hover {
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
 }
 
 /* Close, which the workbench lists among the tab's own actions, before its

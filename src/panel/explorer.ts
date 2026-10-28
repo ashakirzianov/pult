@@ -10,15 +10,14 @@ import {
   IWorkspaceContextService,
   IWorkspaceEditingService,
 } from "@codingame/monaco-vscode-api";
-import type { IDisposable } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import { Action2, MenuId, MenuRegistry, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 import { request } from "@t3tools/client-runtime/rpc";
-import { WS_METHODS } from "@t3tools/contracts";
+import { type ProjectIconOverride, WS_METHODS } from "@t3tools/contracts";
 
 import { connection } from "../connection/index.ts";
 import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
@@ -35,7 +34,7 @@ const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsV
 
 /**
  * What the Explorer tab is rooted at, as the user chose it: the selected
- * thread's root alone, shown as a pill in the tab's title that clears it, or
+ * thread's root alone, shown as a pill in a row above the tree that clears it, or
  * each held environment's home directory. Kept in workspace storage;
  * `thread` until the user clears it.
  */
@@ -166,7 +165,7 @@ const keyOf = (uri: URI) => uri.toString();
 let rerooting = Promise.resolve(true);
 /** True while `reroot` changes the folders, so a change from elsewhere tells itself apart. */
 let updating = false;
-/** Sets the context keys and the pill to the scope in effect; set once the workbench is up. */
+/** Sets the context keys and the filter to the scope in effect; set once the workbench is up. */
 let updateContextKeys = () => {};
 
 /**
@@ -244,7 +243,7 @@ function reroot(): Promise<boolean> {
  * the selection, and a folder added from elsewhere while it is narrowed
  * widens it to the environment's and is revealed there. Every change to the
  * thread model re-roots, so a thread gone or rootless falls back to the
- * environment's, and the pill names the root in effect. The Explorer tab, however
+ * environment's, and the filter follows the root in effect. The Explorer tab, however
  * opened (Cmd+Shift+E, Reveal in Explorer, its tab), shows the scope as it is,
  * with the file view alone. Waits for the workbench to have restored its parts.
  */
@@ -259,7 +258,7 @@ export async function followExplorerScope(): Promise<void> {
     const root = effectiveRoot();
     scopeKey.set(root === undefined ? "environment" : "thread");
     hasFolderKey.set(threadRootOfScope() !== undefined);
-    showPill(root?.name);
+    setFilter(root === undefined ? undefined : filterOfScope(root));
   };
   const viewDescriptors = await getService(IViewDescriptorService);
   const explorer = viewDescriptors.getViewContainerById(EXPLORER_ID);
@@ -288,37 +287,51 @@ export async function followExplorerScope(): Promise<void> {
   await reroot();
 }
 
-/** The pill's menu item and the name it shows, while the folders are narrowed. */
-let pill: { readonly name: string; readonly item: IDisposable } | undefined;
-
 /**
- * The filter as a pill in the Explorer tab's title, the narrowed root's name,
- * before the tab's buttons: a title action without an icon, which the
- * toolbar draws as its text and `panel.css` as a pill with a clear mark;
- * clicking it clears the filter. Re-registered as the name changes, gone
- * while the folders are the homes'.
+ * What the filter's pill shows while the folders are narrowed: the root's
+ * project, with its icon, and the thread's title when a thread, not a
+ * draft of a new one, narrowed them (`filterRow.tsx`).
  */
-function showPill(name: string | undefined): void {
-  if (pill?.name === name) return;
-  pill?.item.dispose();
-  pill = undefined;
-  if (name === undefined) return;
-  const item = MenuRegistry.appendMenuItem(MenuId.ViewTitle, {
-    command: {
-      id: "pult-shell.openEnvironmentExplorer",
-      title: name,
-      tooltip: `Only ${name}. Clear to show the home folder`,
-    },
-    when: ContextKeyExpr.equals("view", FILE_VIEW_ID),
-    group: "navigation",
-    order: -100,
-  });
-  pill = { name, item };
+export interface ExplorerFilter {
+  readonly projectName: string;
+  readonly projectIcon: ProjectIconOverride | null;
+  readonly threadTitle: string | undefined;
+  /** The root's host path, for the pill's hover. */
+  readonly path: string;
+}
+
+let filter: ExplorerFilter | undefined;
+const filterListeners = new Set<() => void>();
+
+/** The filter in effect, for `useSyncExternalStore`: the same object until what it shows changes. */
+export const explorerFilter = {
+  get: () => filter,
+  subscribe(listener: () => void): () => void {
+    filterListeners.add(listener);
+    return () => filterListeners.delete(listener);
+  },
+};
+
+function setFilter(next: ExplorerFilter | undefined): void {
+  if (JSON.stringify(next) === JSON.stringify(filter)) return;
+  filter = next;
+  for (const listener of filterListeners) listener();
+}
+
+/** The filter for the scope's thread or draft, narrowed to `root`. */
+function filterOfScope(root: Folder): ExplorerFilter {
+  const path = root.uri.path;
+  if (lastSelected !== undefined && "threadId" in lastSelected) {
+    const thread = threadStore.thread(lastSelected.environmentId, lastSelected.threadId);
+    if (thread !== undefined) return { projectName: thread.projectName, projectIcon: thread.projectIcon, threadTitle: thread.title, path };
+  }
+  const project = lastSelected !== undefined && "projectId" in lastSelected ? threadStore.project(lastSelected.environmentId, lastSelected.projectId) : undefined;
+  return { projectName: project?.name ?? root.name, projectIcon: project?.icon ?? null, threadTitle: undefined, path };
 }
 
 /**
  * The panel's tab commands for the palette: `pult-shell.showThreads`, the
- * explorers' (the environment's also the pill's), and
+ * explorers' (the environment's also the filter's clear), and
  * `pult-shell.toggleExplorerScope`.
  */
 export function registerExplorerCommands(): void {
