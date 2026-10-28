@@ -11,7 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-sort";
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 
-import type { ShellProject, ShellThread, ShelfName, ThreadFeatures } from "./store.ts";
+import { scopedKey, type ShellProject, type ShellThread, type ShelfName, type ThreadFeatures } from "./store.ts";
 
 /**
  * Before the server has said, none of the thread features (`pult/decisions`,
@@ -52,13 +52,19 @@ export function shelfOf(thread: EnvironmentThreadShell, now: string, features: T
 }
 
 /**
- * The threads on upstream's shelves (`shelfOf`). Pinned and active follow their
- * arranged order, snoozed the soonest wake, settled the newest settlement.
+ * The threads on upstream's shelves (`shelfOf`), each under its own
+ * environment's features, every shelf merging the environments as
+ * upstream's sidebar does. Pinned and active follow their arranged order,
+ * snoozed the soonest wake, settled the newest settlement.
  */
-export function shelve(threads: ReadonlyArray<EnvironmentThreadShell>, now: string, features: ThreadFeatures): Shelves {
+export function shelve(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  now: string,
+  featuresOf: (environmentId: string) => ThreadFeatures,
+): Shelves {
   const shelves: Record<ShelfName, Array<EnvironmentThreadShell>> = { pinned: [], active: [], snoozed: [], settled: [] };
   for (const thread of threads) {
-    const shelf = shelfOf(thread, now, features);
+    const shelf = shelfOf(thread, now, featuresOf(thread.environmentId));
     if (shelf !== null) shelves[shelf].push(thread);
   }
   const { pinned, active, snoozed, settled } = shelves;
@@ -155,28 +161,39 @@ function hasUnseenCompletion(thread: EnvironmentThreadShell): boolean {
 }
 
 /** A project as the store has it. */
-export function shellProject(project: OrchestrationProjectShell): ShellProject {
-  return { id: project.id, name: project.title, root: project.workspaceRoot, icon: project.projectIcon ?? null };
+export function shellProject(environmentId: string, project: OrchestrationProjectShell): ShellProject {
+  return { environmentId, id: project.id, name: project.title, root: project.workspaceRoot, icon: project.projectIcon ?? null };
+}
+
+/** An environment's shell as the model holds it: its presented threads, its projects and its server's features. */
+export interface EnvironmentShell {
+  readonly environmentId: string;
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly projects: ReadonlyArray<OrchestrationProjectShell>;
+  readonly features: ThreadFeatures;
 }
 
 /**
- * The store's threads: shelf by shelf, as upstream's sidebar lists them
- * (`shelve`), each in its shelf's order; then the subagents, which upstream
- * lists in their parent and the panel under their root's card, on no shelf.
- * Archived and deleted ones go nowhere.
+ * The store's threads, every environment's: shelf by shelf, as upstream's
+ * sidebar lists them (`shelve`), each in its shelf's order across the
+ * environments; then the subagents, which upstream lists in their parent and
+ * the panel under their root's card, on no shelf. Archived and deleted ones
+ * go nowhere.
  */
-export function shellThreads(
-  threads: ReadonlyArray<EnvironmentThreadShell>,
-  projects: ReadonlyArray<OrchestrationProjectShell>,
-  now: string,
-  features: ThreadFeatures,
-): Array<ShellThread> {
-  const shelves = shelve(threads, now, features);
+export function shellThreads(environments: ReadonlyArray<EnvironmentShell>, now: string): Array<ShellThread> {
+  const threads = environments.flatMap((environment) => environment.threads);
+  const features = new Map(environments.map((environment) => [environment.environmentId, environment.features]));
+  const shelves = shelve(threads, now, (environmentId) => features.get(environmentId) ?? NO_THREAD_FEATURES);
   const subagents = threads.filter((thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent");
-  const byId = new Map(projects.map((project) => [project.id as string, project]));
+  const byId = new Map(
+    environments.flatMap((environment) =>
+      environment.projects.map((project) => [scopedKey(environment.environmentId, project.id), project] as const),
+    ),
+  );
   const present = (thread: EnvironmentThreadShell, shelf: ShelfName | null): ShellThread => {
-    const project = byId.get(thread.projectId);
+    const project = byId.get(scopedKey(thread.environmentId, thread.projectId));
     return {
+      environmentId: thread.environmentId,
       id: thread.id,
       shelf,
       parentId: thread.lineage.parentThreadId,

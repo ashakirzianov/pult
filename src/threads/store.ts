@@ -5,10 +5,12 @@ export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
 
 /** A thread as the panel and the pane show it: the fields of its `EnvironmentThreadShell` they read (`shellThreads` in `presentation.ts`). */
 export interface ShellThread {
+  /** Its environment: thread ids are unique only within one. */
+  readonly environmentId: string;
   readonly id: string;
   /** Its shelf; null for a subagent, which the panel lists under its root's card. */
   readonly shelf: ShelfName | null;
-  /** The thread that spawned or forked it; null for a thread of its own. */
+  /** The thread that spawned or forked it, in the same environment; null for a thread of its own. */
   readonly parentId: string | null;
   /** The top of its lineage, itself for a thread of its own. */
   readonly rootId: string;
@@ -35,21 +37,27 @@ export interface ShellThread {
   readonly goal: string | null;
 }
 
-export interface ShellEnvironment {
-  readonly id: string;
-  readonly label: string;
-  readonly phase: string;
-}
-
-/** What the environment's server lets a client do to a thread; each off until it says. */
+/** What a thread's server lets a client do to it; each off until it says. */
 export interface ThreadFeatures {
   readonly settlement: boolean;
   readonly snooze: boolean;
   readonly pinning: boolean;
 }
 
-/** A project of the environment, threads or none: what a new thread's draft shows of it. */
+/** An environment the page holds, as the cards and the thread's place name it. */
+export interface ShellEnvironment {
+  readonly id: string;
+  readonly label: string;
+  /** What tells it apart from the other environments held (`environmentName`): its label, or its server's host where another shares the label. */
+  readonly name: string;
+  readonly phase: string;
+  /** What its server lets a client do to a thread. */
+  readonly features: ThreadFeatures;
+}
+
+/** A project of an environment, threads or none: what a new thread's draft shows of it. */
 export interface ShellProject {
+  readonly environmentId: string;
   readonly id: string;
   readonly name: string;
   /** Its root on the environment host, for `pult:` URIs; null when only a thread's word on it, without one, is known. */
@@ -59,17 +67,26 @@ export interface ShellProject {
 }
 
 export interface ThreadState {
-  readonly environment: ShellEnvironment | null;
-  readonly features: ThreadFeatures;
-  /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them; then the subagents, on no shelf. */
+  /** Every environment the page holds, in the order they were connected. */
+  readonly environments: ReadonlyArray<ShellEnvironment>;
+  /**
+   * Every environment's threads, shelf by shelf, each shelf in its order
+   * across the environments, as upstream's sidebar lists them; then the
+   * subagents, on no shelf.
+   */
   readonly threads: ReadonlyArray<ShellThread>;
-  /** The environment's projects, threads or none: a new thread's draft names its project. */
+  /** Every environment's projects, threads or none: a new thread's draft names its project. */
   readonly projects: ReadonlyArray<ShellProject>;
 }
 
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
 export function isSubagent(thread: ShellThread): boolean {
   return thread.shelf === null && thread.parentId !== null;
+}
+
+/** A thread's or project's identity across environments, for maps and keys. */
+export function scopedKey(environmentId: string, id: string): string {
+  return `${environmentId}/${id}`;
 }
 
 /** What the mounted thread view knows of a thread's activity, from its projection. */
@@ -82,17 +99,12 @@ export interface ReportedActivity {
 type Listener = (state: ThreadState) => void;
 
 /**
- * The environment's threads, as the page's model (`model.ts`) presents them
- * from the connection's shell snapshot, with what the mounted thread view
+ * The environments' threads, as the page's model (`model.ts`) presents them
+ * from each connection's shell snapshot, with what the mounted thread view
  * reports of their activity laid over.
  */
 class ThreadStore {
-  private presented: ThreadState = {
-    environment: null,
-    features: { settlement: false, snooze: false, pinning: false },
-    threads: [],
-    projects: [],
-  };
+  private presented: ThreadState = { environments: [], threads: [], projects: [] };
   private state: ThreadState = this.presented;
   /**
    * Whether threads work, as the mounted thread view knows from its
@@ -136,13 +148,37 @@ class ThreadStore {
     for (const listener of this.listeners) listener(this.state);
   }
 
-  /** A project by id: the environment's, or else what a thread of it says. */
-  project(projectId: string): ShellProject | undefined {
-    const project = this.state.projects.find((candidate) => candidate.id === projectId);
+  /** A held environment by id. */
+  environment(environmentId: string): ShellEnvironment | undefined {
+    return this.state.environments.find((environment) => environment.id === environmentId);
+  }
+
+  /** The environment's name while the page holds several, to tell its threads and projects apart; undefined while it holds one. */
+  distinguishing(environmentId: string): string | undefined {
+    return this.state.environments.length > 1 ? this.environment(environmentId)?.name : undefined;
+  }
+
+  /** A thread by its environment and id. */
+  thread(environmentId: string, threadId: string): ShellThread | undefined {
+    return this.state.threads.find((thread) => thread.id === threadId && thread.environmentId === environmentId);
+  }
+
+  /** The environment of the first thread listed with `threadId`, for a caller that knows the id alone. */
+  environmentOfThread(threadId: string): string | undefined {
+    return this.state.threads.find((thread) => thread.id === threadId)?.environmentId;
+  }
+
+  /** A project by its environment and id: the environment's, or else what a thread of it says. */
+  project(environmentId: string, projectId: string): ShellProject | undefined {
+    const project = this.state.projects.find(
+      (candidate) => candidate.id === projectId && candidate.environmentId === environmentId,
+    );
     if (project !== undefined) return project;
-    const thread = this.state.threads.find((candidate) => candidate.projectId === projectId);
+    const thread = this.state.threads.find(
+      (candidate) => candidate.projectId === projectId && candidate.environmentId === environmentId,
+    );
     if (thread === undefined) return undefined;
-    return { id: projectId, name: thread.projectName, root: thread.projectRoot, icon: thread.projectIcon };
+    return { environmentId, id: projectId, name: thread.projectName, root: thread.projectRoot, icon: thread.projectIcon };
   }
 
   subscribe(listener: Listener): () => void {

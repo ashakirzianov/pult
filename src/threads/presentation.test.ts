@@ -13,8 +13,8 @@ const NOW = "2026-06-20T12:00:00.000Z";
 const ALL = { settlement: true, snooze: true, pinning: true };
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
-function thread(id: string, overrides: Partial<OrchestrationV2ThreadShell> = {}) {
-  return presentThreadShell(EnvironmentId.make("env"), { ...v2ThreadShell, id: ThreadId.make(id), ...overrides });
+function thread(id: string, overrides: Partial<OrchestrationV2ThreadShell> = {}, environmentId = "env") {
+  return presentThreadShell(EnvironmentId.make(environmentId), { ...v2ThreadShell, id: ThreadId.make(id), ...overrides });
 }
 
 const ids = (threads: ReadonlyArray<{ readonly id: string }>) => threads.map((each) => each.id);
@@ -41,7 +41,7 @@ describe("shelve", () => {
         thread("woken", { snoozedUntil: at("2026-06-20T11:00:00.000Z") }),
       ],
       NOW,
-      ALL,
+      () => ALL,
     );
     assert.deepEqual(ids(shelves.snoozed), ["snoozed-settled-pinned"]);
     assert.deepEqual(ids(shelves.settled), ["settled-pinned"]);
@@ -53,7 +53,7 @@ describe("shelve", () => {
     const shelves = shelve(
       [thread("snoozed", { snoozedUntil: at("2026-06-20T15:00:00.000Z") }), thread("settled", { settledOverride: "settled" })],
       NOW,
-      NO_THREAD_FEATURES,
+      () => NO_THREAD_FEATURES,
     );
     assert.deepEqual(ids(shelves.active).toSorted(), ["settled", "snoozed"]);
     assert.deepEqual([...shelves.snoozed, ...shelves.settled], []);
@@ -63,7 +63,7 @@ describe("shelve", () => {
     const shelves = shelve(
       [thread("archived", { archivedAt: at(NOW) }), thread("deleted", { deletedAt: at(NOW) }), thread("subagent", subagentOf("root"))],
       NOW,
-      ALL,
+      () => ALL,
     );
     assert.deepEqual([shelves.pinned, shelves.active, shelves.snoozed, shelves.settled].flat(), []);
   });
@@ -78,7 +78,7 @@ describe("shelve", () => {
         thread("wakes-sooner", { snoozedUntil: at("2026-06-20T13:00:00.000Z") }),
       ],
       NOW,
-      ALL,
+      () => ALL,
     );
     assert.deepEqual(ids(shelves.pinned), ["pin-a", "pin-b"]);
     assert.deepEqual(ids(shelves.snoozed), ["wakes-sooner", "wakes-later"]);
@@ -138,16 +138,21 @@ describe("shellThreads", () => {
   test("lists the shelves in order, then the subagents on none, and drops archived threads", () => {
     const threads = shellThreads(
       [
-        thread("subagent", subagentOf("active")),
-        thread("settled", { settledOverride: "settled" }),
-        thread("archived", { archivedAt: at(NOW) }),
-        thread("active"),
-        thread("snoozed", { snoozedUntil: at("2026-06-20T15:00:00.000Z") }),
-        thread("pinned", { pinnedAt: at("2026-06-19T00:00:00.000Z") }),
+        {
+          environmentId: "env",
+          threads: [
+            thread("subagent", subagentOf("active")),
+            thread("settled", { settledOverride: "settled" }),
+            thread("archived", { archivedAt: at(NOW) }),
+            thread("active"),
+            thread("snoozed", { snoozedUntil: at("2026-06-20T15:00:00.000Z") }),
+            thread("pinned", { pinnedAt: at("2026-06-19T00:00:00.000Z") }),
+          ],
+          projects: [],
+          features: ALL,
+        },
       ],
-      [],
       NOW,
-      ALL,
     );
     assert.deepEqual(
       threads.map((each) => [each.id, each.shelf]),
@@ -165,8 +170,29 @@ describe("shellThreads", () => {
   });
 
   test("counts upstream's Waiting as in motion", () => {
-    const [waiting] = shellThreads([thread("t", { latestRunId: RunId.make("run"), status: "idle" })], [], NOW, ALL);
+    const [waiting] = shellThreads(
+      [{ environmentId: "env", threads: [thread("t", { latestRunId: RunId.make("run"), status: "idle" })], projects: [], features: ALL }],
+      NOW,
+    );
     assert.equal(waiting?.waiting, true);
     assert.equal(waiting?.working, true);
+  });
+
+  test("merges the environments' shelves, each thread shelved by its own server's features", () => {
+    const settled = { settledOverride: "settled" as const };
+    const threads = shellThreads(
+      [
+        { environmentId: "env", threads: [thread("same", settled)], projects: [], features: ALL },
+        { environmentId: "other", threads: [thread("same", settled, "other")], projects: [], features: NO_THREAD_FEATURES },
+      ],
+      NOW,
+    );
+    assert.deepEqual(
+      threads.map((each) => [each.environmentId, each.id, each.shelf]),
+      [
+        ["other", "same", "active"],
+        ["env", "same", "settled"],
+      ],
+    );
   });
 });
