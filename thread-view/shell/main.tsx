@@ -5,7 +5,14 @@
 import "../t3/src/index.css";
 import "./shell.css";
 
-import { refreshTheme, setSystemColorSchemeSource } from "../t3/src/hooks/useTheme";
+import {
+  readAppearanceModePreference,
+  readThemePreference,
+  refreshTheme,
+  setAppearanceMode,
+  setSystemColorSchemeSource,
+  setTheme,
+} from "../t3/src/hooks/useTheme";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import { routeRightPanel } from "./rightPanel.ts";
 import { type MountedView, mountDraftView, mountThreadView } from "./ThreadView.tsx";
@@ -33,13 +40,18 @@ export interface ThreadViewMounts {
 /**
  * Starts the view on the page's connection; call once, before any pane
  * mounts, then mount a thread or a project's draft per pane. The view takes
- * the host's colour scheme as the system's, and its files open in the shell
- * (`rightPanel.ts`).
+ * the host's colour scheme as the system's and follows it: upstream's own
+ * appearance preference, kept in localStorage, is set back to System, since
+ * the shell offers no page to change it and a stale Light or Dark there
+ * would paint the view's text in one scheme on the workbench's other. Its
+ * files open in the shell (`rightPanel.ts`).
  */
 export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
   setSystemColorSchemeSource({ isDark: () => host.colorScheme() === "dark", onChange: host.onDidChangeColorScheme });
+  if (readThemePreference() !== "system") setTheme("system");
+  if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
   return { mount: mountThreadView, mountDraft: mountDraftView };
