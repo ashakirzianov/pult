@@ -250,10 +250,14 @@ html:not([data-theme-id]) .pult-thread-view {
   order: 6;
 }
 
-/* The context window meter's arc, orange once the context is heavy
-   (`HEAVY_CONTEXT_TOKENS` in upstream's `ComposerFooterControls.tsx`). */
-.pult-composer-bar > [data-chat-composer-slot-item="meter"][data-heavy] svg circle:last-child {
-  stroke: light-dark(var(--color-orange-600), var(--color-orange-400));
+/* The context window meter's arc, orange once the context is heavy and red
+   once it nears full (`contextLevel` in upstream's `ComposerFooterControls.tsx`). */
+.pult-composer-bar > [data-chat-composer-slot-item="meter"][data-level="heavy"] svg circle:last-child {
+  stroke: var(--warning);
+}
+
+.pult-composer-bar > [data-chat-composer-slot-item="meter"][data-level="full"] svg circle:last-child {
+  stroke: var(--color-error);
 }
 
 /* A notice in the bar: its icon and title, how many more, then its actions. */

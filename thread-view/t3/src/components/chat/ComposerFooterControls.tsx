@@ -148,7 +148,7 @@ export const ComposerControlsSlot = createContext<HTMLElement | null>(null);
 
 export function ComposerControlsSlotItem(props: {
   item: string;
-  heavy?: boolean;
+  level?: string | undefined;
   children: ReactNode;
 }) {
   const slot = useContext(ComposerControlsSlot);
@@ -156,7 +156,7 @@ export function ComposerControlsSlotItem(props: {
   return createPortal(
     <div
       data-chat-composer-slot-item={props.item}
-      data-heavy={props.heavy || undefined}
+      data-level={props.level}
       data-chat-composer-resting-controls="true"
       className="flex min-w-0 items-center gap-1"
     >
@@ -167,14 +167,18 @@ export function ComposerControlsSlotItem(props: {
 }
 
 /**
- * Pult: from this many tokens in context the bar's meter turns orange
- * (`data-heavy` on its slot item), short of upstream's red past 90%.
+ * Pult: the bar's meter turns orange from this many tokens in context, and red
+ * from this share of the window (`data-level` on its slot item, `heavy` or
+ * `full`), ahead of upstream's red past 90%.
  */
 const HEAVY_CONTEXT_TOKENS = 150_000;
+const FULL_CONTEXT_PERCENTAGE = 75;
 
-function isHeavyContext(usage: ContextWindowSnapshot | null): boolean {
-  if (usage === null || (usage.usedPercentage ?? 0) > 90) return false;
-  return usage.usedTokens >= HEAVY_CONTEXT_TOKENS;
+function contextLevel(usage: ContextWindowSnapshot | null) {
+  if (usage === null) return undefined;
+  if ((usage.usedPercentage ?? 0) >= FULL_CONTEXT_PERCENTAGE) return "full";
+  if (usage.usedTokens >= HEAVY_CONTEXT_TOKENS) return "heavy";
+  return undefined;
 }
 
 export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
@@ -220,7 +224,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
 }) {
   return (
     <>
-      <ComposerControlsSlotItem item="meter" heavy={isHeavyContext(props.activeContextWindow)}>
+      <ComposerControlsSlotItem item="meter" level={contextLevel(props.activeContextWindow)}>
       {props.activeContextWindow ? (
         <ContextWindowMeter
           usage={props.activeContextWindow}
