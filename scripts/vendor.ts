@@ -17,7 +17,8 @@
 // and `tailscale`, which spawn processes and open sockets, stay out.
 //
 //   pnpm vendor:sync     write the vendored tree
-//   pnpm vendor:check    fail if the vendored tree differs from the pin
+//   pnpm vendor:check    fail if the vendored tree differs from the pin, or (by
+//                        merge.ts) the thread view's copy is not at it
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -214,12 +215,12 @@ export function workspaceDrift(
   );
 }
 
-const repoRoot = Effect.gen(function* () {
+export const repoRoot = Effect.gen(function* () {
   const path = yield* Path.Path;
   return path.resolve(import.meta.dirname, "..");
 });
 
-const git = Effect.fn("git")(function* (cwd: string, args: ReadonlyArray<string>) {
+export const git = Effect.fn("git")(function* (cwd: string, args: ReadonlyArray<string>) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const handle = yield* spawner.spawn(
     ChildProcess.make("git", [...args], { cwd, stderr: "inherit" }),
@@ -236,7 +237,7 @@ const git = Effect.fn("git")(function* (cwd: string, args: ReadonlyArray<string>
   return stdout;
 }, Effect.scoped);
 
-const resolveCheckout = Effect.fn("resolveCheckout")(function* () {
+export const resolveCheckout = Effect.fn("resolveCheckout")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const checkout = t3codeCheckoutPath();
@@ -248,7 +249,7 @@ const resolveCheckout = Effect.fn("resolveCheckout")(function* () {
   return checkout;
 });
 
-const readPin = Effect.fn("readPin")(function* (root: string) {
+export const readPin = Effect.fn("readPin")(function* (root: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const file = path.join(root, VENDOR_DIR, "PIN");
@@ -259,8 +260,15 @@ const readPin = Effect.fn("readPin")(function* (root: string) {
   return pin;
 });
 
-/** A detached worktree of the checkout at the pin, removed when the scope closes. */
-const pinnedTree = Effect.fn("pinnedTree")(function* (checkout: string, pin: string) {
+/**
+ * A detached worktree of the checkout at `pin` with only `paths` checked out,
+ * removed when the scope closes; the merge (`merge.ts`) reads apps/web from one.
+ */
+export const pinnedTree = Effect.fn("pinnedTree")(function* (
+  checkout: string,
+  pin: string,
+  paths: ReadonlyArray<string> = PINNED_PATHS,
+) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const commit = (yield* git(checkout, [
@@ -282,7 +290,7 @@ const pinnedTree = Effect.fn("pinnedTree")(function* (checkout: string, pin: str
     () => git(checkout, ["worktree", "remove", "--force", tree]).pipe(Effect.ignore),
   );
   // Only the paths vendoring reads are checked out; the rest of the fork stays in git.
-  yield* git(tree, ["checkout", "--quiet", commit, "--", ...PINNED_PATHS]);
+  yield* git(tree, ["checkout", "--quiet", commit, "--", ...paths]);
   return { tree, commit };
 });
 

@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "desktop:dev": "pnpm --filter pult-desktop dev",
     "vendor:sync": "node scripts/vendor.ts",
-    "vendor:check": "node scripts/vendor.ts --check"
+    "vendor:check": "node scripts/vendor.ts --check && node scripts/merge.ts --check",
+    "vendor:merge": "node scripts/merge.ts"
   },
   "packageManager": "pnpm@11.21.0",
   "engines": {
