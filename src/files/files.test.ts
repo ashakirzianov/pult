@@ -43,6 +43,8 @@ class FakeServer implements WorkspaceServer {
   /** Paths that are symlinks, which the server's listing leaves out. */
   readonly symlinks = new Set<string>();
   readonly writes: Array<{ path: string; expectedVersion: string | undefined }> = [];
+  /** The roots the server writes against: its projects' and worktrees'. */
+  readonly workspaces = new Set<string>();
   readonly watchers = new Map<string, { listener: WatchListener; disposed: boolean }>();
   private nextVersion = 1;
   enabled: Features;
@@ -128,6 +130,8 @@ class FakeServer implements WorkspaceServer {
     expectedVersion?: string | undefined;
   }) => {
     const path = resolve(input.cwd, input.relativePath);
+    // The server writes only against a known workspace, a project's or worktree's root.
+    if (!this.workspaces.has(input.cwd)) throw failure("ProjectWriteFileError", "workspace_path_outside_root");
     this.writes.push({ path, expectedVersion: input.expectedVersion });
     const current = this.files.get(path);
     if (
@@ -206,26 +210,29 @@ function dirname(path: string) {
   return path.slice(0, path.lastIndexOf("/")) || "/";
 }
 
-const ROOT = "/repo";
+const HOME = "/home";
+const ROOT = "/home/repo";
 const OTHER_PROJECT = "/elsewhere";
 
 function setup(enabled: Features, open: Array<string> = []) {
   const server = new FakeServer(enabled);
   server.directories.add(ROOT);
   server.directories.add(OTHER_PROJECT);
+  server.workspaces.add(ROOT);
+  server.workspaces.add(OTHER_PROJECT);
   server.put(`${ROOT}/src/a.ts`, "export const a = 1;\n");
   return { server, ...openWindow(server, open) };
 }
 
 /** A window's files over `server`; another window over the same server is a reload. */
-function openWindow(server: FakeServer, open: Array<string>) {
+function openWindow(server: FakeServer, open: Array<string>, roots: Array<string> = [ROOT]) {
   const changes: Array<Change> = [];
   const decorated: Array<string> = [];
   const readOnly: Array<[string, string]> = [];
   const files = new WorkspaceFiles(
     server,
     {
-      roots: () => [ROOT],
+      roots: () => roots,
       knownRoots: () => [ROOT, OTHER_PROJECT],
       openPaths: () => open,
       changed: (list) => void changes.push(...list),
@@ -419,6 +426,17 @@ describe("WorkspaceFiles on either server", () => {
       assert.equal((await rejection(files.writeFile(`${ROOT}/src/a.ts`, latin1, SAVE))).code, "NoPermissions");
       // The one write that went through is the other project's, against its own root.
       assert.deepEqual(server.writes.map((write) => write.path), [`${OTHER_PROJECT}/x.ts`]);
+    });
+
+    it(`saves a project's file against the project's root under a folder above it, as the home is (${name})`, async () => {
+      const { server } = setup(enabled);
+      server.directories.add(HOME);
+      const { files } = openWindow(server, [], [HOME]);
+      await files.readFile(`${ROOT}/src/a.ts`);
+
+      await files.writeFile(`${ROOT}/src/a.ts`, text("export const a = 2;\n"), SAVE);
+
+      assert.equal(server.files.get(`${ROOT}/src/a.ts`)?.contents, "export const a = 2;\n");
     });
 
     it(`opens a truncated file read-only and never writes it back (${name})`, async () => {

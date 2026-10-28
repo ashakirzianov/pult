@@ -531,12 +531,15 @@ export class WorkspaceFiles implements Disposable {
   }
 
   /**
-   * Where a path is written, if anywhere: under a workspace folder, or under one
-   * of the environment's known roots, so a file of another project, or of a root
-   * the folders no longer hold, still saves. Browsing and search stay the folders'.
+   * Where a path is written, if anywhere: against the innermost of the
+   * environment's known roots holding it, since the server writes only
+   * against a known workspace and a folder above one, as the home is, would be
+   * refused; else against a workspace folder. So a file of another project,
+   * or of a root the folders no longer hold, still saves. Browsing and search
+   * stay the folders'.
    */
   private editable(path: string): Located | undefined {
-    return locate(this.host.roots(), path) ?? locate(this.host.knownRoots(), path);
+    return locate(this.host.knownRoots(), path) ?? locate(this.host.roots(), path);
   }
 
   /** Writes go only under an editable root, never to a root itself. */
