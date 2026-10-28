@@ -1,5 +1,6 @@
 import {
   getService,
+  ICommandService,
   IContextKeyService,
   ILifecycleService,
   INotificationService,
@@ -9,15 +10,18 @@ import {
   IWorkspaceContextService,
   IWorkspaceEditingService,
 } from "@codingame/monaco-vscode-api";
-import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
+import type { IDisposable } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { Action2, MenuId, MenuRegistry, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
+import { request } from "@t3tools/client-runtime/rpc";
+import { WS_METHODS } from "@t3tools/contracts";
 
-import { PULT_SCHEME, toUriPath } from "../files/paths.ts";
+import { connection } from "../connection/index.ts";
+import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
 import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
@@ -30,8 +34,9 @@ const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsV
 
 /**
  * What the Explorer tab is rooted at, as the user chose it: the selected
- * thread's root alone, or every root of the held environments. Kept in workspace
- * storage; `thread` until the user widens it.
+ * thread's root alone, shown as a pill in the tab's title that clears it, or
+ * each held environment's home directory. Kept in workspace storage;
+ * `thread` until the user clears it.
  */
 type Scope = "thread" | "environment";
 const SCOPE_STORAGE_KEY = "pult.shell.explorerScope";
@@ -39,7 +44,7 @@ let scope: Scope = "thread";
 
 /** The scope in effect, `environment` while the scope's thread has no root: the toggle's state. */
 const ScopeContext = new RawContextKey<Scope>("pult.explorerScope", "environment");
-/** Whether the scope's thread has a root to narrow to: the toggle's and "Open explorer"'s precondition. */
+/** Whether the scope's thread has a root to narrow to: the toggle's precondition. */
 const ThreadHasFolderContext = new RawContextKey<boolean>("pult.threadHasFolder", false);
 
 /** The thread or draft selected last; it stays the scope's while Settings is selected. */
@@ -69,7 +74,7 @@ export async function openThreadExplorer(): Promise<void> {
   await openExplorer("thread");
 }
 
-/** The Explorer tab at every held environment's roots, as a multi-root. */
+/** The Explorer tab at every held environment's home directory: the filter's pill clears to it. */
 export function openEnvironmentExplorer(): Promise<void> {
   return openExplorer("environment");
 }
@@ -96,18 +101,36 @@ async function setScope(next: Scope): Promise<void> {
   (await getService(IStorageService)).store(SCOPE_STORAGE_KEY, next, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 }
 
-/**
- * The thread's own root: its project's, since the store carries no worktree
- * yet; named with its environment's label too while the page holds several,
- * when `named` (the environment scope's folders).
- */
-function threadFolder(thread: ShellThread, named = false): Folder | undefined {
+/** The thread's own root: its project's, since the store carries no worktree yet. */
+function threadFolder(thread: ShellThread): Folder | undefined {
   if (thread.projectRoot === null) return undefined;
-  const label = named ? threadStore.distinguishing(thread.environmentId) : undefined;
-  return {
-    uri: pultUri(thread.environmentId, thread.projectRoot),
-    name: label === undefined ? thread.projectName : `${thread.projectName} (${label})`,
-  };
+  return { uri: pultUri(thread.environmentId, thread.projectRoot), name: thread.projectName };
+}
+
+/** Each environment's home directory, as its server resolves `~/`; a failed lookup is asked again next time. */
+const homes = new Map<string, Promise<string>>();
+
+function homeOf(environmentId: string): Promise<string> {
+  let home = homes.get(environmentId);
+  if (home === undefined) {
+    home = connection
+      .run(environmentId, request(WS_METHODS.filesystemBrowse, { partialPath: "~/" }))
+      .then(({ parentPath }) => parentPath);
+    home.catch(() => homes.delete(environmentId));
+    homes.set(environmentId, home);
+  }
+  return home;
+}
+
+/** The environment's home as a folder, `~`, named with its environment's label too while the page holds several. */
+async function homeFolder(environmentId: string): Promise<Folder> {
+  const label = threadStore.distinguishing(environmentId);
+  return { uri: pultUri(environmentId, await homeOf(environmentId)), name: label === undefined ? "~" : `~ (${label})` };
+}
+
+/** Whether `uri` is `root` or under it, on the same environment. */
+function within(uri: URI, root: URI): boolean {
+  return uri.scheme === root.scheme && namesEnvironment(uri.authority, root.authority) && relativeTo(root.path, uri.path) !== undefined;
 }
 
 /**
@@ -142,19 +165,19 @@ const keyOf = (uri: URI) => uri.toString();
 let rerooting = Promise.resolve(true);
 /** True while `reroot` changes the folders, so a change from elsewhere tells itself apart. */
 let updating = false;
-/** Sets the context keys to the scope in effect; set once the workbench is up. */
+/** Sets the context keys and the pill to the scope in effect; set once the workbench is up. */
 let updateContextKeys = () => {};
 
 /**
  * Sets the workspace folders to the scope's, one update at a time: each reads
  * the scope and the folders when its turn comes, after the previous update
  * has landed. The thread scope narrows them to the selected thread's root;
- * the environment scope, and the thread scope of a thread without one, keep
- * every folder of the held environments already there (one "Pult: Open
- * Project" added) and add every environment's threads' roots, never removing
- * one but an environment's the page let go of; a thread's root is renamed
- * as the number of environments makes its name carry its environment's or not.
- * A failure is notified. Resolves to whether the folders are the scope's.
+ * the environment scope, and the thread scope of a thread without one, set
+ * each held environment's home directory, keeping a folder of the held
+ * environments already there outside its home (one "Pult: Open Project"
+ * added); a home is renamed as the number of environments makes its name
+ * carry its environment's or not. A failure, a home the server would not
+ * name among them, is notified. Resolves to whether the folders are the scope's.
  */
 function reroot(): Promise<boolean> {
   rerooting = rerooting.then(update).catch(async (error: unknown) => {
@@ -166,7 +189,7 @@ function reroot(): Promise<boolean> {
 
   async function update(): Promise<boolean> {
     updateContextKeys();
-    const { environments, threads } = threadStore.get();
+    const { environments } = threadStore.get();
     if (environments.length === 0) return true;
     const root = effectiveRoot();
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
@@ -174,16 +197,12 @@ function reroot(): Promise<boolean> {
     // The thread's root keeps its folder, and its tree, under whichever name it has.
     if (root !== undefined) wanted.set(keyOf(root.uri), current.find((folder) => keyOf(folder.uri) === keyOf(root.uri)) ?? root);
     else {
+      const homeFolders = await Promise.all(environments.map((environment) => homeFolder(environment.id)));
+      for (const home of homeFolders) wanted.set(keyOf(home.uri), home);
       const held = new Set(environments.map((environment) => environment.id.toLowerCase()));
       for (const folder of current) {
-        if (folder.uri.scheme === PULT_SCHEME && held.has(folder.uri.authority.toLowerCase())) wanted.set(keyOf(folder.uri), folder);
-      }
-      const roots = new Set<string>();
-      for (const thread of threads) {
-        const folder = threadFolder(thread, true);
-        if (folder === undefined || roots.has(keyOf(folder.uri))) continue;
-        roots.add(keyOf(folder.uri));
-        wanted.set(keyOf(folder.uri), folder);
+        if (folder.uri.scheme !== PULT_SCHEME || !held.has(folder.uri.authority.toLowerCase())) continue;
+        if (!homeFolders.some((home) => within(folder.uri, home.uri))) wanted.set(keyOf(folder.uri), folder);
       }
     }
     // A folder kept under another name is replaced.
@@ -216,9 +235,9 @@ function reroot(): Promise<boolean> {
 /**
  * Keeps the folders to the scope once the workbench is up. The scope follows
  * the selection, and a folder added from elsewhere while it is narrowed
- * widens it to the environment's. Every change to the thread model re-roots,
- * so the folders hold the threads' roots whichever tab shows, and a thread
- * gone or rootless falls back to the environment's. The Explorer tab, however
+ * widens it to the environment's and is revealed there. Every change to the
+ * thread model re-roots, so a thread gone or rootless falls back to the
+ * environment's, and the pill names the root in effect. The Explorer tab, however
  * opened (Cmd+Shift+E, Reveal in Explorer, its tab), shows the scope as it is,
  * with the file view alone. Waits for the workbench to have restored its parts.
  */
@@ -230,8 +249,10 @@ export async function followExplorerScope(): Promise<void> {
   const scopeKey = ScopeContext.bindTo(contextKeys);
   const hasFolderKey = ThreadHasFolderContext.bindTo(contextKeys);
   updateContextKeys = () => {
-    scopeKey.set(effectiveRoot() === undefined ? "environment" : "thread");
+    const root = effectiveRoot();
+    scopeKey.set(root === undefined ? "environment" : "thread");
     hasFolderKey.set(threadRootOfScope() !== undefined);
+    showPill(root?.name);
   };
   const viewDescriptors = await getService(IViewDescriptorService);
   const explorer = viewDescriptors.getViewContainerById(EXPLORER_ID);
@@ -247,19 +268,51 @@ export async function followExplorerScope(): Promise<void> {
     followSelection();
     void reroot();
   });
-  // A folder added from elsewhere ("Pult: Open Project") while the folders are narrowed widens the scope.
+  // A folder added from elsewhere ("Pult: Open Project") while the folders are narrowed widens the scope, and shows the folder, under its home if it is in one.
+  const commands = await getService(ICommandService);
   (await getService(IWorkspaceContextService)).onDidChangeWorkspaceFolders(({ added }) => {
-    if (updating || effectiveRoot() === undefined || added.length === 0) return;
-    void setScope("environment").then(reroot);
+    const folder = added[0];
+    if (updating || effectiveRoot() === undefined || folder === undefined) return;
+    void setScope("environment")
+      .then(reroot)
+      .then((rerooted) => rerooted && commands.executeCommand("revealInExplorer", folder.uri));
   });
   threadStore.subscribe(() => void reroot());
   await reroot();
 }
 
+/** The pill's menu item and the name it shows, while the folders are narrowed. */
+let pill: { readonly name: string; readonly item: IDisposable } | undefined;
+
+/**
+ * The filter as a pill in the Explorer tab's title, the narrowed root's name,
+ * before the tab's buttons: a title action without an icon, which the
+ * toolbar draws as its text and `panel.css` as a pill with a clear mark;
+ * clicking it clears the filter. Re-registered as the name changes, gone
+ * while the folders are the homes'.
+ */
+function showPill(name: string | undefined): void {
+  if (pill?.name === name) return;
+  pill?.item.dispose();
+  pill = undefined;
+  if (name === undefined) return;
+  const item = MenuRegistry.appendMenuItem(MenuId.ViewTitle, {
+    command: {
+      id: "pult-shell.openEnvironmentExplorer",
+      title: name,
+      tooltip: `Only ${name}. Clear to show the home folder`,
+    },
+    when: ContextKeyExpr.equals("view", FILE_VIEW_ID),
+    group: "navigation",
+    order: -100,
+  });
+  pill = { name, item };
+}
+
 /**
  * The panel's tab commands for the palette: `pult-shell.showThreads`, the
- * explorers', and `pult-shell.toggleExplorerScope`, also the toggle in the
- * Explorer tab's title, a filled filter while the folders are narrowed.
+ * explorers' (the environment's also the pill's), and
+ * `pult-shell.toggleExplorerScope`.
  */
 export function registerExplorerCommands(): void {
   const category = { value: "Pult", original: "Pult" };
@@ -312,17 +365,10 @@ export function registerExplorerCommands(): void {
         super({
           id: "pult-shell.toggleExplorerScope",
           title: { value: "Explorer: Only This Thread's Folder", original: "Explorer: Only This Thread's Folder" },
-          tooltip: "Only this thread's folder",
           category,
-          icon: Codicon.filter,
-          toggled: {
-            condition: ScopeContext.isEqualTo("thread"),
-            icon: Codicon.filterFilled,
-            tooltip: "Only this thread's folder: on. Show every environment's folders",
-          },
+          toggled: ScopeContext.isEqualTo("thread"),
           f1: true,
           precondition: ThreadHasFolderContext,
-          menu: { id: MenuId.ViewTitle, when: ContextKeyExpr.equals("view", FILE_VIEW_ID), group: "navigation", order: 100 },
         });
       }
 

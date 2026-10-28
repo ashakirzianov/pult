@@ -418,6 +418,40 @@
   list-style: none;
 }
 
+/* The Explorer tab's filter, a pill in its title (src/panel/explorer.ts): a
+   title action without an icon, the only one the sidebar's titles have, which
+   the toolbar draws as its text, the narrowed root's name. The clear mark is
+   the codicon font's close, the whole pill one button. */
+.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon) {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  max-width: 140px;
+  height: 20px;
+  margin-right: 4px;
+  padding: 0 20px 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground));
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 18%, transparent);
+}
+
+.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon):hover {
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
+}
+
+.part.sidebar > .composite.title .action-item.menu-entry > a.action-label:not(.codicon)::after {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  font: normal normal normal 12px/1 codicon;
+  content: "\ea76";
+}
+
 /* Close, which the workbench lists among the tab's own actions, before its
    view's (src/panel/view.tsx), goes last. */
 .part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label="Close"]) {

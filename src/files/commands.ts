@@ -19,7 +19,7 @@ import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
 
 import { connection, ConnectedContext, pickEnvironment } from "../connection/index.ts";
 import { threadStore } from "../threads/store.ts";
-import { baseName, joinPath, parentOf, toHostPath, toUriPath } from "./paths.ts";
+import { baseName, joinPath, parentOf, relativeTo, toHostPath, toUriPath } from "./paths.ts";
 import { type ProjectRoot, projectRoots } from "./projects.ts";
 import { environmentServer } from "./server.ts";
 import { environmentShell, pultFolders, pultResource } from "./workspace.ts";
@@ -163,7 +163,8 @@ const HOST_PATH = /^(\/|~\/|[A-Za-z]:[\\/])/;
 /**
  * "Pult: Open Project…": a project of an environment, picked first while the
  * page holds several, or a worktree its threads run in, added as a workspace
- * folder, named with the environment's label too while there are several;
+ * folder, named with the environment's label too while there are several, or
+ * revealed where a folder holds it already;
  * or a path typed in, added to the environment as a project first, as
  * upstream's Add Project does.
  */
@@ -234,7 +235,8 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
       return void notifications.error(`Pult could not add ${picked.create} as a project: ${message}`);
     }
   } else return;
-  if (pultFolders(environmentId).some((existing) => existing.uri.path === folder.uri.path)) {
+  // A folder in the workspace already, or under one (the environment's home), is shown where it is.
+  if (pultFolders(environmentId).some((existing) => relativeTo(existing.uri.path, folder.uri.path) !== undefined)) {
     return void commands.executeCommand("revealInExplorer", folder.uri);
   }
   await (await getService(IWorkspaceEditingService)).addFolders([folder]);
