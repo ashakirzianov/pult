@@ -145,7 +145,6 @@ function promoteDraft(projectId: string, threadId: string): Promise<void> {
     const groups = await getService(IEditorGroupsService);
     const storage = await getService(IStorageService);
     const instantiation = await getService(IInstantiationService);
-    const commands = await getService(ICommandService);
     const next: ThreadSelection = { environmentId: draft.environmentId, threadId };
     switching = true;
     try {
@@ -161,7 +160,6 @@ function promoteDraft(projectId: string, threadId: string): Promise<void> {
       switching = false;
     }
     for (const listener of listeners) listener();
-    tellExtension(commands);
   });
 }
 
@@ -204,7 +202,6 @@ async function switchTo(next: Selection): Promise<void> {
     switching = false;
   }
   for (const listener of listeners) listener();
-  tellExtension(commands);
 
   /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave. */
   async function showLeadTab(lead: ThreadSelection | DraftSelection): Promise<void> {
@@ -235,16 +232,6 @@ async function switchTo(next: Selection): Promise<void> {
       if (closing.length > 0) await group.closeEditors(closing, { force: true });
     }
   }
-}
-
-/**
- * The extension's changes view follows the selection: told on each switch,
- * and asked at its start through `pult-shell.selectedThread`, since the
- * extension may start after the selection is restored. Before it starts
- * the command is missing, which is fine.
- */
-function tellExtension(commands: ICommandService): void {
-  void commands.executeCommand("pult.threadSelected", selectedThread()?.threadId ?? null).catch(() => undefined);
 }
 
 function workingSetName(selection: Selection): string {

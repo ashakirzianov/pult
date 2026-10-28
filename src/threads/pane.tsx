@@ -48,8 +48,8 @@ function run(command: string, ...args: unknown[]): void {
  * connection runtime's services, so the view shares the page's one socket.
  * A thread it navigates to is selected in the shell, and so is a draft of a
  * new thread, as its project's draft; a file it would show in its right
- * panel opens as a tab (`files.ts`), and its diff is the extension's changes
- * view, the Source Control view. A view that fails to load fails with a
+ * panel opens as a tab (`files.ts`), and its diff is the changes view
+ * (`src/changes/`), the Source Control view. A view that fails to load fails with a
  * message the pane shows, and the next pane tries again.
  */
 function threadView() {
@@ -64,8 +64,8 @@ function threadView() {
         // A draft the view went to, which it remembered as the project's.
         openDraft: (projectId) => run("pult-shell.newThread", projectId),
         openFile: (threadId, path, line) => void openThreadFile(threadId, path, line),
-        // The extension's changes view: the Source Control view over the thread's project.
-        openChanges: (threadId, path) => run("pult.showChanges", threadId, path),
+        // The changes view (`src/changes/`): the Source Control view over the thread's project.
+        openChanges: (threadId, path) => run("pult-shell.showChanges", threadId, path),
         // A native subagent's work is a runless turn the extension's push cannot see; the view's projection can.
         reportActivity: (activity) => threadStore.reportActivity(activity),
       },
