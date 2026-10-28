@@ -3,6 +3,7 @@ import type { IDisposable } from "@codingame/monaco-vscode-api/vscode/vs/base/co
 import { useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+import { toHostPath } from "../files/paths.ts";
 import { projectIconUri, useProjectIcons } from "../threads/projectIcon.ts";
 import { explorerFilter } from "./explorer.ts";
 
@@ -10,10 +11,11 @@ const FILE_VIEW_ID = "workbench.explorer.fileView";
 
 /**
  * The Explorer tab's filter, a card above the tree while the folders are
- * narrowed to the selected thread's root, in the thread cards' look: the
- * project's icon and name, with a clear mark on hover that shows the
- * environment's home instead, then the thread's title ("New thread" for a
- * draft).
+ * narrowed, in the thread cards' look, with a clear mark on hover that shows
+ * every environment's home instead: to the selected thread's root, the
+ * project's icon and name, then the thread's title ("New thread" for a
+ * draft); to an environment's home, the environment's name, then the home's
+ * path.
  */
 function FilterCard() {
   const filter = useSyncExternalStore(explorerFilter.subscribe, explorerFilter.get);
@@ -22,8 +24,12 @@ function FilterCard() {
   return (
     <div className="pult-explorer-card" title={`Only ${filter.path}`}>
       <span className="pult-card-top">
-        <img className="pult-card-icon" src={projectIconUri(filter.project).toString(true)} alt="" />
-        <span className="pult-card-project">{filter.project.name}</span>
+        {filter.kind === "thread" ? (
+          <img className="pult-card-icon" src={projectIconUri(filter.project).toString(true)} alt="" />
+        ) : (
+          <i className="pult-card-icon codicon codicon-home" aria-hidden />
+        )}
+        <span className="pult-card-project">{filter.kind === "thread" ? filter.project.name : filter.environment}</span>
         <button
           type="button"
           className="pult-explorer-card-clear codicon codicon-close"
@@ -32,7 +38,7 @@ function FilterCard() {
           onClick={() => void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.openEnvironmentExplorer"))}
         />
       </span>
-      <span className="pult-card-title">{filter.threadTitle ?? "New thread"}</span>
+      <span className="pult-card-title">{filter.kind === "thread" ? (filter.threadTitle ?? "New thread") : toHostPath(filter.path)}</span>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   IViewDescriptorService,
   IWorkspaceContextService,
   IWorkspaceEditingService,
+  type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
@@ -19,11 +20,20 @@ import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 import { request } from "@t3tools/client-runtime/rpc";
 import { WS_METHODS } from "@t3tools/contracts";
 
+import { pickEnvironment } from "../connection/commands.ts";
 import { connection } from "../connection/index.ts";
 import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
 import { whenReady } from "../files/server.ts";
 import { type ProjectIconSource, threadProjectIcon } from "../threads/projectIcon.ts";
-import { type DraftSelection, explorerSelected, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
+import {
+  type DraftSelection,
+  explorerSelected,
+  onDidSelectThread,
+  selectedDraft,
+  selectedThread,
+  selectExplorer,
+  type ThreadSelection,
+} from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
 /** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
@@ -56,7 +66,47 @@ interface Folder {
   readonly name: string;
 }
 
-/** The Pult tab, the threads' and the Explorer card's. */
+/**
+ * The environment whose entry on the Explorer shelf was clicked last, while
+ * the Explorer workspace stays selected: with several environments held the
+ * folders narrow to its home alone, the filter's card showing it. Another
+ * selection, or the filter's clear, forgets it.
+ */
+let explored: string | undefined;
+const exploredListeners = new Set<() => void>();
+
+/** The environment explored, for `useSyncExternalStore`: the shelf highlights its entry while no listed file is active. */
+export const exploredEnvironment = {
+  get: () => explored,
+  subscribe(listener: () => void): () => void {
+    exploredListeners.add(listener);
+    return () => exploredListeners.delete(listener);
+  },
+};
+
+function setExplored(next: string | undefined): void {
+  if (next === explored) return;
+  explored = next;
+  for (const listener of exploredListeners) listener();
+}
+
+/** The environment whose home the folders narrow to: the one explored, while the Explorer workspace is selected and the page holds it and another. */
+function narrowedHome(): string | undefined {
+  if (explored === undefined || !explorerSelected() || threadStore.get().environments.length < 2) return undefined;
+  return threadStore.environment(explored) === undefined ? undefined : explored;
+}
+
+/**
+ * The Explorer workspace with the Explorer tab at `environmentId`'s home, or
+ * at every environment's without one: the Explorer shelf's environment entries.
+ */
+export async function exploreEnvironment(environmentId: string | undefined): Promise<void> {
+  setExplored(environmentId);
+  // The selection re-roots the folders.
+  await selectExplorer(true);
+}
+
+/** The Pult tab, the threads' and the Explorer shelf's. */
 export async function showThreads(): Promise<void> {
   await (await getService(IPaneCompositePartService)).openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, true);
 }
@@ -75,9 +125,9 @@ export async function openThreadExplorer(): Promise<void> {
   await openExplorer("thread");
 }
 
-/** The Explorer tab at every held environment's home directory: the filter's card clears to it. */
+/** The Explorer tab at every held environment's home directory: the filter's card clears to it, a narrowed home's to the Explorer workspace's homes. */
 export function openEnvironmentExplorer(): Promise<void> {
-  return openExplorer("environment");
+  return narrowedHome() === undefined ? openExplorer("environment") : exploreEnvironment(undefined);
 }
 
 /** Flips the scope in effect, and shows the Explorer tab. */
@@ -173,8 +223,10 @@ let updateContextKeys = () => {};
  * Sets the workspace folders to the scope's, one update at a time: each reads
  * the scope and the folders when its turn comes, after the previous update
  * has landed. The thread scope narrows them to the selected thread's root;
- * the environment scope, and the thread scope of a thread without one, set
- * each held environment's home directory, keeping a folder of the held
+ * the Explorer workspace narrows them to the explored environment's home
+ * (`narrowedHome`), while that home can be had; the environment scope,
+ * and the thread scope of a thread without one, set each held
+ * environment's home directory, keeping a folder of the held
  * environments already there outside its home (one "Pult: Open Project"
  * added), or all of its folders while its home cannot be had; a home is
  * renamed as the number of environments makes its name carry its
@@ -195,7 +247,10 @@ function reroot(): Promise<boolean> {
     const { environments } = threadStore.get();
     // Nothing to narrow to until the restored selection is known: the folders stay as the workspace kept them.
     if (environments.length === 0 || (scope === "thread" && lastSelected === undefined && !explorerSelected())) return true;
-    const root = effectiveRoot();
+    const home = narrowedHome();
+    const homeRoot = home === undefined ? undefined : await homeFolder(home).catch(() => undefined);
+    if (home !== undefined) setFilter(homeRoot === undefined ? undefined : { kind: "home", environment: homeRoot.name, path: homeRoot.uri.path });
+    const root = effectiveRoot() ?? homeRoot;
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
     const wanted = new Map<string, Folder>();
     // The thread's root keeps its folder, and its tree, under whichever name it has.
@@ -259,7 +314,8 @@ export async function followExplorerScope(): Promise<void> {
     const root = effectiveRoot();
     scopeKey.set(root === undefined ? "environment" : "thread");
     hasFolderKey.set(threadRootOfScope() !== undefined);
-    setFilter(root === undefined ? undefined : filterOfScope(root));
+    // A narrowed home's filter waits for its home (`reroot`).
+    if (narrowedHome() === undefined) setFilter(root === undefined ? undefined : filterOfScope(root));
   };
   const viewDescriptors = await getService(IViewDescriptorService);
   const explorer = viewDescriptors.getViewContainerById(EXPLORER_ID);
@@ -273,32 +329,34 @@ export async function followExplorerScope(): Promise<void> {
   followSelection();
   onDidSelectThread(() => {
     followSelection();
+    if (!explorerSelected()) setExplored(undefined);
     void reroot();
   });
-  // A folder added from elsewhere ("Pult: Open Project") while the folders are narrowed widens the scope, and shows the folder, under its home if it is in one.
+  // A folder added from elsewhere ("Pult: Open Project") while the folders are narrowed widens them, and shows the folder, under its home if it is in one.
   const commands = await getService(ICommandService);
   (await getService(IWorkspaceContextService)).onDidChangeWorkspaceFolders(({ added }) => {
     const folder = added[0];
-    if (updating || effectiveRoot() === undefined || folder === undefined) return;
-    void setScope("environment")
-      .then(reroot)
-      .then((rerooted) => rerooted && commands.executeCommand("revealInExplorer", folder.uri));
+    if (updating || folder === undefined) return;
+    const reveal = (rerooted: boolean) => rerooted && commands.executeCommand("revealInExplorer", folder.uri);
+    if (narrowedHome() !== undefined) {
+      setExplored(undefined);
+      void reroot().then(reveal);
+    } else if (effectiveRoot() !== undefined) void setScope("environment").then(reroot).then(reveal);
   });
   threadStore.subscribe(() => void reroot());
   await reroot();
 }
 
 /**
- * What the filter's card shows while the folders are narrowed: the root's
- * project, with its icon, and the thread's title when a thread, not a
- * draft of a new one, narrowed them (`filterCard.tsx`).
+ * What the filter's card shows while the folders are narrowed
+ * (`filterCard.tsx`): to a thread's root, the root's project, with its icon,
+ * and the thread's title when a thread, not a draft of a new one, narrowed
+ * them; to an environment's home, the environment's name. `path` is the
+ * root's, as its URI has it.
  */
-export interface ExplorerFilter {
-  readonly project: ProjectIconSource;
-  readonly threadTitle: string | undefined;
-  /** The root's host path, for the card's hover. */
-  readonly path: string;
-}
+export type ExplorerFilter =
+  | { readonly kind: "thread"; readonly project: ProjectIconSource; readonly threadTitle: string | undefined; readonly path: string }
+  | { readonly kind: "home"; readonly environment: string; readonly path: string };
 
 let filter: ExplorerFilter | undefined;
 const filterListeners = new Set<() => void>();
@@ -323,17 +381,19 @@ function filterOfScope(root: Folder): ExplorerFilter {
   const path = root.uri.path;
   if (lastSelected !== undefined && "threadId" in lastSelected) {
     const thread = threadStore.thread(lastSelected.environmentId, lastSelected.threadId);
-    if (thread !== undefined) return { project: threadProjectIcon(thread), threadTitle: thread.title, path };
+    if (thread !== undefined) return { kind: "thread", project: threadProjectIcon(thread), threadTitle: thread.title, path };
   }
   const project = lastSelected !== undefined && "projectId" in lastSelected ? threadStore.project(lastSelected.environmentId, lastSelected.projectId) : undefined;
   const source = project ?? { environmentId: root.uri.authority, name: root.name, root: null, icon: null, faviconPath: null };
-  return { project: source, threadTitle: undefined, path };
+  return { kind: "thread", project: source, threadTitle: undefined, path };
 }
 
 /**
  * The panel's tab commands for the palette: `pult-shell.showThreads`, the
- * explorers' (the environment's also the filter's clear), and
- * `pult-shell.toggleExplorerScope`.
+ * explorers' (the environment's also the filter's clear),
+ * `pult-shell.exploreEnvironment [environmentId]`, the Explorer shelf's
+ * environment entries (a pick of the held ones without an id, while there
+ * are several), and `pult-shell.toggleExplorerScope`.
  */
 export function registerExplorerCommands(): void {
   const category = { value: "Pult", original: "Pult" };
@@ -377,6 +437,24 @@ export function registerExplorerCommands(): void {
 
       run(): Promise<void> {
         return openEnvironmentExplorer();
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.exploreEnvironment",
+          title: { value: "Explore Environment's Home…", original: "Explore Environment's Home…" },
+          category,
+          f1: true,
+        });
+      }
+
+      async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
+        if (typeof environmentId === "string") return exploreEnvironment(environmentId);
+        const picked = await pickEnvironment(connection.environments, "Explore an environment's home folder");
+        if (picked !== undefined) await exploreEnvironment(picked.environmentId);
       }
     },
   );

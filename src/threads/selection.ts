@@ -54,7 +54,7 @@ function isExplorer(selection: Selection | undefined): selection is ExplorerSele
 }
 
 const STORAGE_KEY = "pult.shell.selectedThread";
-/** The Explorer workspace's open files, as last seen while it was selected: the Explorer card lists them. */
+/** The Explorer workspace's open files, as last seen while it was selected: the Explorer shelf lists them. */
 const EXPLORER_FILES_KEY = "pult.shell.explorerFiles";
 /** What the shell stored while Settings was a selection of its own (until 2026-10-28), cleared at startup. */
 const RETIRED_BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
@@ -100,10 +100,16 @@ export function explorerSelected(): boolean {
   return isExplorer(selected);
 }
 
-let explorerFiles: ReadonlyArray<URI> = [];
+/** The Explorer workspace's open files, in their groups' order, and its active editor's file, if it has one. */
+export interface ExplorerFiles {
+  readonly files: ReadonlyArray<URI>;
+  readonly active: URI | undefined;
+}
+
+let explorerFiles: ExplorerFiles = { files: [], active: undefined };
 const explorerFilesListeners = new Set<() => void>();
 
-/** The Explorer workspace's open files, in their groups' order: live while it is selected, as last seen otherwise. */
+/** The Explorer workspace's open files, live while it is selected, as last seen otherwise: the same object until they change. */
 export const openExplorerFiles = {
   get: () => explorerFiles,
   subscribe(listener: () => void): () => void {
@@ -122,9 +128,11 @@ function recordExplorerFiles(editors: IEditorService, storage: IStorageService):
     seen.add(resource.toString());
     return [resource];
   });
-  if (files.length === explorerFiles.length && files.every((file, index) => file.toString() === explorerFiles[index]?.toString())) return;
-  explorerFiles = files;
-  storage.store(EXPLORER_FILES_KEY, JSON.stringify(files.map(String)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+  const active = editors.activeEditor?.resource;
+  const sameFiles = files.length === explorerFiles.files.length && files.every((file, index) => file.toString() === explorerFiles.files[index]?.toString());
+  if (sameFiles && active?.toString() === explorerFiles.active?.toString()) return;
+  explorerFiles = { files, active };
+  if (!sameFiles) storage.store(EXPLORER_FILES_KEY, JSON.stringify(files.map(String)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
   for (const listener of explorerFilesListeners) listener();
 }
 
@@ -343,11 +351,12 @@ export async function restoreThreadSelection(): Promise<void> {
   for (const set of groups.getWorkingSets()) if (set.name === RETIRED_SETTINGS_WORKING_SET) groups.deleteWorkingSet(set);
   const editors = await getService(IEditorService);
   const files: unknown = JSON.parse(storage.get(EXPLORER_FILES_KEY, StorageScope.WORKSPACE) ?? "[]");
-  if (Array.isArray(files)) explorerFiles = files.filter((file) => typeof file === "string").map((file) => URI.parse(file));
+  if (Array.isArray(files)) explorerFiles = { files: files.filter((file) => typeof file === "string").map((file) => URI.parse(file)), active: undefined };
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
     recordExplorerFiles(editors, storage);
   });
+  editors.onDidActiveEditorChange(() => recordExplorerFiles(editors, storage));
   onDidSelectThread(() => recordExplorerFiles(editors, storage));
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.

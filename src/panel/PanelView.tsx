@@ -9,13 +9,13 @@ import { explorerSelected, onDidSelectThread, selectedDraft, selectedThread } fr
 import {
   isSubagent,
   scopedKey,
-  type ShelfName,
   type ShellThread,
   type ThreadFeatures,
   threadStore,
 } from "../threads/store.ts";
+import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
-import { ExplorerCard } from "./ExplorerCard.tsx";
+import { ExplorerShelf } from "./ExplorerShelf.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -92,13 +92,13 @@ function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<st
 /**
  * The Pult tab's view, under the sidebar's title row: every held
  * environment's threads as cards, in the store's order, which is upstream's:
- * pinned and active as one flat list, then the Snoozed and Settled shelves,
- * each under a collapsible header, collapsed until opened. While the page
- * holds several environments, each card names its own. The selected card
- * expands with its details and its subagents; a subagent has no card, so
- * while one is selected its root's card is the expanded one. The Explorer
- * card comes first (`ExplorerCard.tsx`), then a selected draft of a new
- * thread has a card of its own.
+ * pinned and active under Ready, open until closed, then the Working, Snoozed
+ * and Settled shelves, collapsed until opened, each under a collapsible
+ * header. While the page holds several environments, each card names its
+ * own. The selected card expands with its details and its subagents; a
+ * subagent has no card, so while one is selected its root's card is the
+ * expanded one. The Explorer shelf comes first (`ExplorerShelf.tsx`), and a
+ * selected draft of a new thread has a card of its own, Ready's first.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -136,10 +136,7 @@ export function PanelView() {
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
-        <ExplorerCard selected={selection === EXPLORER_KEY} />
-        {draft !== undefined && environments.has(draft.environmentId) ? (
-          <DraftCard environmentId={draft.environmentId} projectId={draft.projectId} environment={chip(draft.environmentId)} />
-        ) : null}
+        <ExplorerShelf selected={selection === EXPLORER_KEY} environments={state.environments} />
         {state.environments.length === 0 ? (
           <li className="pult-panel-empty">
             <p>Not connected.</p>
@@ -147,12 +144,28 @@ export function PanelView() {
               Connect to Environment
             </button>
           </li>
-        ) : state.threads.length === 0 ? (
-          <li className="pult-panel-empty">No threads in {state.environments.map((environment) => environment.label).join(", ")}.</li>
-        ) : listed.length === 0 ? (
-          <li className="pult-panel-empty">No active threads.</li>
         ) : (
-          listed.map(card)
+          <Shelf
+            name="ready"
+            label="Ready"
+            threads={listed}
+            selection={selectedCard}
+            render={card}
+            initiallyExpanded
+            lead={
+              draft !== undefined && environments.has(draft.environmentId) ? (
+                <DraftCard environmentId={draft.environmentId} projectId={draft.projectId} environment={chip(draft.environmentId)} />
+              ) : null
+            }
+          >
+            {state.threads.length === 0 ? (
+              <li className="pult-panel-empty">No threads in {state.environments.map((environment) => environment.label).join(", ")}.</li>
+            ) : listed.length === 0 ? (
+              <li className="pult-panel-empty">No threads ready.</li>
+            ) : (
+              listed.map(card)
+            )}
+          </Shelf>
         )}
         {working.length > 0 ? (
           <Shelf name="working" label="Working" threads={working} selection={selectedCard} render={card}>
@@ -175,41 +188,14 @@ export function PanelView() {
 }
 
 /**
- * A collapsible header after upstream's: the label and its count, a status
- * when one is given, and the chevron at the far end. A shelf's and a card's subagents'.
- */
-function CollapsibleHeader({
-  label,
-  count,
-  expanded,
-  onToggle,
-  status = null,
-}: {
-  label: string;
-  count: number;
-  expanded: boolean;
-  onToggle: () => void;
-  status?: React.ReactNode;
-}) {
-  return (
-    <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={onToggle}>
-      <span className="pult-shelf-label">{label}</span>
-      <span className="pult-shelf-count">{count}</span>
-      <span className="pult-shelf-spacer" aria-hidden />
-      {status}
-      <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-right"}`} aria-hidden />
-    </button>
-  );
-}
-
-/**
- * A shelf under its collapsible header with its threads' count: its threads
- * (`children`) while expanded, and while collapsed the selected card alone
+ * A shelf under its collapsible header with its threads' count, Ready's
+ * without one: its `lead` (Ready's draft card) and threads (`children`)
+ * while expanded, and while collapsed the lead and the selected card alone
  * when it is one of them, as upstream's shelves keep the open thread's row,
  * so a thread selected as it starts working stays in view. Whether it is
- * expanded persists in localStorage, per shelf, as upstream keeps its own.
- * The first shelf after the cards sits at the panel's bottom while the cards
- * leave room (`panel.css`).
+ * expanded persists in localStorage, per shelf, as upstream keeps its own;
+ * collapsed until opened, or `initiallyExpanded`. The shelf after Ready sits
+ * at the panel's bottom while the cards leave room (`panel.css`).
  */
 function Shelf({
   name,
@@ -217,22 +203,30 @@ function Shelf({
   threads,
   selection,
   render,
+  initiallyExpanded = false,
+  lead = null,
   children,
 }: {
-  name: ShelfName;
+  name: "ready" | "working" | "snoozed" | "settled";
   label: string;
   threads: ReadonlyArray<ShellThread>;
   selection: string | undefined;
   render: (thread: ShellThread) => React.ReactNode;
+  initiallyExpanded?: boolean;
+  lead?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [expanded, setExpanded] = useExpanded(`pult-shell.panel.${name}-expanded`);
+  const [expanded, setExpanded] = useExpanded(`pult-shell.panel.${name}-expanded`, initiallyExpanded);
   const selected = expanded ? undefined : threads.find((thread) => keyOf(thread) === selection);
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
-      <CollapsibleHeader label={label} count={threads.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
-      {expanded ? <ul className="pult-shelf-cards">{children}</ul> : null}
-      {selected !== undefined ? <ul className="pult-shelf-cards">{render(selected)}</ul> : null}
+      <CollapsibleHeader label={label} count={name === "ready" ? undefined : threads.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      {expanded || lead !== null || selected !== undefined ? (
+        <ul className="pult-shelf-cards">
+          {lead}
+          {expanded ? children : selected !== undefined ? render(selected) : null}
+        </ul>
+      ) : null}
     </li>
   );
 }
@@ -267,18 +261,6 @@ function SettledTail({
       ) : null}
     </>
   );
-}
-
-/** A collapsible's state, kept in localStorage under `key`; collapsed until opened. */
-function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
-  const [expanded, setExpanded] = useState(() => localStorage.getItem(key) === "true");
-  return [
-    expanded,
-    (next) => {
-      localStorage.setItem(key, String(next));
-      setExpanded(next);
-    },
-  ];
 }
 
 /**

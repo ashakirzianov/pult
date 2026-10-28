@@ -173,6 +173,12 @@
   height: 14px;
 }
 
+/* A codicon in the icon's place: the filter's card for an environment's home. */
+.codicon.pult-card-icon {
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
 .pult-card-project {
   flex: 1;
   min-width: 0;
@@ -280,15 +286,19 @@
   font-size: 14px;
 }
 
-/* A shelf (Snoozed, Settled): upstream's collapsible header, label, rule and chevron, then its cards. */
+/* A shelf (Explorer, Ready, Working, Snoozed, Settled): upstream's collapsible header, label, rule and chevron, then its rows. */
 .pult-shelf {
   margin-top: 6px;
 }
 
-/* The first shelf after the cards (Working, Snoozed or Settled) takes the
-   room the cards leave, as upstream's lower shelves sit at its sidebar's
+.pult-panel-cards > .pult-shelf:first-child {
+  margin-top: 0;
+}
+
+/* The first shelf after Ready (Working, Snoozed or Settled) takes the
+   room Ready leaves, as upstream's lower shelves sit at its sidebar's
    bottom; the rest follow it. */
-.pult-panel-cards > :not(.pult-shelf) + .pult-shelf {
+.pult-panel-cards > .pult-shelf-ready + .pult-shelf {
   margin-top: auto;
   padding-top: 6px;
 }
@@ -501,51 +511,20 @@
   order: 1;
 }
 
-/* The Explorer card (src/panel/ExplorerCard.tsx): its heading, then its open files, one compact row each. */
-/* The title, a button of its own that shows the Explorer tab too: an underline on hover tells it from the card. */
-.pult-card-heading {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  color: inherit;
-  font: inherit;
-  line-height: 18px;
-  font-weight: 500;
-  background: none;
-  cursor: pointer;
-}
-
-.pult-card-heading:hover > span,
-.pult-card-heading:focus-visible > span {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.pult-card-heading:focus-visible {
-  outline: none;
-}
-
-.pult-card-heading .codicon {
-  font-size: 14px;
-}
-
-/* Inside the card's padding, each row reaching its edges. */
-.pult-explorer-files {
-  margin: 4px -6px 0;
+/* The Explorer shelf (src/panel/ExplorerShelf.tsx): an environment's home, its open files indented under it, one compact row each, selected on the cards' background. */
+.pult-explorer-entries {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.pult-explorer-file {
+.pult-explorer-entry {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 22px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 8px;
   border: none;
   border-radius: 6px;
   color: inherit;
@@ -556,19 +535,31 @@
   cursor: pointer;
 }
 
-.pult-explorer-file:hover,
-.pult-explorer-file:focus-visible {
-  background: var(--vscode-toolbar-hoverBackground);
-  outline: none;
+.pult-explorer-entry-nested {
+  padding-left: 26px;
 }
 
-.pult-explorer-file .codicon {
+.pult-explorer-entry:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-explorer-entry:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-explorer-entry-selected,
+.pult-explorer-entry-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+
+.pult-explorer-entry .codicon {
   flex: none;
   font-size: 13px;
   color: var(--vscode-descriptionForeground);
 }
 
-.pult-explorer-file-name {
+.pult-explorer-entry-name {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -576,8 +567,7 @@
   white-space: nowrap;
 }
 
-/* The folder takes the row's free space, so an environment's chip sits at its end. */
-.pult-explorer-file-folder {
+.pult-explorer-entry-detail {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
