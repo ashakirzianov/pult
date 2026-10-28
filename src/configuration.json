@@ -1,5 +1,7 @@
 {
-  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Dark Modern",
+  "workbench.preferredDarkColorTheme": "Dark Modern",
+  "workbench.preferredLightColorTheme": "Light Modern",
   "workbench.iconTheme": "vs-seti",
   "workbench.startupEditor": "none",
   "workbench.editor.useModal": "off",
