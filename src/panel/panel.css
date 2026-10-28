@@ -170,6 +170,25 @@
   font-weight: 500;
 }
 
+/* Beside the project, which then gives up the row's free space to it. */
+.pult-card-top:has(.pult-card-environment) .pult-card-project {
+  flex: 0 1 auto;
+}
+
+.pult-card-environment {
+  flex: 0 1 auto;
+  min-width: 2em;
+  margin-right: auto;
+  padding: 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 15px;
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
+}
+
 .pult-card-pin.codicon {
   font-size: 12px;
 }

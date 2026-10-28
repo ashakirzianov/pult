@@ -3,26 +3,33 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
+import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
 import { projectIconUri } from "../threads/projectIcon.ts";
 import { isSettingsSelected, onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import {
   isSubagent,
+  scopedKey,
   type ShelfName,
   type ShellThread,
   type ThreadFeatures,
   threadStore,
 } from "../threads/store.ts";
-import { DraftCard } from "./DraftCard.tsx";
+import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
-/** What the editor part shows, as a stable snapshot: a thread id, `settings`, a project's draft, or nothing. */
+/** A thread's identity across environments (`scopedKey`), which the selection and the panel's maps go by. */
+const keyOf = (thread: ShellThread) => scopedKey(thread.environmentId, thread.id);
+
+/** What the editor part shows, as a stable snapshot: a thread's key, `settings`, a project's draft, or nothing. */
 function selectionSnapshot(): string | undefined {
   if (isSettingsSelected()) return "settings";
   const draft = selectedDraft();
-  return draft === undefined ? selectedThread()?.threadId : `${DRAFT_PREFIX}${draft.projectId}`;
+  if (draft !== undefined) return `${DRAFT_PREFIX}${scopedKey(draft.environmentId, draft.projectId)}`;
+  const thread = selectedThread();
+  return thread && scopedKey(thread.environmentId, thread.threadId);
 }
 
 const DRAFT_PREFIX = "draft:";
@@ -39,74 +46,85 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 type Activity = "working" | "waiting" | null;
 
 /**
- * Each thread's activity: Waiting when upstream parks it on background work,
- * or while it does nothing itself but a subagent below it works; Working
- * while it works.
+ * Each thread's activity, by its key: Waiting when upstream parks it on
+ * background work, or while it does nothing itself but a subagent below it
+ * works; Working while it works.
  */
 function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Activity> {
-  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const byKey = new Map(threads.map((thread) => [keyOf(thread), thread]));
+  const parentOf = (thread: ShellThread | undefined) =>
+    thread?.parentId == null ? null : scopedKey(thread.environmentId, thread.parentId);
   const waitingOnSubagents = new Set<string>();
   for (const thread of threads) {
     if (!thread.working) continue;
     // Its ancestors up the lineage; one already marked has its own marked too.
-    for (let id = thread.parentId; id !== null && !waitingOnSubagents.has(id); id = byId.get(id)?.parentId ?? null) {
-      waitingOnSubagents.add(id);
+    for (let key = parentOf(thread); key !== null && !waitingOnSubagents.has(key); key = parentOf(byKey.get(key))) {
+      waitingOnSubagents.add(key);
     }
   }
   return new Map(
     threads.map((thread): [string, Activity] => [
-      thread.id,
-      thread.working ? (thread.waiting ? "waiting" : "working") : waitingOnSubagents.has(thread.id) ? "waiting" : null,
+      keyOf(thread),
+      thread.working ? (thread.waiting ? "waiting" : "working") : waitingOnSubagents.has(keyOf(thread)) ? "waiting" : null,
     ]),
   );
 }
 
-/** Each thread's subagents, nested ones too, by the thread at the top of their lineage: active first, then newest first. */
+/** Each thread's subagents, nested ones too, by the key of the thread at the top of their lineage: active first, then newest first. */
 function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<string, Activity>): Map<string, ShellThread[]> {
   const byRoot = new Map<string, ShellThread[]>();
   for (const thread of threads) {
     if (!isSubagent(thread)) continue;
-    const list = byRoot.get(thread.rootId) ?? [];
+    const root = scopedKey(thread.environmentId, thread.rootId);
+    const list = byRoot.get(root) ?? [];
     list.push(thread);
-    byRoot.set(thread.rootId, list);
+    byRoot.set(root, list);
   }
   for (const list of byRoot.values()) {
-    const active = (thread: ShellThread) => Number(activities.get(thread.id) != null);
+    const active = (thread: ShellThread) => Number(activities.get(keyOf(thread)) != null);
     list.sort((a, b) => active(b) - active(a) || Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }
   return byRoot;
 }
 
 /**
- * The Threads tab's view, under the sidebar's title row: the environment's
- * threads as cards, in the store's order, which is upstream's: pinned and
- * active as one flat list, then the Snoozed and Settled shelves, each under
- * a collapsible header, collapsed until opened. The selected card expands
- * with its details and its subagents; a subagent has no card, so while one
- * is selected its root's card is the expanded one. A selected draft of a
- * new thread has a card of its own at the top.
+ * The Threads tab's view, under the sidebar's title row: every held
+ * environment's threads as cards, in the store's order, which is upstream's:
+ * pinned and active as one flat list, then the Snoozed and Settled shelves,
+ * each under a collapsible header, collapsed until opened. While the page
+ * holds several environments, each card names its own. The selected card
+ * expands with its details and its subagents; a subagent has no card, so
+ * while one is selected its root's card is the expanded one. A selected
+ * draft of a new thread has a card of its own at the top.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
-  const draftProjectId = selection?.startsWith(DRAFT_PREFIX) ? selection.slice(DRAFT_PREFIX.length) : undefined;
+  const draft = selection?.startsWith(DRAFT_PREFIX) ? selectedDraft() : undefined;
   const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
   const activities = threadActivities(state.threads);
   const subagents = subagentsByRoot(state.threads, activities);
+  const environments = new Map(state.environments.map((environment) => [environment.id, environment]));
+  /** The environment's name on its cards, while there are several to tell apart. */
+  const chip = (environmentId: string) => (state.environments.length > 1 ? environments.get(environmentId)?.name : undefined);
   // The card the selection expands: the selected thread's own, or for a subagent its root's.
-  const selectedThread = state.threads.find((thread) => thread.id === selection);
-  const selectedCard = selectedThread !== undefined && isSubagent(selectedThread) ? selectedThread.rootId : selection;
+  const selectedThread = state.threads.find((thread) => keyOf(thread) === selection);
+  const selectedCard =
+    selectedThread !== undefined && isSubagent(selectedThread)
+      ? scopedKey(selectedThread.environmentId, selectedThread.rootId)
+      : selection;
   const card = (thread: ShellThread) => (
     <ThreadCard
-      key={thread.id}
+      key={keyOf(thread)}
       thread={thread}
-      subagents={subagents.get(thread.id) ?? []}
+      environment={chip(thread.environmentId)}
+      subagents={subagents.get(keyOf(thread)) ?? []}
       activities={activities}
-      features={state.features}
-      selected={thread.id === selectedCard}
+      features={environments.get(thread.environmentId)?.features ?? NO_THREAD_FEATURES}
+      selected={keyOf(thread) === selectedCard}
       selection={selection}
       now={now}
     />
@@ -114,8 +132,10 @@ export function PanelView() {
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
-        {state.environment !== null && draftProjectId !== undefined ? <DraftCard projectId={draftProjectId} /> : null}
-        {state.environment === null ? (
+        {draft !== undefined && environments.has(draft.environmentId) ? (
+          <DraftCard environmentId={draft.environmentId} projectId={draft.projectId} environment={chip(draft.environmentId)} />
+        ) : null}
+        {state.environments.length === 0 ? (
           <li className="pult-panel-empty">
             <p>Not connected.</p>
             <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.connect")}>
@@ -123,7 +143,7 @@ export function PanelView() {
             </button>
           </li>
         ) : state.threads.length === 0 ? (
-          <li className="pult-panel-empty">No threads in {state.environment.label}.</li>
+          <li className="pult-panel-empty">No threads in {state.environments.map((environment) => environment.label).join(", ")}.</li>
         ) : listed.length === 0 ? (
           <li className="pult-panel-empty">No active threads.</li>
         ) : (
@@ -202,7 +222,7 @@ function SettledTail({
 }) {
   const [count, setCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
   const visible = threads.slice(0, count);
-  const beyond = threads.slice(count).find((thread) => thread.id === selection);
+  const beyond = threads.slice(count).find((thread) => keyOf(thread) === selection);
   if (beyond !== undefined) visible.push(beyond);
   const hidden = threads.length - visible.length;
   return (
@@ -232,8 +252,9 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
 }
 
 /**
- * T3 Code's thread card without its bottom row: project icon and name, pin
- * and status, then the title, as the button that selects the thread; on
+ * T3 Code's thread card without its bottom row: project icon and name, its
+ * `environment`'s label beside them while there are several (`EnvironmentChip`),
+ * pin and status, then the title, as the button that selects the thread; on
  * hover or keyboard focus the status gives way to the thread's actions
  * (`StatusSlot`), and a right-click opens its menu (`showThreadMenu`).
  * Selected, it expands with its subagents under their header, each selecting
@@ -242,6 +263,7 @@ function useExpanded(key: string): [boolean, (expanded: boolean) => void] {
  */
 function ThreadCard({
   thread,
+  environment,
   subagents,
   activities,
   features,
@@ -250,6 +272,7 @@ function ThreadCard({
   now,
 }: {
   thread: ShellThread;
+  environment: string | undefined;
   subagents: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
   features: ThreadFeatures;
@@ -257,7 +280,7 @@ function ThreadCard({
   selection: string | undefined;
   now: number;
 }) {
-  const select = () => run("pult-shell.selectThread", thread.id);
+  const select = () => run("pult-shell.selectThread", thread.environmentId, thread.id);
   return (
     <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}>
       {/* A button by role, as upstream's card: its actions are buttons inside it. */}
@@ -280,9 +303,10 @@ function ThreadCard({
         <span className="pult-card-top">
           <img className="pult-card-icon" src={projectIconUri(thread.projectName, thread.projectIcon).toString(true)} alt="" />
           <span className="pult-card-project">{thread.projectName}</span>
+          <EnvironmentChip label={environment} />
           {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
           <StatusSlot thread={thread} features={features}>
-            <Status thread={thread} activity={activities.get(thread.id) ?? null} now={now} />
+            <Status thread={thread} activity={activities.get(keyOf(thread)) ?? null} now={now} />
           </StatusSlot>
         </span>
         <span className="pult-card-title">{thread.title}</span>
@@ -315,22 +339,22 @@ function Subagents({
   now: number;
 }) {
   const [expanded, setExpanded] = useExpanded("pult-shell.panel.subagents-expanded");
-  const activity = (subagent: ShellThread) => activities.get(subagent.id) ?? null;
+  const activity = (subagent: ShellThread) => activities.get(keyOf(subagent)) ?? null;
   const working = subagents.filter((subagent) => activity(subagent) === "working");
   // The longest elapsed time is the earliest start.
   const since = working
     .map((subagent) => subagent.workingSince)
     .filter((start) => start !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  const shown = expanded ? subagents : subagents.filter((subagent) => subagent.id === selection);
+  const shown = expanded ? subagents : subagents.filter((subagent) => keyOf(subagent) === selection);
   const row = (subagent: ShellThread) => (
-    <li key={subagent.id}>
+    <li key={keyOf(subagent)}>
       <button
         type="button"
-        className={`pult-subagent${subagent.id === selection ? " pult-subagent-selected" : ""}`}
-        aria-current={subagent.id === selection || undefined}
+        className={`pult-subagent${keyOf(subagent) === selection ? " pult-subagent-selected" : ""}`}
+        aria-current={keyOf(subagent) === selection || undefined}
         title={subagent.title}
-        onClick={() => run("pult-shell.selectThread", subagent.id)}
+        onClick={() => run("pult-shell.selectThread", subagent.environmentId, subagent.id)}
       >
         <i className="codicon codicon-hubot" aria-hidden />
         <span className="pult-subagent-title">{subagent.title}</span>
@@ -391,25 +415,25 @@ function StatusSlot({ thread, features, children }: { thread: ShellThread; featu
         aria-expanded={menuOpen}
         onClick={(event) => {
           setMenuOpen(true);
-          void showSnoozeMenu(thread.id, event.currentTarget, () => setMenuOpen(false));
+          void showSnoozeMenu(thread, event.currentTarget, () => setMenuOpen(false));
         }}
       >
         <i className="codicon codicon-clock" aria-hidden />
       </button>
     ) : null,
     onCard && offered.settle ? (
-      <button key="settle" type="button" title="Settle thread" onClick={() => void settleThread(thread.id)}>
+      <button key="settle" type="button" title="Settle thread" onClick={() => void settleThread(thread)}>
         <i className="codicon codicon-check" aria-hidden />
         Settle
       </button>
     ) : null,
     offered.wake ? (
-      <button key="wake" type="button" title="Wake thread" aria-label="Wake thread" onClick={() => wakeThread(thread.id)}>
+      <button key="wake" type="button" title="Wake thread" aria-label="Wake thread" onClick={() => wakeThread(thread)}>
         <i className="codicon codicon-bell" aria-hidden />
       </button>
     ) : null,
     offered.unsettle ? (
-      <button key="unsettle" type="button" title="Un-settle thread" aria-label="Un-settle thread" onClick={() => unsettleThread(thread.id)}>
+      <button key="unsettle" type="button" title="Un-settle thread" aria-label="Un-settle thread" onClick={() => unsettleThread(thread)}>
         <i className="codicon codicon-discard" aria-hidden />
       </button>
     ) : null,
