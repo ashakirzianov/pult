@@ -576,6 +576,7 @@
   white-space: nowrap;
 }
 
+/* The folder takes the row's free space, so an environment's chip sits at its end. */
 .pult-explorer-file-folder {
   flex: 1 1 0;
   min-width: 0;

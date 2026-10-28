@@ -123,10 +123,9 @@ function homeOf(environmentId: string): Promise<string> {
   return home;
 }
 
-/** The environment's home as a folder, `~`, named with its environment's label too while the page holds several. */
+/** The environment's home as a folder: `~`, or while the page holds several the environment's name, as the cards' chips name it. */
 async function homeFolder(environmentId: string): Promise<Folder> {
-  const label = threadStore.distinguishing(environmentId);
-  return { uri: pultUri(environmentId, await homeOf(environmentId)), name: label === undefined ? "~" : `~ (${label})` };
+  return { uri: pultUri(environmentId, await homeOf(environmentId)), name: threadStore.distinguishing(environmentId) ?? "~" };
 }
 
 /** Whether `uri` is `root` or under it, on the same environment. */

@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { toHostPath } from "../files/paths.ts";
 import { openExplorerFiles } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
+import { EnvironmentChip } from "./DraftCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -12,7 +13,8 @@ function run(command: string, ...args: unknown[]): void {
 
 /**
  * The Explorer card, the panel's first: the Explorer workspace, files opened
- * under no thread, then its open files. A click on the card selects the
+ * under no thread, then its open files, each with its environment's name
+ * while the page holds several. A click on the card selects the
  * workspace (`pult-shell.selectExplorer`), on a file the workspace at its
  * tab, and on the title the workspace with the sidebar's Explorer tab too
  * (`pult-shell.exploreFiles`); selected while the workspace is. A button by
@@ -64,6 +66,7 @@ export function ExplorerCard({ selected }: { selected: boolean }) {
                   <i className="codicon codicon-file" aria-hidden />
                   <span className="pult-explorer-file-name">{baseName(file)}</span>
                   <span className="pult-explorer-file-folder">{folderName(file)}</span>
+                  <EnvironmentChip label={environmentOf(file)} />
                 </button>
               </li>
             ))}
@@ -84,9 +87,16 @@ function folderName(file: URI): string {
   return parent.slice(parent.lastIndexOf("/") + 1);
 }
 
+/** The name of a `pult:` file's environment while the page holds several, as the cards' chips show it. */
+function environmentOf(file: URI): string | undefined {
+  if (file.scheme !== "pult") return undefined;
+  const environment = threadStore.get().environments.find((candidate) => candidate.id.toLowerCase() === file.authority.toLowerCase());
+  return environment === undefined ? undefined : threadStore.distinguishing(environment.id);
+}
+
 /** The file's host path, and its environment's name while the page holds several. */
 function describe(file: URI): string {
-  const environment = file.scheme === "pult" ? threadStore.distinguishing(threadStore.get().environments.find((candidate) => candidate.id.toLowerCase() === file.authority.toLowerCase())?.id ?? "") : undefined;
+  const environment = environmentOf(file);
   const path = file.scheme === "pult" ? toHostPath(file.path) : file.toString(true);
   return environment === undefined ? path : `${path} (${environment})`;
 }
