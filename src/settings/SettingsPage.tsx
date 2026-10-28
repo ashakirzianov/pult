@@ -6,6 +6,7 @@ import type { IContextKeyService } from "@codingame/monaco-vscode-api/vscode/vs/
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
+import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -16,12 +17,20 @@ function run(command: string, ...args: unknown[]): void {
  * (`pane.tsx`): Pult's own settings first, then the workbench's Manage
  * menu, whose editors open beside the page in the Settings tab set.
  */
-export function SettingsPage({ menus, contextKeys }: { menus: IMenuService; contextKeys: IContextKeyService }) {
+export function SettingsPage({
+  menus,
+  contextKeys,
+  colorScheme,
+}: {
+  menus: IMenuService;
+  contextKeys: IContextKeyService;
+  colorScheme: ColorSchemeChoice;
+}) {
   return (
     <div className="pult-settings">
       <h1 className="pult-settings-title">Settings</h1>
       <EnvironmentsSection />
-      {/* Appearance (xaxis `pult/color-scheme-setting`) goes here, between Environments and VS Code. */}
+      <AppearanceSection colorScheme={colorScheme} />
       <VSCodeSection menus={menus} contextKeys={contextKeys} />
     </div>
   );
@@ -94,6 +103,44 @@ function EnvironmentsSection() {
 
 function hostOf(environment: ShellEnvironment): string | undefined {
   return URL.canParse(environment.httpBaseUrl) ? new URL(environment.httpBaseUrl).host : undefined;
+}
+
+type ColorSchemeChoice = Awaited<ReturnType<typeof colorSchemeChoice>>;
+
+/**
+ * The colour scheme, Light, Dark or System, one button each, the current one
+ * pressed, following the workbench's theme settings however they change:
+ * here, the palette's Pult: Colour Scheme… or VS Code's own Color Theme
+ * picker (`colorScheme.ts`).
+ */
+function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) {
+  const current = useSyncExternalStore(colorScheme.onDidChange, colorScheme.current);
+  return (
+    <section className="pult-settings-section">
+      <h2>Appearance</h2>
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">Colour scheme</div>
+          <div className="pult-settings-row-description">
+            Light and Dark use VS Code's preferred light and dark themes; System follows the operating system.
+          </div>
+        </div>
+        <div className="pult-settings-segments" role="group" aria-label="Colour scheme">
+          {COLOR_SCHEMES.map(({ scheme, label }) => (
+            <button
+              key={scheme}
+              type="button"
+              className="pult-settings-segment"
+              aria-pressed={scheme === current}
+              onClick={() => void setColorScheme(scheme)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /** The stock Settings command, routed to this page (`src/threads/selection.ts`), and the settings editor it would open. */

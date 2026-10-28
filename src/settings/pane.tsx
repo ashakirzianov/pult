@@ -13,6 +13,7 @@ import {
 import { createRoot, type Root } from "react-dom/client";
 
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { colorSchemeChoice } from "./colorScheme.ts";
 import { SettingsPage } from "./SettingsPage.tsx";
 import "./settings.css";
 
@@ -21,8 +22,9 @@ const PANE_ID = "pult.shell.settingsPane";
 /**
  * The Pult settings page (`SettingsPage.tsx`), an editor pane the shell
  * renders itself, as the thread's is: a React root in the element the
- * editor group hands it. The workbench's menu and context key services are
- * read as the pane shows its input, when the workbench is up.
+ * editor group hands it. The workbench's menu and context key services, and
+ * the colour scheme, are read as the pane shows its input, when the
+ * workbench is up.
  */
 class SettingsPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
@@ -43,9 +45,13 @@ class SettingsPane extends SimpleEditorPane {
   }
 
   async renderInput() {
-    const [menus, contextKeys] = await Promise.all([getService(IMenuService), getService(IContextKeyService)]);
+    const [menus, contextKeys, colorScheme] = await Promise.all([
+      getService(IMenuService),
+      getService(IContextKeyService),
+      colorSchemeChoice(),
+    ]);
     this.root ??= createRoot(this.container);
-    this.root.render(<SettingsPage menus={menus} contextKeys={contextKeys} />);
+    this.root.render(<SettingsPage menus={menus} contextKeys={contextKeys} colorScheme={colorScheme} />);
     // Disposed as the group clears the input: the page goes with its menu.
     return { dispose: () => this.release() };
   }

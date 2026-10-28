@@ -124,6 +124,47 @@
   outline-offset: 1px;
 }
 
+/* The colour scheme's choices, joined into one control, the chosen one in the primary button's colours. */
+.pult-settings-segments {
+  display: flex;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--vscode-button-border, var(--vscode-widget-border, transparent));
+  border-radius: 4px;
+}
+
+.pult-settings-segment {
+  padding: 4px 12px;
+  border: none;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-settings-segment + .pult-settings-segment {
+  border-left: 1px solid var(--vscode-button-border, var(--vscode-widget-border, transparent));
+}
+
+.pult-settings-segment:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pult-settings-segment[aria-pressed="true"] {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.pult-settings-segment[aria-pressed="true"]:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* Inset, as the control clips what overflows its rounded corners. */
+.pult-settings-segment:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
 /* The Manage menu's entries: a list per menu group, a submenu's nested under its label. */
 .pult-settings-entries {
   margin: 0;
