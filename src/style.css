@@ -1,4 +1,5 @@
 :root {
+  /* Until the workbench is up, as the page's background below; then the theme's (src/theme.ts). */
   color-scheme: dark;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size: 13px;

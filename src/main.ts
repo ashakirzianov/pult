@@ -37,6 +37,7 @@ import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/s
 import { syncStatusBarWithEditors } from "./threads/statusBar.ts";
 import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
 import { openVsxGallery, workbenchServices } from "./services.ts";
+import { syncColorScheme } from "./theme.ts";
 import { installWorkers } from "./workers.ts";
 
 installWorkers();
@@ -102,6 +103,7 @@ await initialize(workbenchServices(), container, options, {
   userHome: Uri.file("/"),
 });
 
+await syncColorScheme();
 await syncStatusBarWithEditors();
 await restoreThreadSelection();
 
