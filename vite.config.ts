@@ -3,6 +3,8 @@ import * as path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
+// Vite+'s `fmt` and `lint` settings, which it declares on Vite's config.
+import type {} from "vite-plus";
 import { STUBS } from "./thread-view/stubs.ts";
 import { pultExtension } from "./vite/pultExtension.ts";
 
@@ -118,6 +120,10 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       fs: { allow: [".", extensionDir] },
     },
+    // The fork's files, kept byte for byte (`scripts/vendor.ts`), and the copy, which merges
+    // upstream's changes (`scripts/merge.ts`) in upstream's format.
+    fmt: { ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"] },
+    lint: { ignorePatterns: ["vendor/t3code/packages/**", "thread-view/t3/**"] },
     resolve: {
       // The copy's imports of its own `src/`.
       alias: [{ find: /^~\//, replacement: path.join(copy, "src") + "/" }],
