@@ -27,6 +27,7 @@ import defaultConfiguration from "./configuration.json?raw";
 import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
+import { registerPultFiles } from "./files/index.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
 import { startThreadModel } from "./threads/model.ts";
@@ -52,6 +53,8 @@ memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ fol
 registerFileSystemOverlay(1, memory);
 
 startConnection();
+// Before the workbench initialises, so the explorer restores its `pult:` folders on the page's provider.
+registerPultFiles();
 startThreadModel();
 registerThreadPane();
 registerSelectThreadCommand();
