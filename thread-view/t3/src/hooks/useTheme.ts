@@ -134,12 +134,35 @@ function emitChange() {
   for (const listener of listeners) listener();
 }
 
-function getSystemDark() {
-  return (
+/** The system's colour scheme: the browser's `prefers-color-scheme`, unless the app embedding the view sets another. */
+export type SystemColorSchemeSource = {
+  readonly isDark: () => boolean;
+  /** Calls `listener` when `isDark` may have changed; returns its removal. */
+  readonly onChange: (listener: () => void) => () => void;
+};
+
+let systemColorScheme: SystemColorSchemeSource = {
+  isDark: () =>
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia(MEDIA_QUERY).matches
-  );
+    window.matchMedia(MEDIA_QUERY).matches,
+  onChange: (listener) => {
+    const mq = typeof window.matchMedia === "function" ? window.matchMedia(MEDIA_QUERY) : null;
+    mq?.addEventListener("change", listener);
+    return () => mq?.removeEventListener("change", listener);
+  },
+};
+
+/** Replaces the system's colour scheme source; `refreshTheme` after applies it. */
+export function setSystemColorSchemeSource(source: SystemColorSchemeSource): void {
+  const listening = removeWindowListeners !== null;
+  removeWindowListeners?.();
+  systemColorScheme = source;
+  removeWindowListeners = listening ? listenToWindow() : null;
+}
+
+function getSystemDark() {
+  return systemColorScheme.isDark();
 }
 
 function readStoredFollowSystem(theme: Theme): boolean {
@@ -462,18 +485,21 @@ function handleStorageChange(e: StorageEvent) {
 
 let removeWindowListeners: (() => void) | null = null;
 
+function listenToWindow(): () => void {
+  const removeSystemListener = systemColorScheme.onChange(handleSystemAppearanceChange);
+  window.addEventListener("storage", handleStorageChange);
+  return () => {
+    removeSystemListener();
+    window.removeEventListener("storage", handleStorageChange);
+  };
+}
+
 function subscribe(listener: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   listeners.push(listener);
 
   if (!removeWindowListeners) {
-    const mq = typeof window.matchMedia === "function" ? window.matchMedia(MEDIA_QUERY) : null;
-    mq?.addEventListener("change", handleSystemAppearanceChange);
-    window.addEventListener("storage", handleStorageChange);
-    removeWindowListeners = () => {
-      mq?.removeEventListener("change", handleSystemAppearanceChange);
-      window.removeEventListener("storage", handleStorageChange);
-    };
+    removeWindowListeners = listenToWindow();
   }
 
   return () => {
