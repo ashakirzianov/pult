@@ -9,18 +9,22 @@ import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
 import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
 
-import { connection } from "./connection.ts";
+
+import { connection, type ShellEnvironment } from "./connection.ts";
 import { ConnectedContext } from "./contextKey.ts";
 import { parseConnectInput } from "./pairing.ts";
 import { ProbeError } from "./probe.ts";
 
 /**
- * The palette's "Pult: Connect to Environment" (`pult-shell.connect`) and
- * "Pult: Disconnect" (`pult-shell.disconnect`, while the page holds an
- * environment, which it forgets with its bearer). The prompts are the
- * page's, so no extension can bind the page to a server of its choosing;
- * only a development build takes a pairing link as argument, for
- * `scripts/drive.ts`.
+ * The palette's "Pult: Connect to Environment" (`pult-shell.connect`), which
+ * adds an environment beside those the page holds, "Pult: Disconnect"
+ * (`pult-shell.disconnect [environmentId]`, while the page holds one, which
+ * it forgets with its bearer) and "Pult: Retry Connection"
+ * (`pult-shell.retryConnection [environmentId]`, for one waiting between
+ * attempts); with several environments held, the last two pick one first.
+ * The prompts are the page's, so no extension can bind the page to a server
+ * of its choosing; only a development build takes a pairing link as
+ * argument, for `scripts/drive.ts`.
  */
 export function registerConnectionCommands(): void {
   const category = { value: "Pult", original: "Pult" };
@@ -57,29 +61,65 @@ export function registerConnectionCommands(): void {
         });
       }
 
-      run(): Promise<void> {
-        return connection.disconnect();
+      async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
+        const picked =
+          typeof environmentId === "string"
+            ? connection.environment(environmentId)
+            : await pickEnvironment(connection.environments, "Disconnect from an environment");
+        if (picked !== undefined) await connection.disconnect(picked.environmentId);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.retryConnection",
+          title: { value: "Retry Connection", original: "Retry Connection" },
+          category,
+          f1: true,
+          precondition: ConnectedContext,
+        });
+      }
+
+      async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
+        if (typeof environmentId === "string") return connection.retryNow(environmentId);
+        const waiting = connection.environments.filter((environment) => environment.phase !== "ready");
+        if (waiting.length === 0) {
+          return void (await getService(INotificationService)).info("Pult: every environment is connected.");
+        }
+        const picked = await pickEnvironment(waiting, "Retry an environment's connection now");
+        if (picked !== undefined) await connection.retryNow(picked.environmentId);
       }
     },
   );
 }
 
-/** Connects the page, offering a retry or a disconnect first when it holds an environment already. */
+/** How an environment's connection stands, for a pick: its server's host and phase, and its error when it has one. */
+function describeEnvironment(environment: ShellEnvironment): { description: string; detail?: string } {
+  const host = URL.canParse(environment.httpBaseUrl) ? `${new URL(environment.httpBaseUrl).host} · ` : "";
+  return { description: `${host}${environment.phase}`, ...(environment.error === null ? {} : { detail: environment.error }) };
+}
+
+/**
+ * One of `environments`, picked in the shell's quick input, each with its
+ * phase and error; one needs no pick, none gives undefined.
+ */
+export async function pickEnvironment(
+  environments: ReadonlyArray<ShellEnvironment>,
+  placeHolder: string,
+): Promise<ShellEnvironment | undefined> {
+  if (environments.length <= 1) return environments[0];
+  const picked = await (await getService(IQuickInputService)).pick(
+    environments.map((environment) => ({ label: environment.label, ...describeEnvironment(environment), environment })),
+    { placeHolder, matchOnDescription: true },
+  );
+  return picked?.environment;
+}
+
+/** Connects the page to another environment, or a held one anew with the bearer given. */
 async function connect(): Promise<void> {
   const quickInput = await getService(IQuickInputService);
-  const bound = connection.environment;
-  if (bound !== null) {
-    const choice = await quickInput.pick(
-      [
-        ...(bound.phase === "ready" ? [] : [{ id: "retry", label: "Retry Now" }]),
-        { id: "disconnect", label: "Disconnect", description: "to connect to another environment" },
-      ],
-      { placeHolder: `Connected to ${bound.label} (${bound.phase})${bound.error === null ? "" : `: ${bound.error}`}` },
-    );
-    if (choice?.id === "retry") return connection.retryNow();
-    if (choice?.id !== "disconnect") return;
-    await connection.disconnect();
-  }
   const value = await quickInput.input({
     title: "Connect to a T3 Code environment",
     prompt: "A pairing link from `t3 pair`, or the server's URL",

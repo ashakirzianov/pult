@@ -21,7 +21,8 @@ export function installDebugHandle(): void {
   Object.assign(window, {
     pult: {
       Uri,
-      connection: () => connection.environment,
+      // Every environment the page holds, in the order they were connected.
+      connection: () => connection.environments,
       threads: () => threadStore.get(),
       selected: () => selectedThread() ?? selectedDraft(),
       // What the changes view shows and why: its thread, root, group sizes and last failure.
@@ -45,14 +46,18 @@ export function installDebugHandle(): void {
         if (await service.stopExtensionHosts("window.pult")) await service.startExtensionHosts();
       },
       extensions: async () => (await getService(IExtensionService)).extensions.map((e) => e.identifier.value),
+      // Each environment's phase and error, and each extension's state.
       status: async () => {
         const service = await getService(IExtensionService);
-        return Object.fromEntries(
-          Object.entries(service.getExtensionsStatus()).map(([id, s]) => [
-            id,
-            { activated: s.activationTimes !== undefined, messages: s.messages.map((m) => m.message), errors: s.runtimeErrors.map((e) => e.message) },
-          ]),
-        );
+        return {
+          environments: connection.environments.map(({ label, phase, error }) => ({ label, phase, error })),
+          extensions: Object.fromEntries(
+            Object.entries(service.getExtensionsStatus()).map(([id, s]) => [
+              id,
+              { activated: s.activationTimes !== undefined, messages: s.messages.map((m) => m.message), errors: s.runtimeErrors.map((e) => e.message) },
+            ]),
+          ),
+        };
       },
     },
   });

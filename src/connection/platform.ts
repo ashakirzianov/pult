@@ -40,7 +40,7 @@ function domEvents<A>(target: EventTarget, events: ReadonlyArray<[string, A]>) {
 
 const networkStatus = (): NetworkStatus => (navigator.onLine ? "online" : "offline");
 
-/** In memory: the page holds the one environment `connection.ts` registers, and keeps no offline copy. */
+/** In memory: the page holds the environments `connection.ts` registers, and keeps no offline copy. */
 const layerStores = Layer.mergeAll(
   Layer.sync(ProfileStore.ConnectionProfileStore, () => {
     const profiles = new Map<string, ConnectionProfile>();
@@ -107,9 +107,9 @@ const layerCapabilities = Layer.mergeAll(
 
 /**
  * What the vendored connection runtime asks of the page: fetch, the browser's
- * WebSocket, which the runtime dials anew on each reconnect, the browser's
+ * WebSocket, one per environment, which the runtime dials anew on each reconnect, the browser's
  * network events, the page coming back to the foreground as the wakeup, and
- * the environment the shell connects as the one platform registration, the way
+ * the environments the shell connects as its platform registrations, the way
  * a desktop-local backend is registered. T3 Connect (an empty relay URL
  * disables the relay client), SSH and a primary local environment are off.
  */
