@@ -202,6 +202,9 @@ async function switchTo(next: Selection): Promise<void> {
     switching = false;
   }
   for (const listener of listeners) listener();
+  // The selection is stored at once, the editor part's state only when the workbench saves its state (at intervals, and at
+  // shutdown, which a page's reload may not finish): saved now, a reload restores the tabs of the selection it restores.
+  void storage.flush();
 
   /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave. */
   async function showLeadTab(lead: ThreadSelection | DraftSelection): Promise<void> {
