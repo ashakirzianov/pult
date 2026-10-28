@@ -16,6 +16,7 @@ import type { MountedView, ThreadViewMounts } from "../../thread-view/shell/main
 
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { isSettingsTab, type SettingsInput } from "../settings/pane.tsx";
 import { workbenchColorScheme } from "../theme.ts";
 import { ThreadBarEntries } from "./barEntries.tsx";
 import { openThreadFile } from "./files.ts";
@@ -240,6 +241,15 @@ class ThreadPane extends SimpleEditorPane {
 /** Whether `editor` is a selection's own leftmost tab: a thread's, or a draft's. */
 export function isLeadTab(editor: unknown): editor is ThreadInput | DraftInput {
   return editor instanceof ThreadInput || editor instanceof DraftInput;
+}
+
+/**
+ * Whether `editor` is a tab the shell renders and keeps leftmost: a lead
+ * tab, or the Settings page (`src/settings/`), which unlike a lead tab
+ * closes. None has a status bar.
+ */
+export function isShellTab(editor: unknown): editor is ThreadInput | DraftInput | SettingsInput {
+  return isLeadTab(editor) || isSettingsTab(editor);
 }
 
 /**
