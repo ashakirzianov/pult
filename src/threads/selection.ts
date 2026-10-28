@@ -1,5 +1,6 @@
 import {
   getService,
+  ICommandService,
   IContextKeyService,
   type IEditorGroup,
   IEditorGroupsService,
@@ -10,6 +11,7 @@ import {
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
+import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
@@ -34,13 +36,26 @@ export interface DraftSelection {
   readonly projectId: string;
 }
 
-type Selection = ThreadSelection | DraftSelection;
+/** The Explorer workspace: files opened under no thread, their tabs a set of their own. */
+interface ExplorerSelection {
+  readonly explorer: true;
+}
+
+const EXPLORER: ExplorerSelection = { explorer: true };
+
+type Selection = ThreadSelection | DraftSelection | ExplorerSelection;
 
 function isDraft(selection: Selection | undefined): selection is DraftSelection {
   return typeof selection === "object" && "projectId" in selection;
 }
 
+function isExplorer(selection: Selection | undefined): selection is ExplorerSelection {
+  return typeof selection === "object" && "explorer" in selection;
+}
+
 const STORAGE_KEY = "pult.shell.selectedThread";
+/** The Explorer workspace's open files, as last seen while it was selected: the Explorer card lists them. */
+const EXPLORER_FILES_KEY = "pult.shell.explorerFiles";
 /** What the shell stored while Settings was a selection of its own (until 2026-10-28), cleared at startup. */
 const RETIRED_BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
 const RETIRED_SETTINGS_WORKING_SET = "pult.settings";
@@ -78,6 +93,61 @@ export function selectedThread(): ThreadSelection | undefined {
 /** The selected draft of a new thread, if one is. */
 export function selectedDraft(): DraftSelection | undefined {
   return isDraft(selected) ? selected : undefined;
+}
+
+/** Whether the Explorer workspace is selected. */
+export function explorerSelected(): boolean {
+  return isExplorer(selected);
+}
+
+let explorerFiles: ReadonlyArray<URI> = [];
+const explorerFilesListeners = new Set<() => void>();
+
+/** The Explorer workspace's open files, in their groups' order: live while it is selected, as last seen otherwise. */
+export const openExplorerFiles = {
+  get: () => explorerFiles,
+  subscribe(listener: () => void): () => void {
+    explorerFilesListeners.add(listener);
+    return () => explorerFilesListeners.delete(listener);
+  },
+};
+
+/** Records the open files while the Explorer workspace is selected and no switch is swapping the editor part. */
+function recordExplorerFiles(editors: IEditorService, storage: IStorageService): void {
+  if (!isExplorer(selected) || switching) return;
+  const seen = new Set<string>();
+  const files = editors.editors.flatMap((editor) => {
+    const resource = editor.resource;
+    if (resource === undefined || seen.has(resource.toString())) return [];
+    seen.add(resource.toString());
+    return [resource];
+  });
+  if (files.length === explorerFiles.length && files.every((file, index) => file.toString() === explorerFiles[index]?.toString())) return;
+  explorerFiles = files;
+  storage.store(EXPLORER_FILES_KEY, JSON.stringify(files.map(String)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+  for (const listener of explorerFilesListeners) listener();
+}
+
+/**
+ * Selects the Explorer workspace, the files of the environments opened under
+ * no thread: its tab set as a thread's is, with no lead tab. With no file
+ * open there, the sidebar shows the Explorer tab too, which shows every
+ * environment's home while this workspace is selected (`src/panel/explorer.ts`).
+ */
+export function selectExplorer(): Promise<void> {
+  return enqueue(async () => {
+    await switchTo(EXPLORER);
+    const editors = await getService(IEditorService);
+    if (editors.editors.length === 0) await (await getService(ICommandService)).executeCommand("workbench.view.explorer");
+  });
+}
+
+/** Selects the Explorer workspace and shows the open file `resource` there, in the group that holds it. */
+export function showExplorerFile(resource: URI): Promise<void> {
+  return enqueue(async () => {
+    await switchTo(EXPLORER);
+    await (await getService(IEditorService)).openEditor({ resource, options: { revealIfOpened: true, pinned: true } });
+  });
 }
 
 /** True while a switch swaps the editor part, whose editor events are transient then. */
@@ -206,8 +276,9 @@ async function switchTo(next: Selection): Promise<void> {
   // shutdown, which a page's reload may not finish): saved now, a reload restores the tabs of the selection it restores.
   void storage.flush();
 
-  /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave. */
-  async function showLeadTab(lead: ThreadSelection | DraftSelection): Promise<void> {
+  /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave, all of them for the Explorer workspace. */
+  async function showLeadTab(lead: Selection): Promise<void> {
+    if (isExplorer(lead)) return closeLeadTabs(() => true);
     const isOwn = (editor: ThreadInput | DraftInput) =>
       editor.environmentId === lead.environmentId &&
       (isDraft(lead)
@@ -233,6 +304,7 @@ async function switchTo(next: Selection): Promise<void> {
 }
 
 function workingSetName(selection: Selection): string {
+  if (isExplorer(selection)) return "pult.explorer";
   return isDraft(selection)
     ? `pult.draft/${selection.environmentId}/${selection.projectId}`
     : `pult.thread/${selection.environmentId}/${selection.threadId}`;
@@ -270,9 +342,13 @@ export async function restoreThreadSelection(): Promise<void> {
   const groups = await getService(IEditorGroupsService);
   for (const set of groups.getWorkingSets()) if (set.name === RETIRED_SETTINGS_WORKING_SET) groups.deleteWorkingSet(set);
   const editors = await getService(IEditorService);
+  const files: unknown = JSON.parse(storage.get(EXPLORER_FILES_KEY, StorageScope.WORKSPACE) ?? "[]");
+  if (Array.isArray(files)) explorerFiles = files.filter((file) => typeof file === "string").map((file) => URI.parse(file));
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
+    recordExplorerFiles(editors, storage);
   });
+  onDidSelectThread(() => recordExplorerFiles(editors, storage));
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
   const subagentKey = SubagentSelectedContext.bindTo(await getService(IContextKeyService));
@@ -345,6 +421,22 @@ export function registerSelectThreadCommand(): void {
     class extends Action2 {
       constructor() {
         super({
+          id: "pult-shell.selectExplorer",
+          title: { value: "Open Explorer Workspace", original: "Open Explorer Workspace" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+        });
+      }
+
+      run(_accessor: ServicesAccessor, resource?: unknown): Promise<void> {
+        return typeof resource === "string" ? showExplorerFile(URI.parse(resource)) : selectExplorer();
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
           id: "pult-shell.selectParentThread",
           title: { value: "Back to Parent Thread", original: "Back to Parent Thread" },
           category: { value: "Pult", original: "Pult" },
@@ -392,7 +484,7 @@ export function registerSelectThreadCommand(): void {
  * alone is the first project the store lists with it); without, picks one of
  * every environment's projects first in the shell's quick input, the
  * selected thread's or draft's project first, then by name, each one's
- * environment named while the page holds several; one project needs no pick. The Threads tab's title
+ * environment named while the page holds several; one project needs no pick. The Pult tab's title
  * (`src/panel/view.tsx`) runs it too. Cmd+N is bound over the workbench's New
  * Untitled File, as upstream binds `chat.new`, so the palette shows the key.
  */

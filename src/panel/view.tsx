@@ -23,10 +23,10 @@ const THREADS_ORDER = -1;
 
 /**
  * The left panel: the activity bar and the sidebar part, VS Code's own, the
- * bar switching the sidebar between view containers. The Threads tab is the
- * shell's own container, with one React view (the thread cards), Pult's
+ * bar switching the sidebar between view containers. The Pult tab is the
+ * shell's own container, with one React view (the Explorer card and the thread cards), Pult's
  * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`, its filter a card above the tree (`filterCard.tsx`).
- * Every other tab of the sidebar closes back to Threads, in Pult's mode. The
+ * Every other tab of the sidebar closes back to the Pult tab, in Pult's mode. The
  * activity bar's gear opens the Pult settings page (`src/settings/gear.ts`). Collapsing is the sidebar's:
  * Cmd+B and the palette's Collapse Panel, and a chevron in the editor's
  * title brings it back while it is collapsed. Registered before the
@@ -35,7 +35,7 @@ const THREADS_ORDER = -1;
 export function registerPanel(): void {
   registerCustomView({
     id: PANEL_ID,
-    name: "Threads",
+    name: "Pult",
     order: THREADS_ORDER,
     // The composite bar masks the icon with the tab's colour; it takes a URI, not a path.
     icon: new URL(markUrl, window.location.href).href,
@@ -61,7 +61,7 @@ export function registerPanel(): void {
 }
 
 /**
- * New Thread, a plus in the Threads tab's title: `pult-shell.newThread`
+ * New Thread, a plus in the Pult tab's title: `pult-shell.newThread`
  * (`src/threads/selection.ts`), which picks a project; the palette's entry is
  * the action's own.
  */
@@ -77,7 +77,7 @@ function registerNewThreadAction(): void {
 /**
  * Close, an X last in the title of every sidebar tab but Threads, the main
  * one, which it shows instead; in Pult's mode only, as VS Code's tabs have
- * none. Not in the palette: Pult: Show Threads is.
+ * none. Not in the palette: Pult: Show Pult Tab is.
  */
 function registerCloseTabAction(): void {
   registerAction2(

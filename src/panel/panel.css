@@ -500,3 +500,70 @@
 .part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label="Close"]) {
   order: 1;
 }
+
+/* The Explorer card (src/panel/ExplorerCard.tsx): its heading, then its open files, one compact row each. */
+.pult-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.pult-card-heading .codicon {
+  font-size: 14px;
+}
+
+.pult-explorer-files {
+  margin: -4px 0 0;
+  padding: 0 0 6px;
+  list-style: none;
+}
+
+.pult-explorer-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.pult-explorer-file:hover,
+.pult-explorer-file:focus-visible {
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: none;
+}
+
+.pult-explorer-file .codicon {
+  flex: none;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-explorer-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-explorer-file-folder {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}

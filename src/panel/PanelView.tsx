@@ -5,7 +5,7 @@ import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThrea
 import { parkActions } from "../threads/parking.ts";
 import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
 import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
-import { onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
+import { explorerSelected, onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import {
   isSubagent,
   scopedKey,
@@ -15,6 +15,7 @@ import {
   threadStore,
 } from "../threads/store.ts";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
+import { ExplorerCard } from "./ExplorerCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -25,6 +26,7 @@ const keyOf = (thread: ShellThread) => scopedKey(thread.environmentId, thread.id
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft, or nothing. */
 function selectionSnapshot(): string | undefined {
+  if (explorerSelected()) return EXPLORER_KEY;
   const draft = selectedDraft();
   if (draft !== undefined) return `${DRAFT_PREFIX}${scopedKey(draft.environmentId, draft.projectId)}`;
   const thread = selectedThread();
@@ -32,6 +34,7 @@ function selectionSnapshot(): string | undefined {
 }
 
 const DRAFT_PREFIX = "draft:";
+const EXPLORER_KEY = "explorer";
 
 /** The thread store for `useSyncExternalStore`, at module level so a render does not re-subscribe. */
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
@@ -87,14 +90,15 @@ function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<st
 }
 
 /**
- * The Threads tab's view, under the sidebar's title row: every held
+ * The Pult tab's view, under the sidebar's title row: every held
  * environment's threads as cards, in the store's order, which is upstream's:
  * pinned and active as one flat list, then the Snoozed and Settled shelves,
  * each under a collapsible header, collapsed until opened. While the page
  * holds several environments, each card names its own. The selected card
  * expands with its details and its subagents; a subagent has no card, so
- * while one is selected its root's card is the expanded one. A selected
- * draft of a new thread has a card of its own at the top.
+ * while one is selected its root's card is the expanded one. The Explorer
+ * card comes first (`ExplorerCard.tsx`), then a selected draft of a new
+ * thread has a card of its own.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -132,6 +136,7 @@ export function PanelView() {
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
+        <ExplorerCard selected={selection === EXPLORER_KEY} />
         {draft !== undefined && environments.has(draft.environmentId) ? (
           <DraftCard environmentId={draft.environmentId} projectId={draft.projectId} environment={chip(draft.environmentId)} />
         ) : null}

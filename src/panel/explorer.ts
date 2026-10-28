@@ -23,10 +23,10 @@ import { connection } from "../connection/index.ts";
 import { namesEnvironment, PULT_SCHEME, relativeTo, toUriPath } from "../files/paths.ts";
 import { whenReady } from "../files/server.ts";
 import { type ProjectIconSource, threadProjectIcon } from "../threads/projectIcon.ts";
-import { type DraftSelection, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
+import { type DraftSelection, explorerSelected, onDidSelectThread, selectedDraft, selectedThread, type ThreadSelection } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 
-/** The panel's own view container, and its one view, in the sidebar: the Threads tab. */
+/** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
 export const PANEL_ID = "pult.panel";
 const EXPLORER_ID = "workbench.view.explorer";
 const FILE_VIEW_ID = "workbench.explorer.fileView";
@@ -48,7 +48,7 @@ const ScopeContext = new RawContextKey<Scope>("pult.explorerScope", "environment
 /** Whether the scope's thread has a root to narrow to: the toggle's precondition. */
 const ThreadHasFolderContext = new RawContextKey<boolean>("pult.threadHasFolder", false);
 
-/** The thread or draft selected last; it stays the scope's while Settings is selected. */
+/** The thread or draft selected last, the thread scope's; while the Explorer workspace is selected, the scope's folders are the homes regardless. */
 let lastSelected: ThreadSelection | DraftSelection | undefined;
 
 interface Folder {
@@ -56,7 +56,7 @@ interface Folder {
   readonly name: string;
 }
 
-/** The Threads tab. */
+/** The Pult tab, the threads' and the Explorer card's. */
 export async function showThreads(): Promise<void> {
   await (await getService(IPaneCompositePartService)).openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, true);
 }
@@ -137,10 +137,11 @@ function within(uri: URI, root: URI): boolean {
 /**
  * The root of the scope's thread, the selected one, in its environment, or
  * for a draft of a new thread its project's; undefined for none, a thread
- * gone, or one of an environment the page no longer holds.
+ * gone, one of an environment the page no longer holds, or while the
+ * Explorer workspace is selected.
  */
 function threadRootOfScope(): Folder | undefined {
-  if (lastSelected === undefined) return undefined;
+  if (lastSelected === undefined || explorerSelected()) return undefined;
   const { environmentId } = lastSelected;
   if ("projectId" in lastSelected) {
     const project = threadStore.project(environmentId, lastSelected.projectId);
@@ -194,7 +195,7 @@ function reroot(): Promise<boolean> {
     updateContextKeys();
     const { environments } = threadStore.get();
     // Nothing to narrow to until the restored selection is known: the folders stay as the workspace kept them.
-    if (environments.length === 0 || (scope === "thread" && lastSelected === undefined)) return true;
+    if (environments.length === 0 || (scope === "thread" && lastSelected === undefined && !explorerSelected())) return true;
     const root = effectiveRoot();
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
     const wanted = new Map<string, Folder>();
@@ -340,7 +341,7 @@ export function registerExplorerCommands(): void {
   registerAction2(
     class extends Action2 {
       constructor() {
-        super({ id: "pult-shell.showThreads", title: { value: "Show Threads", original: "Show Threads" }, category, f1: true });
+        super({ id: "pult-shell.showThreads", title: { value: "Show Pult Tab", original: "Show Pult Tab" }, category, f1: true });
       }
 
       run(): Promise<void> {
