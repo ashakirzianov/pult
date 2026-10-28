@@ -12,6 +12,7 @@ import {
   presentConnectionState,
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
+import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
 import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -63,7 +64,9 @@ function registration(saved: typeof Saved.Type): BearerConnectionRegistration {
  * vendored runtime, with the environment the shell connects as its one
  * platform registration, so the registry's supervisor dials the page's one
  * socket and reconnects it. The thread view runs on this runtime's services
- * (`context`); the extension reaches it through `bridge.ts`.
+ * (`context`), the thread model follows its shell snapshot and the thread
+ * commands run their RPCs on it (`run`); the extension reaches it through
+ * `bridge.ts`.
  */
 class ShellConnection {
   readonly socket = new PageSocket();
@@ -74,9 +77,11 @@ class ShellConnection {
   private current: ShellEnvironment | null = null;
   private readonly listeners = new Set<() => void>();
   readonly runtime = ManagedRuntime.make(
-    Connection.layerWithOptions({ environmentThemes: true, usageLimitSources: true, usageLimitsCommand: true }).pipe(
-      Layer.provideMerge(platformLayer(this.socket, SubscriptionRef.changes(this.registrations))),
-    ),
+    Layer.mergeAll(
+      Connection.layerWithOptions({ environmentThemes: true, usageLimitSources: true, usageLimitsCommand: true }),
+      // The shell snapshot's HTTP load, for the thread model (`src/threads/model.ts`).
+      ShellSnapshotLoader.layer,
+    ).pipe(Layer.provideMerge(platformLayer(this.socket, SubscriptionRef.changes(this.registrations)))),
   );
 
   constructor() {
@@ -110,6 +115,19 @@ class ShellConnection {
   /** The runtime's services, for the thread view's state runtime. */
   context() {
     return this.runtime.context();
+  }
+
+  /**
+   * Runs an effect on the environment's supervisor: RPCs go to its live
+   * session, and fail with `EnvironmentRpcUnavailableError` while it has none,
+   * or reject while the page has no environment.
+   */
+  run<A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>): Promise<A> {
+    const environmentId = this.saved?.profile.environmentId;
+    if (environmentId === undefined) return Promise.reject(new Error("Pult is not connected to an environment."));
+    return this.runtime.runPromise(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.run(environmentId, effect))),
+    );
   }
 
   /** Connects the environment saved before the reload, if any. Called once the workbench is up. */

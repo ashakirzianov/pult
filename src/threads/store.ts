@@ -1,14 +1,10 @@
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import type { ProjectIconOverride } from "@t3tools/contracts";
 
-/** Upstream's sidebar shelves, in its order; the extension puts every listed thread on one. */
+/** Upstream's sidebar shelves, in its order; the model puts every listed thread on one. */
 export type ShelfName = "pinned" | "active" | "snoozed" | "settled";
 
-/**
- * A thread as the extension reports it to the shell: the fields of its
- * `EnvironmentThreadShell` the pane shows, serialised over a command call.
- * The shape is owned by `shell-spike` in pult-extension (`src/shellBridge.ts`).
- */
+/** A thread as the panel and the pane show it: the fields of its `EnvironmentThreadShell` they read (`shellThreads` in `presentation.ts`). */
 export interface ShellThread {
   readonly id: string;
   /** Its shelf; null for a subagent, which the panel lists under its root's card. */
@@ -34,7 +30,7 @@ export interface ShellThread {
   /** When its current work started, while it works and the server knows. */
   readonly workingSince: string | null;
   readonly pinned: boolean;
-  /** Whether it may be snoozed now, as of the push: no pending approval or input, no queued turn start. */
+  /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
   readonly latestRun: { status: string; startedAt: string | null; finishedAt: string | null } | null;
   readonly goal: string | null;
@@ -68,7 +64,7 @@ export interface ThreadState {
   readonly features: ThreadFeatures;
   /** Shelf by shelf, each in its shelf's order, as upstream's sidebar lists them; then the subagents, on no shelf. */
   readonly threads: ReadonlyArray<ShellThread>;
-  /** The environment's projects; empty from an extension that does not push them. */
+  /** The environment's projects, threads or none: a new thread's draft names its project. */
   readonly projects: ReadonlyArray<ShellProject>;
 }
 
@@ -87,34 +83,36 @@ export interface ReportedActivity {
 type Listener = (state: ThreadState) => void;
 
 /**
- * The shell's copy of the extension's thread model, in the page. The extension
- * pushes it by executing the `pult-shell.threads` command, which the shell
- * registers in the main thread: an extension's `executeCommand` reaches
- * commands registered below the extension API, so this is the in-process
- * channel from the extension host into Pult's own UI, with no webview between.
+ * The environment's threads, as the page's model (`model.ts`) presents them
+ * from the connection's shell snapshot, with what the mounted thread view
+ * reports of their activity laid over.
  */
 class ThreadStore {
-  private pushed: ThreadState = {
+  private presented: ThreadState = {
     environment: null,
     features: { settlement: false, snooze: false, pinning: false },
     threads: [],
     projects: [],
   };
-  private state: ThreadState = this.pushed;
+  private state: ThreadState = this.presented;
   /**
    * Whether threads work, as the mounted thread view knows from its
    * projection (`reportActivity`): a provider's native subagent has no run, so
-   * the extension's push always reads it idle. Laid over the push; kept
+   * the shell snapshot always reads it idle. Laid over the model's; kept
    * across thread switches, the last word on each thread until the next.
    */
   private readonly activity = new Map<string, ReportedActivity>();
   private readonly listeners = new Set<Listener>();
 
   constructor() {
-    CommandsRegistry.registerCommand("pult-shell.threads", (_accessor, payload: ThreadState) => {
-      this.pushed = { ...payload, projects: payload.projects ?? [] };
-      this.update();
-    });
+    // The extension still pushes its own model here until it is removed (`pult/shell-absorbs-extension`); ignored.
+    CommandsRegistry.registerCommand("pult-shell.threads", () => undefined);
+  }
+
+  /** The model's latest, which listeners hear with the reported activity laid over. */
+  set(state: ThreadState): void {
+    this.presented = state;
+    this.update();
   }
 
   get(): ThreadState {
@@ -134,17 +132,17 @@ class ThreadStore {
   }
 
   private update(): void {
-    const threads = this.pushed.threads.map((thread) => {
+    const threads = this.presented.threads.map((thread) => {
       const reported = this.activity.get(thread.id);
-      // A run the push sees working wins; the view's word fills in where the push has none.
+      // A run the model sees working wins; the view's word fills in where the model has none.
       if (reported === undefined || thread.working) return thread;
       return { ...thread, working: reported.working, workingSince: reported.working ? reported.workingSince : null };
     });
-    this.state = { ...this.pushed, threads };
+    this.state = { ...this.presented, threads };
     for (const listener of this.listeners) listener(this.state);
   }
 
-  /** A project by id: the pushed one, or else what a thread of it says, for an extension that does not push them. */
+  /** A project by id: the environment's, or else what a thread of it says. */
   project(projectId: string): ShellProject | undefined {
     const project = this.state.projects.find((candidate) => candidate.id === projectId);
     if (project !== undefined) return project;

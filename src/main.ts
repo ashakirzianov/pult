@@ -29,6 +29,7 @@ import { installDebugHandle } from "./debug.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerPultExtension } from "./pultExtension.ts";
+import { startThreadModel } from "./threads/model.ts";
 import { registerThreadPane } from "./threads/pane.tsx";
 import { registerParkCommands } from "./threads/park.ts";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
@@ -51,6 +52,7 @@ memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ fol
 registerFileSystemOverlay(1, memory);
 
 startConnection();
+startThreadModel();
 registerThreadPane();
 registerSelectThreadCommand();
 registerParkCommands();
