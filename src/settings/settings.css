@@ -18,7 +18,8 @@
   font-size: 13px;
 }
 
-.pult-settings-pane:focus {
+/* The workbench outlines any focused `tabindex="-1"` element inside it, at a higher specificity. */
+.monaco-workbench .pult-settings-pane:focus {
   outline: none;
 }
 
