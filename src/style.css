@@ -15,17 +15,6 @@ body,
   color: #ccc;
 }
 
-/* The desktop's title strip (src/desktop/titleBar.ts) above the workbench, the inset's height while it is there. */
-.pult-titlebar {
-  height: var(--pult-titlebar-inset, 0px);
-  background: #181818;
-  -webkit-app-region: drag;
-}
-
-#workbench {
-  height: calc(100% - var(--pult-titlebar-inset, 0px));
-}
-
 
 /* The thread view's stylesheet (upstream's, loaded with the view) resets the
    whole page in its base layer, box-sizing: border-box on every element and
@@ -110,6 +99,26 @@ body,
 .pult-bar-button:hover {
   background: var(--accent, var(--vscode-toolbar-hoverBackground));
   color: var(--vscode-foreground);
+}
+
+/* The desktop's title bar, merged into the page (src/desktop/titleBar.ts):
+   the editor groups along the window's top edge drag the window by their
+   tabs row, all but the tabs and the row's buttons; with the left panel
+   collapsed, the top-left group's row leaves the traffic lights their room
+   (`--pult-traffic-lights`, 0 in a browser and in full screen). A group is
+   on the top edge unless a vertical split puts it below another, and is
+   the top-left one unless any split puts it after another. Browsers ignore
+   the app region. */
+.part.editor > .content .editor-group-container:not(.part.editor .monaco-split-view2.vertical > .monaco-scrollable-element > .split-view-container > .split-view-view:not(:first-child) *) > .title {
+  -webkit-app-region: drag;
+}
+
+.part.editor > .content .editor-group-container > .title :is(.tab, .editor-actions, .scrollbar) {
+  -webkit-app-region: no-drag;
+}
+
+.monaco-workbench.nosidebar .part.editor > .content .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *) > .title > .tabs-and-actions-container {
+  padding-left: var(--pult-traffic-lights, 0px);
 }
 
 /* What Pult's default mode hides and VS Code mode shows (src/mode.ts puts

@@ -1,39 +1,21 @@
-import { getService, IThemeService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
-
 import type { PultDesktop } from "./api.ts";
 
 /**
- * The desktop's title strip. On macOS the wrapper draws no title bar
- * (`desktop/src/main.ts`), so the window's traffic lights sit over the page,
- * and the page leaves them a strip above the workbench, in the theme's title
- * bar colour and with no edge of its own, which drags the window as a title
- * bar does. The strip goes
- * while the window is full screen, where macOS hides the lights. Nothing
- * where the wrapper reports no inset: a frame of the OS's own.
+ * The desktop's title bar, merged into the page. On macOS the wrapper draws
+ * none (`desktop/src/main.ts`), so the window's traffic lights sit over the
+ * page's top-left, in its top row: the left panel's header, or with the
+ * panel collapsed the top-left editor group's tabs row. The page leaves
+ * them `--pult-traffic-lights` at that row's start (`src/panel/panel.css`,
+ * `src/style.css`), and those rows drag the window as a title bar does. The
+ * room goes while the window is full screen, where macOS hides the lights.
+ * Nothing where the wrapper reports no lights: a frame of the OS's own.
  */
 export function installDesktopTitleBar(desktop: PultDesktop): void {
   const { titleBar } = desktop;
-  if (titleBar.inset === 0) return;
-  const strip = document.createElement("div");
-  strip.className = "pult-titlebar";
-  document.body.prepend(strip);
-
-  const apply = (fullScreen: boolean) => {
-    document.documentElement.style.setProperty("--pult-titlebar-inset", fullScreen ? "0px" : `${titleBar.inset}px`);
-    // The resize that comes with full screen may have laid the workbench out before this reached the page.
-    void getService(IWorkbenchLayoutService).then((layout) => layout.layout());
-  };
+  if (titleBar.lightsWidth === 0) return;
+  const apply = (fullScreen: boolean) =>
+    document.documentElement.style.setProperty("--pult-traffic-lights", fullScreen ? "0px" : `${titleBar.lightsWidth}px`);
   apply(false);
   void titleBar.isFullScreen().then(apply);
   titleBar.onFullScreenChange(apply);
-
-  // The theme's colours live on the workbench's container, which the strip is outside of.
-  void getService(IThemeService).then((themes) => {
-    const paint = () => {
-      const theme = themes.getColorTheme();
-      strip.style.background = theme.getColor("titleBar.activeBackground")?.toString() ?? "";
-    };
-    paint();
-    themes.onDidColorThemeChange(paint);
-  });
 }

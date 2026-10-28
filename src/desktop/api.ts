@@ -20,12 +20,13 @@ export interface PultDesktop {
   };
   /**
    * The window's title bar, where the wrapper draws none: on macOS the
-   * traffic lights sit over the page's top-left, centred in `inset` pixels
-   * that the page leaves them (`src/desktop/titleBar.ts`), except in full
-   * screen, where macOS hides them. `inset` is 0 where the frame is the OS's.
+   * traffic lights sit over the page's top-left, centred in its 35px top row,
+   * and the page leaves them `lightsWidth` pixels at the row's start
+   * (`src/desktop/titleBar.ts`), except in full screen, where macOS hides
+   * them. `lightsWidth` is 0 where the frame is the OS's.
    */
   readonly titleBar: {
-    readonly inset: number;
+    readonly lightsWidth: number;
     isFullScreen(): Promise<boolean>;
     onFullScreenChange(listener: (fullScreen: boolean) => void): () => void;
   };

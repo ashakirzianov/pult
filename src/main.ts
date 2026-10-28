@@ -71,7 +71,7 @@ registerParkCommands();
 registerChanges();
 registerPanel();
 
-// The workbench owns the whole page but the desktop's title strip; its parts are the layout (xaxis `pult/own-shell`).
+// The workbench owns the whole page, the desktop's traffic lights over its top row; its parts are the layout (xaxis `pult/own-shell`).
 if (window.pultDesktop) installDesktopTitleBar(window.pultDesktop);
 const container = document.createElement("div");
 container.id = "workbench";

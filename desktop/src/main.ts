@@ -11,7 +11,7 @@ import * as NodePath from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type IpcMainInvokeEvent } from "electron";
 
 import { appDisplayName, appUserDataName } from "../../src/identity.ts";
-import { Channel, TITLE_BAR_INSET, VERSION_ARG, type Reply } from "./ipc.ts";
+import { Channel, TOP_ROW_HEIGHT, VERSION_ARG, type Reply } from "./ipc.ts";
 import { openSecretStore } from "./secretStore.ts";
 import { windowState } from "./windowState.ts";
 
@@ -93,10 +93,10 @@ function openWindow(): void {
     show: false,
     title: app.name,
     backgroundColor: "#1f1f1f",
-    // The page's chrome runs to the window's top edge (`TITLE_BAR_INSET`): on macOS no title bar, the
-    // traffic lights 12px in and centred in the inset the page leaves them.
+    // The page's chrome runs to the window's top edge: on macOS no title bar, the traffic lights 12px in
+    // and centred in the page's top row, at its start, which the page leaves them (`TRAFFIC_LIGHTS_WIDTH`).
     ...(process.platform === "darwin"
-      ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 12, y: TITLE_BAR_INSET / 2 - 6 } }
+      ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 12, y: Math.round(TOP_ROW_HEIGHT / 2 - 6) } }
       : {}),
     webPreferences: {
       preload: NodePath.join(__dirname, "preload.cjs"),
@@ -110,7 +110,7 @@ function openWindow(): void {
   if (maximized) window.maximize();
   state.track(window);
   window.once("ready-to-show", () => window.show());
-  // The page hides its title strip while the traffic lights are hidden (`window.pultDesktop.titleBar`).
+  // The page takes back the lights' room while they are hidden (`window.pultDesktop.titleBar`).
   window.on("enter-full-screen", () => window.webContents.send(Channel.windowFullScreen, true));
   window.on("leave-full-screen", () => window.webContents.send(Channel.windowFullScreen, false));
 

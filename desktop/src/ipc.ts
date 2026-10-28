@@ -11,11 +11,13 @@ export const Channel = {
 
 /**
  * On macOS the window draws no title bar: its traffic lights sit over the
- * page's top-left, centred in this many pixels (`trafficLightPosition` in
- * main), which the page leaves them as a strip of its own (`titleBar.inset`
- * in `src/desktop/api.ts`). Zero elsewhere, where the frame is the OS's.
+ * page's top-left, centred in the page's top row (`TOP_ROW_HEIGHT`, the left
+ * panel's header and the editor's tabs row), and the page leaves them this
+ * many pixels at the row's start (`titleBar.lightsWidth` in
+ * `src/desktop/api.ts`). Zero elsewhere, where the frame is the OS's.
  */
-export const TITLE_BAR_INSET = process.platform === "darwin" ? 28 : 0;
+export const TRAFFIC_LIGHTS_WIDTH = process.platform === "darwin" ? 76 : 0;
+export const TOP_ROW_HEIGHT = 35;
 
 /**
  * What a handler answers. A failure travels as a message rather than a thrown
