@@ -34,7 +34,7 @@ const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsV
 
 /**
  * What the Explorer tab is rooted at, as the user chose it: the selected
- * thread's root alone, shown as a pill in a row above the tree that clears it, or
+ * thread's root alone, shown as a card above the tree that clears it, or
  * each held environment's home directory. Kept in workspace storage;
  * `thread` until the user clears it.
  */
@@ -74,7 +74,7 @@ export async function openThreadExplorer(): Promise<void> {
   await openExplorer("thread");
 }
 
-/** The Explorer tab at every held environment's home directory: the filter's pill clears to it. */
+/** The Explorer tab at every held environment's home directory: the filter's card clears to it. */
 export function openEnvironmentExplorer(): Promise<void> {
   return openExplorer("environment");
 }
@@ -288,15 +288,15 @@ export async function followExplorerScope(): Promise<void> {
 }
 
 /**
- * What the filter's pill shows while the folders are narrowed: the root's
+ * What the filter's card shows while the folders are narrowed: the root's
  * project, with its icon, and the thread's title when a thread, not a
- * draft of a new one, narrowed them (`filterRow.tsx`).
+ * draft of a new one, narrowed them (`filterCard.tsx`).
  */
 export interface ExplorerFilter {
   readonly projectName: string;
   readonly projectIcon: ProjectIconOverride | null;
   readonly threadTitle: string | undefined;
-  /** The root's host path, for the pill's hover. */
+  /** The root's host path, for the card's hover. */
   readonly path: string;
 }
 

@@ -418,10 +418,10 @@
   list-style: none;
 }
 
-/* The Explorer tab's filter (src/panel/filterRow.tsx), a row of the shell's
-   own before the file view's tree, the body laid out as a column so the
-   tree takes what is left. The row is the tree's 22px: the tree, laid out
-   for the whole body, keeps as much empty space below its last item. */
+/* The Explorer tab's filter (src/panel/filterCard.tsx), a card of the
+   shell's own before the file view's tree, the body laid out as a column
+   so the tree takes what is left, and is laid out again for it. The card's
+   lines are the thread cards'. */
 .pane-body:has(> .pult-explorer-filter) {
   display: flex;
   flex-direction: column;
@@ -434,75 +434,52 @@
 
 .pult-explorer-filter {
   flex: none;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: 22px;
-  padding: 0 8px 0 12px;
+  padding: 2px 8px 6px;
 }
 
 .pult-explorer-filter:empty {
   display: none;
 }
 
-.pult-explorer-filter-pill {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  height: 18px;
-  padding: 0 2px 0 6px;
-  border-radius: 9px;
-  font-size: 11px;
-  line-height: 18px;
+.pult-explorer-card,
+.pult-explorer-card * {
+  box-sizing: border-box;
+}
+
+.pult-explorer-card {
+  display: block;
+  padding: 7px 10px 8px;
+  border-radius: 8px;
+  font-size: 13px;
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
-  background: color-mix(in srgb, var(--vscode-descriptionForeground) 18%, transparent);
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent));
 }
 
-.pult-explorer-filter-icon {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-}
-
-.pult-explorer-filter-project {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.pult-explorer-filter-thread {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--vscode-descriptionForeground);
-}
-
-.pult-explorer-filter-clear.codicon {
+.pult-explorer-card-clear.codicon {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
+  margin-right: -4px;
   padding: 0;
   border: none;
-  border-radius: 7px;
-  font-size: 11px;
-  color: inherit;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--vscode-icon-foreground, inherit);
   background: none;
   cursor: pointer;
+  opacity: 0;
 }
 
-.pult-explorer-filter-clear.codicon:hover {
-  background: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
+.pult-explorer-card:hover .pult-explorer-card-clear,
+.pult-explorer-card-clear:focus-visible {
+  opacity: 1;
+}
+
+.pult-explorer-card-clear.codicon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Close, which the workbench lists among the tab's own actions, before its

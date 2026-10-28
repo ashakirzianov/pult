@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 import markUrl from "../../assets/pult/mark.svg?no-inline";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { followExplorerScope, PANEL_ID, registerExplorerCommands, showThreads } from "./explorer.ts";
-import { mountFilterRow } from "./filterRow.tsx";
+import { mountFilterCard } from "./filterCard.tsx";
 import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
 
@@ -25,7 +25,7 @@ const THREADS_ORDER = -1;
  * The left panel: the activity bar and the sidebar part, VS Code's own, the
  * bar switching the sidebar between view containers. The Threads tab is the
  * shell's own container, with one React view (the thread cards), Pult's
- * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`, its filter a row above the tree (`filterRow.tsx`).
+ * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`, its filter a card above the tree (`filterCard.tsx`).
  * Every other tab of the sidebar closes back to Threads, in Pult's mode. The
  * activity bar's gear opens the Pult settings page (`src/settings/gear.ts`). Collapsing is the sidebar's:
  * Cmd+B and the palette's Collapse Panel, and a chevron in the editor's
@@ -55,7 +55,7 @@ export function registerPanel(): void {
   registerCloseTabAction();
   registerExplorerCommands();
   void followExplorerScope();
-  void mountFilterRow();
+  void mountFilterCard();
   registerSidebarToggle("pult-shell.collapsePanel", "Collapse Panel", true);
   registerSidebarToggle("pult-shell.expandPanel", "Expand Panel", false);
 }
