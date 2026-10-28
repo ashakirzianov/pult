@@ -12,8 +12,7 @@ import { environmentShell, pultFolders, servicesReady, workspaceFiles } from "./
 /**
  * The `pult:` scheme as page code (`pult/decisions`, `pult-uri`): the
  * provider on the workbench's file service, registered before the workbench
- * initialises, so the explorer's restored `pult:` folders and tabs find it
- * (the extension's own provider then fails to register, which only logs),
+ * initialises, so the explorer's restored `pult:` folders and tabs find it,
  * and the workspace's commands. Once the workbench is up, what keeps open
  * files current: the folders' watches where the server has them, synced as
  * the folders change, and turn ends and reconnects everywhere.

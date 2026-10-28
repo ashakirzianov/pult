@@ -66,7 +66,7 @@ function threadView() {
         openFile: (threadId, path, line) => void openThreadFile(threadId, path, line),
         // The changes view (`src/changes/`): the Source Control view over the thread's project.
         openChanges: (threadId, path) => run("pult-shell.showChanges", threadId, path),
-        // A native subagent's work is a runless turn the extension's push cannot see; the view's projection can.
+        // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
         reportActivity: (activity) => threadStore.reportActivity(activity),
       },
       workbench,
@@ -144,7 +144,7 @@ function ThreadContent({
 }
 
 /**
- * An editor pane the shell renders itself, registered below the extension API
+ * An editor pane the shell renders itself, registered below VS Code's extension API
  * with the workbench's own `EditorPane` and `EditorInput`. The pane mounts a
  * React root in the element the editor group hands it, and the thread view in
  * it, in-process; the group handles tabs, drag and restore as for any editor. `selection.ts` opens it as the selected
@@ -235,7 +235,7 @@ export function isLeadTab(editor: unknown): editor is ThreadInput | DraftInput {
  * part with `force`. It is a singleton: Split Editor skips it and a drag
  * moves it rather than copies it, so a second copy never appears that could
  * not be closed. Its label follows the store, since a tab restored at
- * startup is created before the extension has pushed the threads.
+ * startup is created before the thread model has loaded the threads.
  */
 export class ThreadInput extends SimpleEditorInput {
   private icon: { key: string; uri: URI } | undefined;

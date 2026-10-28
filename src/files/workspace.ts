@@ -72,8 +72,8 @@ const LISTED_TIMEOUT_MS = 15_000;
  * Resolves once the store lists a project root of the connected environment,
  * the roots a file outside the folders is read against: the workbench
  * restores `pult:` tabs as soon as the connection is ready, before the
- * extension has pushed the environment's projects (its first push may carry
- * the environment alone). After a wait it resolves anyway, as for an
+ * thread model has loaded the environment's projects (the store may carry
+ * the environment alone at first). After a wait it resolves anyway, as for an
  * environment with no projects, and the read fails as `WorkspaceFiles` fails it.
  */
 export function whenListed(): Promise<void> {
@@ -100,7 +100,7 @@ export function whenListed(): Promise<void> {
 /**
  * The environment's projects and threads as the store has them, in the shape
  * of the server's shell that `projects.ts` takes: a project only a thread
- * names stands in for one the extension did not push, and the store carries
+ * names stands in for one the model does not list, and the store carries
  * no worktrees yet.
  */
 export function environmentShell() {

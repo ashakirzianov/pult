@@ -233,12 +233,12 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
 
 /**
  * The workspace's commands, in the palette under Pult; Go to File and Search
- * in Files take Cmd+P and Cmd+Shift+F while the page holds an environment,
- * over the extension's bindings of its own versions while it still has them.
+ * in Files take Cmd+P and Cmd+Shift+F, over the workbench's own, while the
+ * page holds an environment.
  */
 export function registerFilesCommands(): void {
   const category = { value: "Pult", original: "Pult" };
-  const weight = KeybindingWeight.ExternalExtension + 1;
+  const weight = KeybindingWeight.WorkbenchContrib + 1;
   registerAction2(
     class extends Action2 {
       constructor() {

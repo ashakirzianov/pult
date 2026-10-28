@@ -15,7 +15,7 @@ import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/com
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { CommandsRegistry, type ICommandHandler } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
-import { KeybindingsRegistry, KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
+import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
@@ -301,7 +301,6 @@ export async function restoreThreadSelection(): Promise<void> {
 export function registerSelectThreadCommand(): void {
   routeOpenSettings();
   onDidPromoteDraft((projectId, threadId) => void promoteDraft(projectId, threadId));
-  CommandsRegistry.registerCommand("pult-shell.selectedThread", () => selectedThread()?.threadId ?? null);
   registerNewThreadCommand();
   registerAction2(
     class extends Action2 {
@@ -377,59 +376,49 @@ export function registerSelectThreadCommand(): void {
 }
 
 /**
- * `pult-shell.newThread [projectId]`: with a project, selects its draft;
- * without, picks one first in the shell's quick input, the selected thread's
- * or draft's project first, then by name; one project needs no pick. The
- * Threads tab's title (`src/panel/view.tsx`) runs it; so do the palette's
- * "Pult: New Thread" and Cmd+N, through `pult.newThread`, the extension's
- * command, which the shell's handler sits on top of while the extension still
- * registers it, the palette entry still the extension's contribution. Cmd+N
- * is bound over the workbench's New Untitled File, as upstream binds
- * `chat.new`, so the palette shows the key.
+ * `pult-shell.newThread [projectId]`, the palette's "Pult: New Thread" on
+ * Cmd+N: with a project, selects its draft; without, picks one first in the
+ * shell's quick input, the selected thread's or draft's project first, then
+ * by name; one project needs no pick. The Threads tab's title
+ * (`src/panel/view.tsx`) runs it too. Cmd+N is bound over the workbench's New
+ * Untitled File, as upstream binds `chat.new`, so the palette shows the key.
  */
 function registerNewThreadCommand(): void {
-  const newThread: ICommandHandler = async (accessor, projectId?: unknown) => {
-    if (typeof projectId === "string") return selectDraft(projectId);
-    // Services are read before any await; the accessor is only valid synchronously.
-    const quickInput = accessor.get(IQuickInputService);
-    const notifications = accessor.get(INotificationService);
-    const { environment, projects, threads } = threadStore.get();
-    if (environment === null) return notifications.info("Pult is not connected to an environment.");
-    const current = selectedDraft()?.projectId ?? threads.find((thread) => thread.id === selectedThread()?.threadId)?.projectId;
-    const sorted = projects.toSorted(
-      (left, right) => Number(right.id === current) - Number(left.id === current) || left.name.localeCompare(right.name),
-    );
-    if (sorted.length === 0) return notifications.info("This environment has no projects.");
-    const chosen =
-      sorted.length === 1
-        ? sorted[0]
-        : await quickInput.pick(
-            sorted.map((project) => ({ label: project.name, description: project.root ?? undefined, id: project.id })),
-            { placeHolder: "New thread in project" },
-          );
-    if (chosen !== undefined) await selectDraft(chosen.id);
-  };
-  CommandsRegistry.registerCommand("pult-shell.newThread", newThread);
-  keepOnTop("pult.newThread", newThread);
-  KeybindingsRegistry.registerKeybindingRule({
-    id: "pult.newThread",
-    primary: KeyMod.CtrlCmd | KeyCode.KeyN,
-    weight: KeybindingWeight.WorkbenchContrib + 1,
-  });
-}
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.newThread",
+          title: { value: "New Thread", original: "New Thread" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+          keybinding: { primary: KeyMod.CtrlCmd | KeyCode.KeyN, weight: KeybindingWeight.WorkbenchContrib + 1 },
+        });
+      }
 
-/**
- * Registers `handler` as `id`'s, and again on top of any later registration
- * of the id, since the registry's latest registration wins.
- */
-function keepOnTop(id: string, handler: ICommandHandler): void {
-  const place = () => {
-    if (CommandsRegistry.getCommand(id)?.handler !== handler) CommandsRegistry.registerCommand({ id, handler });
-  };
-  CommandsRegistry.onDidRegisterCommand((registered) => {
-    if (registered === id) place();
-  });
-  place();
+      async run(accessor: ServicesAccessor, projectId?: unknown): Promise<void> {
+        if (typeof projectId === "string") return selectDraft(projectId);
+        // Services are read before any await; the accessor is only valid synchronously.
+        const quickInput = accessor.get(IQuickInputService);
+        const notifications = accessor.get(INotificationService);
+        const { environment, projects, threads } = threadStore.get();
+        if (environment === null) return notifications.info("Pult is not connected to an environment.");
+        const current = selectedDraft()?.projectId ?? threads.find((thread) => thread.id === selectedThread()?.threadId)?.projectId;
+        const sorted = projects.toSorted(
+          (left, right) => Number(right.id === current) - Number(left.id === current) || left.name.localeCompare(right.name),
+        );
+        if (sorted.length === 0) return notifications.info("This environment has no projects.");
+        const chosen =
+          sorted.length === 1
+            ? sorted[0]
+            : await quickInput.pick(
+                sorted.map((project) => ({ label: project.name, description: project.root ?? undefined, id: project.id })),
+                { placeHolder: "New thread in project" },
+              );
+        if (chosen !== undefined) await selectDraft(chosen.id);
+      }
+    },
+  );
 }
 
 /**

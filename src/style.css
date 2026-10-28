@@ -67,7 +67,7 @@ body,
   display: flex;
   min-width: 0;
   align-items: center;
-  /* The bar's spacing (the extension's shell.css), so its entries and ours sit one step apart. */
+  /* The bar's spacing (the thread view's `thread-view/shell/shell.css`), so its entries and ours sit one step apart. */
   gap: var(--pult-bar-gap, 2px);
 }
 
@@ -93,7 +93,7 @@ body,
   text-overflow: ellipsis;
 }
 
-/* An icon button, as the bar's own (the extension's shell.css): its size, radius and hover colour. */
+/* An icon button, as the bar's own (`thread-view/shell/shell.css`): its size, radius and hover colour. */
 .pult-bar-button {
   justify-content: center;
   width: var(--pult-bar-button-size, 26px);

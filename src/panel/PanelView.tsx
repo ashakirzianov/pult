@@ -118,7 +118,7 @@ export function PanelView() {
         {state.environment === null ? (
           <li className="pult-panel-empty">
             <p>Not connected.</p>
-            <button type="button" className="pult-panel-button" onClick={() => run("pult.connect")}>
+            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.connect")}>
               Connect to Environment
             </button>
           </li>

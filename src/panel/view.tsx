@@ -59,8 +59,8 @@ export function registerPanel(): void {
 
 /**
  * New Thread, a plus in the Threads tab's title: `pult-shell.newThread`
- * (`src/threads/selection.ts`), which picks a project. The palette's entry
- * is the extension's "Pult: New Thread", so this one stays out of it.
+ * (`src/threads/selection.ts`), which picks a project; the palette's entry is
+ * the action's own.
  */
 function registerNewThreadAction(): void {
   MenuRegistry.appendMenuItem(MenuId.ViewTitle, {

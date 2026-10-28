@@ -1,4 +1,3 @@
-import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import type { ProjectIconOverride } from "@t3tools/contracts";
 
 /** Upstream's sidebar shelves, in its order; the model puts every listed thread on one. */
@@ -103,11 +102,6 @@ class ThreadStore {
    */
   private readonly activity = new Map<string, ReportedActivity>();
   private readonly listeners = new Set<Listener>();
-
-  constructor() {
-    // The extension still pushes its own model here until it is removed (`pult/shell-absorbs-extension`); ignored.
-    CommandsRegistry.registerCommand("pult-shell.threads", () => undefined);
-  }
 
   /** The model's latest, which listeners hear with the reported activity laid over. */
   set(state: ThreadState): void {

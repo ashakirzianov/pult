@@ -142,8 +142,8 @@ let updateContextKeys = () => {};
  * the scope and the folders when its turn comes, after the previous update
  * has landed. The thread scope narrows them to the selected thread's root;
  * the environment scope, and the thread scope of a thread without one, keep
- * every folder of the environment already there (one the extension added, as
- * "Pult: Open Project" does) and add the threads' roots, never removing one.
+ * every folder of the environment already there (one "Pult: Open Project"
+ * added) and add the threads' roots, never removing one.
  * A failure is notified. Resolves to whether the folders are the scope's.
  */
 function reroot(): Promise<boolean> {

@@ -5,8 +5,7 @@ import { connection } from "./connection.ts";
 
 /**
  * `pult.connected`: whether the page holds an environment, whatever its
- * phase, for the keybindings and menus of commands that need one. The
- * extension's `pult.bound` says the same of its own window binding.
+ * phase, for the keybindings and menus of commands that need one.
  */
 export const ConnectedContext = new RawContextKey<boolean>("pult.connected", false);
 

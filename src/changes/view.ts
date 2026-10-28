@@ -251,11 +251,6 @@ class ChangesView {
       onDidChange: view.decorationsChanged.event,
       provideDecorations: (uri) => view.decoration(uri),
     });
-    // Until the extension's own changes view goes: it reads the selection once at its start
-    // (`pult-shell.selectedThread`) and shows a stale twin of this one, so it is told none.
-    scm.onDidAddRepository((repository) => {
-      if (repository.provider.providerId === "pult") void commands.executeCommand("pult.threadSelected", null);
-    });
     onDidSelectThread(() => view.select(selectedThread()?.threadId ?? null));
     // The store may load after the selection, and a finished run changes the files.
     threadStore.subscribe(() => {
