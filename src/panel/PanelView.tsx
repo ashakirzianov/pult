@@ -5,7 +5,7 @@ import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThrea
 import { parkActions } from "../threads/parking.ts";
 import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
 import { projectIconUri } from "../threads/projectIcon.ts";
-import { isSettingsSelected, onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
+import { onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import {
   isSubagent,
   scopedKey,
@@ -23,9 +23,8 @@ function run(command: string, ...args: unknown[]): void {
 /** A thread's identity across environments (`scopedKey`), which the selection and the panel's maps go by. */
 const keyOf = (thread: ShellThread) => scopedKey(thread.environmentId, thread.id);
 
-/** What the editor part shows, as a stable snapshot: a thread's key, `settings`, a project's draft, or nothing. */
+/** What the editor part shows, as a stable snapshot: a thread's key, a project's draft, or nothing. */
 function selectionSnapshot(): string | undefined {
-  if (isSettingsSelected()) return "settings";
   const draft = selectedDraft();
   if (draft !== undefined) return `${DRAFT_PREFIX}${scopedKey(draft.environmentId, draft.projectId)}`;
   const thread = selectedThread();

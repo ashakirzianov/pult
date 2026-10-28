@@ -13,14 +13,13 @@ import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codi
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
-import { CommandsRegistry, type ICommandHandler } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
-import { isSettingsTab, SettingsInput } from "../settings/pane.tsx";
-import { DraftInput, isLeadTab, isShellTab, onDidPromoteDraft, ThreadInput } from "./pane.tsx";
+import { SettingsInput } from "../settings/pane.tsx";
+import { DraftInput, isLeadTab, onDidPromoteDraft, ThreadInput } from "./pane.tsx";
 import { isSubagent, type ShellProject, type ShelfName, threadStore } from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
@@ -35,16 +34,16 @@ export interface DraftSelection {
   readonly projectId: string;
 }
 
-/** Settings, content of its own beside the threads: the Pult settings page (`src/settings/`) with a tab set of its own. */
-const SETTINGS = "settings";
-type Selection = ThreadSelection | DraftSelection | typeof SETTINGS;
+type Selection = ThreadSelection | DraftSelection;
 
 function isDraft(selection: Selection | undefined): selection is DraftSelection {
   return typeof selection === "object" && "projectId" in selection;
 }
 
 const STORAGE_KEY = "pult.shell.selectedThread";
-const BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
+/** What the shell stored while Settings was a selection of its own (until 2026-10-28), cleared at startup. */
+const RETIRED_BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
+const RETIRED_SETTINGS_WORKING_SET = "pult.settings";
 
 /** Whether the selected thread is a subagent's: the thread tab's title then offers its way back to the parent. */
 const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelected", false);
@@ -61,15 +60,13 @@ function selectedParent(): ThreadSelection | undefined {
 }
 
 let selected: Selection | undefined;
-/** The thread or draft Settings was selected from, which closing Settings' last tab goes back to. */
-let beforeSettings: ThreadSelection | DraftSelection | undefined;
 let switching = false;
 let queue = Promise.resolve();
 const listeners = new Set<() => void>();
 
-/** The selected thread; undefined while Settings or a draft is selected. */
+/** The selected thread; undefined while a draft is selected. */
 export function selectedThread(): ThreadSelection | undefined {
-  return typeof selected === "object" && "threadId" in selected ? selected : undefined;
+  return selected !== undefined && "threadId" in selected ? selected : undefined;
 }
 
 /** The selected draft of a new thread, if one is. */
@@ -77,16 +74,12 @@ export function selectedDraft(): DraftSelection | undefined {
   return isDraft(selected) ? selected : undefined;
 }
 
-export function isSettingsSelected(): boolean {
-  return selected === SETTINGS;
-}
-
 /** True while a switch swaps the editor part, whose editor events are transient then. */
 export function isSwitchingThread(): boolean {
   return switching;
 }
 
-/** Called after every completed selection, the startup one and Settings included. */
+/** Called after every completed selection, the startup one included. */
 export function onDidSelectThread(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -106,16 +99,26 @@ export function selectThread(environmentId: string, threadId: string): Promise<v
 }
 
 /**
- * Selects Settings as a thread is selected: the selected thread's tabs are
- * saved, and the editor part shows Settings' own tab set, led by the Pult
- * settings page, opened leftmost in the first group, pinned, and active; the
- * VS Code editors it opens (the settings editor, keyboard shortcuts) join
- * that tab set beside it. Selecting a thread again restores that thread's
- * tabs, and so does closing Settings' last tab, for the thread or draft
- * Settings was selected from.
+ * Opens the Pult settings page (`src/settings/`) as a tab of the selected
+ * thread's or draft's tab set, in the active group, pinned, and active; a
+ * page open in any group is shown instead. Settings is no selection of its
+ * own: the tab goes with the thread's working set and closes like any tab
+ * (`pult/decisions`, `settings-selection`). Queued behind any switch in
+ * flight, which swaps the editor part.
  */
-export function selectSettings(): Promise<void> {
-  return enqueue(() => switchTo(SETTINGS));
+export function showSettings(): Promise<void> {
+  return enqueue(async () => {
+    const groups = await getService(IEditorGroupsService);
+    const instantiation = await getService(IInstantiationService);
+    const holding = groups.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).find((group) => group.editors.some(isSettingsTab));
+    const group = holding ?? groups.activeGroup;
+    const page = group.editors.find(isSettingsTab) ?? instantiation.createInstance(SettingsInput);
+    await group.openEditor(page, { pinned: true });
+  });
+}
+
+function isSettingsTab(editor: unknown): editor is SettingsInput {
+  return editor instanceof SettingsInput;
 }
 
 /**
@@ -186,14 +189,9 @@ async function switchTo(next: Selection): Promise<void> {
       const saved = groups.getWorkingSets().find((set) => set.name === workingSetName(next));
       await groups.applyWorkingSet(saved ?? "empty", { preserveFocus: true });
     }
-    if (next === SETTINGS && selected !== undefined && selected !== SETTINGS) {
-      beforeSettings = selected;
-      storage.store(BEFORE_SETTINGS_KEY, JSON.stringify(selected), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-    }
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-    if (next === SETTINGS) await showSettings();
-    else await showLeadTab(next);
+    await showLeadTab(next);
   } finally {
     switching = false;
   }
@@ -217,20 +215,6 @@ async function switchTo(next: Selection): Promise<void> {
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
   }
 
-  /**
-   * No thread tab, and the settings page active and leftmost: where
-   * Settings' working set holds it already, else new in the first group.
-   */
-  async function showSettings(): Promise<void> {
-    await closeLeadTabs(() => true);
-    const ordered = groups.getGroups(GroupsOrder.GRID_APPEARANCE);
-    const holding = ordered.find((group) => group.editors.some(isSettingsTab));
-    const group = holding ?? ordered[0] ?? groups.activeGroup;
-    const page = group.editors.find(isSettingsTab) ?? instantiation.createInstance(SettingsInput);
-    await group.openEditor(page, { pinned: true, index: 0 });
-    keepThreadTabsFirst(ordered);
-  }
-
   async function closeLeadTabs(stale: (editor: ThreadInput | DraftInput) => boolean): Promise<void> {
     for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
       const closing = group.editors.filter((editor) => isLeadTab(editor) && stale(editor));
@@ -240,21 +224,19 @@ async function switchTo(next: Selection): Promise<void> {
 }
 
 function workingSetName(selection: Selection): string {
-  if (selection === SETTINGS) return "pult.settings";
   return isDraft(selection)
     ? `pult.draft/${selection.environmentId}/${selection.projectId}`
     : `pult.thread/${selection.environmentId}/${selection.threadId}`;
 }
 
 /**
- * Moves a thread's or draft's tab, or the settings page, back to the left
- * edge of its group. Not sticky: a sticky tab offers an unpin button, and a
- * dragged editor can still land before it, so the shell puts it back after
- * every change instead.
+ * Moves a thread's or draft's tab back to the left edge of its group. Not
+ * sticky: a sticky tab offers an unpin button, and a dragged editor can still
+ * land before it, so the shell puts it back after every change instead.
  */
 function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
   for (const group of groups) {
-    const tab = group.editors.find(isShellTab);
+    const tab = group.editors.find(isLeadTab);
     if (tab !== undefined && group.getIndexOfEditor(tab) !== 0) {
       group.moveEditor(tab, group, { index: 0 });
     }
@@ -272,20 +254,15 @@ function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
 export async function restoreThreadSelection(): Promise<void> {
   const storage = await getService(IStorageService);
   const saved = storage.get(STORAGE_KEY, StorageScope.WORKSPACE);
-  if (saved !== undefined) selected = JSON.parse(saved) as Selection;
-  const savedBefore = storage.get(BEFORE_SETTINGS_KEY, StorageScope.WORKSPACE);
-  if (savedBefore !== undefined) beforeSettings = JSON.parse(savedBefore) as ThreadSelection | DraftSelection;
+  const parsed: unknown = saved === undefined ? undefined : JSON.parse(saved);
+  // A page that last had Settings selected, when that was a selection, starts with none.
+  if (typeof parsed === "object" && parsed !== null) selected = parsed as Selection;
+  storage.remove(RETIRED_BEFORE_SETTINGS_KEY, StorageScope.WORKSPACE);
   const groups = await getService(IEditorGroupsService);
+  for (const set of groups.getWorkingSets()) if (set.name === RETIRED_SETTINGS_WORKING_SET) groups.deleteWorkingSet(set);
   const editors = await getService(IEditorService);
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
-  });
-  // Closing Settings' last tab goes back to the thread or draft it was opened from, while the page holds its environment.
-  editors.onDidCloseEditor(() => {
-    const back = beforeSettings;
-    if (switching || selected !== SETTINGS || editors.count > 0) return;
-    if (back === undefined || threadStore.environment(back.environmentId) === undefined) return;
-    void enqueue(() => (selected === SETTINGS && editors.count === 0 ? switchTo(back) : Promise.resolve()));
   });
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
@@ -302,14 +279,12 @@ export async function restoreThreadSelection(): Promise<void> {
  * it; with no id, a quick pick of every environment's threads in the cards'
  * order, subagents left out, each one's environment named while the page
  * holds several. `pult-shell.selectSettings`, the palette's "Pult: Show
- * Settings", on Cmd+, over the workbench's own binding, which would open
- * the settings editor under the thread; and the workbench's own Settings
- * and Keyboard Shortcuts commands routed through Settings (`SETTINGS_ROUTES`).
- * `pult-shell.newThread`, a project's draft; a draft's promotion selects
- * its thread.
+ * Settings", on Cmd+, over the workbench's own binding, opens the Pult
+ * settings page among the thread's tabs; the activity bar's gear runs it
+ * too (`src/settings/gear.ts`). `pult-shell.newThread`, a project's draft;
+ * a draft's promotion selects its thread.
  */
 export function registerSelectThreadCommand(): void {
-  for (const route of SETTINGS_ROUTES) routeToSettings(route);
   onDidPromoteDraft((draft, thread) => void promoteDraft(draft, thread));
   registerNewThreadCommand();
   registerAction2(
@@ -396,7 +371,7 @@ export function registerSelectThreadCommand(): void {
       }
 
       run(): Promise<void> {
-        return selectSettings();
+        return showSettings();
       }
     },
   );
@@ -463,49 +438,4 @@ function registerNewThreadCommand(): void {
       }
     },
   );
-}
-
-/**
- * The workbench's own commands that open an editor of Settings', routed
- * through the Settings selection: left alone each would open its editor
- * among the selected thread's tabs. `workbench.action.openSettings`, the
- * stock Settings (the activity bar's Manage menu, the palette's
- * "Preferences: Open Settings", the links that open a setting by query),
- * is the Pult settings page when called without arguments, and with a
- * query, a link or the JSON editor's options opens VS Code's settings editor
- * beside the page. `workbench.action.openGlobalKeybindings`, Keyboard
- * Shortcuts, always opens its editor beside the page.
- */
-const SETTINGS_ROUTES = [
-  { id: "workbench.action.openSettings", pageWithoutArguments: true },
-  { id: "workbench.action.openGlobalKeybindings", pageWithoutArguments: false },
-];
-
-/**
- * Selects Settings, then runs the stock handler with the arguments, unless
- * the call without arguments is the page alone. The stock command registers
- * when its contribution starts, after the shell's registrations, and the
- * registry's latest registration wins, so the route goes on top of it then,
- * and again if it is ever registered anew.
- */
-function routeToSettings({ id, pageWithoutArguments }: (typeof SETTINGS_ROUTES)[number]): void {
-  let stock: ICommandHandler | undefined;
-  const route: ICommandHandler = async (accessor, ...args) => {
-    // Services are read before any await; the accessor is only valid synchronously.
-    const instantiation = accessor.get(IInstantiationService);
-    await selectSettings();
-    // A menu runs its command with no argument, or with an undefined context.
-    if (stock === undefined || (pageWithoutArguments && args.every((arg) => arg === undefined))) return undefined;
-    return instantiation.invokeFunction(stock, ...args);
-  };
-  const place = () => {
-    const current = CommandsRegistry.getCommand(id);
-    if (current === undefined || current.handler === route) return;
-    stock = current.handler;
-    CommandsRegistry.registerCommand({ id, handler: route });
-  };
-  CommandsRegistry.onDidRegisterCommand((registered) => {
-    if (registered === id) place();
-  });
-  place();
 }
