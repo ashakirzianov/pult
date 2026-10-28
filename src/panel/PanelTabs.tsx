@@ -106,8 +106,9 @@ export async function panelTabStore() {
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
 /**
- * The left panel's bottom row: a button per sidebar tab, the open one lit,
- * in place of VS Code's activity bar, which the shell hides
+ * The left panel's tabs, in its bottom row: a button per sidebar tab, the
+ * open one on the background the others take on hover, in place of VS
+ * Code's activity bar, which the shell hides
  * (`workbench.activityBar.location`), since at the sidebar's top or bottom
  * it brings the workbench's title bar with it. In Pult's mode the Pult tab
  * has no button (`style.css`): every other tab's Close goes back to it.

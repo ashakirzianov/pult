@@ -1,6 +1,6 @@
 import { getService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
-import { Action2, MenuId, MenuRegistry, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
 import { registerCustomView, ViewContainerLocation } from "@codingame/monaco-vscode-workbench-service-override/common";
@@ -24,16 +24,18 @@ const THREADS_ORDER = -1;
 /**
  * The left panel: the sidebar part, VS Code's own, between two rows of the
  * shell's (`rows.tsx`), the header above (the desktop's traffic lights,
- * Collapse Panel, Pult's logo and the gear, which opens the Pult settings
- * page) and the tabs below, switching the sidebar between view containers
- * in place of VS Code's activity bar (`PanelTabs.tsx`). The Pult tab is the
- * shell's own container, with one React view (the Explorer card and the thread cards), Pult's
- * mark as its icon and New Thread in its title; the Explorer tab is VS Code's, rooted by `explorer.ts`, its filter a card above the tree (`filterCard.tsx`).
- * Every other tab of the sidebar closes back to the Pult tab, which in Pult's
+ * Collapse Panel, New Thread and Pult's logo; in the Pult tab's title while
+ * that tab is open) and below the tabs, switching the sidebar between view
+ * containers in place of VS Code's activity bar (`PanelTabs.tsx`), and the
+ * gear, which opens the Pult settings page. The Pult tab is the shell's own
+ * container, with one React view (the Explorer card and the thread cards)
+ * and Pult's mark as its icon; the Explorer tab is VS Code's, rooted by
+ * `explorer.ts`, its filter a card above the tree (`filterCard.tsx`). Every
+ * other tab of the sidebar closes back to the Pult tab, which in Pult's
  * mode has no button of its own. Collapsing is the sidebar's: the header's
- * toggle, Cmd+B and the palette's Collapse Panel, and the toggle in the
- * editor's title brings it back while it is collapsed. Registered before the
- * workbench starts.
+ * toggle, Cmd+B and the palette's Collapse Panel; while it is collapsed,
+ * Expand Panel sits at the window's top-left (`rows.tsx`). Registered
+ * before the workbench starts.
  */
 export function registerPanel(): void {
   registerCustomView({
@@ -54,27 +56,12 @@ export function registerPanel(): void {
       return { dispose: () => root.unmount() };
     },
   });
-  registerNewThreadAction();
   registerCloseTabAction();
   registerExplorerCommands();
   void followExplorerScope();
   void mountFilterCard();
   registerSidebarToggle("pult-shell.collapsePanel", "Collapse Panel", true);
   registerSidebarToggle("pult-shell.expandPanel", "Expand Panel", false);
-}
-
-/**
- * New Thread, a plus in the Pult tab's title: `pult-shell.newThread`
- * (`src/threads/selection.ts`), which picks a project; the palette's entry is
- * the action's own.
- */
-function registerNewThreadAction(): void {
-  MenuRegistry.appendMenuItem(MenuId.ViewTitle, {
-    command: { id: "pult-shell.newThread", title: { value: "New Thread", original: "New Thread" }, icon: Codicon.add },
-    when: ContextKeyExpr.equals("view", PANEL_ID),
-    group: "navigation",
-    order: -1,
-  });
 }
 
 /**
@@ -110,17 +97,9 @@ function registerCloseTabAction(): void {
   );
 }
 
-/** Collapse is the panel header's, the palette's and Cmd+B's; Expand is also the toggle in the editor's title while the sidebar is collapsed. */
+/** The palette's Collapse Panel and Expand Panel, which the panel's header and the window's top-left show as buttons (`rows.tsx`). */
 function registerSidebarToggle(id: string, title: string, hide: boolean): void {
   const sidebarVisible = ContextKeyExpr.equals("sideBarVisible", true);
-  const where = hide
-    ? []
-    : [MenuId.EditorTitle, MenuId.EmptyEditorGroup].map((menu) => ({
-        id: menu,
-        when: ContextKeyExpr.not("sideBarVisible"),
-        group: "navigation",
-        order: -1000,
-      }));
   registerAction2(
     class extends Action2 {
       constructor() {
@@ -128,10 +107,8 @@ function registerSidebarToggle(id: string, title: string, hide: boolean): void {
           id,
           title: { value: title, original: title },
           category: { value: "Pult", original: "Pult" },
-          icon: hide ? Codicon.layoutSidebarLeft : Codicon.layoutSidebarLeftOff,
           f1: true,
           precondition: hide ? sidebarVisible : ContextKeyExpr.not("sideBarVisible"),
-          menu: where,
         });
       }
 

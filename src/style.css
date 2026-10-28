@@ -105,7 +105,8 @@ body,
    the editor groups along the window's top edge drag the window by their
    tabs row, all but the tabs and the row's buttons; with the left panel
    collapsed, the top-left group's row leaves the traffic lights their room
-   (`--pult-traffic-lights`, 0 in a browser and in full screen). A group is
+   (`--pult-traffic-lights`, 0 in a browser and in full screen) and Expand
+   Panel its own (src/panel/rows.tsx). A group is
    on the top edge unless a vertical split puts it below another, and is
    the top-left one unless any split puts it after another. Browsers ignore
    the app region. */
@@ -118,7 +119,7 @@ body,
 }
 
 .monaco-workbench.nosidebar .part.editor > .content .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *) > .title > .tabs-and-actions-container {
-  padding-left: var(--pult-traffic-lights, 0px);
+  padding-left: calc(var(--pult-traffic-lights, 0px) + 34px);
 }
 
 /* What Pult's default mode hides and VS Code mode shows (src/mode.ts puts

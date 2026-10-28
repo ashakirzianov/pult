@@ -588,27 +588,43 @@
 }
 
 /* The left panel's rows above and below the sidebar (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
-.pult-panel-header,
-.pult-panel-tabs-row {
+.pult-panel-header-row,
+.pult-panel-footer,
+.pult-panel-header {
   display: flex;
   align-items: center;
   box-sizing: border-box;
   height: 100%;
-  border-right: 1px solid var(--vscode-sideBar-border, transparent);
-  background: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
 }
 
+.pult-panel-header-row,
+.pult-panel-footer {
+  border-right: 1px solid var(--vscode-sideBar-border, transparent);
+  background: var(--vscode-sideBar-background);
+}
+
+.pult-panel-header-row *,
+.pult-panel-footer *,
 .pult-panel-header *,
-.pult-panel-tabs-row * {
+.pult-panel-expand * {
   box-sizing: border-box;
 }
 
-/* The header drags the window in the desktop, as a title bar does; its buttons are buttons. */
+/* The header, in its row or standing in the Pult tab's title (the part draws the edge there), drags the window in the desktop, as a title bar does; its buttons are buttons. */
 .pult-panel-header {
+  flex: 1;
   gap: 2px;
   padding: 0 8px;
   -webkit-app-region: drag;
+}
+
+.part.sidebar.pult-header-in-title > .composite.title {
+  padding: 0;
+}
+
+.part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header) {
+  display: none;
 }
 
 .pult-panel-header-lights {
@@ -618,22 +634,32 @@
 
 .pult-panel-header-logo {
   height: 14px;
-  margin-left: 4px;
+  margin-right: 4px;
   pointer-events: none;
   user-select: none;
 }
 
-.pult-panel-header-spacer {
+.pult-panel-row-spacer {
   flex: 1;
 }
 
-.pult-panel-header-button,
+.pult-panel-footer {
+  padding: 0 8px 0 6px;
+}
+
+/* The rows' buttons, the tabs among them, as the thread view's bar's icon buttons: their size, radius and hover colour; the open tab keeps it. */
+.pult-panel-row-button,
 .pult-panel-tab {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
   border: none;
+  border-radius: 6px;
   background: none;
   color: inherit;
   font: inherit;
@@ -641,55 +667,28 @@
   -webkit-app-region: no-drag;
 }
 
-.pult-panel-header-button {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 5px;
-}
-
-.pult-panel-header-button:hover {
+.pult-panel-row-button:hover,
+.pult-panel-tab:hover,
+.pult-panel-tab-active {
   background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
-.pult-panel-header-button:focus-visible,
+.pult-panel-row-button:focus-visible,
 .pult-panel-tab:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-/* The bottom row: the stock activity bar's colours for a bar at the sidebar's edge, the open tab's line on its top. */
-.pult-panel-tabs-row {
-  border-top: 1px solid var(--vscode-sideBar-border, transparent);
-}
-
 .pult-panel-tabs {
   display: flex;
-  height: 100%;
+  gap: 2px;
   min-width: 0;
-  padding: 0 4px;
   overflow: hidden;
 }
 
 .pult-panel-tab {
-  position: relative;
-  height: 100%;
-  min-width: 32px;
-  padding: 0 8px;
   color: var(--vscode-activityBarTop-inactiveForeground, var(--vscode-descriptionForeground));
-}
-
-.pult-panel-tab:hover,
-.pult-panel-tab-active {
-  color: var(--vscode-activityBarTop-foreground, var(--vscode-foreground));
-}
-
-.pult-panel-tab-active::before {
-  content: "";
-  position: absolute;
-  inset: 0 6px auto;
-  height: 1px;
-  background: var(--vscode-activityBarTop-activeBorder, var(--vscode-focusBorder));
 }
 
 .pult-panel-tab .codicon {
@@ -704,14 +703,15 @@
 }
 
 .pult-panel-tab-label {
+  padding: 0 6px;
   font-size: 11px;
   text-transform: uppercase;
 }
 
 .pult-panel-tab-badge {
   position: absolute;
-  top: 4px;
-  right: 2px;
+  top: -4px;
+  right: -4px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
@@ -721,4 +721,21 @@
   font-size: 9px;
   line-height: 14px;
   text-align: center;
+}
+
+/* Expand Panel, while the panel is collapsed, at the window's top-left after the traffic lights, over the room the top-left editor group's tabs row leaves it (src/style.css). */
+.pult-panel-expand {
+  position: absolute;
+  top: 0;
+  left: var(--pult-traffic-lights, 0px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding-left: 6px;
+  color: var(--vscode-foreground);
+}
+
+.monaco-workbench:not(.nosidebar) > .pult-panel-expand {
+  display: none;
 }
