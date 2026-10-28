@@ -587,36 +587,38 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* The left panel's rows above and below the sidebar (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
-.pult-panel-header-row,
-.pult-panel-footer,
-.pult-panel-header {
+/* The left panel's bottom row (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
+.pult-panel-footer {
   display: flex;
   align-items: center;
   box-sizing: border-box;
   height: 100%;
+  padding: 0 8px 0 6px;
+  border-right: 1px solid var(--vscode-sideBar-border, transparent);
+  background: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
 }
 
-.pult-panel-header-row,
-.pult-panel-footer {
-  border-right: 1px solid var(--vscode-sideBar-border, transparent);
-  background: var(--vscode-sideBar-background);
-}
-
-.pult-panel-header-row *,
 .pult-panel-footer *,
 .pult-panel-header *,
 .pult-panel-expand * {
   box-sizing: border-box;
 }
 
-/* The header, in its row or standing in the Pult tab's title (the part draws the edge there), drags the window in the desktop, as a title bar does; its buttons are buttons. */
+/* The top row is the sidebar's title: the Pult tab's header (src/panel/rows.tsx) in place of the
+   tab's name and buttons while that tab is open, else the tab's own title, after the traffic lights. */
 .pult-panel-header {
+  display: flex;
   flex: 1;
+  align-items: center;
   gap: 2px;
+  box-sizing: border-box;
+  height: 100%;
   padding: 0 8px;
-  -webkit-app-region: drag;
+}
+
+.part.sidebar:not(.pult-header-in-title) > .composite.title > .pult-panel-header {
+  display: none;
 }
 
 .part.sidebar.pult-header-in-title > .composite.title {
@@ -625,6 +627,21 @@
 
 .part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header) {
   display: none;
+}
+
+.part.sidebar:not(.pult-header-in-title) > .composite.title {
+  padding-left: calc(8px + var(--pult-traffic-lights, 0px));
+}
+
+/* In the desktop the top row drags the window, as a title bar does, its buttons excepted; in
+   VS Code mode a tab's title keeps its right-click menu, which a drag region would take. */
+.pult-panel-header,
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .composite.title {
+  -webkit-app-region: drag;
+}
+
+.part.sidebar > .composite.title :is(.title-actions, .global-actions) {
+  -webkit-app-region: no-drag;
 }
 
 .pult-panel-header-lights {
@@ -641,10 +658,6 @@
 
 .pult-panel-row-spacer {
   flex: 1;
-}
-
-.pult-panel-footer {
-  padding: 0 8px 0 6px;
 }
 
 /* The rows' buttons, the tabs among them, as the thread view's bar's icon buttons: their size, radius and hover colour; the open tab keeps it. */

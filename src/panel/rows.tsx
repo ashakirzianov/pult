@@ -9,7 +9,7 @@ import logoUrl from "../../assets/pult/logo-color.svg";
 import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 
-/** Both rows' height: the sidebar's title and the editor's tabs row are 35px, so the header and the tabs row are one band. */
+/** The bottom row's height, the sidebar's title's. */
 const ROW_HEIGHT = 35;
 /** On the sidebar part while the header stands in its title, the Pult tab's. */
 const HEADER_IN_TITLE = "pult-header-in-title";
@@ -20,7 +20,7 @@ interface LayoutGrid {
   readonly sideBarPartView: IView;
 }
 
-/** A row as a view of the workbench's grid: a fixed height, any width, so the sidebar's column keeps its own. */
+/** The bottom row as a view of the workbench's grid: a fixed height, any width, so the sidebar's column keeps its own. */
 function rowView(className: string): IView {
   const element = document.createElement("div");
   element.className = className;
@@ -75,16 +75,18 @@ function PanelFooter({ store }: { store: PanelTabStore }) {
 }
 
 /**
- * The left panel's rows of the shell's own, views added to the layout's
- * grid above and below the sidebar part with the grid's own `addView`, and
- * shown and hidden with it, so a collapsed panel leaves no column behind:
- * the header (`PanelHeader`) and the tabs with the gear (`PanelFooter`,
- * `PanelTabs.tsx`). The part keeps a 35px title for every tab, so while the
- * Pult tab is open the header stands in the title, in place of its name and
- * buttons, and its own row hides; any other tab shows the header's row and
- * its own title under it. While the panel is collapsed, Expand Panel sits
- * at the window's top-left over the room the top-left editor group's tabs
- * row leaves it (`src/style.css`). Started once the workbench is up.
+ * The left panel's own parts around the sidebar part. The part keeps a 35px
+ * title for every tab, which is the panel's top row: while the Pult tab is
+ * open the header (`PanelHeader`) stands in it, in place of the tab's name
+ * and buttons; any other tab's own title shows, leaving the traffic lights
+ * their room (`panel.css`). Its right-click menu goes in Pult's mode, since
+ * in the desktop the title drags the window. Below the part, the tabs with
+ * the gear (`PanelFooter`, `PanelTabs.tsx`), a view added to the layout's
+ * grid with the grid's own `addView` and shown with the part, so a
+ * collapsed panel leaves no column behind. While the panel is collapsed,
+ * Expand Panel sits at the window's top-left over the room the top-left
+ * editor group's tabs row leaves it (`src/style.css`). Started once the
+ * workbench is up.
  */
 export async function startPanelRows(): Promise<void> {
   const [layout, panes] = await Promise.all([getService(IWorkbenchLayoutService), getService(IPaneCompositePartService)]);
@@ -92,15 +94,24 @@ export async function startPanelRows(): Promise<void> {
   const title = sideBarPartView?.element.querySelector<HTMLElement>(":scope > .composite.title");
   if (workbenchGrid === undefined || sideBarPartView === undefined || title === null || title === undefined) return;
 
-  const headerRow = rowView("pult-panel-header-row");
-  const footerRow = rowView("pult-panel-footer");
-  workbenchGrid.addView(headerRow, ROW_HEIGHT, sideBarPartView, Direction.Up);
-  workbenchGrid.addView(footerRow, ROW_HEIGHT, sideBarPartView, Direction.Down);
-  // One header, moved between its row and the Pult tab's title; the root renders into it wherever it is.
   const header = document.createElement("div");
   header.className = "pult-panel-header";
+  title.append(header);
   createRoot(header).render(<PanelHeader />);
-  createRoot(footerRow.element).render(<PanelFooter store={await panelTabStore()} />);
+  // Ahead of the part's own listener on the title, which opens the menu.
+  title.addEventListener(
+    "contextmenu",
+    (event) => {
+      if (title.closest(".pult-mode-vscode") !== null) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    { capture: true },
+  );
+
+  const footer = rowView("pult-panel-footer");
+  workbenchGrid.addView(footer, ROW_HEIGHT, sideBarPartView, Direction.Down);
+  createRoot(footer.element).render(<PanelFooter store={await panelTabStore()} />);
 
   const expand = document.createElement("div");
   expand.className = "pult-panel-expand";
@@ -108,12 +119,8 @@ export async function startPanelRows(): Promise<void> {
   createRoot(expand).render(<RowButton title="Expand Panel" icon="layout-sidebar-left-off" command="pult-shell.expandPanel" />);
 
   const follow = () => {
-    const visible = layout.isVisible(Parts.SIDEBAR_PART);
-    const inTitle = panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === PANEL_ID;
-    (inTitle ? title : headerRow.element).append(header);
-    sideBarPartView.element.classList.toggle(HEADER_IN_TITLE, inTitle);
-    workbenchGrid.setViewVisible(headerRow, visible && !inTitle);
-    workbenchGrid.setViewVisible(footerRow, visible);
+    sideBarPartView.element.classList.toggle(HEADER_IN_TITLE, panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === PANEL_ID);
+    workbenchGrid.setViewVisible(footer, layout.isVisible(Parts.SIDEBAR_PART));
   };
   layout.onDidChangePartVisibility((event) => {
     if (event.partId === Parts.SIDEBAR_PART) follow();
