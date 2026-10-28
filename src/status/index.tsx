@@ -87,7 +87,8 @@ async function showMoreStatuses(anchor: HTMLElement): Promise<void> {
     if (icon !== null) slot.append(icon.cloneNode(true));
     const title = document.createElement("span");
     title.className = "pult-status-more-label";
-    title.textContent = text !== "" ? text : name;
+    // An icon-only entry's aria label is prose for a screen reader ("remote", the icon's name); as a label it reads in sentence case.
+    title.textContent = text !== "" ? text : name.charAt(0).toUpperCase() + name.slice(1);
     row.append(slot, title);
     row.addEventListener("click", () => {
       close.hover?.dispose();
