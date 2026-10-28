@@ -12,9 +12,11 @@ import {
   presentConnectionState,
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
+import { EnvironmentRpcUnavailableError } from "@t3tools/client-runtime/rpc";
 import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
 import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
@@ -74,6 +76,8 @@ class ShellConnection {
     SubscriptionRef.make<ReadonlyArray<PlatformConnectionRegistration>>([]),
   );
   private saved: typeof Saved.Type | undefined;
+  /** Until `restore` settles, the page may yet connect to the environment saved before the reload. */
+  private restoring = true;
   private current: ShellEnvironment | null = null;
   private readonly listeners = new Set<() => void>();
   readonly runtime = ManagedRuntime.make(
@@ -107,9 +111,51 @@ class ShellConnection {
     return saved && { label: saved.profile.label, httpBaseUrl: saved.profile.httpBaseUrl, token: saved.token };
   }
 
+  /**
+   * Whether the page is about to connect without the user: it is restoring
+   * the environment saved before the reload, or holds one whose state the
+   * registry has not published yet.
+   */
+  get connecting(): boolean {
+    return this.current === null && (this.restoring || this.saved !== undefined);
+  }
+
   onDidChange(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Runs an effect on the environment's supervisor: RPCs go to its live
+   * session, and fail with `EnvironmentRpcUnavailableError` while there is
+   * none or the page holds no environment.
+   */
+  run<A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>): Promise<A> {
+    const environmentId = this.saved?.profile.environmentId;
+    if (environmentId === undefined) {
+      return Promise.reject(new EnvironmentRpcUnavailableError({ environmentId: "", message: "Pult is not connected to an environment." }));
+    }
+    return this.runtime.runPromise(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.run(environmentId, effect))),
+    );
+  }
+
+  /**
+   * Runs a stream on the environment's supervisor, handing each item to
+   * `onItem`, until the returned function stops it or the page leaves that
+   * environment.
+   */
+  follow<A>(stream: Stream.Stream<A, never, EnvironmentSupervisor.EnvironmentSupervisor>, onItem: (item: A) => void): () => void {
+    const environmentId = this.saved?.profile.environmentId;
+    if (environmentId === undefined) return () => {};
+    const fiber = this.runtime.runFork(
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) =>
+          registry.followStream(environmentId, stream).pipe(Stream.runForEach((item) => Effect.sync(() => onItem(item)))),
+        ),
+      ),
+    );
+    return () => void Effect.runFork(Fiber.interrupt(fiber));
   }
 
   /** The runtime's services, for the thread view's state runtime. */
@@ -132,9 +178,14 @@ class ShellConnection {
 
   /** Connects the environment saved before the reload, if any. Called once the workbench is up. */
   async restore(): Promise<void> {
-    const secrets = await getService(ISecretStorageService);
-    const saved = decodeSaved(await secrets.get(SAVED_KEY));
-    if (Option.isSome(saved)) await this.use(saved.value);
+    try {
+      const secrets = await getService(ISecretStorageService);
+      const saved = decodeSaved(await secrets.get(SAVED_KEY));
+      if (Option.isSome(saved)) await this.use(saved.value);
+    } finally {
+      this.restoring = false;
+      for (const listener of this.listeners) listener();
+    }
   }
 
   /**
