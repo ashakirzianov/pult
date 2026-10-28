@@ -1,10 +1,10 @@
 // Stands in for the copy's `src/connection/runtime.ts` (`../stubs.ts`): the
 // thread view's state runtime over the connection the page owns. The page's
 // runtime (`src/connection/`) is the vendored connection over the page's
-// platform and its one socket; this adds what the app around the view brings
+// platform, one socket per environment; this adds what the app around the view brings
 // (the snapshot loaders, background activity reports, request latencies and
-// the browser's Crypto), so the view and the shell share one registry, one
-// supervisor and one socket.
+// the browser's Crypto), so the view and the shell share one registry, each
+// environment's supervisor and its socket.
 // Named in the declarations of `layerApp`, which `ShellConnectionServices` reads.
 import type { EnvironmentRegistry as _EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";

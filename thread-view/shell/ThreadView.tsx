@@ -29,10 +29,10 @@ import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
 
-/** What a pane shows: a thread, or a project's draft until the server creates its thread. */
+/** What a pane shows, in its environment: a thread, or a project's draft until the server creates its thread. */
 type ViewTarget =
-  | { readonly kind: "thread"; readonly threadId: string }
-  | { readonly kind: "draft"; readonly projectId: string };
+  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
+  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
 /**
  * A project's draft is the composer store's, minted by upstream's new-thread
@@ -50,9 +50,9 @@ function heldDraft(environmentId: string, projectId: string): DraftId | null {
   return session !== null && session.projectId === projectId ? draftId : null;
 }
 
-/** Whether the server thread the view went to is the one the project's draft created. */
-function isPromotion(environmentId: string, projectId: string, threadId: string): boolean {
-  const draftId = localStorage.getItem(draftKey(environmentId, projectId)) as DraftId | null;
+/** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
+function isPromotion(draft: Extract<ViewTarget, { kind: "draft" }>, environmentId: string, threadId: string): boolean {
+  const draftId = localStorage.getItem(draftKey(draft.environmentId, draft.projectId)) as DraftId | null;
   if (draftId === null) return false;
   const store = useComposerDraftStore.getState();
   const session = store.getDraftSession(draftId);
@@ -66,13 +66,12 @@ function isPromotion(environmentId: string, projectId: string, threadId: string)
 }
 
 /** Where `target` is in the view's routes; a draft without a draft yet is the landing, which starts one. */
-function targetPath(environmentId: string | null, target: ViewTarget): string {
-  if (environmentId === null) return "/";
+function targetPath(target: ViewTarget): string {
   // Encoded: the router decodes path parameters, and an id may itself hold an escape (`command%3Amcp…`).
   if (target.kind === "thread") {
-    return `/${encodeURIComponent(environmentId)}/${encodeURIComponent(target.threadId)}`;
+    return `/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
   }
-  const draftId = heldDraft(environmentId, target.projectId);
+  const draftId = heldDraft(target.environmentId, target.projectId);
   return draftId === null ? "/" : `/draft/${encodeURIComponent(draftId)}`;
 }
 
@@ -80,18 +79,11 @@ function targetPath(environmentId: string | null, target: ViewTarget): string {
  * One mounted view and its target, which a draft's promotion turns into the
  * thread it created, live for the components that render by it.
  */
-function makeMount(
-  environmentId: string | null,
-  initial: ViewTarget,
-  onPromoted: (threadId: string) => void,
-) {
+function makeMount(initial: ViewTarget, onPromoted: (environmentId: string, threadId: string) => void) {
   let target = initial;
   const listeners = new Set<() => void>();
-  if (environmentId !== null && target.kind === "thread") {
-    closeThreadPanel(environmentId, target.threadId);
-  }
+  if (target.kind === "thread") closeThreadPanel(target.environmentId, target.threadId);
   return {
-    environmentId,
     target: () => target,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -99,15 +91,15 @@ function makeMount(
         listeners.delete(listener);
       };
     },
-    home: () => targetPath(environmentId, target),
-    /** The draft became `threadId` on the server: the view is that thread's from now on. */
-    promote(threadId: string) {
-      if (target.kind !== "draft" || environmentId === null) return;
-      localStorage.removeItem(draftKey(environmentId, target.projectId));
-      target = { kind: "thread", threadId };
+    home: () => targetPath(target),
+    /** The draft became `threadId` on `environmentId`'s server: the view is that thread's from now on. */
+    promote(environmentId: string, threadId: string) {
+      if (target.kind !== "draft") return;
+      localStorage.removeItem(draftKey(target.environmentId, target.projectId));
+      target = { kind: "thread", environmentId, threadId };
       closeThreadPanel(environmentId, threadId);
       for (const listener of listeners) listener();
-      onPromoted(threadId);
+      onPromoted(environmentId, threadId);
     },
   };
 }
@@ -123,34 +115,35 @@ type Mount = ReturnType<typeof makeMount>;
  */
 function followNavigation(router: AnyRouter, mount: Mount) {
   const target = mount.target();
-  const environmentId = mount.environmentId;
   const shown = resolveThreadRouteTarget(router.state.matches.at(-1)?.params ?? {});
   const goHome = () => void router.navigate({ to: mount.home(), replace: true });
   if (shown?.kind === "server") {
-    const threadId = shown.threadRef.threadId;
-    if (target.kind === "thread" && threadId === target.threadId) return;
-    if (
-      target.kind === "draft" &&
-      environmentId !== null &&
-      isPromotion(environmentId, target.projectId, threadId)
-    ) {
-      mount.promote(threadId);
+    const { environmentId, threadId } = shown.threadRef;
+    if (target.kind === "thread" && threadId === target.threadId && environmentId === target.environmentId) return;
+    if (target.kind === "draft" && isPromotion(target, environmentId, threadId)) {
+      mount.promote(environmentId, threadId);
       return;
     }
-    threadViewHost().openThread(threadId);
+    threadViewHost().openThread(environmentId, threadId);
     goHome();
     return;
   }
   if (shown?.kind === "draft") {
     const session = useComposerDraftStore.getState().getDraftSession(shown.draftId);
-    if (session !== null && environmentId !== null) {
-      localStorage.setItem(draftKey(environmentId, session.projectId), shown.draftId);
-      if (target.kind === "draft" && session.projectId === target.projectId) {
+    if (session !== null) {
+      // The pane's own draft, though its composer may have moved it to another environment's project.
+      const own =
+        target.kind === "draft" &&
+        (localStorage.getItem(draftKey(target.environmentId, target.projectId)) === shown.draftId ||
+          (session.projectId === target.projectId && session.environmentId === target.environmentId));
+      if (own) {
+        localStorage.setItem(draftKey(target.environmentId, target.projectId), shown.draftId);
         // The draft's details panel stays closed too, keyed by the thread id the draft holds.
-        closeThreadPanel(environmentId, session.threadId);
+        closeThreadPanel(session.environmentId, session.threadId);
         return;
       }
-      threadViewHost().openDraft(session.projectId);
+      localStorage.setItem(draftKey(session.environmentId, session.projectId), shown.draftId);
+      threadViewHost().openDraft(session.environmentId, session.projectId);
     }
     goHome();
     return;
@@ -163,6 +156,7 @@ function followNavigation(router: AnyRouter, mount: Mount) {
   });
   goHome();
 }
+
 
 /**
  * Reports the activity the mounted thread's projection knows to the shell:
@@ -227,8 +221,8 @@ function makeRoot(mount: Mount) {
       <ToastProvider>
         <AnchoredToastProvider>
           <NavigationFollower />
-          {mount.environmentId === null || target.kind !== "thread" ? null : (
-            <ActivityReporter environmentId={mount.environmentId} threadId={target.threadId} />
+          {target.kind !== "thread" ? null : (
+            <ActivityReporter environmentId={target.environmentId} threadId={target.threadId} />
           )}
           <ConfirmDialogHost />
           <CustomSnoozeDialogHost />
@@ -276,8 +270,8 @@ function DraftStart({
 function makeLanding(mount: Mount) {
   return function Landing() {
     const target = useTarget(mount);
-    return target.kind === "draft" && mount.environmentId !== null ? (
-      <DraftStart environmentId={mount.environmentId} projectId={target.projectId} />
+    return target.kind === "draft" ? (
+      <DraftStart environmentId={target.environmentId} projectId={target.projectId} />
     ) : (
       <Notice>This thread is not available. It may have been deleted.</Notice>
     );
@@ -300,9 +294,9 @@ export interface MountedView {
 function mountView(
   element: HTMLElement,
   target: ViewTarget,
-  onPromoted: (threadId: string) => void,
+  onPromoted: (environmentId: string, threadId: string) => void,
 ): MountedView {
-  const mount = makeMount(threadViewHost().environmentId(), target, onPromoted);
+  const mount = makeMount(target, onPromoted);
   const router = makeThreadRouter({
     root: makeRoot(mount),
     landing: makeLanding(mount),
@@ -334,21 +328,23 @@ function mountView(
   };
 }
 
-/** Renders the thread's turns and composer into `element` until disposed. */
-export function mountThreadView(element: HTMLElement, threadId: string): MountedView {
-  return mountView(element, { kind: "thread", threadId }, () => {});
+/** Renders the thread's turns and composer, on its environment, into `element` until disposed. */
+export function mountThreadView(element: HTMLElement, environmentId: string, threadId: string): MountedView {
+  return mountView(element, { kind: "thread", environmentId, threadId }, () => {});
 }
 
 /**
  * Renders the project's draft, upstream's composer for a new thread, into
  * `element` until disposed: the draft remembered for the project while the
  * composer store holds it, else a new one. When the server creates its
- * thread, the view stays mounted as that thread's, and `onPromoted` names it.
+ * thread, the view stays mounted as that thread's, and `onPromoted` names it
+ * with the environment it was created on.
  */
 export function mountDraftView(
   element: HTMLElement,
+  environmentId: string,
   projectId: string,
-  onPromoted: (threadId: string) => void,
+  onPromoted: (environmentId: string, threadId: string) => void,
 ): MountedView {
-  return mountView(element, { kind: "draft", projectId }, onPromoted);
+  return mountView(element, { kind: "draft", environmentId, projectId }, onPromoted);
 }

@@ -16,13 +16,19 @@ export type { ShellConnectionServices } from "./connectionRuntime.ts";
 export type { MountedView } from "./ThreadView.tsx";
 
 export interface ThreadViewMounts {
-  /** The thread's turns and composer. */
-  mount(element: HTMLElement, threadId: string): MountedView;
+  /** The thread's turns and composer, on its environment. */
+  mount(element: HTMLElement, environmentId: string, threadId: string): MountedView;
   /**
    * The project's draft of a new thread, upstream's composer, which stays
-   * mounted as the thread it creates and names it to `onPromoted`.
+   * mounted as the thread it creates and names it to `onPromoted`, with the
+   * environment the composer created it on.
    */
-  mountDraft(element: HTMLElement, projectId: string, onPromoted: (threadId: string) => void): MountedView;
+  mountDraft(
+    element: HTMLElement,
+    environmentId: string,
+    projectId: string,
+    onPromoted: (environmentId: string, threadId: string) => void,
+  ): MountedView;
 }
 
 /**

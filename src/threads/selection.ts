@@ -21,7 +21,7 @@ import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/se
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { DraftInput, isLeadTab, onDidPromoteDraft, ThreadInput } from "./pane.tsx";
-import { isSubagent, type ShelfName, threadStore } from "./store.ts";
+import { isSubagent, type ShellProject, type ShelfName, threadStore } from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
 export interface ThreadSelection {
@@ -52,11 +52,12 @@ const SubagentSelectedContext = new RawContextKey<boolean>("pult.subagentSelecte
 const SHELF_LABELS: Record<ShelfName, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
 
 /** The selected thread's parent, when the selected thread is a subagent's and the parent is known. */
-function selectedParentId(): string | undefined {
-  const threadId = selectedThread()?.threadId;
-  const thread = threadStore.get().threads.find((candidate) => candidate.id === threadId);
+function selectedParent(): ThreadSelection | undefined {
+  const selection = selectedThread();
+  const thread = selection && threadStore.thread(selection.environmentId, selection.threadId);
   if (thread === undefined || !isSubagent(thread) || thread.parentId === null) return undefined;
-  return threadStore.get().threads.some((candidate) => candidate.id === thread.parentId) ? thread.parentId : undefined;
+  const parent = threadStore.thread(thread.environmentId, thread.parentId);
+  return parent && { environmentId: parent.environmentId, threadId: parent.id };
 }
 
 let selected: Selection | undefined;
@@ -100,12 +101,8 @@ export function onDidSelectThread(listener: () => void): () => void {
  * tab is opened leftmost in the first group if missing. Switches run one at a
  * time, in call order.
  */
-export function selectThread(threadId: string): Promise<void> {
-  return enqueue(() => {
-    const environmentId = threadStore.get().environment?.id;
-    if (environmentId === undefined) throw new Error("Connect to an environment before selecting a thread.");
-    return switchTo({ environmentId, threadId });
-  });
+export function selectThread(environmentId: string, threadId: string): Promise<void> {
+  return enqueue(() => switchTo({ environmentId, threadId }));
 }
 
 /**
@@ -125,36 +122,32 @@ export function selectSettings(): Promise<void> {
  * upstream's composer on the draft the view remembers for the project, or a
  * new one. The draft's tabs are kept as a working set like a thread's.
  */
-export function selectDraft(projectId: string): Promise<void> {
-  return enqueue(() => {
-    const environmentId = threadStore.get().environment?.id;
-    if (environmentId === undefined) throw new Error("Connect to an environment before starting a thread.");
-    return switchTo({ environmentId, projectId });
-  });
+export function selectDraft(environmentId: string, projectId: string): Promise<void> {
+  return enqueue(() => switchTo({ environmentId, projectId }));
 }
 
 /**
- * The selected draft became `threadId` on the server: the thread is selected
- * in its place, with the draft's tabs as they are, its tab replaced by the
- * thread's in the same pane, which keeps the view mounted (`pane.tsx`); the
- * draft's selection and working set are gone. A draft no longer selected
- * changes nothing.
+ * The selected draft `promoted` became the thread `next` on the server, in
+ * the environment its composer created it on: the thread is selected in its
+ * place, with the draft's tabs as they are, its tab replaced by the thread's
+ * in the same pane, which keeps the view mounted (`pane.tsx`); the draft's
+ * selection and working set are gone. A draft no longer selected changes
+ * nothing.
  */
-function promoteDraft(projectId: string, threadId: string): Promise<void> {
+function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<void> {
   return enqueue(async () => {
     const draft = selectedDraft();
-    if (draft === undefined || draft.projectId !== projectId) return;
+    if (draft?.projectId !== promoted.projectId || draft.environmentId !== promoted.environmentId) return;
     const groups = await getService(IEditorGroupsService);
     const storage = await getService(IStorageService);
     const instantiation = await getService(IInstantiationService);
-    const next: ThreadSelection = { environmentId: draft.environmentId, threadId };
     switching = true;
     try {
       deleteWorkingSet(groups, draft);
       for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
         const tab = group.editors.find((editor) => editor instanceof DraftInput);
         if (tab === undefined) continue;
-        await group.replaceEditors([{ editor: tab, replacement: instantiation.createInstance(ThreadInput, threadId) }]);
+        await group.replaceEditors([{ editor: tab, replacement: instantiation.createInstance(ThreadInput, next.environmentId, next.threadId) }]);
       }
       selected = next;
       storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
@@ -208,15 +201,16 @@ async function switchTo(next: Selection): Promise<void> {
   /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave. */
   async function showLeadTab(lead: ThreadSelection | DraftSelection): Promise<void> {
     const isOwn = (editor: ThreadInput | DraftInput) =>
-      isDraft(lead)
+      editor.environmentId === lead.environmentId &&
+      (isDraft(lead)
         ? editor instanceof DraftInput && editor.projectId === lead.projectId
-        : editor instanceof ThreadInput && editor.threadId === lead.threadId;
+        : editor instanceof ThreadInput && editor.threadId === lead.threadId);
     await closeLeadTabs((editor) => !isOwn(editor));
     const first = groups.getGroups(GroupsOrder.GRID_APPEARANCE)[0] ?? groups.activeGroup;
     if (!first.editors.some(isLeadTab)) {
       const tab = isDraft(lead)
-        ? instantiation.createInstance(DraftInput, lead.projectId)
-        : instantiation.createInstance(ThreadInput, lead.threadId);
+        ? instantiation.createInstance(DraftInput, lead.environmentId, lead.projectId)
+        : instantiation.createInstance(ThreadInput, lead.environmentId, lead.threadId);
       await first.openEditor(tab, { pinned: true, index: 0 });
     }
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
@@ -276,26 +270,28 @@ export async function restoreThreadSelection(): Promise<void> {
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
   });
-  // Closing Settings' last tab goes back to the thread or draft it was opened from, in the same environment.
+  // Closing Settings' last tab goes back to the thread or draft it was opened from, while the page holds its environment.
   editors.onDidCloseEditor(() => {
     const back = beforeSettings;
     if (switching || selected !== SETTINGS || editors.count > 0) return;
-    if (back === undefined || back.environmentId !== threadStore.get().environment?.id) return;
+    if (back === undefined || threadStore.environment(back.environmentId) === undefined) return;
     void enqueue(() => (selected === SETTINGS && editors.count === 0 ? switchTo(back) : Promise.resolve()));
   });
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
   const subagentKey = SubagentSelectedContext.bindTo(await getService(IContextKeyService));
-  const updateSubagentKey = () => subagentKey.set(selectedParentId() !== undefined);
+  const updateSubagentKey = () => subagentKey.set(selectedParent() !== undefined);
   onDidSelectThread(updateSubagentKey);
   threadStore.subscribe(updateSubagentKey);
   updateSubagentKey();
 }
 
 /**
- * `pult-shell.selectThread [threadId]`, the palette's "Pult: Open Thread…":
- * with no id, a quick pick of the environment's threads in the cards' order,
- * subagents left out. `pult-shell.selectSettings`, on Cmd+, over the
+ * `pult-shell.selectThread [environmentId] [threadId]`, the palette's "Pult:
+ * Open Thread…": a thread id alone is the first thread the store lists with
+ * it; with no id, a quick pick of every environment's threads in the cards'
+ * order, subagents left out, each one's environment named while the page
+ * holds several. `pult-shell.selectSettings`, on Cmd+, over the
  * workbench's own binding, which would open the settings editor under the
  * thread; and the workbench's own Settings command routed the same way.
  * `pult-shell.newThread`, a project's draft; a draft's promotion selects
@@ -303,7 +299,7 @@ export async function restoreThreadSelection(): Promise<void> {
  */
 export function registerSelectThreadCommand(): void {
   routeOpenSettings();
-  onDidPromoteDraft((projectId, threadId) => void promoteDraft(projectId, threadId));
+  onDidPromoteDraft((draft, thread) => void promoteDraft(draft, thread));
   registerNewThreadCommand();
   registerAction2(
     class extends Action2 {
@@ -316,22 +312,37 @@ export function registerSelectThreadCommand(): void {
         });
       }
 
-      async run(accessor: ServicesAccessor, threadId?: unknown): Promise<void> {
-        if (typeof threadId === "string") return selectThread(threadId);
+      async run(accessor: ServicesAccessor, first?: unknown, second?: unknown): Promise<void> {
+        if (typeof first === "string" && typeof second === "string") return selectThread(first, second);
+        if (typeof first === "string") {
+          const environmentId = threadStore.environmentOfThread(first);
+          if (environmentId === undefined) throw new Error(`Pult knows no thread ${first}.`);
+          return selectThread(environmentId, first);
+        }
         // Services are read before any await; the accessor is only valid synchronously.
         const quickInput = accessor.get(IQuickInputService);
+        const { threads } = threadStore.get();
+        const current = selectedThread();
         // The store lists the shelves in the cards' order, pinned and active first; a subagent has none.
-        const items = threadStore.get().threads.flatMap((thread) =>
+        const items = threads.flatMap((thread) =>
           thread.shelf === null
             ? []
-            : [{ id: thread.id, label: thread.title, description: `${thread.projectName} · ${SHELF_LABELS[thread.shelf]}` }],
+            : [
+                {
+                  thread,
+                  label: thread.title,
+                  description: [thread.projectName, threadStore.distinguishing(thread.environmentId), SHELF_LABELS[thread.shelf]]
+                    .filter((part) => part !== undefined)
+                    .join(" · "),
+                },
+              ],
         );
         const picked = await quickInput.pick(items, {
           placeHolder: "Open a thread",
           matchOnDescription: true,
-          activeItem: items.find((item) => item.id === selectedThread()?.threadId),
+          activeItem: items.find(({ thread }) => thread.id === current?.threadId && thread.environmentId === current.environmentId),
         });
-        if (picked !== undefined) await selectThread(picked.id);
+        if (picked !== undefined) await selectThread(picked.thread.environmentId, picked.thread.id);
       }
     },
   );
@@ -356,8 +367,8 @@ export function registerSelectThreadCommand(): void {
       }
 
       async run(): Promise<void> {
-        const parentId = selectedParentId();
-        if (parentId !== undefined) await selectThread(parentId);
+        const parent = selectedParent();
+        if (parent !== undefined) await selectThread(parent.environmentId, parent.threadId);
       }
     },
   );
@@ -381,10 +392,12 @@ export function registerSelectThreadCommand(): void {
 }
 
 /**
- * `pult-shell.newThread [projectId]`, the palette's "Pult: New Thread" on
- * Cmd+N: with a project, selects its draft; without, picks one first in the
- * shell's quick input, the selected thread's or draft's project first, then
- * by name; one project needs no pick. The Threads tab's title
+ * `pult-shell.newThread [environmentId] [projectId]`, the palette's "Pult:
+ * New Thread" on Cmd+N: with a project, selects its draft (a project id
+ * alone is the first project the store lists with it); without, picks one of
+ * every environment's projects first in the shell's quick input, the
+ * selected thread's or draft's project first, then by name, each one's
+ * environment named while the page holds several; one project needs no pick. The Threads tab's title
  * (`src/panel/view.tsx`) runs it too. Cmd+N is bound over the workbench's New
  * Untitled File, as upstream binds `chat.new`, so the palette shows the key.
  */
@@ -401,26 +414,41 @@ function registerNewThreadCommand(): void {
         });
       }
 
-      async run(accessor: ServicesAccessor, projectId?: unknown): Promise<void> {
-        if (typeof projectId === "string") return selectDraft(projectId);
+      async run(accessor: ServicesAccessor, first?: unknown, second?: unknown): Promise<void> {
+        if (typeof first === "string" && typeof second === "string") return selectDraft(first, second);
         // Services are read before any await; the accessor is only valid synchronously.
         const quickInput = accessor.get(IQuickInputService);
         const notifications = accessor.get(INotificationService);
-        const { environment, projects, threads } = threadStore.get();
-        if (environment === null) return notifications.info("Pult is not connected to an environment.");
-        const current = selectedDraft()?.projectId ?? threads.find((thread) => thread.id === selectedThread()?.threadId)?.projectId;
-        const sorted = projects.toSorted(
-          (left, right) => Number(right.id === current) - Number(left.id === current) || left.name.localeCompare(right.name),
-        );
-        if (sorted.length === 0) return notifications.info("This environment has no projects.");
+        const { environments, projects } = threadStore.get();
+        if (typeof first === "string") {
+          const project = projects.find((candidate) => candidate.id === first);
+          if (project === undefined) throw new Error(`Pult knows no project ${first}.`);
+          return selectDraft(project.environmentId, project.id);
+        }
+        if (environments.length === 0) return notifications.info("Pult is not connected to an environment.");
+        const selection = selectedThread();
+        const thread = selection && threadStore.thread(selection.environmentId, selection.threadId);
+        const current = selectedDraft() ?? (thread && { environmentId: thread.environmentId, projectId: thread.projectId });
+        const isCurrent = (project: ShellProject) =>
+          Number(project.id === current?.projectId && project.environmentId === current.environmentId);
+        const sorted = projects.toSorted((left, right) => isCurrent(right) - isCurrent(left) || left.name.localeCompare(right.name));
+        if (sorted.length === 0) return notifications.info("No connected environment has projects.");
         const chosen =
           sorted.length === 1
             ? sorted[0]
-            : await quickInput.pick(
-                sorted.map((project) => ({ label: project.name, description: project.root ?? undefined, id: project.id })),
-                { placeHolder: "New thread in project" },
-              );
-        if (chosen !== undefined) await selectDraft(chosen.id);
+            : (
+                await quickInput.pick(
+                  sorted.map((project) => ({
+                    project,
+                    label: project.name,
+                    description: [threadStore.distinguishing(project.environmentId), project.root ?? undefined]
+                      .filter((part) => part !== undefined)
+                      .join(" · "),
+                  })),
+                  { placeHolder: "New thread in project", matchOnDescription: true },
+                )
+              )?.project;
+        if (chosen !== undefined) await selectDraft(chosen.environmentId, chosen.id);
       }
     },
   );

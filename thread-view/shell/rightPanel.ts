@@ -19,12 +19,12 @@ import { threadViewHost } from "./host.ts";
 export function routeRightPanel(): void {
   const { open, openProactive } = useRightPanelStore.getState();
   useRightPanelStore.setState({
-    openFile: (ref, path, line) => threadViewHost().openFile(ref.threadId, path, line ?? null),
+    openFile: (ref, path, line) => threadViewHost().openFile(ref.environmentId, ref.threadId, path, line ?? null),
     open: (ref, kind) => {
       if (kind !== "diff") return open(ref, kind);
       // The view selects the turn and its file in the diff store before opening the surface.
       const selection = selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, ref);
-      threadViewHost().openChanges(ref.threadId, selection.kind === "turn" ? selection.filePath : null);
+      threadViewHost().openChanges(ref.environmentId, ref.threadId, selection.kind === "turn" ? selection.filePath : null);
     },
     openProactive: (ref, surface, revision) =>
       surface.kind === "diff" ? false : openProactive(ref, surface, revision),

@@ -20,15 +20,16 @@ import * as Effect from "effect/Effect";
 
 import { connection } from "../connection/index.ts";
 import { nextAfterParking, type ParkActions, parkActions, parseCustomSnooze } from "./parking.ts";
+import { NO_THREAD_FEATURES } from "./presentation.ts";
 import { onDidSelectThread, selectedThread, selectThread } from "./selection.ts";
-import { type ShellThread, type ThreadFeatures, threadStore } from "./store.ts";
+import { scopedKey, type ShellThread, type ThreadFeatures, threadStore } from "./store.ts";
 
 /**
  * Settling, snoozing and pinning threads from the shell, and copying a
  * thread's link: the cards' hover actions and context menu
  * (`src/panel/PanelView.tsx`) and the palette, on the selected thread. Each
  * runs upstream's command through `@t3tools/client-runtime/operations` on the
- * page's connection, as pult-extension's `src/threads/commands.ts` did; the
+ * thread's environment, as pult-extension's `src/threads/commands.ts` did; the
  * shell moves the selection on when the selected thread is parked, as
  * upstream's sidebar does.
  */
@@ -55,9 +56,15 @@ const webCrypto = Crypto.make({
 
 type Command = { readonly threadId: ThreadId };
 
-/** Runs a thread command on the environment's live session. */
-function run<A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor | Crypto.Crypto>): Promise<A> {
-  return connection.run(effect.pipe(Effect.provideService(Crypto.Crypto, webCrypto)));
+/** A thread as the commands name it: its environment and id. */
+type ThreadRef = Pick<ShellThread, "environmentId" | "id">;
+
+/** Runs a thread command on the thread's environment's live session. */
+function run<A, E>(
+  target: ThreadRef,
+  effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor | Crypto.Crypto>,
+): Promise<A> {
+  return connection.run(target.environmentId, effect.pipe(Effect.provideService(Crypto.Crypto, webCrypto)));
 }
 
 function errorMessage(error: unknown): string {
@@ -65,32 +72,32 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-/** Threads whose settle or snooze is under way, which the selection does not move to. */
+/** Threads whose settle or snooze is under way, by `scopedKey`, which the selection does not move to. */
 const parking = new Set<string>();
 
-function thread(threadId: string): ShellThread | undefined {
-  return threadStore.get().threads.find((candidate) => candidate.id === threadId);
+function thread(target: ThreadRef): ShellThread | undefined {
+  return threadStore.thread(target.environmentId, target.id);
 }
 
 /**
- * Does `action` to a thread the store knows, when the server has `feature`
+ * Does `action` to a thread the store knows, when its server has `feature`
  * (`pult/decisions`, `capability-gated-rpcs`: a server that does not
  * advertise it never gets its commands). Resolves to whether it was carried
  * out: false when it failed, which a notification says, or the user cancelled
  * it, the action resolving to false.
  */
-async function act(threadId: string, feature: keyof ThreadFeatures, action: (command: Command) => Promise<unknown>): Promise<boolean> {
+async function act(target: ThreadRef, feature: keyof ThreadFeatures, action: (command: Command) => Promise<unknown>): Promise<boolean> {
   const notifications = await getService(INotificationService);
-  if (thread(threadId) === undefined) {
+  if (thread(target) === undefined) {
     notifications.info("Pult: select a thread first.");
     return false;
   }
-  if (!threadStore.get().features[feature]) {
-    notifications.error(`Pult: this environment's server does not support ${FEATURE_NAMES[feature]}.`);
+  if (!threadStore.environment(target.environmentId)?.features[feature]) {
+    notifications.error(`Pult: this thread's server does not support ${FEATURE_NAMES[feature]}.`);
     return false;
   }
   try {
-    return (await action({ threadId: ThreadId.make(threadId) })) !== false;
+    return (await action({ threadId: ThreadId.make(target.id) })) !== false;
   } catch (error) {
     console.error(error);
     notifications.error(`Pult: ${errorMessage(error)}`);
@@ -113,11 +120,29 @@ async function customWake(): Promise<string | undefined> {
 }
 
 /**
- * `pult-shell.newThread <projectId>`, a draft in the project. Missing until
- * the shell has it, which leaves the selection where it was.
+ * `pult-shell.newThread <environmentId> <projectId>`, a draft in the
+ * project. Missing until the shell has it, which leaves the selection where
+ * it was.
  */
-function newThreadIn(projectId: string): void {
-  void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.newThread", projectId).catch(() => undefined));
+function newThreadIn(environmentId: string, projectId: string): void {
+  void getService(ICommandService).then((commands) =>
+    commands.executeCommand("pult-shell.newThread", environmentId, projectId).catch(() => undefined),
+  );
+}
+
+const isSelected = (target: ThreadRef) => {
+  const selected = selectedThread();
+  return selected?.threadId === target.id && selected.environmentId === target.environmentId;
+};
+
+/**
+ * The card after `parked` in the store's order (`nextAfterParking`), across
+ * the environments, skipping threads being parked; null for none.
+ */
+function nextCard(parked: ThreadRef): ShellThread | null {
+  const keyed = threadStore.get().threads.map((each) => ({ id: scopedKey(each.environmentId, each.id), shelf: each.shelf, thread: each }));
+  const next = nextAfterParking(keyed, scopedKey(parked.environmentId, parked.id), parking);
+  return keyed.find((each) => each.id === next)?.thread ?? null;
 }
 
 /**
@@ -127,80 +152,81 @@ function newThreadIn(projectId: string): void {
  * before the list changes, or with none to a new thread in its project;
  * parking another thread leaves the selection alone.
  */
-async function park(threadId: string, wake?: string): Promise<void> {
-  if (parking.has(threadId)) return;
-  const parked = thread(threadId);
-  const next =
-    selectedThread()?.threadId === threadId ? nextAfterParking(threadStore.get().threads, threadId, parking) : undefined;
-  parking.add(threadId);
+async function park(target: ThreadRef, wake?: string): Promise<void> {
+  const key = scopedKey(target.environmentId, target.id);
+  if (parking.has(key)) return;
+  const parked = thread(target);
+  const next = isSelected(target) ? nextCard(target) : undefined;
+  parking.add(key);
   let done = false;
   try {
     done =
       wake === undefined
-        ? await act(threadId, "settlement", (command) => run(Operations.settleThread(command)))
-        : await act(threadId, "snooze", async (command) => {
+        ? await act(target, "settlement", (command) => run(target, Operations.settleThread(command)))
+        : await act(target, "snooze", async (command) => {
             const snoozedUntil = wake === CUSTOM_WAKE ? await customWake() : wake;
             if (snoozedUntil === undefined) return false;
-            return run(Operations.snoozeThread({ ...command, snoozedUntil }));
+            return run(target, Operations.snoozeThread({ ...command, snoozedUntil }));
           });
   } finally {
-    parking.delete(threadId);
+    parking.delete(key);
   }
-  if (!done || next === undefined || selectedThread()?.threadId !== threadId) return;
-  if (next !== null) await selectThread(next);
-  else if (parked !== undefined) newThreadIn(parked.projectId);
+  if (!done || next === undefined || !isSelected(target)) return;
+  if (next !== null) await selectThread(next.environmentId, next.id);
+  else if (parked !== undefined) newThreadIn(parked.environmentId, parked.projectId);
 }
 
-export const settleThread = (threadId: string) => park(threadId);
-export const snoozeThread = (threadId: string, wake: string) => park(threadId, wake);
-export const unsettleThread = (threadId: string) =>
-  void act(threadId, "settlement", (command) => run(Operations.unsettleThread({ ...command, reason: "user" })));
-export const wakeThread = (threadId: string) =>
-  void act(threadId, "snooze", (command) => run(Operations.unsnoozeThread({ ...command, reason: "user" })));
-export const pinThread = (threadId: string) => void act(threadId, "pinning", (command) => run(Operations.pinThread(command)));
-export const unpinThread = (threadId: string) =>
-  void act(threadId, "pinning", (command) => run(Operations.unpinThread(command)));
+export const settleThread = (target: ThreadRef) => park(target);
+export const snoozeThread = (target: ThreadRef, wake: string) => park(target, wake);
+export const unsettleThread = (target: ThreadRef) =>
+  void act(target, "settlement", (command) => run(target, Operations.unsettleThread({ ...command, reason: "user" })));
+export const wakeThread = (target: ThreadRef) =>
+  void act(target, "snooze", (command) => run(target, Operations.unsnoozeThread({ ...command, reason: "user" })));
+export const pinThread = (target: ThreadRef) =>
+  void act(target, "pinning", (command) => run(target, Operations.pinThread(command)));
+export const unpinThread = (target: ThreadRef) =>
+  void act(target, "pinning", (command) => run(target, Operations.unpinThread(command)));
 
-/** Copies the thread's link in the environment's own web app, where any browser can follow it. */
-async function copyThreadLink(threadId: string): Promise<void> {
+/** Copies the thread's link in its environment's own web app, where any browser can follow it. */
+async function copyThreadLink(target: ThreadRef): Promise<void> {
   const notifications = await getService(INotificationService);
-  const environment = connection.environment;
-  const target = thread(threadId);
-  if (target === undefined || environment === null || environment.httpBaseUrl === "") {
+  const environment = connection.environment(target.environmentId);
+  const known = thread(target);
+  if (known === undefined || environment === undefined || environment.httpBaseUrl === "") {
     notifications.info("Pult: select a thread first.");
     return;
   }
-  const link = new URL(`/${environment.environmentId}/${target.id}`, environment.httpBaseUrl);
+  const link = new URL(`/${environment.environmentId}/${known.id}`, environment.httpBaseUrl);
   await (await getService(IClipboardService)).writeText(link.toString());
-  notifications.info(`Copied the link to ${target.title}.`);
+  notifications.info(`Copied the link to ${known.title}.`);
 }
 
-/** What a thread offers now, under the server's features. */
+/** What a thread offers now, under its server's features. */
 export function threadParkActions(target: ShellThread): ParkActions {
-  return parkActions(target, threadStore.get().features);
+  return parkActions(target, threadStore.environment(target.environmentId)?.features ?? NO_THREAD_FEATURES);
 }
 
 /** Upstream's snooze presets, each with its time, then Custom…, which asks the user for one. */
-function snoozeActions(threadId: string): IAction[] {
+function snoozeActions(target: ThreadRef): IAction[] {
   return [
     ...resolveSnoozePresets(new Date()).map((preset) =>
       toAction({
         id: `pult-shell.snooze.${preset.id}`,
         label: `${preset.label} (${preset.whenLabel})`,
-        run: () => snoozeThread(threadId, preset.snoozedUntil),
+        run: () => snoozeThread(target, preset.snoozedUntil),
       }),
     ),
     new Separator(),
-    toAction({ id: "pult-shell.snooze.custom", label: "Custom…", run: () => snoozeThread(threadId, CUSTOM_WAKE) }),
+    toAction({ id: "pult-shell.snooze.custom", label: "Custom…", run: () => snoozeThread(target, CUSTOM_WAKE) }),
   ];
 }
 
 type Anchor = HTMLElement | { x: number; y: number };
 
 /** The card's clock: the snooze presets under it. `onHide` once the menu closes. */
-export async function showSnoozeMenu(threadId: string, anchor: HTMLElement, onHide: () => void): Promise<void> {
+export async function showSnoozeMenu(target: ThreadRef, anchor: HTMLElement, onHide: () => void): Promise<void> {
   const menus = await getService(IContextMenuService);
-  menus.showContextMenu({ getAnchor: () => anchor, getActions: () => snoozeActions(threadId), onHide });
+  menus.showContextMenu({ getAnchor: () => anchor, getActions: () => snoozeActions(target), onHide });
 }
 
 /**
@@ -213,24 +239,24 @@ export async function showThreadMenu(target: ShellThread, anchor: Anchor): Promi
   const offered = threadParkActions(target);
   const action = (id: string, label: string, run: () => unknown) => toAction({ id: `pult-shell.${id}`, label, run });
   const actions = [
-    offered.pin ? action("pinThread", "Pin Thread", () => pinThread(target.id)) : null,
-    offered.unpin ? action("unpinThread", "Unpin Thread", () => unpinThread(target.id)) : null,
-    offered.settle ? action("settleThread", "Settle Thread", () => settleThread(target.id)) : null,
-    offered.unsettle ? action("unsettleThread", "Un-settle Thread", () => unsettleThread(target.id)) : null,
+    offered.pin ? action("pinThread", "Pin Thread", () => pinThread(target)) : null,
+    offered.unpin ? action("unpinThread", "Unpin Thread", () => unpinThread(target)) : null,
+    offered.settle ? action("settleThread", "Settle Thread", () => settleThread(target)) : null,
+    offered.unsettle ? action("unsettleThread", "Un-settle Thread", () => unsettleThread(target)) : null,
     offered.snooze
       ? target.canSnooze
-        ? new SubmenuAction("pult-shell.snoozeThread", "Snooze", snoozeActions(target.id))
+        ? new SubmenuAction("pult-shell.snoozeThread", "Snooze", snoozeActions(target))
         : toAction({ id: "pult-shell.snoozeThread", label: "Snooze", enabled: false, run: () => undefined })
       : null,
-    offered.wake ? action("wakeThread", "Wake Thread", () => wakeThread(target.id)) : null,
+    offered.wake ? action("wakeThread", "Wake Thread", () => wakeThread(target)) : null,
   ].filter((each) => each !== null);
   menus.showContextMenu({
     getAnchor: () => anchor,
     getActions: () => [
       ...actions,
       ...(actions.length > 0 ? [new Separator()] : []),
-      action("copyThreadLink", "Copy Thread Link", () => copyThreadLink(target.id)),
-      action("newThreadInProject", "New Thread in Project", () => newThreadIn(target.projectId)),
+      action("copyThreadLink", "Copy Thread Link", () => copyThreadLink(target)),
+      action("newThreadInProject", "New Thread in Project", () => newThreadIn(target.environmentId, target.projectId)),
     ],
   });
 }
@@ -258,8 +284,8 @@ const ThreadSelectedContext = new RawContextKey<boolean>("pult.selectedThreadKno
  */
 export function registerParkCommands(): void {
   const selected = () => {
-    const id = selectedThread()?.threadId;
-    return id === undefined ? undefined : thread(id);
+    const selection = selectedThread();
+    return selection === undefined ? undefined : threadStore.thread(selection.environmentId, selection.threadId);
   };
   const command = (
     precondition: RawContextKey<boolean>,
@@ -285,8 +311,8 @@ export function registerParkCommands(): void {
         }
       },
     );
-  command(CONTEXT_KEYS.settle, "pult-shell.settleThread", "Settle Thread", (target) => settleThread(target.id));
-  command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) => unsettleThread(target.id));
+  command(CONTEXT_KEYS.settle, "pult-shell.settleThread", "Settle Thread", (target) => settleThread(target));
+  command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) => unsettleThread(target));
   command(CONTEXT_KEYS.snooze, "pult-shell.snoozeThread", "Snooze Thread…", async (target, accessor) => {
     const quickInput = accessor.get(IQuickInputService);
     const picked = await quickInput.pick(
@@ -296,12 +322,12 @@ export function registerParkCommands(): void {
       ],
       { placeHolder: "Snooze until" },
     );
-    if (picked !== undefined) await snoozeThread(target.id, picked.wake);
+    if (picked !== undefined) await snoozeThread(target, picked.wake);
   });
-  command(CONTEXT_KEYS.wake, "pult-shell.wakeThread", "Wake Thread", (target) => wakeThread(target.id));
-  command(CONTEXT_KEYS.pin, "pult-shell.pinThread", "Pin Thread", (target) => pinThread(target.id));
-  command(CONTEXT_KEYS.unpin, "pult-shell.unpinThread", "Unpin Thread", (target) => unpinThread(target.id));
-  command(ThreadSelectedContext, "pult-shell.copyThreadLink", "Copy Thread Link", (target) => copyThreadLink(target.id));
+  command(CONTEXT_KEYS.wake, "pult-shell.wakeThread", "Wake Thread", (target) => wakeThread(target));
+  command(CONTEXT_KEYS.pin, "pult-shell.pinThread", "Pin Thread", (target) => pinThread(target));
+  command(CONTEXT_KEYS.unpin, "pult-shell.unpinThread", "Unpin Thread", (target) => unpinThread(target));
+  command(ThreadSelectedContext, "pult-shell.copyThreadLink", "Copy Thread Link", (target) => copyThreadLink(target));
 
   void getService(IContextKeyService).then((contextKeys) => {
     const keys = Object.entries(CONTEXT_KEYS).map(([action, key]) => [action as keyof ParkActions, key.bindTo(contextKeys)] as const);

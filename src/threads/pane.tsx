@@ -27,13 +27,20 @@ const DRAFT_TYPE_ID = "pult.shell.draft";
 
 let started: Promise<ThreadViewMounts> | undefined;
 
-/** What a pane shows: a thread, or a project's draft of a new thread. */
-type PaneTarget = { readonly kind: "thread"; readonly threadId: string } | { readonly kind: "draft"; readonly projectId: string };
+/** What a pane shows, in its environment: a thread, or a project's draft of a new thread. */
+type PaneTarget =
+  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
+  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
-const promotionListeners = new Set<(projectId: string, threadId: string) => void>();
+type PromotionListener = (
+  draft: { readonly environmentId: string; readonly projectId: string },
+  thread: { readonly environmentId: string; readonly threadId: string },
+) => void;
+
+const promotionListeners = new Set<PromotionListener>();
 
 /** Called when a project's draft, mounted in a pane, has become a thread on the server; `selection.ts` follows it. */
-export function onDidPromoteDraft(listener: (projectId: string, threadId: string) => void): () => void {
+export function onDidPromoteDraft(listener: PromotionListener): () => void {
   promotionListeners.add(listener);
   return () => promotionListeners.delete(listener);
 }
@@ -45,7 +52,8 @@ function run(command: string, ...args: unknown[]): void {
 /**
  * Upstream's thread view (`thread-view/`), loaded with the first pane and
  * started once on the page's connection: its state runtime runs on the
- * connection runtime's services, so the view shares the page's one socket.
+ * connection runtime's services, so the view shares the page's sockets, one
+ * per environment, each pane mounting its target's environment.
  * A thread it navigates to is selected in the shell, and so is a draft of a
  * new thread, as its project's draft; a file it would show in its right
  * panel opens as a tab (`files.ts`), and its diff is the changes view
@@ -59,13 +67,12 @@ function threadView() {
     return view.startThreadView(
       {
         connection: () => connection.context(),
-        environmentId: () => connection.environment?.environmentId ?? null,
-        openThread: (threadId) => run("pult-shell.selectThread", threadId),
+        openThread: (environmentId, threadId) => run("pult-shell.selectThread", environmentId, threadId),
         // A draft the view went to, which it remembered as the project's.
-        openDraft: (projectId) => run("pult-shell.newThread", projectId),
-        openFile: (threadId, path, line) => void openThreadFile(threadId, path, line),
+        openDraft: (environmentId, projectId) => run("pult-shell.newThread", environmentId, projectId),
+        openFile: (environmentId, threadId, path, line) => void openThreadFile(environmentId, threadId, path, line),
         // The changes view (`src/changes/`): the Source Control view over the thread's project.
-        openChanges: (threadId, path) => run("pult-shell.showChanges", threadId, path),
+        openChanges: (environmentId, threadId, path) => run("pult-shell.showChanges", environmentId, threadId, path),
         // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
         reportActivity: (activity) => threadStore.reportActivity(activity),
       },
@@ -79,11 +86,12 @@ function threadView() {
 }
 
 /**
- * The thread's turns and composer, or the project's draft, while the page is
- * connected. Mounted again when its environment or `generation` changes, and
- * not when only `target` does, which is a draft's promotion: the view
- * mounted for the draft is the new thread's already. A thread's place
- * (`ThreadBarEntries`) joins the view's composer bar.
+ * The thread's turns and composer, or the project's draft, while the page
+ * holds its environment. Mounted again when the page takes up or lets go of
+ * that environment, or `generation` changes, and not when only `target`
+ * does, which is a draft's promotion: the view mounted for the draft is the
+ * new thread's already. A thread's place (`ThreadBarEntries`) joins the
+ * view's composer bar.
  */
 function ThreadContent({
   target,
@@ -92,11 +100,11 @@ function ThreadContent({
 }: {
   target: PaneTarget;
   generation: number;
-  onPromoted: (threadId: string) => void;
+  onPromoted: (environmentId: string, threadId: string) => void;
 }) {
   const environmentId = useSyncExternalStore(
     (listener) => connection.onDidChange(listener),
-    () => connection.environment?.environmentId,
+    () => connection.environment(target.environmentId)?.environmentId,
   );
   const element = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState<string>();
@@ -114,8 +122,10 @@ function ThreadContent({
         const shown = latest.current.target;
         view =
           shown.kind === "thread"
-            ? mounts.mount(host, shown.threadId)
-            : mounts.mountDraft(host, shown.projectId, (threadId) => latest.current.onPromoted(threadId));
+            ? mounts.mount(host, environmentId, shown.threadId)
+            : mounts.mountDraft(host, environmentId, shown.projectId, (promotedIn, threadId) =>
+                latest.current.onPromoted(promotedIn, threadId),
+              );
         setBar(view.bar);
       },
       (error: unknown) => {
@@ -132,13 +142,15 @@ function ThreadContent({
     };
   }, [environmentId, generation]);
   if (environmentId === undefined) {
-    return <div className="pult-thread-empty">Not connected. Run “Pult: Connect to Environment”.</div>;
+    return <div className="pult-thread-empty">Not connected to this thread's environment. Run “Pult: Connect to Environment”.</div>;
   }
   if (failure !== undefined) return <div className="pult-thread-empty">{failure}</div>;
   return (
     <>
       <div ref={element} className="pult-thread-content" />
-      {bar !== undefined && target.kind === "thread" ? <ThreadBarEntries bar={bar} threadId={target.threadId} /> : null}
+      {bar !== undefined && target.kind === "thread" ? (
+        <ThreadBarEntries bar={bar} environmentId={target.environmentId} threadId={target.threadId} />
+      ) : null}
     </>
   );
 }
@@ -154,7 +166,7 @@ class ThreadPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
   private root: Root | undefined;
   /** The input the view is mounted for, and the thread its draft became, which the pane then shows without mounting again. */
-  private shown: { readonly input: EditorInput; promotedTo?: string } | undefined;
+  private shown: { readonly input: EditorInput; promotedTo?: { environmentId: string; threadId: string } } | undefined;
   private generation = 0;
 
   constructor(group: IEditorGroup) {
@@ -177,20 +189,24 @@ class ThreadPane extends SimpleEditorPane {
   async renderInput(input: EditorInput) {
     const target: PaneTarget =
       input instanceof DraftInput
-        ? { kind: "draft", projectId: input.projectId }
-        : { kind: "thread", threadId: input instanceof ThreadInput ? input.threadId : "" };
-    const adopted = target.kind === "thread" && this.shown?.promotedTo === target.threadId;
+        ? { kind: "draft", environmentId: input.environmentId, projectId: input.projectId }
+        : input instanceof ThreadInput
+          ? { kind: "thread", environmentId: input.environmentId, threadId: input.threadId }
+          : { kind: "thread", environmentId: "", threadId: "" };
+    const promotedTo = this.shown?.promotedTo;
+    const adopted =
+      target.kind === "thread" && promotedTo?.threadId === target.threadId && promotedTo.environmentId === target.environmentId;
     if (!adopted || this.root === undefined) {
       this.root?.unmount();
       this.root = createRoot(this.container);
       this.generation += 1;
     }
-    const shown: { readonly input: EditorInput; promotedTo?: string } = { input };
+    const shown: { readonly input: EditorInput; promotedTo?: { environmentId: string; threadId: string } } = { input };
     this.shown = shown;
-    const promoted = (threadId: string) => {
+    const promoted = (environmentId: string, threadId: string) => {
       if (this.shown !== shown || target.kind !== "draft") return;
-      shown.promotedTo = threadId;
-      for (const listener of promotionListeners) listener(target.projectId, threadId);
+      shown.promotedTo = { environmentId, threadId };
+      for (const listener of promotionListeners) listener(target, shown.promotedTo);
     };
     this.root.render(<ThreadContent target={target} generation={this.generation} onPromoted={promoted} />);
     return {
@@ -241,7 +257,10 @@ export class ThreadInput extends SimpleEditorInput {
   private icon: { key: string; uri: URI } | undefined;
   private labelKey: string | undefined;
 
-  constructor(readonly threadId: string) {
+  constructor(
+    readonly environmentId: string,
+    readonly threadId: string,
+  ) {
     super(undefined);
     this.addCapability(
       EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
@@ -252,7 +271,7 @@ export class ThreadInput extends SimpleEditorInput {
   }
 
   private thread(): ShellThread | undefined {
-    return threadStore.get().threads.find((thread) => thread.id === this.threadId);
+    return threadStore.thread(this.environmentId, this.threadId);
   }
 
   /** The name is the title; setting it fires the label change that redraws the description, title and icon too. */
@@ -273,7 +292,7 @@ export class ThreadInput extends SimpleEditorInput {
   override getTitle(): string {
     const thread = this.thread();
     if (thread === undefined) return "Thread";
-    const parent = thread.parentId === null ? undefined : threadStore.get().threads.find((candidate) => candidate.id === thread.parentId);
+    const parent = thread.parentId === null ? undefined : threadStore.thread(thread.environmentId, thread.parentId);
     const lineage = isSubagent(thread) && parent !== undefined ? ` (a subagent of ${parent.title})` : "";
     return `${thread.projectName}: ${thread.title}${lineage}`;
   }
@@ -295,7 +314,7 @@ export class ThreadInput extends SimpleEditorInput {
   }
 
   override matches(other: unknown): boolean {
-    return other instanceof ThreadInput && other.threadId === this.threadId;
+    return other instanceof ThreadInput && other.threadId === this.threadId && other.environmentId === this.environmentId;
   }
 }
 
@@ -310,7 +329,10 @@ export class DraftInput extends SimpleEditorInput {
   private icon: { key: string; uri: URI } | undefined;
   private labelKey: string | undefined;
 
-  constructor(readonly projectId: string) {
+  constructor(
+    readonly environmentId: string,
+    readonly projectId: string,
+  ) {
     super(undefined);
     this.addCapability(
       EditorInputCapabilities.CannotClose | EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
@@ -321,7 +343,7 @@ export class DraftInput extends SimpleEditorInput {
   }
 
   private project(): ShellProject | undefined {
-    return threadStore.project(this.projectId);
+    return threadStore.project(this.environmentId, this.projectId);
   }
 
   /** Setting the name fires the label change that redraws the description, title and icon. */
@@ -358,15 +380,18 @@ export class DraftInput extends SimpleEditorInput {
   }
 
   override matches(other: unknown): boolean {
-    return other instanceof DraftInput && other.projectId === this.projectId;
+    return other instanceof DraftInput && other.projectId === this.projectId && other.environmentId === this.environmentId;
   }
 }
 
+/** A saved tab's identity; one saved before tabs named their environment has none, and is dropped. */
 interface SerializedThreadInput {
+  readonly environmentId?: string;
   readonly threadId: string;
 }
 
 interface SerializedDraftInput {
+  readonly environmentId?: string;
   readonly projectId: string;
 }
 
@@ -381,11 +406,11 @@ export function registerThreadPane(): void {
         return true;
       }
       serialize(editor: ThreadInput): string {
-        return JSON.stringify({ threadId: editor.threadId } satisfies SerializedThreadInput);
+        return JSON.stringify({ environmentId: editor.environmentId, threadId: editor.threadId } satisfies SerializedThreadInput);
       }
-      deserialize(instantiation: IInstantiationService, serialized: string): EditorInput {
-        const { threadId } = JSON.parse(serialized) as SerializedThreadInput;
-        return instantiation.createInstance(ThreadInput, threadId);
+      deserialize(instantiation: IInstantiationService, serialized: string): EditorInput | undefined {
+        const { environmentId, threadId } = JSON.parse(serialized) as SerializedThreadInput;
+        return environmentId === undefined ? undefined : instantiation.createInstance(ThreadInput, environmentId, threadId);
       }
     },
   );
@@ -396,11 +421,11 @@ export function registerThreadPane(): void {
         return true;
       }
       serialize(editor: DraftInput): string {
-        return JSON.stringify({ projectId: editor.projectId } satisfies SerializedDraftInput);
+        return JSON.stringify({ environmentId: editor.environmentId, projectId: editor.projectId } satisfies SerializedDraftInput);
       }
-      deserialize(instantiation: IInstantiationService, serialized: string): EditorInput {
-        const { projectId } = JSON.parse(serialized) as SerializedDraftInput;
-        return instantiation.createInstance(DraftInput, projectId);
+      deserialize(instantiation: IInstantiationService, serialized: string): EditorInput | undefined {
+        const { environmentId, projectId } = JSON.parse(serialized) as SerializedDraftInput;
+        return environmentId === undefined ? undefined : instantiation.createInstance(DraftInput, environmentId, projectId);
       }
     },
   );

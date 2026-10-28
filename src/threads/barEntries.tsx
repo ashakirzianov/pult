@@ -31,11 +31,13 @@ const hoverProps = (content: string) => ({
  * environment, an icon whose name shows in a hover on hover or click. The
  * bar orders its entries by their `data-chat-composer-slot-item`.
  */
-export function ThreadBarEntries({ bar, threadId }: { bar: HTMLElement; threadId: string }) {
+export function ThreadBarEntries({ bar, environmentId, threadId }: { bar: HTMLElement; environmentId: string; threadId: string }) {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
-  const thread = state.threads.find((candidate) => candidate.id === threadId);
+  const thread = state.threads.find((candidate) => candidate.id === threadId && candidate.environmentId === environmentId);
   if (thread === undefined) return null;
-  const environment = state.environment === null ? null : `Environment: ${state.environment.label}`;
+  const held = state.environments.find((candidate) => candidate.id === environmentId);
+  const environment =
+    held === undefined ? null : `Environment: ${held.label}${held.name === held.label ? "" : ` (${held.name})`}`;
   return createPortal(
     <div data-chat-composer-slot-item="shell" className="pult-bar-entries">
       {thread.projectRoot === null ? (

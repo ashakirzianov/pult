@@ -13,12 +13,11 @@ import { threadStore } from "./store.ts";
  * project does not have, as an agent's mention of a file in another repo,
  * is a notice rather than an editor that fails to open.
  */
-export async function openThreadFile(threadId: string, path: string, line: number | null): Promise<void> {
-  const { environment, threads } = threadStore.get();
-  const thread = threads.find((candidate) => candidate.id === threadId);
-  if (environment === null || thread === undefined) return;
+export async function openThreadFile(environmentId: string, threadId: string, path: string, line: number | null): Promise<void> {
+  const thread = threadStore.thread(environmentId, threadId);
+  if (thread === undefined) return;
   const hostPath = path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) ? path : `${thread.projectRoot ?? ""}/${path}`;
-  const resource = pultUri(environment.id, hostPath);
+  const resource = pultUri(environmentId, hostPath);
   const [files, editors, notifications] = await Promise.all([
     getService(IFileService),
     getService(IEditorService),
