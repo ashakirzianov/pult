@@ -2674,6 +2674,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       (options?.ensureLeadingBoundary ?? false) &&
       cursor > 0 &&
       !/\s/.test(prompt[cursor - 1] ?? "");
+    // Pult: a citation is a block on a line of its own.
+    if (options?.citationCommentAnchor) {
+      const leading = cursor > 0 && prompt[cursor - 1] !== "\n" ? "\n" : "";
+      const trailing = prompt[cursor] === "\n" ? "" : "\n";
+      return applyPromptReplacement(cursor, cursor, `${leading}${text.trimEnd()}${trailing}`, {
+        citationComment: {
+          start: cursor + leading.length,
+          sourceAnchor: options.citationCommentAnchor,
+          insertedSpaces: { before: false, after: false },
+        },
+        focusEditorAfterReplace: false,
+      });
+    }
     const rangeEnd = extendReplacementRangeForTrailingSpace(prompt, cursor, text);
     return applyPromptReplacement(
       cursor,

@@ -67,7 +67,8 @@ html:not([data-theme-id]) .pult-thread-view {
 }
 
 /* The workbench outlines every focused editable; the composer draws its own. */
-.monaco-workbench .pult-thread-view [contenteditable="true"]:focus {
+.monaco-workbench .pult-thread-view [contenteditable="true"]:focus,
+.monaco-workbench .pult-thread-view textarea[data-citation-comment-input]:focus {
   outline: none;
 }
 
@@ -457,4 +458,21 @@ html:not([data-theme-id]) .pult-thread-view {
 .pult-thread-view .chat-content-lane:not(:has(> [data-message-role="user"])),
 .pult-thread-view [data-chat-thread-status-line="true"] {
   padding-inline: calc(var(--pult-composer-text-inset) - 0.25rem);
+}
+
+/* A citation in the composer is a block of its own line
+   (`t3/src/components/chat/ComposerCitationBlock.tsx`): the caret helpers
+   ProseMirror puts beside an inline node would each add an empty line, so
+   they go, but for the last line's trailing one, the caret's place after a
+   final citation. */
+.pult-thread-view .ProseMirror img.ProseMirror-separator:has(+ .node-composer-citation),
+.pult-thread-view .ProseMirror .node-composer-citation + img.ProseMirror-separator,
+.pult-thread-view
+  .ProseMirror
+  > :not(:last-child)
+  .node-composer-citation
+  + img.ProseMirror-separator
+  + br.ProseMirror-trailingBreak {
+  /* ProseMirror's own stylesheet pins its separators inline. */
+  display: none !important;
 }
