@@ -32,6 +32,8 @@ export const TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR = [
   '[data-slot="popover-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="combobox-popup"]:is([data-open],[data-ending-style])',
   '[data-slot="autocomplete-popup"]:is([data-open],[data-ending-style])',
+  // Pult: the selection toolbar takes typing to cite the selection.
+  "[data-assistant-selection-toolbar]",
 ].join(",");
 
 export function eventPathContainsSelector(event: Event, selector: string): boolean {

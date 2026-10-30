@@ -5,7 +5,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { QuoteIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   captureAssistantTextSelection,
@@ -171,18 +171,53 @@ export function AssistantSelectionToolbar({
     };
   }, [threadRef, viewport]);
 
-  if (!selection) return null;
-  const tooLong = selection.citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
+  const tooLong =
+    selection !== null && selection.citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
   const dismiss = () => {
     actionsRef.current?.cancel();
     setSelection(null);
   };
-  const cite = () => {
-    if (tooLong || !onCite(selection.citation, selection.sourceAnchor)) return false;
+  const cite = (comment?: string) => {
+    if (!selection) return false;
+    // Pult: a typed character starts the citation's comment.
+    const citation = comment ? { ...selection.citation, comment } : selection.citation;
+    if (tooLong || !onCite(citation, selection.sourceAnchor)) return false;
     window.getSelection()?.removeAllRanges();
     dismiss();
     return true;
   };
+  // Pult: typing while the toolbar shows cites the selection ("Type to cite").
+  const citeTyped = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.key.length !== 1 ||
+      event.key.trim() === ""
+    ) {
+      return;
+    }
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+    const anchor = window.getSelection()?.anchorNode ?? null;
+    if (active instanceof HTMLElement && active.isContentEditable && active.contains(anchor)) {
+      return;
+    }
+    if (cite(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
+  const shown = selection !== null;
+  useEffect(() => {
+    if (!shown) return;
+    document.addEventListener("keydown", citeTyped, true);
+    return () => document.removeEventListener("keydown", citeTyped, true);
+  }, [shown]);
+
+  if (!selection) return null;
   return createPortal(
     <Button
       ref={toolbarRef}
@@ -191,10 +226,11 @@ export function AssistantSelectionToolbar({
       variant="glass"
       disabled={tooLong}
       aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
+      data-assistant-selection-toolbar=""
       className="fixed z-50 max-w-[calc(100vw-1rem)]"
       style={{ left: selection.position.x, top: selection.position.y }}
       onPointerDown={(event) => event.preventDefault()}
-      onClick={cite}
+      onClick={() => cite()}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Escape" && !event.nativeEvent.isComposing) {
@@ -204,7 +240,7 @@ export function AssistantSelectionToolbar({
       }}
     >
       <QuoteIcon aria-hidden="true" className="size-3.5" />
-      {tooLong ? "Shorten selection" : "Cite"}
+      {tooLong ? "Shorten selection" : "Type to cite"}
     </Button>,
     document.body,
   );
