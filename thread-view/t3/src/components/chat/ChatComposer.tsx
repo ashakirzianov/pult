@@ -306,6 +306,7 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
+import { ComposerReviewCommentEditContext } from "./ComposerCitationBlock";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -2653,6 +2654,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ensureLeadingBoundary?: boolean;
       citationCommentAnchor?: AssistantCitationSourceAnchor;
       clipboardData?: DataTransfer;
+      ownLine?: boolean;
     },
   ): boolean => {
     if (
@@ -2684,6 +2686,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           sourceAnchor: options.citationCommentAnchor,
           insertedSpaces: { before: false, after: false },
         },
+        focusEditorAfterReplace: false,
+      });
+    }
+    // Pult: so is a file or diff comment.
+    if (options?.ownLine) {
+      const leading = cursor > 0 && prompt[cursor - 1] !== "\n" ? "\n" : "";
+      const trailing = prompt[cursor] === "\n" ? "" : "\n";
+      return applyPromptReplacement(cursor, cursor, `${leading}${text.trimEnd()}${trailing}`, {
         focusEditorAfterReplace: false,
       });
     }
@@ -2849,9 +2859,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const insertContextReferencesAtCaret = (
     references: ReadonlyArray<ComposerContextReference>,
   ): boolean =>
-    insertComposerText(`${references.map(formatInlineContextReference).join(" ")} `, "cursor", {
-      ensureLeadingBoundary: true,
-    });
+    // Pult: file and diff comments are blocks, each on a line of its own.
+    references.every((reference) => reference.kind === "review-comment")
+      ? insertComposerText(references.map(formatInlineContextReference).join("\n"), "cursor", {
+          ownLine: true,
+        })
+      : insertComposerText(`${references.map(formatInlineContextReference).join(" ")} `, "cursor", {
+          ensureLeadingBoundary: true,
+        });
+  // Pult: the file and diff comments' blocks edit their records in the draft.
+  const reviewCommentEdits = {
+    save: (comment: ReviewCommentContext) =>
+      addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false }),
+    remove: (commentId: string) => removeComposerDraftReviewComment(composerDraftTarget, commentId),
+  };
   const insertContextReferencesAtCaretStable = useStableCallback(insertContextReferencesAtCaret);
   const setContextInsertionHandler = useComposerDraftStore(
     (store) => store.setContextInsertionHandler,
@@ -3789,6 +3810,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   />
                 ) : null}
                 <ComposerContextActionsContext value={composerContextActions}>
+                  <ComposerReviewCommentEditContext value={reviewCommentEdits}>
                   <ComposerPromptEditor
                     draftKey={composerDraftTargetKey}
                     // Switching threads lands focus here, so the label names the thread.
@@ -3855,6 +3877,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       activePendingIsResponding
                     }
                   />
+                  </ComposerReviewCommentEditContext>
                 </ComposerContextActionsContext>
                 {isComposerResting ? collapsedComposerImagePreviews : null}
                 {showMobilePendingAnswerActions ? (

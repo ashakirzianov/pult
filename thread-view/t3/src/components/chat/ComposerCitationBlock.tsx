@@ -8,23 +8,41 @@ import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  createContext,
+  type ReactNode,
+  use,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import { assistantCitationNavigation } from "~/lib/assistantCitationNavigation";
+import type { ReviewCommentContext } from "~/reviewCommentContext";
+import { ComposerContextActionsContext } from "../composerContextPresentation";
 
 // Pult's composer citation: a block on its own line, the quote and then the
-// user's comment, edited in place. The comment is the node's attribute, not
-// document content, so the field is the node view's own textarea; the editor
-// enters it by key (`enterComposerCitationByKey`) and the field leaves it by
-// key. A comment left empty when the field loses focus removes the citation.
+// user's comment, edited in place. An assistant citation keeps its comment as
+// its node's attribute; a file or diff comment (upstream's review comment, a
+// context reference node) keeps it as its record's text in the draft. Either
+// way the comment is not document content, so the field is the node view's
+// own textarea; the editor enters it by key (`enterComposerCitationByKey`)
+// and the field leaves it by key. A comment left empty when the field loses
+// focus removes the citation.
 
 const CITATION_NODE = "composer-citation";
+const CONTEXT_REFERENCE_NODE = "composer-context-reference";
 const COMMENT_INPUT_SELECTOR = "textarea[data-citation-comment-input]";
 
 type Edge = "start" | "end";
 
+/** A node drawn as a block: an assistant citation, or a file or diff comment's reference. */
 function isCitation(node: ProseMirrorNode | null | undefined): node is ProseMirrorNode {
-  return node?.type.name === CITATION_NODE;
+  return (
+    node?.type.name === CITATION_NODE ||
+    (node?.type.name === CONTEXT_REFERENCE_NODE && node.attrs.kind === "review-comment")
+  );
 }
 
 function focusCitationComment(view: EditorView, pos: number, edge: Edge): boolean {
@@ -169,11 +187,11 @@ function placeCaret(view: EditorView, tr: Transaction) {
   view.focus();
 }
 
-function findCitation(editor: Editor, citeKey: string) {
+function findCitation(editor: Editor, matches: (node: ProseMirrorNode) => boolean) {
   let found: { pos: number; node: ProseMirrorNode } | null = null;
   editor.state.doc.descendants((node, pos) => {
     if (found) return false;
-    if (isCitation(node) && node.attrs.citeKey === citeKey) {
+    if (isCitation(node) && matches(node)) {
       found = { pos, node };
       return false;
     }
@@ -182,37 +200,48 @@ function findCitation(editor: Editor, citeKey: string) {
   return found as { pos: number; node: ProseMirrorNode } | null;
 }
 
-export function ComposerCitationBlock({
+/**
+ * The block: the quote, then the comment's field. `matches` finds its node
+ * in the editor's document; `onSave` keeps the comment wherever it lives;
+ * `onRemoved` lets go of anything the node held outside the document.
+ */
+function CitationBlock({
   editor,
-  citation,
-  citeKey,
+  matches,
+  quote,
+  savedComment,
+  maxLength,
+  onSave,
+  onRemoved,
   focusRequested,
   onFocusHandled,
 }: {
   editor: Editor;
-  citation: AssistantCitation;
-  citeKey: string;
-  /** Set when the citation was just inserted: the field takes focus once. */
+  matches: (node: ProseMirrorNode) => boolean;
+  quote: ReactNode;
+  savedComment: string;
+  maxLength: number;
+  onSave: (next: string) => void;
+  onRemoved?: () => void;
+  /** Set when the citation was just inserted: the field takes focus once, if it shows. */
   focusRequested: boolean;
   onFocusHandled: () => void;
 }) {
-  const navigate = useNavigate();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const savedComment = citation.comment ?? "";
   const [comment, setComment] = useState(savedComment);
   const [shownComment, setShownComment] = useState(savedComment);
-  const tooLong = comment.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH;
+  const tooLong = comment.length > maxLength;
 
   useEffect(() => {
     if (!focusRequested) return;
     // The editor reacts to losing focus, so the field takes it outside React's commit.
     const frame = requestAnimationFrame(() => {
       const input = inputRef.current;
-      if (input) {
-        input.focus({ preventScroll: true });
-        input.setSelectionRange(input.value.length, input.value.length);
-        input.scrollIntoView({ block: "nearest" });
-      }
+      // A composer kept mounted out of sight (the thread's, under a file's) leaves it to the one in sight.
+      if (input === null || !input.checkVisibility()) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.scrollIntoView({ block: "nearest" });
       onFocusHandled();
     });
     return () => cancelAnimationFrame(frame);
@@ -226,25 +255,14 @@ export function ComposerCitationBlock({
   }
 
   const save = (next: string) => {
-    if (!editor.isEditable || next.length > ASSISTANT_CITATION_MAX_COMMENT_LENGTH) return;
-    const found = findCitation(editor, citeKey);
-    if (!found) return;
-    const current = found.node.attrs.citation as AssistantCitation;
-    const updated = withAssistantCitationComment(current, next);
-    if ((updated.comment ?? "") === (current.comment ?? "")) return;
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(found.pos, undefined, {
-        ...found.node.attrs,
-        citation: updated,
-        source: serializeAssistantCitation(updated),
-      }),
-    );
+    if (!editor.isEditable || next.length > maxLength) return;
+    onSave(next);
   };
 
   /** Removes the citation, and its line when it stood alone on one. */
   const remove = (focus: boolean) => {
     if (!editor.isEditable) return;
-    const found = findCitation(editor, citeKey);
+    const found = findCitation(editor, matches);
     if (!found) return;
     const { doc } = editor.state;
     const $pos = doc.resolve(found.pos);
@@ -253,9 +271,10 @@ export function ComposerCitationBlock({
     const to = alone ? $pos.after(1) : found.pos + found.node.nodeSize;
     const tr = editor.state.tr.delete(from, to);
     // Without focus the caret is wherever the user put it, mapped past the deletion.
-    if (!focus) return void editor.view.dispatch(tr);
-    tr.setSelection(Selection.near(tr.doc.resolve(Math.min(from, tr.doc.content.size)), -1));
-    placeCaret(editor.view, tr);
+    if (focus) tr.setSelection(Selection.near(tr.doc.resolve(Math.min(from, tr.doc.content.size)), -1));
+    if (focus) placeCaret(editor.view, tr);
+    else editor.view.dispatch(tr);
+    onRemoved?.();
   };
 
   /**
@@ -268,7 +287,7 @@ export function ComposerCitationBlock({
       remove(true);
       return;
     }
-    const found = findCitation(editor, citeKey);
+    const found = findCitation(editor, matches);
     if (!found) return;
     const { doc } = editor.state;
     const tr = editor.state.tr;
@@ -332,17 +351,7 @@ export function ComposerCitationBlock({
   return (
     // Tinted while the caret is elsewhere, plain while its comment is edited.
     <span className="my-1 flex w-full min-w-0 flex-col gap-0.5 rounded-r-md border-l-2 border-primary bg-primary/8 py-1 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
-      <a
-        href="#"
-        className="line-clamp-3 cursor-pointer whitespace-pre-wrap text-muted-foreground no-underline wrap-break-word hover:text-foreground"
-        title="Go to the quoted text"
-        onClick={(event) => {
-          event.preventDefault();
-          void navigate(assistantCitationNavigation(citation));
-        }}
-      >
-        {citation.text}
-      </a>
+      {quote}
       <textarea
         ref={inputRef}
         data-citation-comment-input="true"
@@ -370,10 +379,145 @@ export function ComposerCitationBlock({
       />
       {tooLong ? (
         <span role="status" className="text-xs text-destructive">
-          Comments can contain up to {ASSISTANT_CITATION_MAX_COMMENT_LENGTH.toLocaleString()}{" "}
-          characters.
+          Comments can contain up to {maxLength.toLocaleString()} characters.
         </span>
       ) : null}
     </span>
+  );
+}
+
+const QUOTE_CLASS_NAME =
+  "line-clamp-3 cursor-pointer whitespace-pre-wrap text-muted-foreground no-underline wrap-break-word hover:text-foreground";
+
+/** An assistant citation's block: the quoted text, which goes to it, and the comment, kept as the node's attribute. */
+export function ComposerCitationBlock({
+  editor,
+  citation,
+  citeKey,
+  focusRequested,
+  onFocusHandled,
+}: {
+  editor: Editor;
+  citation: AssistantCitation;
+  citeKey: string;
+  focusRequested: boolean;
+  onFocusHandled: () => void;
+}) {
+  const navigate = useNavigate();
+  const matches = (node: ProseMirrorNode) => node.attrs.citeKey === citeKey;
+  return (
+    <CitationBlock
+      editor={editor}
+      matches={matches}
+      quote={
+        <a
+          href="#"
+          className={QUOTE_CLASS_NAME}
+          title="Go to the quoted text"
+          onClick={(event) => {
+            event.preventDefault();
+            void navigate(assistantCitationNavigation(citation));
+          }}
+        >
+          {citation.text}
+        </a>
+      }
+      savedComment={citation.comment ?? ""}
+      maxLength={ASSISTANT_CITATION_MAX_COMMENT_LENGTH}
+      onSave={(next) => {
+        const found = findCitation(editor, matches);
+        if (!found) return;
+        const current = found.node.attrs.citation as AssistantCitation;
+        const updated = withAssistantCitationComment(current, next);
+        if ((updated.comment ?? "") === (current.comment ?? "")) return;
+        editor.view.dispatch(
+          editor.state.tr.setNodeMarkup(found.pos, undefined, {
+            ...found.node.attrs,
+            citation: updated,
+            source: serializeAssistantCitation(updated),
+          }),
+        );
+      }}
+      focusRequested={focusRequested}
+      onFocusHandled={onFocusHandled}
+    />
+  );
+}
+
+/** How a file or diff comment's block edits its record in the draft, which the composer provides. */
+export const ComposerReviewCommentEditContext = createContext<{
+  save: (comment: ReviewCommentContext) => void;
+  remove: (commentId: string) => void;
+}>({ save: () => {}, remove: () => {} });
+
+/** A file or diff comment's text, the comment, as long as upstream sends one. */
+const REVIEW_COMMENT_MAX_LENGTH = 8_000;
+
+/**
+ * File and diff comments just cited (the shell's `citations.ts`), whose
+ * block takes focus once it shows, in whichever composer is in sight; a
+ * request is good for a few seconds.
+ */
+const reviewCommentFocusRequests = new Map<string, number>();
+const FOCUS_REQUEST_TTL_MS = 5_000;
+
+export function requestReviewCommentFocus(commentId: string): void {
+  reviewCommentFocusRequests.set(commentId, Date.now());
+}
+
+/**
+ * A file or diff comment's block: its path and lines, which open the file,
+ * the quoted lines, and the comment, kept as the record's text.
+ */
+export function ComposerReviewCommentBlock({
+  editor,
+  contextId,
+  comment,
+}: {
+  editor: Editor;
+  contextId: string;
+  comment: ReviewCommentContext;
+}) {
+  const edits = use(ComposerReviewCommentEditContext);
+  const actions = use(ComposerContextActionsContext);
+  const requestedAt = reviewCommentFocusRequests.get(comment.id);
+  const [focusRequested, setFocusRequested] = useState(
+    requestedAt !== undefined && Date.now() - requestedAt < FOCUS_REQUEST_TTL_MS,
+  );
+  const quoted = comment.diff.split("\n").filter((line) => !line.startsWith("@@")).join("\n");
+  return (
+    <CitationBlock
+      editor={editor}
+      matches={(node) => node.attrs.contextId === contextId}
+      quote={
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <a
+            href="#"
+            className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
+            title="Open the file"
+            onClick={(event) => {
+              event.preventDefault();
+              actions.openMention(comment.filePath);
+            }}
+          >
+            {comment.filePath} · {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
+            {comment.rangeLabel}
+          </a>
+          <span className={`${QUOTE_CLASS_NAME} cursor-text font-mono text-xs`}>{quoted}</span>
+        </span>
+      }
+      savedComment={comment.text}
+      maxLength={REVIEW_COMMENT_MAX_LENGTH}
+      onSave={(next) => {
+        if (next.trim() === comment.text) return;
+        edits.save({ ...comment, text: next.trim() });
+      }}
+      onRemoved={() => edits.remove(comment.id)}
+      focusRequested={focusRequested}
+      onFocusHandled={() => {
+        reviewCommentFocusRequests.delete(comment.id);
+        setFocusRequested(false);
+      }}
+    />
   );
 }

@@ -466,11 +466,12 @@ html:not([data-theme-id]) .pult-thread-view {
    they go, but for the last line's trailing one, the caret's place after a
    final citation. */
 .pult-thread-view .ProseMirror img.ProseMirror-separator:has(+ .node-composer-citation),
-.pult-thread-view .ProseMirror .node-composer-citation + img.ProseMirror-separator,
+.pult-thread-view .ProseMirror img.ProseMirror-separator:has(+ .node-composer-context-reference [data-composer-citation-chip]),
+.pult-thread-view .ProseMirror :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip])) + img.ProseMirror-separator,
 .pult-thread-view
   .ProseMirror
   > :not(:last-child)
-  .node-composer-citation
+  :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip]))
   + img.ProseMirror-separator
   + br.ProseMirror-trailingBreak {
   /* ProseMirror's own stylesheet pins its separators inline. */

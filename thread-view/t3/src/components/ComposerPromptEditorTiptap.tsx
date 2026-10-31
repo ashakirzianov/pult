@@ -110,8 +110,10 @@ import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipPopover, skillPopoverDescription } from "./chat/SkillInlineText";
 import {
   ComposerCitationBlock,
+  ComposerReviewCommentBlock,
   enterComposerCitationByKey,
 } from "./chat/ComposerCitationBlock";
+import { isPullRequestSummaryContext } from "~/lib/composerContextRecords";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import { ContextChip } from "./ContextChip";
 import {
@@ -235,6 +237,10 @@ function resolvedThemeFromDocument(): "light" | "dark" {
 
 const CHIP_NODE_SELECTION_CLASS_NAME =
   "relative inline-flex select-none items-center align-middle leading-none data-[composer-chip-selected]:after:pointer-events-none data-[composer-chip-selected]:after:absolute data-[composer-chip-selected]:after:inset-0 data-[composer-chip-selected]:after:rounded-sm data-[composer-chip-selected]:after:bg-[Highlight] data-[composer-chip-selected]:after:opacity-30 data-[composer-chip-selected]:after:content-['']";
+
+// Pult: a citation block takes its line, selected as a chip is.
+const CITATION_BLOCK_CLASS_NAME =
+  "relative flex w-full min-w-0 data-[composer-chip-selected]:after:pointer-events-none data-[composer-chip-selected]:after:absolute data-[composer-chip-selected]:after:inset-0 data-[composer-chip-selected]:after:rounded-sm data-[composer-chip-selected]:after:bg-[Highlight] data-[composer-chip-selected]:after:opacity-30 data-[composer-chip-selected]:after:content-['']";
 
 const ComposerMentionExtension = Node.create({
   name: "composer-mention",
@@ -396,7 +402,7 @@ function ComposerCitationNodeView({ node, editor }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className="relative flex w-full min-w-0 data-[composer-chip-selected]:after:pointer-events-none data-[composer-chip-selected]:after:absolute data-[composer-chip-selected]:after:inset-0 data-[composer-chip-selected]:after:rounded-sm data-[composer-chip-selected]:after:bg-[Highlight] data-[composer-chip-selected]:after:opacity-30 data-[composer-chip-selected]:after:content-['']"
+      className={CITATION_BLOCK_CLASS_NAME}
       contentEditable={false}
       data-composer-citation-chip="true"
     >
@@ -436,7 +442,22 @@ const ComposerContextReferenceExtension = Node.create({
   },
 });
 
-function ComposerContextReferenceNodeView({ node }: NodeViewProps) {
+function ComposerContextReferenceNodeView({ node, editor }: NodeViewProps) {
+  const contextId = (node.attrs.contextId as string) ?? "";
+  const entry = use(ComposerContextRecordsContext).get(contextId);
+  // Pult: a file or diff comment is a citation block, as an assistant citation is.
+  if (entry?.kind === "review-comment" && !isPullRequestSummaryContext(entry.record)) {
+    return (
+      <NodeViewWrapper
+        as="span"
+        className={CITATION_BLOCK_CLASS_NAME}
+        contentEditable={false}
+        data-composer-citation-chip="true"
+      >
+        <ComposerReviewCommentBlock editor={editor} contextId={contextId} comment={entry.record} />
+      </NodeViewWrapper>
+    );
+  }
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
       <ComposerContextReferenceChip
