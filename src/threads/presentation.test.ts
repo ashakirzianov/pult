@@ -178,6 +178,31 @@ describe("shellThreads", () => {
     assert.equal(waiting?.working, true);
   });
 
+  test("dates a card by the user's latest message, a settled one by its settlement, as upstream's rows", () => {
+    const message = { latestUserMessageAt: at("2026-06-20T08:00:00.000Z"), updatedAt: at("2026-06-20T11:00:00.000Z") };
+    const threads = shellThreads(
+      [
+        {
+          environmentId: "env",
+          threads: [
+            thread("active", message),
+            thread("settled", { ...message, settledOverride: "settled", settledAt: at("2026-06-20T09:00:00.000Z") }),
+          ],
+          projects: [],
+          features: ALL,
+        },
+      ],
+      NOW,
+    );
+    assert.deepEqual(
+      threads.map((each) => [each.id, each.ageFrom]),
+      [
+        ["active", "2026-06-20T08:00:00.000Z"],
+        ["settled", "2026-06-20T09:00:00.000Z"],
+      ],
+    );
+  });
+
   test("merges the environments' shelves, each thread shelved by its own server's features", () => {
     const settled = { settledOverride: "settled" as const };
     const threads = shellThreads(

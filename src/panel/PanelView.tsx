@@ -486,7 +486,7 @@ function StatusSlot({ thread, features, children }: { thread: ShellThread; featu
   );
 }
 
-/** A card's or a subagent's status: the run state when it says something, else the thread's age. */
+/** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age. */
 function Status({ thread, activity, now }: { thread: ShellThread; activity: Activity; now: number }) {
   if (activity === "working") {
     return (
@@ -497,6 +497,13 @@ function Status({ thread, activity, now }: { thread: ShellThread; activity: Acti
   }
   if (activity === "waiting") return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
   if (thread.latestRun?.status === "failed") return <span className="pult-card-status pult-card-status-failed">Failed</span>;
+  if (thread.woke) {
+    return (
+      <span className="pult-card-status pult-card-status-woke">
+        <i className="codicon codicon-bell-dot" aria-hidden /> Woke
+      </span>
+    );
+  }
   if (thread.shelf === "snoozed") {
     return (
       <span className="pult-card-status">
@@ -507,11 +514,11 @@ function Status({ thread, activity, now }: { thread: ShellThread; activity: Acti
   if (thread.shelf === "settled") {
     return (
       <span className="pult-card-status">
-        <i className="codicon codicon-check" aria-hidden /> {age(thread.updatedAt, now)}
+        <i className="codicon codicon-check" aria-hidden /> {age(thread.ageFrom ?? thread.updatedAt, now)}
       </span>
     );
   }
-  return <span className="pult-card-status">{age(thread.updatedAt, now)}</span>;
+  return <span className="pult-card-status">{age(thread.ageFrom ?? thread.updatedAt, now)}</span>;
 }
 
 /** The time since `iso`, in T3 Code's short form: `now`, `5m`, `3h`, `2d`. */

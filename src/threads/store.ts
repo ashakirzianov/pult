@@ -26,6 +26,10 @@ export interface ShellThread {
   readonly branch: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** What its card's age counts from, as upstream's row: a settled thread's settlement, else its latest message from the user, else its last change. */
+  readonly ageFrom: string | null;
+  /** Woke from a snooze and not visited since (upstream's Woke). */
+  readonly woke: boolean;
   /** In motion: working, or waiting on background work that will wake it. */
   readonly working: boolean;
   /** Upstream's Waiting: stopped, its run held open by background work, such as subagents, that will wake it. */

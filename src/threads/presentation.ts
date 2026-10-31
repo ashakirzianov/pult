@@ -5,7 +5,7 @@
 import { type EnvironmentThreadShell, resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { isThreadWorking, sortInboxThreadsByReturn, sortWorkingThreadsBySend } from "@t3tools/client-runtime/state/thread-inbox";
 import { canSnooze, effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import { sortPinnedThreadsByOrderKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import { resolveSettledThreadTimestamp, sortPinnedThreadsByOrderKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 
 import { scopedKey, type ShellProject, type ShellThread, type ShelfName, type ThreadFeatures } from "./store.ts";
@@ -236,6 +236,8 @@ export function shellThreads(
       branch: thread.branch,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
+      ageFrom: shelf === "settled" ? resolveSettledThreadTimestamp(thread) : (thread.latestUserMessageAt ?? thread.updatedAt),
+      woke: isWoke(thread, now),
       working: threadStatus(thread, now)?.badge === "R",
       waiting: thread.runtime?.status === "idle",
       workingSince: resolveThreadWorkingStartedAt(thread),

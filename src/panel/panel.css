@@ -242,6 +242,12 @@
   font-weight: 500;
 }
 
+/* Upstream's Woke, in its warning colour. */
+.pult-card-status-woke {
+  color: var(--vscode-editorWarning-foreground);
+  font-weight: 500;
+}
+
 .pult-card-title {
   margin-top: 3px;
   overflow: hidden;
