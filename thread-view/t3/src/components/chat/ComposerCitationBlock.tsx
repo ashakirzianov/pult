@@ -4,7 +4,7 @@ import {
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
 import type { Editor } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useNavigate } from "@tanstack/react-router";
@@ -39,71 +39,101 @@ function focusCitationComment(view: EditorView, pos: number, edge: Edge): boolea
 }
 
 /**
- * The citation the caret would delete or step into going backward, and its
- * position; `lineAbove` takes the previous line's from anywhere on this one.
+ * The citation the caret at `$pos` would delete or step into going backward,
+ * and its position; `lineAbove` takes the previous line's from anywhere on
+ * this one.
  */
-function citationBehind(view: EditorView, lineAbove = false): number | null {
-  const { $from } = view.state.selection;
-  const before = $from.nodeBefore;
-  if (isCitation(before)) return $from.pos - before.nodeSize;
-  if ($from.depth !== 1 || (!lineAbove && $from.parentOffset !== 0) || $from.index(0) === 0) {
+function citationBehind(view: EditorView, $pos: ResolvedPos, lineAbove = false): number | null {
+  const before = $pos.nodeBefore;
+  if (isCitation(before)) return $pos.pos - before.nodeSize;
+  if ($pos.depth !== 1 || (!lineAbove && $pos.parentOffset !== 0) || $pos.index(0) === 0) {
     return null;
   }
-  const previous = view.state.doc.child($from.index(0) - 1);
+  const previous = view.state.doc.child($pos.index(0) - 1);
   const last = previous.lastChild;
   if (previous.type.name !== "paragraph" || !isCitation(last)) return null;
-  return $from.before(1) - 1 - last.nodeSize;
+  return $pos.before(1) - 1 - last.nodeSize;
 }
 
 /**
- * The citation the caret would delete or step into going forward, and its
- * position; `lineBelow` takes the next line's from anywhere on this one.
+ * The citation the caret at `$pos` would delete or step into going forward,
+ * and its position; `lineBelow` takes the next line's from anywhere on this
+ * one.
  */
-function citationAhead(view: EditorView, lineBelow = false): number | null {
-  const { $from } = view.state.selection;
-  if (isCitation($from.nodeAfter)) return $from.pos;
+function citationAhead(view: EditorView, $pos: ResolvedPos, lineBelow = false): number | null {
+  if (isCitation($pos.nodeAfter)) return $pos.pos;
   const { doc } = view.state;
   if (
-    $from.depth !== 1 ||
-    (!lineBelow && $from.parentOffset !== $from.parent.content.size) ||
-    $from.index(0) >= doc.childCount - 1
+    $pos.depth !== 1 ||
+    (!lineBelow && $pos.parentOffset !== $pos.parent.content.size) ||
+    $pos.index(0) >= doc.childCount - 1
   ) {
     return null;
   }
-  const next = doc.child($from.index(0) + 1);
+  const next = doc.child($pos.index(0) + 1);
   if (next.type.name !== "paragraph" || !isCitation(next.firstChild)) return null;
-  return $from.after(1) + 1;
+  return $pos.after(1) + 1;
 }
 
 /**
- * The editor's side of the block's keys: Backspace and Left (or Up off the
- * first line) into a block enter its comment at the end, Delete and Right (or
- * Down off the last line) at the start. Returns whether it handled the key.
+ * The editor's side of the block's keys. Backspace and Left (or Up from the
+ * line below) into a block enter its comment at the end, Delete and Right (or
+ * Down from the line above) at the start. With Shift, and Option or not, the
+ * same keys extend the selection over the block alone, Option+Up and
+ * Option+Down off a line's edge left to the platform. Returns whether it
+ * handled the key.
  */
 export function enterComposerCitationByKey(view: EditorView, event: KeyboardEvent): boolean {
-  if (
-    event.shiftKey ||
-    event.altKey ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.isComposing ||
-    !view.state.selection.empty
-  ) {
-    return false;
-  }
+  if (event.metaKey || event.ctrlKey || event.isComposing) return false;
+  if (event.shiftKey) return extendOverCitation(view, event);
+  if (event.altKey || !view.state.selection.empty) return false;
+  const { $from } = view.state.selection;
   const target =
     event.key === "Backspace" || event.key === "ArrowLeft"
-      ? { pos: citationBehind(view), edge: "end" as const }
+      ? { pos: citationBehind(view, $from), edge: "end" as const }
       : event.key === "ArrowUp" && view.endOfTextblock("up")
-        ? { pos: citationBehind(view, true), edge: "end" as const }
+        ? { pos: citationBehind(view, $from, true), edge: "end" as const }
         : event.key === "Delete" || event.key === "ArrowRight"
-          ? { pos: citationAhead(view), edge: "start" as const }
+          ? { pos: citationAhead(view, $from), edge: "start" as const }
           : event.key === "ArrowDown" && view.endOfTextblock("down")
-            ? { pos: citationAhead(view, true), edge: "start" as const }
+            ? { pos: citationAhead(view, $from, true), edge: "start" as const }
             : null;
   if (target?.pos == null || !focusCitationComment(view, target.pos, target.edge)) return false;
   event.preventDefault();
   event.stopPropagation();
+  return true;
+}
+
+/** Whether the selection's head is on its line's first or last visual row; the editor's own check reads the selection's start or end. */
+function headOnEdgeLine(view: EditorView, dir: "up" | "down"): boolean {
+  const { state } = view;
+  const collapsed = state.apply(state.tr.setSelection(TextSelection.create(state.doc, state.selection.head)));
+  return view.endOfTextblock(dir, collapsed);
+}
+
+function extendOverCitation(view: EditorView, event: KeyboardEvent): boolean {
+  const { selection, doc } = view.state;
+  const { $head } = selection;
+  // Option+Up and Option+Down first go to the line's start or end.
+  const atLineStart = !event.altKey || $head.parentOffset === 0;
+  const atLineEnd = !event.altKey || $head.parentOffset === $head.parent.content.size;
+  let head: number | null = null;
+  if (event.key === "ArrowLeft") {
+    head = citationBehind(view, $head);
+  } else if (event.key === "ArrowUp" && atLineStart && headOnEdgeLine(view, "up")) {
+    head = citationBehind(view, $head, true);
+  } else if (
+    event.key === "ArrowRight" ||
+    (event.key === "ArrowDown" && atLineEnd && headOnEdgeLine(view, "down"))
+  ) {
+    const pos = citationAhead(view, $head, event.key === "ArrowDown");
+    head = pos === null ? null : pos + doc.nodeAt(pos)!.nodeSize;
+  }
+  if (head === null) return false;
+  event.preventDefault();
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, head)).scrollIntoView(),
+  );
   return true;
 }
 
