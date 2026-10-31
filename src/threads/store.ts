@@ -85,6 +85,13 @@ export interface ThreadState {
   readonly threads: ReadonlyArray<ShellThread>;
   /** Every environment's projects, threads or none: a new thread's draft names its project. */
   readonly projects: ReadonlyArray<ShellProject>;
+  /**
+   * The Settled shelf: how many threads it holds, those the shells leave out
+   * among them, which are read in pages as it shows more
+   * (`showSettledThreads`, `model.ts`); whether a page is on its way, and
+   * whether one failed.
+   */
+  readonly settled: { readonly count: number; readonly loading: boolean; readonly failed: boolean };
 }
 
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
@@ -112,7 +119,7 @@ type Listener = (state: ThreadState) => void;
  * reports of their activity laid over.
  */
 class ThreadStore {
-  private presented: ThreadState = { environments: [], threads: [], projects: [] };
+  private presented: ThreadState = { environments: [], threads: [], projects: [], settled: { count: 0, loading: false, failed: false } };
   private state: ThreadState = this.presented;
   /**
    * Whether threads work, as the mounted thread view knows from its

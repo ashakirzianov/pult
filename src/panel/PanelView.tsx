@@ -1,6 +1,7 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
 import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
 import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
@@ -11,6 +12,7 @@ import {
   scopedKey,
   type ShellThread,
   type ThreadFeatures,
+  type ThreadState,
   threadStore,
 } from "../threads/store.ts";
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
@@ -196,9 +198,9 @@ export function PanelView() {
             {snoozed.map(card)}
           </Shelf>
         ) : null}
-        {settled.length > 0 ? (
-          <Shelf name="settled" label="Settled" threads={settled} selection={selectedCard} render={card}>
-            <SettledTail threads={settled} selection={selectedCard} render={card} />
+        {settled.length > 0 || state.settled.count > 0 ? (
+          <Shelf name="settled" label="Settled" threads={settled} count={state.settled.count} selection={selectedCard} render={card}>
+            <SettledTail threads={settled} shelf={state.settled} selection={selectedCard} render={card} />
           </Shelf>
         ) : null}
       </ul>
@@ -207,8 +209,8 @@ export function PanelView() {
 }
 
 /**
- * A shelf under its collapsible header with its threads' count, Ready's
- * without one: its `lead` (Ready's draft cards) and threads (`children`)
+ * A shelf under its collapsible header with its threads' count (`count`,
+ * where it holds more than it lists), Ready's without one: its `lead` (Ready's draft cards) and threads (`children`)
  * while expanded, and while collapsed the selected card alone, the lead's
  * (`selectedLead`) or one of the threads, as upstream's shelves keep the open thread's row,
  * so a thread selected as it starts working stays in view. Whether it is
@@ -220,6 +222,7 @@ function Shelf({
   name,
   label,
   threads,
+  count = threads.length,
   selection,
   render,
   initiallyExpanded = false,
@@ -230,6 +233,7 @@ function Shelf({
   name: "ready" | "working" | "snoozed" | "settled";
   label: string;
   threads: ReadonlyArray<ShellThread>;
+  count?: number;
   selection: string | undefined;
   render: (thread: ShellThread) => React.ReactNode;
   initiallyExpanded?: boolean;
@@ -241,7 +245,7 @@ function Shelf({
   const selected = expanded ? undefined : threads.find((thread) => keyOf(thread) === selection);
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
-      <CollapsibleHeader label={label} count={name === "ready" ? undefined : threads.length} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      <CollapsibleHeader label={label} count={name === "ready" ? undefined : count} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
       {expanded ? (
         <ul className="pult-shelf-cards">
           {lead}
@@ -256,29 +260,44 @@ function Shelf({
 
 /**
  * The settled shelf's tail: the first few threads, a page more per "Show
- * more", and the selected thread even when it lies beyond.
+ * more", and the selected thread even when it lies beyond. The shelf holds
+ * more than the model lists while the shells leave older settled threads
+ * out: the tail tells the model how many it shows, while it is mounted, and
+ * the model reads them (`showSettledThreads`), the button reading Loading…
+ * meanwhile, or Retry after a failed read.
  */
 function SettledTail({
   threads,
+  shelf,
   selection,
   render,
 }: {
   threads: ReadonlyArray<ShellThread>;
+  shelf: ThreadState["settled"];
   selection: string | undefined;
   render: (thread: ShellThread) => React.ReactNode;
 }) {
   const [count, setCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
+  useEffect(() => {
+    showSettledThreads(count);
+    return () => showSettledThreads(0);
+  }, [count]);
   const visible = threads.slice(0, count);
   const beyond = threads.slice(count).find((thread) => keyOf(thread) === selection);
   if (beyond !== undefined) visible.push(beyond);
-  const hidden = threads.length - visible.length;
+  const hidden = Math.max(threads.length, shelf.count) - visible.length;
   return (
     <>
       {visible.map(render)}
       {hidden > 0 ? (
         <li className="pult-shelf-more">
-          <button type="button" className="pult-panel-button" onClick={() => setCount(count + SETTLED_TAIL_PAGE_COUNT)}>
-            Show {Math.min(hidden, SETTLED_TAIL_PAGE_COUNT)} more
+          <button
+            type="button"
+            className="pult-panel-button"
+            disabled={shelf.loading}
+            onClick={() => (shelf.failed ? retrySettledThreads() : setCount(count + SETTLED_TAIL_PAGE_COUNT))}
+          >
+            {shelf.loading ? "Loading…" : shelf.failed ? "Retry" : `Show ${Math.min(hidden, SETTLED_TAIL_PAGE_COUNT)} more`}
           </button>
         </li>
       ) : null}
