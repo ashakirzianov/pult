@@ -5,7 +5,7 @@ import {
 } from "@t3tools/shared/assistantCitations";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Selection, TextSelection } from "@tiptap/pm/state";
+import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -38,26 +38,34 @@ function focusCitationComment(view: EditorView, pos: number, edge: Edge): boolea
   return true;
 }
 
-/** The citation the caret would delete or step into going backward, and its position. */
-function citationBehind(view: EditorView): number | null {
+/**
+ * The citation the caret would delete or step into going backward, and its
+ * position; `lineAbove` takes the previous line's from anywhere on this one.
+ */
+function citationBehind(view: EditorView, lineAbove = false): number | null {
   const { $from } = view.state.selection;
   const before = $from.nodeBefore;
   if (isCitation(before)) return $from.pos - before.nodeSize;
-  if ($from.depth !== 1 || $from.parentOffset !== 0 || $from.index(0) === 0) return null;
+  if ($from.depth !== 1 || (!lineAbove && $from.parentOffset !== 0) || $from.index(0) === 0) {
+    return null;
+  }
   const previous = view.state.doc.child($from.index(0) - 1);
   const last = previous.lastChild;
   if (previous.type.name !== "paragraph" || !isCitation(last)) return null;
   return $from.before(1) - 1 - last.nodeSize;
 }
 
-/** The citation the caret would delete or step into going forward, and its position. */
-function citationAhead(view: EditorView): number | null {
+/**
+ * The citation the caret would delete or step into going forward, and its
+ * position; `lineBelow` takes the next line's from anywhere on this one.
+ */
+function citationAhead(view: EditorView, lineBelow = false): number | null {
   const { $from } = view.state.selection;
   if (isCitation($from.nodeAfter)) return $from.pos;
   const { doc } = view.state;
   if (
     $from.depth !== 1 ||
-    $from.parentOffset !== $from.parent.content.size ||
+    (!lineBelow && $from.parentOffset !== $from.parent.content.size) ||
     $from.index(0) >= doc.childCount - 1
   ) {
     return null;
@@ -87,16 +95,48 @@ export function enterComposerCitationByKey(view: EditorView, event: KeyboardEven
     event.key === "Backspace" || event.key === "ArrowLeft"
       ? { pos: citationBehind(view), edge: "end" as const }
       : event.key === "ArrowUp" && view.endOfTextblock("up")
-        ? { pos: citationBehind(view), edge: "end" as const }
+        ? { pos: citationBehind(view, true), edge: "end" as const }
         : event.key === "Delete" || event.key === "ArrowRight"
           ? { pos: citationAhead(view), edge: "start" as const }
           : event.key === "ArrowDown" && view.endOfTextblock("down")
-            ? { pos: citationAhead(view), edge: "start" as const }
+            ? { pos: citationAhead(view, true), edge: "start" as const }
             : null;
   if (target?.pos == null || !focusCitationComment(view, target.pos, target.edge)) return false;
   event.preventDefault();
   event.stopPropagation();
   return true;
+}
+
+/**
+ * The block beside a caret the editor cannot draw: at a line's start before a
+ * block, or at its end after one, the line having no text on that side and
+ * the line break ProseMirror would draw it on hidden (`shell.css`). The last
+ * line keeps its break.
+ */
+function citationAtHiddenCaret(view: EditorView): { pos: number; edge: Edge } | null {
+  const { selection, doc } = view.state;
+  const { $from } = selection;
+  if (!selection.empty || $from.depth !== 1) return null;
+  if ($from.parentOffset === 0 && isCitation($from.nodeAfter)) {
+    return { pos: $from.pos, edge: "start" };
+  }
+  const before = $from.nodeBefore;
+  if (
+    isCitation(before) &&
+    $from.parentOffset === $from.parent.content.size &&
+    $from.index(0) < doc.childCount - 1
+  ) {
+    return { pos: $from.pos - before.nodeSize, edge: "end" };
+  }
+  return null;
+}
+
+/** Dispatches a caret move and focuses the editor, or the block's comment where the caret would not show. */
+function placeCaret(view: EditorView, tr: Transaction) {
+  view.dispatch(tr.scrollIntoView());
+  const hidden = citationAtHiddenCaret(view);
+  if (hidden && focusCitationComment(view, hidden.pos, hidden.edge)) return;
+  view.focus();
 }
 
 function findCitation(editor: Editor, citeKey: string) {
@@ -185,12 +225,15 @@ export function ComposerCitationBlock({
     // Without focus the caret is wherever the user put it, mapped past the deletion.
     if (!focus) return void editor.view.dispatch(tr);
     tr.setSelection(Selection.near(tr.doc.resolve(Math.min(from, tr.doc.content.size)), -1));
-    editor.view.dispatch(tr.scrollIntoView());
-    editor.view.focus();
+    placeCaret(editor.view, tr);
   };
 
-  /** Puts the editor's caret before or after the block, off its line when it has one. */
-  const leave = (side: "before" | "after") => {
+  /**
+   * Puts the editor's caret before or after the block, off its line when it
+   * has one; with `newLine`, on an empty line after it, the next line when
+   * that is empty, else a new one.
+   */
+  const leave = (side: "before" | "after", newLine = false) => {
     if (comment.trim() === "") {
       remove(true);
       return;
@@ -198,18 +241,30 @@ export function ComposerCitationBlock({
     const found = findCitation(editor, citeKey);
     if (!found) return;
     const { doc } = editor.state;
+    const tr = editor.state.tr;
     const $pos = doc.resolve(found.pos);
     const end = found.pos + found.node.nodeSize;
-    const selection =
-      side === "before"
-        ? $pos.depth === 1 && found.pos === $pos.start() && $pos.index(0) > 0
+    const lineIndex = $pos.index(0);
+    const atLineEnd = $pos.depth === 1 && end === $pos.end();
+    const next = lineIndex < doc.childCount - 1 ? doc.child(lineIndex + 1) : null;
+    if (side === "before") {
+      tr.setSelection(
+        $pos.depth === 1 && found.pos === $pos.start() && lineIndex > 0
           ? Selection.near(doc.resolve($pos.before(1)), -1)
-          : TextSelection.create(doc, found.pos)
-        : $pos.depth === 1 && end === $pos.end() && $pos.index(0) < doc.childCount - 1
+          : TextSelection.create(doc, found.pos),
+      );
+    } else if (!newLine || $pos.depth !== 1) {
+      tr.setSelection(
+        atLineEnd && next
           ? Selection.near(doc.resolve($pos.after(1)), 1)
-          : TextSelection.create(doc, end);
-    editor.view.dispatch(editor.state.tr.setSelection(selection).scrollIntoView());
-    editor.view.focus();
+          : TextSelection.create(doc, end),
+      );
+    } else if (atLineEnd && next?.type.name === "paragraph" && next.content.size === 0) {
+      tr.setSelection(TextSelection.create(doc, $pos.after(1) + 1));
+    } else {
+      tr.split(end).setSelection(TextSelection.create(tr.doc, end + 2));
+    }
+    placeCaret(editor.view, tr);
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -229,9 +284,8 @@ export function ComposerCitationBlock({
       if (event.key === "Tab") handle(() => leave("before"));
       return;
     }
-    if (event.key === "Enter" || event.key === "Escape" || event.key === "Tab") {
-      return handle(() => leave("after"));
-    }
+    if (event.key === "Enter") return handle(() => leave("after", true));
+    if (event.key === "Escape" || event.key === "Tab") return handle(() => leave("after"));
     if ((event.key === "ArrowLeft" || event.key === "ArrowUp") && atStart) {
       return handle(() => leave("before"));
     }
@@ -246,7 +300,8 @@ export function ComposerCitationBlock({
   };
 
   return (
-    <span className="my-1 flex w-full min-w-0 flex-col gap-0.5 border-l-2 border-border py-0.5 pl-2.5">
+    // Tinted while the caret is elsewhere, plain while its comment is edited.
+    <span className="my-1 flex w-full min-w-0 flex-col gap-0.5 rounded-r-md border-l-2 border-primary bg-primary/8 py-1 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
       <a
         href="#"
         className="line-clamp-3 cursor-pointer whitespace-pre-wrap text-muted-foreground no-underline wrap-break-word hover:text-foreground"
