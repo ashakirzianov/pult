@@ -15,11 +15,11 @@ import {
 } from "../t3/src/hooks/useTheme";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import { routeRightPanel } from "./rightPanel.ts";
-import { type MountedView, mountDraftView, mountThreadView } from "./ThreadView.tsx";
+import { type MountedView, mountComposerView, mountDraftView, mountThreadView, type ViewTarget } from "./ThreadView.tsx";
 
 export type { ThreadViewHost } from "./host.ts";
 export type { ShellConnectionServices } from "./connectionRuntime.ts";
-export type { MountedView } from "./ThreadView.tsx";
+export type { MountedView, ViewTarget } from "./ThreadView.tsx";
 
 export interface ThreadViewMounts {
   /** The thread's turns and composer, on its environment. */
@@ -35,6 +35,8 @@ export interface ThreadViewMounts {
     projectId: string,
     onPromoted: (environmentId: string, threadId: string) => void,
   ): MountedView;
+  /** The composer alone of a thread or a project's draft, for the strip under a file. */
+  mountComposer(element: HTMLElement, target: ViewTarget): MountedView;
 }
 
 /**
@@ -54,5 +56,5 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
-  return { mount: mountThreadView, mountDraft: mountDraftView };
+  return { mount: mountThreadView, mountDraft: mountDraftView, mountComposer: mountComposerView };
 }

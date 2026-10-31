@@ -2702,7 +2702,8 @@ export default function ChatView(props: ChatViewProps) {
     });
   }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
-  usePasteToFocusComposer(activeThreadId, composerRef);
+  // Pult: a background thread's view (the composer under a file) leaves paste-to-focus to the pane's.
+  usePasteToFocusComposer(backgroundThread ? null : activeThreadId, composerRef);
   const {
     onConfirmRevertStable,
     onForkFromRunStable,

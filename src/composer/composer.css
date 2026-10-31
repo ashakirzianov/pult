@@ -1,0 +1,52 @@
+/* The composer strip under a file (`index.tsx`): the composer-only view,
+   on the thread view's canvas, sized to its content. */
+.pult-composer-strip {
+  position: relative;
+  height: 100%;
+}
+
+.pult-composer-strip-content {
+  height: 100%;
+  overflow: hidden;
+}
+
+.pult-composer-strip-view {
+  height: 100%;
+}
+
+/* The composer alone: the view's turns, and anything else on its canvas,
+   stay mounted behind it, hidden. */
+.pult-composer-only [data-chat-canvas="true"] > :not([data-chat-composer-overlay]) {
+  visibility: hidden;
+}
+
+/* The file fades into the composer as into the status strip, which lets
+   its own fade go while the composer shows (`src/status/status.css`, the
+   same stops). The grid's cell clips its view, so the strip's is let
+   overflow. */
+.monaco-workbench .split-view-view:has(> .pult-composer-strip) {
+  overflow: visible;
+}
+
+.monaco-workbench .split-view-view.visible:has(> .pult-composer-strip) ~ .split-view-view > .pult-status-strip::before {
+  display: none;
+}
+
+.pult-composer-strip::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: 1.5rem;
+  background: linear-gradient(
+    to top,
+    var(--vscode-editor-background) 0%,
+    color-mix(in srgb, var(--vscode-editor-background) 90%, transparent) 10%,
+    color-mix(in srgb, var(--vscode-editor-background) 70%, transparent) 24%,
+    color-mix(in srgb, var(--vscode-editor-background) 42%, transparent) 42%,
+    color-mix(in srgb, var(--vscode-editor-background) 18%, transparent) 62%,
+    color-mix(in srgb, var(--vscode-editor-background) 4%, transparent) 82%,
+    transparent 100%
+  );
+  pointer-events: none;
+}

@@ -1,6 +1,8 @@
 // The projects' drafts the shell remembers, for the left panel's cards: the
 // composer store's, which the panel reaches through this module alone, so it
 // need not load the whole view.
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 import { composerDraftHasUserContent, type DraftId, useComposerDraftStore } from "../t3/src/composerDraftStore";
@@ -85,3 +87,23 @@ export const projectDrafts = {
     };
   },
 };
+
+/** A composer the shell shows: a thread's, or a project's draft's. */
+export type ComposerTarget =
+  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
+  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+
+/** Whether the composer of a thread or of a project's draft holds anything the user wrote or attached, for the status strip's composer entry. */
+export function composerHasContent(target: ComposerTarget): boolean {
+  const key =
+    target.kind === "thread"
+      ? scopeThreadRef(EnvironmentId.make(target.environmentId), ThreadId.make(target.threadId))
+      : heldDraft(target.environmentId, target.projectId);
+  const composer = key === null ? null : useComposerDraftStore.getState().getComposerDraft(key);
+  return composer !== null && composerDraftHasUserContent(composer);
+}
+
+/** Calls `listener` on every change of the composer store. */
+export function onDidChangeComposers(listener: () => void): () => void {
+  return useComposerDraftStore.subscribe(listener);
+}

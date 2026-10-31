@@ -62,7 +62,7 @@ function run(command: string, ...args: unknown[]): void {
  * (`src/changes/`), the Source Control view. A view that fails to load fails with a
  * message the pane shows, and the next pane tries again.
  */
-function threadView() {
+export function threadView() {
   started ??= (async () => {
     const [view, scheme] = await Promise.all([import("../../thread-view/shell/main.tsx"), workbenchColorScheme()]);
     return view.startThreadView({

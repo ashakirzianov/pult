@@ -15,6 +15,7 @@ import { DateTime } from "effect";
 import { type ReactNode, StrictMode, useEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
+import { BackgroundThreadContext } from "../t3/src/components/chat/backgroundThread";
 import { ComposerControlsSlot } from "../t3/src/components/chat/ComposerFooterControls";
 import { ConfirmDialogHost } from "../t3/src/components/ConfirmDialogHost";
 import { CustomSnoozeDialogHost } from "../t3/src/components/CustomSnoozeDialog";
@@ -191,7 +192,7 @@ function useTarget(mount: Mount): ViewTarget {
   return useSyncExternalStore(mount.subscribe, mount.target);
 }
 
-function makeRoot(mount: Mount) {
+function makeRoot(mount: Mount, composerOnly: boolean) {
   function NavigationFollower() {
     const router = useRouter();
     useEffect(
@@ -202,20 +203,23 @@ function makeRoot(mount: Mount) {
   }
   return function Root() {
     const target = useTarget(mount);
+    // A composer-only mount leaves the page-wide shortcuts and the activity to the pane's view, as upstream's background thread does.
     return (
-      <ToastProvider>
-        <AnchoredToastProvider>
-          <NavigationFollower />
-          {target.kind !== "thread" ? null : (
-            <ActivityReporter environmentId={target.environmentId} threadId={target.threadId} />
-          )}
-          <ConfirmDialogHost />
-          <CustomSnoozeDialogHost />
-          <SidebarProvider defaultOpen={false}>
-            <Outlet />
-          </SidebarProvider>
-        </AnchoredToastProvider>
-      </ToastProvider>
+      <BackgroundThreadContext value={composerOnly}>
+        <ToastProvider>
+          <AnchoredToastProvider>
+            <NavigationFollower />
+            {target.kind !== "thread" || composerOnly ? null : (
+              <ActivityReporter environmentId={target.environmentId} threadId={target.threadId} />
+            )}
+            <ConfirmDialogHost />
+            <CustomSnoozeDialogHost />
+            <SidebarProvider defaultOpen={false}>
+              <Outlet />
+            </SidebarProvider>
+          </AnchoredToastProvider>
+        </ToastProvider>
+      </BackgroundThreadContext>
     );
   };
 }
@@ -280,14 +284,16 @@ function mountView(
   element: HTMLElement,
   target: ViewTarget,
   onPromoted: (environmentId: string, threadId: string) => void,
+  composerOnly = false,
 ): MountedView {
   const mount = makeMount(target, onPromoted);
   const router = makeThreadRouter({
-    root: makeRoot(mount),
+    root: makeRoot(mount, composerOnly),
     landing: makeLanding(mount),
     initialPath: mount.home(),
   });
   element.classList.add("pult-thread-view");
+  element.classList.toggle("pult-composer-only", composerOnly);
   const main = document.createElement("div");
   main.className = "pult-thread-main";
   const bar = document.createElement("div");
@@ -333,3 +339,16 @@ export function mountDraftView(
 ): MountedView {
   return mountView(element, { kind: "draft", environmentId, projectId }, onPromoted);
 }
+
+/**
+ * The composer alone of a thread or a project's draft, the same draft the
+ * pane's view shows, for the strip under a file (`src/composer/`): the view
+ * mounted again with its turns hidden (`shell.css`), leaving the page-wide
+ * shortcuts and paste to the pane's. A draft's promotion is the pane's to
+ * tell the shell.
+ */
+export function mountComposerView(element: HTMLElement, target: ViewTarget): MountedView {
+  return mountView(element, target, () => {}, true);
+}
+
+export type { ViewTarget };

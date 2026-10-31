@@ -39,6 +39,7 @@ import { registerThreadPane } from "./threads/pane.tsx";
 import { registerParkCommands } from "./threads/park.ts";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
 import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
+import { registerComposerCommands, startComposerStrip } from "./composer/index.tsx";
 import { registerStatusCommands, startStatusBar } from "./status/index.tsx";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { syncColorScheme } from "./theme.ts";
@@ -66,6 +67,7 @@ registerSettingsPane();
 registerColorSchemeCommand();
 registerMode();
 registerStatusCommands();
+registerComposerCommands();
 registerSelectThreadCommand();
 registerParkCommands();
 registerChanges();
@@ -114,6 +116,7 @@ await initialize(workbenchServices(), container, options, {
 await syncColorScheme();
 await startMode();
 await startStatusBar();
+await startComposerStrip();
 await startPanelRows();
 await restoreThreadSelection();
 

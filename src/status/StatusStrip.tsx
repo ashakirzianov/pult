@@ -1,6 +1,7 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useSyncExternalStore } from "react";
 
+import { composerStrip } from "../composer/index.tsx";
 import type { FileStatusStore } from "./status.ts";
 
 function run(command: string): void {
@@ -14,15 +15,29 @@ function run(command: string): void {
  * size, opening Go to Line; the language, opening VS Code's language
  * picker; and rightmost "more", a popover of the stock status bar's other
  * entries (`index.tsx`). Each entry runs the command its stock twin runs.
+ * First, the composer's entry (`src/composer/`): "Composer", marked while the
+ * selected thread's or draft's composer holds anything, showing it under the
+ * file, or "Hide composer" while it shows.
  */
 export function StatusStrip({ status, onMore }: { status: FileStatusStore; onMore: (anchor: HTMLElement) => void }) {
   const file = useSyncExternalStore(status.subscribe, status.get);
+  const composer = useSyncExternalStore(composerStrip.subscribe, composerStrip.get);
   const position =
     file.line === null || file.column === null
       ? null
       : `Ln ${file.line}, Col ${file.column}${file.selected > 0 ? ` (${file.selected} selected)` : ""}`;
   return (
     <>
+      <button
+        type="button"
+        className="pult-bar-entry pult-status-entry"
+        title={composer.open ? "Hide the composer" : composer.filled ? "Show the composer, which holds a draft" : "Show the composer"}
+        onClick={() => run(composer.open ? "pult-shell.hideComposer" : "pult-shell.showComposer")}
+      >
+        <span className="codicon codicon-comment" aria-hidden />
+        {composer.open ? "Hide composer" : "Composer"}
+        {composer.filled && !composer.open ? <span className="pult-status-dot" aria-label="holds a draft" /> : null}
+      </button>
       {file.errors > 0 || file.warnings > 0 ? (
         <button
           type="button"

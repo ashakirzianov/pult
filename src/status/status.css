@@ -122,3 +122,11 @@
   padding: 4px 10px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* The composer entry's mark while the closed composer holds a draft. */
+.pult-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vscode-activityBarBadge-background);
+}
