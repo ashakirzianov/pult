@@ -4,7 +4,6 @@ import {
   IContextKeyService,
   type IEditorGroup,
   IEditorGroupsService,
-  IFileService,
   IInstantiationService,
   INotificationService,
   IQuickInputService,
@@ -16,10 +15,8 @@ import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
-import { ConfirmResult } from "@codingame/monaco-vscode-api/vscode/vs/platform/dialogs/common/dialogs";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
-import type { IEditorCloseHandler } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor/editorInput";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
@@ -273,9 +270,9 @@ async function switchTo(next: Selection): Promise<void> {
     if (selected !== undefined && workingSetName(selected) !== workingSetName(next)) {
       deleteWorkingSet(groups, selected);
       groups.saveWorkingSet(workingSetName(selected));
-      const restoreCloseHandlers = await closeModifiedFilesSilently();
+      if (!(await closeModifiedTabs())) return;
       const saved = groups.getWorkingSets().find((set) => set.name === workingSetName(next));
-      await groups.applyWorkingSet(saved ?? "empty", { preserveFocus: true }).finally(restoreCloseHandlers);
+      await groups.applyWorkingSet(saved ?? "empty", { preserveFocus: true });
     }
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
@@ -289,26 +286,19 @@ async function switchTo(next: Selection): Promise<void> {
   void storage.flush();
 
   /**
-   * Lets the tabs of modified files close without asking, as the working
-   * set's apply closes every tab: it keeps those that would ask, and they
-   * would follow the switch into the next selection. A file's model stays
-   * modified with its tab closed (the text file service keeps a modified
-   * model alive), and the saved working set reopens a tab on it. Given an
-   * editor input's close handler, which the workbench asks before its own
-   * dirty check, for the switch; returns what takes it back off a tab that
-   * stayed open.
+   * Closes the tabs of modified files, each through the workbench's own Save,
+   * Don't Save or Cancel: the working set's apply keeps every tab that would
+   * ask, and they would follow the switch into the next selection. False
+   * when one is cancelled, which cancels the switch; the working set saved
+   * just before still holds the tabs, so the selection's own come back
+   * when it is selected again.
    */
-  async function closeModifiedFilesSilently(): Promise<() => void> {
-    const files = await getService(IFileService);
-    const modified = groups
-      .getGroups(GroupsOrder.GRID_APPEARANCE)
-      .flatMap((group) => group.editors)
-      .filter((editor) => editor.isDirty() && editor.closeHandler === undefined && editor.resource !== undefined && files.hasProvider(editor.resource));
-    const handler: IEditorCloseHandler = { showConfirm: () => false, confirm: async () => ConfirmResult.CANCEL };
-    for (const editor of modified) Object.assign(editor, { closeHandler: handler });
-    return () => {
-      for (const editor of modified) if (editor.closeHandler === handler) Object.assign(editor, { closeHandler: undefined });
-    };
+  async function closeModifiedTabs(): Promise<boolean> {
+    for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
+      const modified = group.editors.filter((editor) => editor.isDirty());
+      if (modified.length > 0 && !(await group.closeEditors(modified))) return false;
+    }
+    return true;
   }
 
   /** The thread's or draft's tab in the first group, leftmost; other threads' and drafts' tabs leave, all of them for the Explorer workspace. */
