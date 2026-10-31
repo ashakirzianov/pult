@@ -8,6 +8,7 @@ import { IHoverService } from "@codingame/monaco-vscode-api/vscode/vs/platform/h
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import { createRoot } from "react-dom/client";
 
+import { composerStrip } from "../composer/index.tsx";
 import { modeChoice } from "../mode.ts";
 import { isShellTab } from "../threads/pane.tsx";
 import { isSwitchingThread, onDidSelectThread } from "../threads/selection.ts";
@@ -157,7 +158,8 @@ export async function startStatusBar(): Promise<void> {
     const active = editors.activeEditor;
     const file = active !== undefined && !isShellTab(active);
     const stock = file && mode.current() === "vscode";
-    workbenchGrid.setViewVisible(strip, file && !stock);
+    // The composer under a file brings its own bar, which stands in for the strip.
+    workbenchGrid.setViewVisible(strip, file && !stock && !composerStrip.get().shown);
     if (configuration.getValue(STATUS_BAR_VISIBLE) !== stock) {
       void configuration.updateValue(STATUS_BAR_VISIBLE, stock, ConfigurationTarget.MEMORY);
     }
@@ -166,6 +168,7 @@ export async function startStatusBar(): Promise<void> {
   editors.onDidEditorsChange(update);
   onDidSelectThread(update);
   mode.onDidChange(update);
+  composerStrip.subscribe(update);
   update();
 }
 

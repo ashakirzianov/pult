@@ -17,7 +17,7 @@ function showHover(target: HTMLElement, content: string) {
 }
 
 /** Hover and click both show the entry's hover, so a keyboard or a touch reaches it too. */
-const hoverProps = (content: string) => ({
+export const hoverProps = (content: string) => ({
   "aria-label": content,
   onMouseEnter: (event: MouseEvent<HTMLElement>) => showHover(event.currentTarget, content),
   onFocus: (event: FocusEvent<HTMLElement>) => showHover(event.currentTarget, content),

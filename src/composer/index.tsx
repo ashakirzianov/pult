@@ -4,9 +4,11 @@ import { Emitter } from "@codingame/monaco-vscode-api/vscode/vs/base/common/even
 import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
+import { createRoot } from "react-dom/client";
 
 import type { MountedView, ViewTarget } from "../../thread-view/shell/main.tsx";
 import { connection } from "../connection/connection.ts";
+import { hoverProps } from "../threads/barEntries.tsx";
 import { isShellTab, threadView } from "../threads/pane.tsx";
 import { isSwitchingThread, onDidSelectThread, selectedDraft, selectedThread } from "../threads/selection.ts";
 import "./composer.css";
@@ -28,16 +30,19 @@ interface LayoutGrid {
 
 /**
  * The composer strip's state: one switch for the page, open or closed, while
- * open shown under any file of the selected thread or draft; and whether that
- * composer holds anything, which the status strip's entry marks while the
- * strip is closed.
+ * open shown under any file of the selected thread or draft; whether a
+ * thread or draft is selected, whose composer there is to show; whether it
+ * shows now, when the status strip gives way to the composer's own bar; and
+ * whether that composer holds anything, which the status strip's entry marks.
  */
 interface ComposerState {
   readonly open: boolean;
+  readonly available: boolean;
+  readonly shown: boolean;
   readonly filled: boolean;
 }
 
-let state: ComposerState = { open: false, filled: false };
+let state: ComposerState = { open: false, available: false, shown: false, filled: false };
 const onDidChangeState = new Emitter<void>();
 const setState = (next: Partial<ComposerState>) => {
   if (Object.entries(next).every(([key, value]) => state[key as keyof ComposerState] === value)) return;
@@ -172,7 +177,15 @@ export async function startComposerStrip(): Promise<void> {
     void threadView().then(
       (mounts) => {
         if (current.disposed) return;
-        current.view = mounts.mountComposer(host, target);
+        const view = mounts.mountComposer(host, target);
+        const removeClose = addCloseEntry(view.bar);
+        current.view = {
+          bar: view.bar,
+          dispose: () => {
+            removeClose();
+            view.dispose();
+          },
+        };
       },
       (error: unknown) => console.error("[pult-shell] the composer strip did not start", error),
     );
@@ -190,6 +203,7 @@ export async function startComposerStrip(): Promise<void> {
     // A selection the strip no longer shows lets its composer go; the next one mounts when shown.
     if (!sameTarget(mounted?.target ?? null, target)) unmount();
     workbenchGrid.setViewVisible(strip.view, visible);
+    setState({ available: target !== null, shown: visible });
   };
   editors.onDidActiveEditorChange(update);
   editors.onDidEditorsChange(update);
@@ -198,6 +212,25 @@ export async function startComposerStrip(): Promise<void> {
   connection.onDidChange(update);
   update();
   followFilled();
+}
+
+/**
+ * The composer's bar stands in for the status strip under a file, so it
+ * leads with the strip's way out: an X hiding the composer, which the bar
+ * orders first (`composer.css`).
+ */
+function addCloseEntry(bar: HTMLElement): () => void {
+  const entry = document.createElement("div");
+  entry.dataset.chatComposerSlotItem = "close";
+  entry.className = "pult-bar-entries";
+  bar.append(entry);
+  const root = createRoot(entry);
+  root.render(
+    <button type="button" className="pult-bar-entry pult-bar-button" {...hoverProps("Hide composer")} onClick={() => composerStrip.setOpen(false)}>
+      <i className="codicon codicon-close" aria-hidden />
+    </button>,
+  );
+  return () => root.unmount();
 }
 
 /** The palette's Show Composer and Hide Composer, each offered while it would change something. Registered before the workbench starts. */

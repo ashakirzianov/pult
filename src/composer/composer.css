@@ -50,3 +50,9 @@
   );
   pointer-events: none;
 }
+
+/* Its bar stands in for the status strip, and leads with the X that hides
+   it (`index.tsx`). */
+.pult-composer-only .pult-composer-bar > [data-chat-composer-slot-item="close"] {
+  order: -1;
+}
