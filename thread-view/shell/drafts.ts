@@ -93,12 +93,16 @@ export type ComposerTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
+/** The composer store's key for a thread's composer, or a project's draft's while the store holds it. */
+export function composerKey(target: ComposerTarget) {
+  return target.kind === "thread"
+    ? scopeThreadRef(EnvironmentId.make(target.environmentId), ThreadId.make(target.threadId))
+    : heldDraft(target.environmentId, target.projectId);
+}
+
 /** Whether the composer of a thread or of a project's draft holds anything the user wrote or attached, for the status strip's composer entry. */
 export function composerHasContent(target: ComposerTarget): boolean {
-  const key =
-    target.kind === "thread"
-      ? scopeThreadRef(EnvironmentId.make(target.environmentId), ThreadId.make(target.threadId))
-      : heldDraft(target.environmentId, target.projectId);
+  const key = composerKey(target);
   const composer = key === null ? null : useComposerDraftStore.getState().getComposerDraft(key);
   return composer !== null && composerDraftHasUserContent(composer);
 }

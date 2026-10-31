@@ -17,6 +17,9 @@ const HIDE_COMPOSER = "pult-shell.hideComposer";
 /** `pult.composerOpen`: whether the composer strip is open, shown under a file or not. */
 const ComposerOpenContext = new RawContextKey<boolean>("pult.composerOpen", false);
 
+/** `pult.hasComposer`: whether a thread or a project's draft is selected, whose composer the strip shows and Cite cites into. */
+export const HasComposerContext = new RawContextKey<boolean>("pult.hasComposer", false);
+
 /** The layout's grid and its editor part's view, as `src/status/` reaches them. */
 interface LayoutGrid {
   readonly workbenchGrid: Grid<IView>;
@@ -70,7 +73,7 @@ function followFilled(): void {
 }
 
 /** The selected thread or draft, on the environment the page holds it by, which the strip's composer is. */
-function selectedTarget(): ViewTarget | null {
+export function selectedTarget(): ViewTarget | null {
   const thread = selectedThread();
   const draft = selectedDraft();
   const environmentId = connection.environment((thread ?? draft)?.environmentId ?? "")?.environmentId;
@@ -146,6 +149,7 @@ export async function startComposerStrip(): Promise<void> {
   if (workbenchGrid === undefined || editorPartView === undefined) return;
 
   const openKey = ComposerOpenContext.bindTo(contextKeys);
+  const hasComposerKey = HasComposerContext.bindTo(contextKeys);
   const strip = stripView();
   workbenchGrid.addView(strip.view, strip.view.minimumHeight, editorPartView, Direction.Down);
   workbenchGrid.setViewVisible(strip.view, false);
@@ -180,6 +184,7 @@ export async function startComposerStrip(): Promise<void> {
     openKey.set(open);
     const active = editors.activeEditor;
     const target = selectedTarget();
+    hasComposerKey.set(target !== null);
     const visible = open && target !== null && active !== undefined && !isShellTab(active);
     if (visible && !sameTarget(mounted?.target ?? null, target)) mount(target);
     // A selection the strip no longer shows lets its composer go; the next one mounts when shown.
