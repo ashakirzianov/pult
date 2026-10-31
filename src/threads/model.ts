@@ -14,8 +14,9 @@ import { connection, environmentName } from "../connection/index.ts";
 import { type EnvironmentShell, nextWake, NO_THREAD_FEATURES, shellProject, shellThreads } from "./presentation.ts";
 import { type ThreadFeatures, threadStore } from "./store.ts";
 
-// The longest delay `setTimeout` keeps; a later wake is waited for in steps.
-const MAX_TIMER_MS = 2 ** 31 - 1;
+// The longest a wake waits between checks of the clock: a timer's clock stops while the machine sleeps, so a wake due
+// during sleep would otherwise wait out its whole delay after it.
+const WAKE_CHECK_MS = 60_000;
 
 /** An environment the model follows: its last snapshot, presented, the features its server advertises, and what stops following it. */
 interface Followed {
@@ -161,7 +162,11 @@ class ThreadsModel {
     clearTimeout(this.wakeTimer);
     const wake = nextWake(threads, Date.now());
     if (wake === null) return;
-    this.wakeTimer = setTimeout(() => this.publish(), Math.min(wake - Date.now() + 1, MAX_TIMER_MS));
+    const check = () => {
+      if (Date.now() >= wake) this.publish();
+      else this.wakeTimer = setTimeout(check, Math.min(wake - Date.now() + 1, WAKE_CHECK_MS));
+    };
+    check();
   }
 }
 
