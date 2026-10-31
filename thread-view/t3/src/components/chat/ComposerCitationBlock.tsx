@@ -118,7 +118,6 @@ export function ComposerCitationBlock({
   citeKey,
   focusRequested,
   onFocusHandled,
-  onSubmitAndSend,
 }: {
   editor: Editor;
   citation: AssistantCitation;
@@ -126,7 +125,6 @@ export function ComposerCitationBlock({
   /** Set when the citation was just inserted: the field takes focus once. */
   focusRequested: boolean;
   onFocusHandled: () => void;
-  onSubmitAndSend: () => void;
 }) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -227,16 +225,13 @@ export function ComposerCitationBlock({
       action();
     };
     if (event.altKey) return;
-    if (event.key === "Enter" && !event.shiftKey) {
-      return handle(() => {
-        if (!tooLong) onSubmitAndSend();
-      });
-    }
     if (event.shiftKey) {
       if (event.key === "Tab") handle(() => leave("before"));
       return;
     }
-    if (event.key === "Escape" || event.key === "Tab") return handle(() => leave("after"));
+    if (event.key === "Enter" || event.key === "Escape" || event.key === "Tab") {
+      return handle(() => leave("after"));
+    }
     if ((event.key === "ArrowLeft" || event.key === "ArrowUp") && atStart) {
       return handle(() => leave("before"));
     }

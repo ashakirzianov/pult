@@ -406,7 +406,6 @@ function ComposerCitationNodeView({ node, editor }: NodeViewProps) {
         citeKey={citeKey}
         focusRequested={commentContext.openComment?.key === citeKey}
         onFocusHandled={() => commentContext.onOpenChange(citeKey, false)}
-        onSubmitAndSend={commentContext.onSubmitAndSend}
       />
     </NodeViewWrapper>
   );
