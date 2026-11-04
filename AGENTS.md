@@ -12,7 +12,7 @@ This repository is the **Pult track**'s (xaxis `pult/about`), beside `../pult-st
 ## Where code lives
 
 - `apps/pult`: the shell, a Vite page on VS Code's workbench with upstream's thread view built in; its map and its own conventions are `apps/pult/AGENTS.md`. `apps/pult/view` is the app around the thread view, `apps/pult/desktop` the Electron wrapper.
-- `apps/web`: upstream's web app, which is also the shell's thread view, built in place by the shell's Vite. Pult's hook points in it are slots and contexts that leave it upstream's without them, each commented at the hook with Pult's use.
+- `apps/web`: upstream's web app, which is also the shell's thread view, built in place by the shell's Vite. Changes to it are ours to make, kept small and local so upstream merges stay easy, and they may change the fork's own web app; one that makes sense only for the shell is a slot or context there. Each is commented with Pult's use; `git diff upstream/main...HEAD --stat -- apps/web` lists them.
 - `apps/server`: upstream's server with the fork's changes: the plugin loader and the plugin host entry (`src/pluginHost.ts`; the contract is `docs/internals/plugins.md`, the reference plugin `examples/plugins/hello`), and the RPCs Pult needs.
 - `packages/*`: upstream's packages, `contracts`, `client-runtime`, `shared` and the rest; the shell depends on them as `workspace:*`.
 - `apps/desktop`, `apps/mobile`, `apps/marketing`, `infra/`: upstream's.

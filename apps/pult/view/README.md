@@ -6,4 +6,4 @@ Upstream's thread view (turns and composer), which the thread pane mounts in the
 - `stubs.ts` maps the `apps/web` modules our files replace; the build resolves every import of one to ours, and `apps/web` keeps the original, so it still typechecks.
 - `tailwind.css` is `apps/web`'s stylesheet with `apps/web/src` added to Tailwind's sources.
 
-What the pane needs from the app around the view goes here, or in a stub. When neither can do it, add a hook point to `apps/web`: a slot or context that leaves the fork's own web app upstream's without it, committed with its reason and a comment at the hook naming Pult's use, so git carries it through upstream's merges.
+What the pane needs from the app around the view goes here, or in a stub. When neither can do it, change `apps/web`: small and local so upstream merges stay easy, a slot or context where the change makes sense only for the shell, committed with its reason and a comment naming Pult's use, so git carries it through upstream's merges. It may change the fork's own web app too.
