@@ -640,6 +640,25 @@ export default defineConfig({
           "t3code/no-mobile-uniwind-theme-escape-hatches": ["error", { allowUniwindTheme: true }],
         },
       },
+      {
+        // Pult's shell lives in VS Code's workbench, with its tooltips, and its comments say how a thing is used.
+        files: ["apps/pult/**"],
+        rules: { "t3code/no-low-value-comments": "off", "t3code/no-native-title-tooltip": "off" },
+      },
+      {
+        // The shell's own React is not built with the React Compiler, unlike the view's.
+        files: ["apps/pult/src/**"],
+        rules: {
+          "react/refs": "off",
+          "react/no-unstable-nested-components": "off",
+          "react/exhaustive-effect-dependencies": "off",
+        },
+      },
+      {
+        // Pult's desktop wrapper is plain Electron, with no Effect runtime.
+        files: ["apps/pult/desktop/**"],
+        rules: { "t3code/no-global-process-runtime": "off" },
+      },
     ],
     options: {
       reportUnusedDisableDirectives: "error",
