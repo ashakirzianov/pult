@@ -6,7 +6,7 @@
 // scrolls with the mouse over the element; `wait:<ms>`;
 // `shot:<path>` saves a screenshot. The browser profile persists in
 // `.playwright/`, so user data (IndexedDB) and the connection survive runs.
-import * as path from "node:path";
+import * as NodePath from "node:path";
 import { chromium } from "playwright";
 
 const args = process.argv.slice(2);
@@ -17,7 +17,7 @@ const option = (name: string, fallback: string) => {
 const url = option("--url", "http://localhost:5190/");
 const width = Number(option("--width", "1440"));
 const height = Number(option("--height", "900"));
-const profile = option("--profile", path.join(import.meta.dirname, "../.playwright"));
+const profile = option("--profile", NodePath.join(import.meta.dirname, "../.playwright"));
 
 const context = await chromium.launchPersistentContext(profile, {
   headless: true,

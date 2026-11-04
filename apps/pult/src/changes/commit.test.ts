@@ -1,6 +1,6 @@
 // Run with `node --test src/changes/commit.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import type { GitActionProgressEvent } from "@t3tools/contracts";
 
@@ -13,19 +13,19 @@ const follow = (events: ReadonlyArray<Record<string, unknown>>) =>
     COMMIT_STARTED,
   );
 
-describe("commitProgress", () => {
-  test("reads the server's phase, a hook while it runs, then the phase again", () => {
+NodeTest.describe("commitProgress", () => {
+  NodeTest.test("reads the server's phase, a hook while it runs, then the phase again", () => {
     const generating = follow([
       { kind: "action_started", phases: ["commit"] },
       { kind: "phase_started", phase: "commit", label: "Generating commit message..." },
     ]);
-    assert.equal(generating.label, "Generating commit message…");
+    NodeAssert.equal(generating.label, "Generating commit message…");
     const hook = commitProgress(generating, {
       ...base,
       kind: "hook_started",
       hookName: "pre-commit",
     });
-    assert.equal(hook.label, "Running pre-commit…");
+    NodeAssert.equal(hook.label, "Running pre-commit…");
     const after = commitProgress(hook, {
       ...base,
       kind: "hook_finished",
@@ -33,12 +33,12 @@ describe("commitProgress", () => {
       exitCode: 0,
       durationMs: 10,
     });
-    assert.equal(after.label, "Generating commit message…");
+    NodeAssert.equal(after.label, "Generating commit message…");
   });
 });
 
-describe("commitFailure", () => {
-  test("the server's message, then a failed hook's last line", () => {
+NodeTest.describe("commitFailure", () => {
+  NodeTest.test("the server's message, then a failed hook's last line", () => {
     const progress = follow([
       { kind: "phase_started", phase: "commit", label: "Committing..." },
       { kind: "hook_started", hookName: "pre-commit" },
@@ -46,20 +46,26 @@ describe("commitFailure", () => {
       { kind: "hook_finished", hookName: "pre-commit", exitCode: 1, durationMs: 10 },
       { kind: "action_failed", phase: "commit", message: "Git commit failed." },
     ]);
-    assert.equal(
+    NodeAssert.equal(
       commitFailure(progress, new Error("Source control action failed.")),
       "Git commit failed. lint: 2 errors",
     );
   });
 
-  test("the stream's error without one, and a line the message holds already left out", () => {
-    const progress = follow([
-      { kind: "hook_output", hookName: null, stream: "stderr", text: "fatal: no identity" },
-    ]);
-    assert.equal(
-      commitFailure(progress, new Error("commit: fatal: no identity")),
-      "commit: fatal: no identity",
-    );
-    assert.equal(commitFailure(COMMIT_STARTED, new Error("Socket closed.")), "Socket closed.");
-  });
+  NodeTest.test(
+    "the stream's error without one, and a line the message holds already left out",
+    () => {
+      const progress = follow([
+        { kind: "hook_output", hookName: null, stream: "stderr", text: "fatal: no identity" },
+      ]);
+      NodeAssert.equal(
+        commitFailure(progress, new Error("commit: fatal: no identity")),
+        "commit: fatal: no identity",
+      );
+      NodeAssert.equal(
+        commitFailure(COMMIT_STARTED, new Error("Socket closed.")),
+        "Socket closed.",
+      );
+    },
+  );
 });

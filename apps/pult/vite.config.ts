@@ -1,5 +1,5 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -7,15 +7,15 @@ import { STUBS } from "./view/stubs.ts";
 
 // The thread view: upstream's web app, `apps/web`, built in place, and the files
 // of ours around it in `view/`.
-const view = path.join(import.meta.dirname, "view");
-const webSource = path.join(import.meta.dirname, "../web/src");
+const view = NodePath.join(import.meta.dirname, "view");
+const webSource = NodePath.join(import.meta.dirname, "../web/src");
 
 /** Resolves an import of a stubbed upstream module in `apps/web` to its replacement (`view/stubs.ts`). */
 function threadViewStubs(): Plugin {
   const replacements = new Map(
     Object.entries(STUBS).map(([upstream, ours]) => [
-      path.join(import.meta.dirname, upstream),
-      path.join(import.meta.dirname, ours),
+      NodePath.join(import.meta.dirname, upstream),
+      NodePath.join(import.meta.dirname, ours),
     ]),
   );
   return {
@@ -40,7 +40,7 @@ function threadViewRelease(): Plugin {
     transform: {
       filter: { code: { include: ["import.meta.env.DEV"] } },
       handler: (code, id) =>
-        id.startsWith(webSource + path.sep)
+        id.startsWith(webSource + NodePath.sep)
           ? code.replaceAll("import.meta.env.DEV", "false")
           : null,
     },
@@ -53,7 +53,10 @@ function threadViewRelease(): Plugin {
  * like with like.
  */
 const appVersion: string = JSON.parse(
-  fs.readFileSync(path.join(import.meta.dirname, "../../packages/contracts/package.json"), "utf8"),
+  NodeFS.readFileSync(
+    NodePath.join(import.meta.dirname, "../../packages/contracts/package.json"),
+    "utf8",
+  ),
 ).version;
 
 // The fork's build-time configuration for its web app, all of it off: no T3 Connect, no hosted app.
@@ -82,7 +85,7 @@ export default defineConfig({
     threadViewStubs(),
     threadViewRelease(),
     // The view is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
-    react({ compiler: { sources: [webSource + path.sep, view + path.sep] } }),
+    react({ compiler: { sources: [webSource + NodePath.sep, view + NodePath.sep] } }),
     tailwindcss(),
     {
       // The vendored workbench imports its CSS as strings and injects it itself.

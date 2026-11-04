@@ -1,6 +1,6 @@
 // Run with `node --test src/stars/history.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import {
   MessageId,
@@ -101,40 +101,43 @@ function longConversation(count: number): OrchestrationV2ThreadProjection {
   };
 }
 
-describe("decodeThreadSnapshot", () => {
-  test("reads the whole projection as the server's HTTP API sends it, every turn into the transcript", () => {
-    const wire = JSON.parse(
-      JSON.stringify(
-        Schema.encodeSync(Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot))({
-          snapshotSequence: 7,
-          projection: longConversation(14),
-        }),
-      ),
-    );
-    const transcript = parseTranscript(
-      formatTranscript(decodeThreadSnapshot(wire).projection, "MacBook") ?? "",
-    );
-    assert.equal(transcript?.partial, false);
-    assert.equal(transcript?.entries.length, 28);
-    assert.deepEqual(transcript?.entries[0], {
-      kind: "user",
-      at: "2026-11-03T10:00:00Z",
-      text: "Question 0",
-    });
-    assert.match(
-      formatTranscript(decodeThreadSnapshot(wire).projection, "MacBook") ?? "",
-      /^turns: 14$/m,
-    );
-  });
+NodeTest.describe("decodeThreadSnapshot", () => {
+  NodeTest.test(
+    "reads the whole projection as the server's HTTP API sends it, every turn into the transcript",
+    () => {
+      const wire = JSON.parse(
+        JSON.stringify(
+          Schema.encodeSync(Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot))({
+            snapshotSequence: 7,
+            projection: longConversation(14),
+          }),
+        ),
+      );
+      const transcript = parseTranscript(
+        formatTranscript(decodeThreadSnapshot(wire).projection, "MacBook") ?? "",
+      );
+      NodeAssert.equal(transcript?.partial, false);
+      NodeAssert.equal(transcript?.entries.length, 28);
+      NodeAssert.deepEqual(transcript?.entries[0], {
+        kind: "user",
+        at: "2026-11-03T10:00:00Z",
+        text: "Question 0",
+      });
+      NodeAssert.match(
+        formatTranscript(decodeThreadSnapshot(wire).projection, "MacBook") ?? "",
+        /^turns: 14$/m,
+      );
+    },
+  );
 });
 
-describe("threadSnapshotUrl", () => {
-  test("keeps the base URL's path", () => {
-    assert.equal(
+NodeTest.describe("threadSnapshotUrl", () => {
+  NodeTest.test("keeps the base URL's path", () => {
+    NodeAssert.equal(
       threadSnapshotUrl("https://host:3773", "t/1").href,
       "https://host:3773/api/orchestration/threads/t%2F1",
     );
-    assert.equal(
+    NodeAssert.equal(
       threadSnapshotUrl("https://relay.example/env/abc/", "t1").href,
       "https://relay.example/env/abc/api/orchestration/threads/t1",
     );

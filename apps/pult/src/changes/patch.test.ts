@@ -1,6 +1,6 @@
 // Run with `node --test src/changes/patch.test.ts`.
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import { patchFiles } from "./patch.ts";
 
@@ -44,8 +44,8 @@ index 7777777..8888888 100644
 Binary files a/logo.png and b/logo.png differ
 `;
 
-test("each file's change is read from git's headers", () => {
-  assert.deepEqual(patchFiles(PATCH), [
+NodeTest.test("each file's change is read from git's headers", () => {
+  NodeAssert.deepEqual(patchFiles(PATCH), [
     { path: "src/a.ts", previousPath: null, changeType: "change" },
     { path: "src/new.ts", previousPath: null, changeType: "new" },
     { path: "src/old.ts", previousPath: null, changeType: "deleted" },
@@ -55,6 +55,6 @@ test("each file's change is read from git's headers", () => {
   ]);
 });
 
-test("an empty patch has no files", () => {
-  assert.deepEqual(patchFiles(""), []);
+NodeTest.test("an empty patch has no files", () => {
+  NodeAssert.deepEqual(patchFiles(""), []);
 });

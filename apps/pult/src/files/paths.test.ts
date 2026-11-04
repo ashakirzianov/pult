@@ -1,6 +1,6 @@
 // Run with `node --test src/files/paths.test.ts`.
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import {
   commonParent,
@@ -13,69 +13,69 @@ import {
   toUriPath,
 } from "./paths.ts";
 
-describe("pult: paths", () => {
-  it("carries POSIX and Windows host paths", () => {
-    assert.equal(toUriPath("/Users/anton/repos/pult/"), "/Users/anton/repos/pult");
-    assert.equal(toHostPath(toUriPath("/Users/anton/x.ts")), "/Users/anton/x.ts");
+NodeTest.describe("pult: paths", () => {
+  NodeTest.it("carries POSIX and Windows host paths", () => {
+    NodeAssert.equal(toUriPath("/Users/anton/repos/pult/"), "/Users/anton/repos/pult");
+    NodeAssert.equal(toHostPath(toUriPath("/Users/anton/x.ts")), "/Users/anton/x.ts");
     // VS Code lowercases a drive letter in every URI it saves.
-    assert.equal(toUriPath("C:\\Users\\anton\\x.ts"), "/c:/Users/anton/x.ts");
-    assert.equal(toHostPath("/c:/Users/anton/x.ts"), "c:/Users/anton/x.ts");
-    assert.equal(toUriPath("C:\\"), "/c:/");
+    NodeAssert.equal(toUriPath("C:\\Users\\anton\\x.ts"), "/c:/Users/anton/x.ts");
+    NodeAssert.equal(toHostPath("/c:/Users/anton/x.ts"), "c:/Users/anton/x.ts");
+    NodeAssert.equal(toUriPath("C:\\"), "/c:/");
   });
 
-  it("locates a path in the innermost root, never in a sibling sharing a prefix", () => {
+  NodeTest.it("locates a path in the innermost root, never in a sibling sharing a prefix", () => {
     const roots = ["/repos/pult", "/repos/pult/vendor", "/repos/pult-extension"];
-    assert.deepEqual(locate(roots, "/repos/pult/vendor/x.ts"), {
+    NodeAssert.deepEqual(locate(roots, "/repos/pult/vendor/x.ts"), {
       root: "/repos/pult/vendor",
       relativePath: "x.ts",
     });
-    assert.equal(locate(roots, "/repos/pult-extension/a.ts")?.root, "/repos/pult-extension");
-    assert.deepEqual(locate(roots, "/repos/pult"), { root: "/repos/pult", relativePath: "" });
-    assert.equal(locate(roots, "/repos/other/a.ts"), undefined);
-    assert.equal(relativeTo("/", "/etc/hosts"), "etc/hosts");
+    NodeAssert.equal(locate(roots, "/repos/pult-extension/a.ts")?.root, "/repos/pult-extension");
+    NodeAssert.deepEqual(locate(roots, "/repos/pult"), { root: "/repos/pult", relativePath: "" });
+    NodeAssert.equal(locate(roots, "/repos/other/a.ts"), undefined);
+    NodeAssert.equal(relativeTo("/", "/etc/hosts"), "etc/hosts");
   });
 
-  it("matches an authority VS Code lowercased", () => {
-    assert.equal(namesEnvironment("3f2a-ab", "3F2A-AB"), true);
-    assert.equal(namesEnvironment("3f2a-ab", "3f2a-ac"), false);
+  NodeTest.it("matches an authority VS Code lowercased", () => {
+    NodeAssert.equal(namesEnvironment("3f2a-ab", "3F2A-AB"), true);
+    NodeAssert.equal(namesEnvironment("3f2a-ab", "3f2a-ac"), false);
   });
 
-  it("finds the closest directory above every project, never a project itself", () => {
-    assert.equal(
+  NodeTest.it("finds the closest directory above every project, never a project itself", () => {
+    NodeAssert.equal(
       commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/axis"]),
       "/Users/anton/repos",
     );
-    assert.equal(
+    NodeAssert.equal(
       commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/pult/vendor"]),
       "/Users/anton/repos",
     );
-    assert.equal(
+    NodeAssert.equal(
       commonParent(["/Users/anton/repos/pult", "/Users/anton/.t3/scratch"]),
       "/Users/anton",
     );
-    assert.equal(commonParent(["/Users/anton/repos/pult"]), "/Users/anton/repos");
-    assert.equal(commonParent(["/srv/a", "/tmp/b"]), "/");
-    assert.equal(commonParent(["/c:/Users/anton/a", "/c:/b"]), "/c:/");
-    assert.equal(commonParent(["/c:/a", "/d:/b"]), undefined);
-    assert.equal(commonParent([]), undefined);
+    NodeAssert.equal(commonParent(["/Users/anton/repos/pult"]), "/Users/anton/repos");
+    NodeAssert.equal(commonParent(["/srv/a", "/tmp/b"]), "/");
+    NodeAssert.equal(commonParent(["/c:/Users/anton/a", "/c:/b"]), "/c:/");
+    NodeAssert.equal(commonParent(["/c:/a", "/d:/b"]), undefined);
+    NodeAssert.equal(commonParent([]), undefined);
   });
 
-  it("shows only the way to the projects under a folder above them", () => {
+  NodeTest.it("shows only the way to the projects under a folder above them", () => {
     const roots = [
       "/home/repos/pult",
       "/home/repos/pult/vendor",
       "/home/.t3/scratch",
       "/elsewhere",
     ];
-    assert.deepEqual(projectsUnder("/home", roots), ["/home/repos/pult", "/home/.t3/scratch"]);
-    assert.equal(folderShows("/home", roots, "/home/repos"), true);
-    assert.equal(folderShows("/home", roots, "/home/repos/pult/src/a.ts"), true);
-    assert.equal(folderShows("/home", roots, "/home/repos/other"), false);
-    assert.equal(folderShows("/home", roots, "/home/Downloads"), false);
+    NodeAssert.deepEqual(projectsUnder("/home", roots), ["/home/repos/pult", "/home/.t3/scratch"]);
+    NodeAssert.equal(folderShows("/home", roots, "/home/repos"), true);
+    NodeAssert.equal(folderShows("/home", roots, "/home/repos/pult/src/a.ts"), true);
+    NodeAssert.equal(folderShows("/home", roots, "/home/repos/other"), false);
+    NodeAssert.equal(folderShows("/home", roots, "/home/Downloads"), false);
     // Not under the folder at all.
-    assert.equal(folderShows("/home", roots, "/elsewhere"), false);
+    NodeAssert.equal(folderShows("/home", roots, "/elsewhere"), false);
     // A project's folder, or a folder with no project under it, shows everything.
-    assert.equal(folderShows("/home/repos/pult", roots, "/home/repos/pult/dist"), true);
-    assert.equal(folderShows("/srv", roots, "/srv/logs"), true);
+    NodeAssert.equal(folderShows("/home/repos/pult", roots, "/home/repos/pult/dist"), true);
+    NodeAssert.equal(folderShows("/srv", roots, "/srv/logs"), true);
   });
 });

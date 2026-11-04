@@ -1,6 +1,6 @@
 // Run with `node --test src/files/projects.test.ts`.
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import type { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -34,8 +34,8 @@ function thread(
   };
 }
 
-describe("projectRoots", () => {
-  it("lists each project's root, then the worktrees its live threads run in", () => {
+NodeTest.describe("projectRoots", () => {
+  NodeTest.it("lists each project's root, then the worktrees its live threads run in", () => {
     const roots = projectRoots({
       projects: [pult, axis],
       threads: [
@@ -46,7 +46,7 @@ describe("projectRoots", () => {
         thread("t5", { worktreePath: "/wt/nobranch", updatedAt: at(2) }),
       ],
     });
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       roots.map((root) => [root.path, root.name]),
       [
         ["/repos/axis", "axis"],
@@ -59,31 +59,34 @@ describe("projectRoots", () => {
   });
 });
 
-describe("endedTurns", () => {
-  it("reports nothing for threads first seen, then the roots of runs that completed", () => {
-    const shell = (threads: ReadonlyArray<ReturnType<typeof thread>>) => ({
-      projects: [pult],
-      threads,
-    });
-    const first = endedTurns(
-      new Map(),
-      shell([
-        thread("t1", { latestRunCompletedAt: at(10) }),
-        thread("t2", { worktreePath: "/wt/vfs" }),
-      ]),
-    );
-    assert.deepEqual(first.roots, new Set());
+NodeTest.describe("endedTurns", () => {
+  NodeTest.it(
+    "reports nothing for threads first seen, then the roots of runs that completed",
+    () => {
+      const shell = (threads: ReadonlyArray<ReturnType<typeof thread>>) => ({
+        projects: [pult],
+        threads,
+      });
+      const first = endedTurns(
+        new Map(),
+        shell([
+          thread("t1", { latestRunCompletedAt: at(10) }),
+          thread("t2", { worktreePath: "/wt/vfs" }),
+        ]),
+      );
+      NodeAssert.deepEqual(first.roots, new Set());
 
-    const next = endedTurns(
-      first.seen,
-      shell([
-        thread("t1", { latestRunCompletedAt: at(10) }),
-        thread("t2", { worktreePath: "/wt/vfs", latestRunCompletedAt: at(20) }),
-      ]),
-    );
-    assert.deepEqual(next.roots, new Set(["/wt/vfs"]));
+      const next = endedTurns(
+        first.seen,
+        shell([
+          thread("t1", { latestRunCompletedAt: at(10) }),
+          thread("t2", { worktreePath: "/wt/vfs", latestRunCompletedAt: at(20) }),
+        ]),
+      );
+      NodeAssert.deepEqual(next.roots, new Set(["/wt/vfs"]));
 
-    const later = endedTurns(next.seen, shell([thread("t1", { latestRunCompletedAt: at(30) })]));
-    assert.deepEqual(later.roots, new Set(["/repos/pult"]));
-  });
+      const later = endedTurns(next.seen, shell([thread("t1", { latestRunCompletedAt: at(30) })]));
+      NodeAssert.deepEqual(later.roots, new Set(["/repos/pult"]));
+    },
+  );
 });

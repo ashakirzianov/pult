@@ -1,6 +1,6 @@
 // Run with `node --test src/limits/limits.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 
@@ -45,44 +45,47 @@ const shape = (shelf: ReturnType<typeof limitsShelf<ReturnType<typeof account>>>
     toggle: shelf.toggle,
   };
 
-describe("warns", () => {
-  test("past 95% used, whatever the pace", () => {
-    assert.equal(warns(window("w", 96, 0.99), NOW), true);
-    assert.equal(warns(window("w", 95, 0.99), NOW), false);
+NodeTest.describe("warns", () => {
+  NodeTest.test("past 95% used, whatever the pace", () => {
+    NodeAssert.equal(warns(window("w", 96, 0.99), NOW), true);
+    NodeAssert.equal(warns(window("w", 95, 0.99), NOW), false);
   });
 
-  test("on a pace that runs out before the reset, past upstream's five points", () => {
-    assert.equal(warns(window("w", 56, 0.5), NOW), true);
-    assert.equal(warns(window("w", 55, 0.5), NOW), false);
+  NodeTest.test("on a pace that runs out before the reset, past upstream's five points", () => {
+    NodeAssert.equal(warns(window("w", 56, 0.5), NOW), true);
+    NodeAssert.equal(warns(window("w", 55, 0.5), NOW), false);
   });
 
-  test("without a reset clock, on the 95% rule alone", () => {
-    assert.equal(warns(window("w", 90, null), NOW), false);
-    assert.equal(warns(window("w", 99, null), NOW), true);
+  NodeTest.test("without a reset clock, on the 95% rule alone", () => {
+    NodeAssert.equal(warns(window("w", 90, null), NOW), false);
+    NodeAssert.equal(warns(window("w", 99, null), NOW), true);
   });
 });
 
-describe("limitsShelf", () => {
+NodeTest.describe("limitsShelf", () => {
   const accounts = [
     account("claude", window("session", 80, 0.5), window("weekly", 20, 0.5)),
     account("codex", window("session", 0), window("weekly", 10, 0.5)),
     account("idle", window("session", 0)),
   ];
 
-  test("warn shows the warning windows alone, with Show all while others would show", () => {
-    assert.deepEqual(shape(limitsShelf(accounts, NOW, "warn", false)), {
-      accounts: [["claude", ["session!"]]],
-      warnings: 1,
-      toggle: "all",
-    });
+  NodeTest.test(
+    "warn shows the warning windows alone, with Show all while others would show",
+    () => {
+      NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, "warn", false)), {
+        accounts: [["claude", ["session!"]]],
+        warnings: 1,
+        toggle: "all",
+      });
+    },
+  );
+
+  NodeTest.test("warn with nothing warning is no shelf at all", () => {
+    NodeAssert.equal(limitsShelf([accounts[1]!, accounts[2]!], NOW, "warn", false), null);
   });
 
-  test("warn with nothing warning is no shelf at all", () => {
-    assert.equal(limitsShelf([accounts[1]!, accounts[2]!], NOW, "warn", false), null);
-  });
-
-  test("warn with every shown window warning offers no Show all", () => {
-    assert.equal(
+  NodeTest.test("warn with every shown window warning offers no Show all", () => {
+    NodeAssert.equal(
       limitsShelf(
         [account("claude", window("session", 99), window("weekly", 0))],
         NOW,
@@ -93,31 +96,37 @@ describe("limitsShelf", () => {
     );
   });
 
-  test("always shows every window with something spent, and no zero window or account", () => {
-    assert.deepEqual(shape(limitsShelf(accounts, NOW, "always", false)), {
-      accounts: [
-        ["claude", ["session!", "weekly"]],
-        ["codex", ["weekly"]],
-      ],
-      warnings: 1,
-      toggle: null,
-    });
+  NodeTest.test(
+    "always shows every window with something spent, and no zero window or account",
+    () => {
+      NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, "always", false)), {
+        accounts: [
+          ["claude", ["session!", "weekly"]],
+          ["codex", ["weekly"]],
+        ],
+        warnings: 1,
+        toggle: null,
+      });
+    },
+  );
+
+  NodeTest.test("always with nothing spent is no shelf", () => {
+    NodeAssert.equal(limitsShelf([accounts[2]!], NOW, "always", false), null);
   });
 
-  test("always with nothing spent is no shelf", () => {
-    assert.equal(limitsShelf([accounts[2]!], NOW, "always", false), null);
+  NodeTest.test("hidden is no shelf, unless everything is asked for", () => {
+    NodeAssert.equal(limitsShelf(accounts, NOW, "hidden", false), null);
+    NodeAssert.equal(shape(limitsShelf(accounts, NOW, "hidden", true))?.toggle, "less");
   });
 
-  test("hidden is no shelf, unless everything is asked for", () => {
-    assert.equal(limitsShelf(accounts, NOW, "hidden", false), null);
-    assert.equal(shape(limitsShelf(accounts, NOW, "hidden", true))?.toggle, "less");
-  });
-
-  test("Show all shows everything in warn, with Show less, even with nothing warning", () => {
-    assert.deepEqual(shape(limitsShelf([accounts[1]!], NOW, "warn", true)), {
-      accounts: [["codex", ["weekly"]]],
-      warnings: 0,
-      toggle: "less",
-    });
-  });
+  NodeTest.test(
+    "Show all shows everything in warn, with Show less, even with nothing warning",
+    () => {
+      NodeAssert.deepEqual(shape(limitsShelf([accounts[1]!], NOW, "warn", true)), {
+        accounts: [["codex", ["weekly"]]],
+        warnings: 0,
+        toggle: "less",
+      });
+    },
+  );
 });

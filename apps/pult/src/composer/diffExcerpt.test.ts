@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import { diffExcerpt } from "./diffExcerpt.ts";
 
@@ -17,8 +17,8 @@ const mappings = [
   },
 ];
 
-test("a new line selected quotes it as an addition", () => {
-  assert.deepEqual(
+NodeTest.test("a new line selected quotes it as an addition", () => {
+  NodeAssert.deepEqual(
     diffExcerpt({ original, modified, mappings, side: "new", startLine: 2, endLine: 2 }),
     {
       startIndex: 2,
@@ -29,7 +29,7 @@ test("a new line selected quotes it as an addition", () => {
   );
 });
 
-test("new lines across a change take the removed lines between them", () => {
+NodeTest.test("new lines across a change take the removed lines between them", () => {
   const excerpt = diffExcerpt({
     original,
     modified,
@@ -38,11 +38,11 @@ test("new lines across a change take the removed lines between them", () => {
     startLine: 3,
     endLine: 5,
   });
-  assert.equal(excerpt?.diff, "@@ -3,2 +3,3 @@\n c\n-d\n+d2\n+d3");
-  assert.equal(excerpt?.rangeLabel, "3 to 5");
+  NodeAssert.equal(excerpt?.diff, "@@ -3,2 +3,3 @@\n c\n-d\n+d2\n+d3");
+  NodeAssert.equal(excerpt?.rangeLabel, "3 to 5");
 });
 
-test("an old line selected quotes it as a removal", () => {
+NodeTest.test("an old line selected quotes it as a removal", () => {
   const excerpt = diffExcerpt({
     original,
     modified,
@@ -51,24 +51,24 @@ test("an old line selected quotes it as a removal", () => {
     startLine: 4,
     endLine: 4,
   });
-  assert.equal(excerpt?.diff, "@@ -4,1 +0,0 @@\n-d");
-  assert.equal(excerpt?.rangeLabel, "-4");
+  NodeAssert.equal(excerpt?.diff, "@@ -4,1 +0,0 @@\n-d");
+  NodeAssert.equal(excerpt?.rangeLabel, "-4");
 });
 
-test("unchanged lines are context on either side", () => {
-  assert.equal(
+NodeTest.test("unchanged lines are context on either side", () => {
+  NodeAssert.equal(
     diffExcerpt({ original, modified, mappings, side: "old", startLine: 5, endLine: 5 })?.diff,
     "@@ -5,1 +6,1 @@\n e",
   );
-  assert.equal(
+  NodeAssert.equal(
     diffExcerpt({ original, modified, mappings, side: "new", startLine: 1, endLine: 1 })
       ?.rangeLabel,
     "1",
   );
 });
 
-test("a selection past both files quotes nothing", () => {
-  assert.equal(
+NodeTest.test("a selection past both files quotes nothing", () => {
+  NodeAssert.equal(
     diffExcerpt({ original, modified, mappings, side: "new", startLine: 40, endLine: 41 }),
     null,
   );

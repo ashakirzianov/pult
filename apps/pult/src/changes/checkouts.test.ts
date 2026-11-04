@@ -1,6 +1,6 @@
 // Run with `node --test src/changes/checkouts.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 
@@ -27,8 +27,8 @@ const thread = (
   branch,
 });
 
-describe("checkoutsOf", () => {
-  test("lists each project's root and each worktree once, across environments", () => {
+NodeTest.describe("checkoutsOf", () => {
+  NodeTest.test("lists each project's root and each worktree once, across environments", () => {
     const checkouts = checkoutsOf({
       projects: [
         project("a", "pult", "/repos/pult"),
@@ -42,7 +42,7 @@ describe("checkoutsOf", () => {
         thread("a", "pult", "/repos/pult", "/wt/pult-2", null),
       ],
     });
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       checkouts.map((checkout) => [checkout.environmentId, checkout.root, checkoutName(checkout)]),
       [
         ["a", "/repos/pult", "pult"],
@@ -53,21 +53,21 @@ describe("checkoutsOf", () => {
     );
   });
 
-  test("leaves a Star's folder out", () => {
+  NodeTest.test("leaves a Star's folder out", () => {
     const star = "/Users/a/.pult/stars/star";
     const checkouts = checkoutsOf({
       projects: [project("a", "star", star)],
       threads: [thread("a", "star", star, star)],
     });
-    assert.deepEqual(checkouts, []);
+    NodeAssert.deepEqual(checkouts, []);
   });
 
-  test("takes a project's root from its thread when the environment lists none", () => {
+  NodeTest.test("takes a project's root from its thread when the environment lists none", () => {
     const checkouts = checkoutsOf({
       projects: [],
       threads: [thread("a", "solo", "/repos/solo", "/repos/solo/")],
     });
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       checkouts.map((checkout) => [checkout.root, checkout.worktree]),
       [["/repos/solo", null]],
     );
@@ -90,42 +90,48 @@ const source = (
   files: paths.map((path) => ({ path, previousPath: null, additions: 1, deletions: 0 })),
 });
 
-describe("shownChanges", () => {
-  test("shows the working tree while it has uncommitted changes, though the branch repeats them", () => {
-    const shown = shownChanges("a", "/repo", [
-      source("branch-range", ["a.ts", "b.ts"]),
-      source("working-tree", ["b.ts"]),
-    ]);
-    assert.equal(shown?.kind, "working-tree");
-    assert.deepEqual(
-      shown?.changes.map((change) => change.path),
-      ["b.ts"],
-    );
-  });
+NodeTest.describe("shownChanges", () => {
+  NodeTest.test(
+    "shows the working tree while it has uncommitted changes, though the branch repeats them",
+    () => {
+      const shown = shownChanges("a", "/repo", [
+        source("branch-range", ["a.ts", "b.ts"]),
+        source("working-tree", ["b.ts"]),
+      ]);
+      NodeAssert.equal(shown?.kind, "working-tree");
+      NodeAssert.deepEqual(
+        shown?.changes.map((change) => change.path),
+        ["b.ts"],
+      );
+    },
+  );
 
-  test("shows the branch's changes once everything is committed", () => {
+  NodeTest.test("shows the branch's changes once everything is committed", () => {
     const shown = shownChanges("a", "/repo", [
       source("working-tree", []),
       source("branch-range", ["a.ts"]),
     ]);
-    assert.equal(shown?.kind, "branch-range");
+    NodeAssert.equal(shown?.kind, "branch-range");
   });
 
-  test("shows nothing once the base branch is committed, its unpushed commits being no branch's changes", () => {
-    assert.equal(
-      shownChanges("a", "/repo", [
-        source("working-tree", []),
-        source("branch-range", ["a.ts"], "main"),
-      ]),
-      undefined,
-    );
-  });
+  NodeTest.test(
+    "shows nothing once the base branch is committed, its unpushed commits being no branch's changes",
+    () => {
+      NodeAssert.equal(
+        shownChanges("a", "/repo", [
+          source("working-tree", []),
+          source("branch-range", ["a.ts"], "main"),
+        ]),
+        undefined,
+      );
+    },
+  );
 
-  test("shows nothing without changes", () => {
-    assert.equal(
+  NodeTest.test("shows nothing without changes", () => {
+    NodeAssert.equal(
       shownChanges("a", "/repo", [source("working-tree", []), source("branch-range", [])]),
       undefined,
     );
-    assert.equal(shownChanges("a", "/repo", []), undefined);
+    NodeAssert.equal(shownChanges("a", "/repo", []), undefined);
   });
 });

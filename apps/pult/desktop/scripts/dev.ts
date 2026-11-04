@@ -7,7 +7,7 @@
  * Exits with Electron.
  */
 import * as NodeChildProcess from "node:child_process";
-import { createRequire } from "node:module";
+import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 
 import { build } from "./build.ts";
@@ -15,7 +15,7 @@ import { build } from "./build.ts";
 const desktopDir = NodePath.dirname(import.meta.dirname);
 const repoRoot = NodePath.dirname(desktopDir);
 // Required from Node, the `electron` package is the path of its binary.
-const electronPath: string = createRequire(import.meta.url)("electron");
+const electronPath: string = NodeModule.createRequire(import.meta.url)("electron");
 const pageUrl = new URL(process.env.PULT_DEV_SERVER_URL || "http://localhost:5190");
 const READY_TIMEOUT_MS = 60_000;
 

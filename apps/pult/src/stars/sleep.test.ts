@@ -1,6 +1,6 @@
 // Run with `node --test src/stars/sleep.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import {
   MessageId,
@@ -122,148 +122,166 @@ const conversation = (overrides: Partial<SleepInput>): SleepInput => ({
   ...overrides,
 });
 
-describe("wakefulness", () => {
-  test("falls asleep at the last turn's end plus the cache TTL its adapter observed", () => {
-    const state = wakefulness(
-      conversation({
-        runs: [run("one", "completed", "2026-11-03T10:10:00.000Z")],
-        providerTurns: [
-          turn("early", "2026-11-03T10:02:00.000Z", { ttl: 3_600_000 }),
-          turn("last", "2026-11-03T10:10:00.000Z", { ttl: 300_000 }),
-        ],
-      }),
-    );
-    assert.deepEqual(state, { kind: "deadline", at: ms("2026-11-03T10:15:00.000Z") });
-  });
+NodeTest.describe("wakefulness", () => {
+  NodeTest.test(
+    "falls asleep at the last turn's end plus the cache TTL its adapter observed",
+    () => {
+      const state = wakefulness(
+        conversation({
+          runs: [run("one", "completed", "2026-11-03T10:10:00.000Z")],
+          providerTurns: [
+            turn("early", "2026-11-03T10:02:00.000Z", { ttl: 3_600_000 }),
+            turn("last", "2026-11-03T10:10:00.000Z", { ttl: 300_000 }),
+          ],
+        }),
+      );
+      NodeAssert.deepEqual(state, { kind: "deadline", at: ms("2026-11-03T10:15:00.000Z") });
+    },
+  );
 
-  test("takes the TTL observed earlier on the same provider thread when the last turn reported none", () => {
-    const state = wakefulness(
-      conversation({
-        providerTurns: [
-          turn("early", "2026-11-03T10:02:00.000Z", { ttl: 3_600_000 }),
-          turn("elsewhere", "2026-11-03T10:05:00.000Z", { ttl: 300_000, providerThread: "other" }),
-          turn("cached", "2026-11-03T10:10:00.000Z"),
-        ],
-      }),
-    );
-    assert.deepEqual(state, { kind: "deadline", at: ms("2026-11-03T11:10:00.000Z") });
-  });
+  NodeTest.test(
+    "takes the TTL observed earlier on the same provider thread when the last turn reported none",
+    () => {
+      const state = wakefulness(
+        conversation({
+          providerTurns: [
+            turn("early", "2026-11-03T10:02:00.000Z", { ttl: 3_600_000 }),
+            turn("elsewhere", "2026-11-03T10:05:00.000Z", {
+              ttl: 300_000,
+              providerThread: "other",
+            }),
+            turn("cached", "2026-11-03T10:10:00.000Z"),
+          ],
+        }),
+      );
+      NodeAssert.deepEqual(state, { kind: "deadline", at: ms("2026-11-03T11:10:00.000Z") });
+    },
+  );
 
-  test("allows 10 minutes where no TTL was observed, as for a Codex turn", () => {
+  NodeTest.test("allows 10 minutes where no TTL was observed, as for a Codex turn", () => {
     const state = wakefulness(
       conversation({ providerTurns: [turn("codex", "2026-11-03T10:10:00.000Z")] }),
     );
-    assert.deepEqual(state, {
+    NodeAssert.deepEqual(state, {
       kind: "deadline",
       at: ms("2026-11-03T10:10:00.000Z") + DEFAULT_CACHE_TTL_MS,
     });
   });
 
-  test("falls back to the latest finished run, then to the thread's creation", () => {
-    assert.deepEqual(
+  NodeTest.test("falls back to the latest finished run, then to the thread's creation", () => {
+    NodeAssert.deepEqual(
       wakefulness(conversation({ runs: [run("failed", "failed", "2026-11-03T10:20:00.000Z")] })),
       {
         kind: "deadline",
         at: ms("2026-11-03T10:20:00.000Z") + DEFAULT_CACHE_TTL_MS,
       },
     );
-    assert.deepEqual(wakefulness(conversation({})), {
+    NodeAssert.deepEqual(wakefulness(conversation({})), {
       kind: "deadline",
       at: DateTime.toEpochMillis(v2Projection.thread.createdAt) + DEFAULT_CACHE_TTL_MS,
     });
   });
 
-  test("holds the conversation awake while a run is on, a message is queued or a request awaits the user", () => {
-    const done = turn("done", "2026-11-03T10:10:00.000Z");
-    assert.deepEqual(
-      wakefulness(conversation({ runs: [run("live", "running")], providerTurns: [done] })),
-      { kind: "held", by: "run" },
-    );
-    assert.deepEqual(
-      wakefulness(conversation({ runs: [run("draining", "waiting")], providerTurns: [done] })),
-      { kind: "held", by: "run" },
-    );
-    assert.deepEqual(
-      wakefulness(
-        conversation({
-          runs: [
-            run("done", "completed", "2026-11-03T10:10:00.000Z"),
-            { ...run("next", "queued"), queueHeld: true },
-          ],
-          providerTurns: [done],
-        }),
-      ),
-      {
-        kind: "held",
-        by: "queued",
-      },
-    );
-    assert.deepEqual(
-      wakefulness(conversation({ providerTurns: [done], runtimeRequests: [request("pending")] })),
-      { kind: "held", by: "request" },
-    );
-    assert.equal(
-      wakefulness(conversation({ providerTurns: [done], runtimeRequests: [request("resolved")] }))
-        .kind,
-      "deadline",
-    );
-  });
-
-  test("holds the conversation awake while a subagent of it works, and not once it is done", () => {
-    const done = turn("done", "2026-11-03T10:10:00.000Z");
-    for (const status of ["pending", "running", "waiting"] as const) {
-      assert.deepEqual(
-        wakefulness(conversation({ providerTurns: [done], subagents: [subagent(status)] })),
-        { kind: "held", by: "subagent" },
+  NodeTest.test(
+    "holds the conversation awake while a run is on, a message is queued or a request awaits the user",
+    () => {
+      const done = turn("done", "2026-11-03T10:10:00.000Z");
+      NodeAssert.deepEqual(
+        wakefulness(conversation({ runs: [run("live", "running")], providerTurns: [done] })),
+        { kind: "held", by: "run" },
       );
-    }
-    assert.deepEqual(
-      wakefulness(conversation({ providerTurns: [done], subagents: [subagent("completed")] })),
-      {
-        kind: "deadline",
-        at: ms("2026-11-03T10:10:00.000Z") + DEFAULT_CACHE_TTL_MS,
-      },
-    );
-  });
+      NodeAssert.deepEqual(
+        wakefulness(conversation({ runs: [run("draining", "waiting")], providerTurns: [done] })),
+        { kind: "held", by: "run" },
+      );
+      NodeAssert.deepEqual(
+        wakefulness(
+          conversation({
+            runs: [
+              run("done", "completed", "2026-11-03T10:10:00.000Z"),
+              { ...run("next", "queued"), queueHeld: true },
+            ],
+            providerTurns: [done],
+          }),
+        ),
+        {
+          kind: "held",
+          by: "queued",
+        },
+      );
+      NodeAssert.deepEqual(
+        wakefulness(conversation({ providerTurns: [done], runtimeRequests: [request("pending")] })),
+        { kind: "held", by: "request" },
+      );
+      NodeAssert.equal(
+        wakefulness(conversation({ providerTurns: [done], runtimeRequests: [request("resolved")] }))
+          .kind,
+        "deadline",
+      );
+    },
+  );
 
-  test("a provider turn left running after its run ended holds nothing", () => {
+  NodeTest.test(
+    "holds the conversation awake while a subagent of it works, and not once it is done",
+    () => {
+      const done = turn("done", "2026-11-03T10:10:00.000Z");
+      for (const status of ["pending", "running", "waiting"] as const) {
+        NodeAssert.deepEqual(
+          wakefulness(conversation({ providerTurns: [done], subagents: [subagent(status)] })),
+          { kind: "held", by: "subagent" },
+        );
+      }
+      NodeAssert.deepEqual(
+        wakefulness(conversation({ providerTurns: [done], subagents: [subagent("completed")] })),
+        {
+          kind: "deadline",
+          at: ms("2026-11-03T10:10:00.000Z") + DEFAULT_CACHE_TTL_MS,
+        },
+      );
+    },
+  );
+
+  NodeTest.test("a provider turn left running after its run ended holds nothing", () => {
     const state = wakefulness(
       conversation({
         runs: [run("ended", "completed", "2026-11-03T10:10:00.000Z")],
         providerTurns: [turn("done", "2026-11-03T10:10:00.000Z"), turn("stuck", null)],
       }),
     );
-    assert.deepEqual(state, {
+    NodeAssert.deepEqual(state, {
       kind: "deadline",
       at: ms("2026-11-03T10:10:00.000Z") + DEFAULT_CACHE_TTL_MS,
     });
   });
 
-  test("counts from the un-settlement when the conversation was woken by hand after its last turn", () => {
-    const providerTurns = [turn("done", "2026-11-03T10:10:00.000Z", { ttl: 300_000 })];
-    const woken = { ...v2Projection.thread, unsettledAt: at("2026-11-03T12:00:00.000Z") };
-    assert.deepEqual(wakefulness(conversation({ thread: woken, providerTurns })), {
-      kind: "deadline",
-      at: ms("2026-11-03T12:05:00.000Z"),
-    });
-    assert.deepEqual(wakefulness(conversation({ thread: woken })), {
-      kind: "deadline",
-      at: ms("2026-11-03T12:00:00.000Z") + DEFAULT_CACHE_TTL_MS,
-    });
-    // An un-settlement before the last turn changes nothing.
-    const earlier = { ...v2Projection.thread, unsettledAt: at("2026-11-03T10:00:00.000Z") };
-    assert.deepEqual(wakefulness(conversation({ thread: earlier, providerTurns })), {
-      kind: "deadline",
-      at: ms("2026-11-03T10:15:00.000Z"),
-    });
-  });
+  NodeTest.test(
+    "counts from the un-settlement when the conversation was woken by hand after its last turn",
+    () => {
+      const providerTurns = [turn("done", "2026-11-03T10:10:00.000Z", { ttl: 300_000 })];
+      const woken = { ...v2Projection.thread, unsettledAt: at("2026-11-03T12:00:00.000Z") };
+      NodeAssert.deepEqual(wakefulness(conversation({ thread: woken, providerTurns })), {
+        kind: "deadline",
+        at: ms("2026-11-03T12:05:00.000Z"),
+      });
+      NodeAssert.deepEqual(wakefulness(conversation({ thread: woken })), {
+        kind: "deadline",
+        at: ms("2026-11-03T12:00:00.000Z") + DEFAULT_CACHE_TTL_MS,
+      });
+      // An un-settlement before the last turn changes nothing.
+      const earlier = { ...v2Projection.thread, unsettledAt: at("2026-11-03T10:00:00.000Z") };
+      NodeAssert.deepEqual(wakefulness(conversation({ thread: earlier, providerTurns })), {
+        kind: "deadline",
+        at: ms("2026-11-03T10:15:00.000Z"),
+      });
+    },
+  );
 });
 
-describe("asleepBy", () => {
-  test("is asleep from the deadline on, and never while held", () => {
+NodeTest.describe("asleepBy", () => {
+  NodeTest.test("is asleep from the deadline on, and never while held", () => {
     const deadline = { kind: "deadline", at: 1_000 } as const;
-    assert.equal(asleepBy(deadline, 999), false);
-    assert.equal(asleepBy(deadline, 1_000), true);
-    assert.equal(asleepBy({ kind: "held", by: "run" }, Number.MAX_SAFE_INTEGER), false);
+    NodeAssert.equal(asleepBy(deadline, 999), false);
+    NodeAssert.equal(asleepBy(deadline, 1_000), true);
+    NodeAssert.equal(asleepBy({ kind: "held", by: "run" }, Number.MAX_SAFE_INTEGER), false);
   });
 });

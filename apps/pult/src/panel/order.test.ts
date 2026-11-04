@@ -1,6 +1,6 @@
 // Run with `node --test src/panel/order.test.ts`.
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import * as NodeAssert from "node:assert/strict";
+import * as NodeTest from "node:test";
 
 import type { ShelfName } from "../threads/store.ts";
 import { draftCards, jumpTargets, type PanelRows } from "./order.ts";
@@ -46,69 +46,75 @@ function panel(
 const keys = (targets: ReadonlyArray<{ readonly key: string }>) =>
   targets.map((target) => target.key);
 
-describe("jumpTargets", () => {
-  test("reaches the Explorer's files, then the drafts, then the threads shelf by shelf, as the panel lists them", () => {
-    const targets = jumpTargets(
-      panel({
-        environmentIds: ["env", "other"],
-        explorer: {
-          files: [file("other", "/b.ts"), file("env", "/a.ts")],
-          highlighted: undefined,
-          expanded: true,
-        },
-        drafts: [draft("project")],
-        threads: [
-          thread("settled", "settled"),
-          thread("pinned", "pinned"),
-          thread("snoozed", "snoozed"),
-          thread("active", "active"),
-          thread("working", "working"),
-          thread("subagent", null),
-        ],
-      }),
-    );
-    assert.deepEqual(keys(targets), [
-      "pult://env/a.ts",
-      "pult://other/b.ts",
-      "draft:env/project",
-      "env/pinned",
-      "env/active",
-      "env/working",
-      "env/snoozed",
-      "env/settled",
-    ]);
-  });
+NodeTest.describe("jumpTargets", () => {
+  NodeTest.test(
+    "reaches the Explorer's files, then the drafts, then the threads shelf by shelf, as the panel lists them",
+    () => {
+      const targets = jumpTargets(
+        panel({
+          environmentIds: ["env", "other"],
+          explorer: {
+            files: [file("other", "/b.ts"), file("env", "/a.ts")],
+            highlighted: undefined,
+            expanded: true,
+          },
+          drafts: [draft("project")],
+          threads: [
+            thread("settled", "settled"),
+            thread("pinned", "pinned"),
+            thread("snoozed", "snoozed"),
+            thread("active", "active"),
+            thread("working", "working"),
+            thread("subagent", null),
+          ],
+        }),
+      );
+      NodeAssert.deepEqual(keys(targets), [
+        "pult://env/a.ts",
+        "pult://other/b.ts",
+        "draft:env/project",
+        "env/pinned",
+        "env/active",
+        "env/working",
+        "env/snoozed",
+        "env/settled",
+      ]);
+    },
+  );
 
-  test("reaches the Stars' cards first, above the Explorer's files, whatever the shelves", () => {
-    const targets = jumpTargets(
-      panel({
-        stars: ["one"],
-        explorer: { files: [file("env", "/a.ts")], highlighted: undefined, expanded: true },
-        threads: [thread("active", "active")],
-        expanded: COLLAPSED,
-        selection: "env/active",
-      }),
-    );
-    assert.deepEqual(keys(targets), ["star:one", "pult://env/a.ts", "env/active"]);
-  });
+  NodeTest.test(
+    "reaches the Stars' cards first, above the Explorer's files, whatever the shelves",
+    () => {
+      const targets = jumpTargets(
+        panel({
+          stars: ["one"],
+          explorer: { files: [file("env", "/a.ts")], highlighted: undefined, expanded: true },
+          threads: [thread("active", "active")],
+          expanded: COLLAPSED,
+          selection: "env/active",
+        }),
+      );
+      NodeAssert.deepEqual(keys(targets), ["star:one", "pult://env/a.ts", "env/active"]);
+    },
+  );
 
-  test("reaches a collapsed list's selected row alone", () => {
+  NodeTest.test("reaches a collapsed list's selected row alone", () => {
     const threads = [
       thread("one", "active"),
       thread("two", "active"),
       thread("old", "settled"),
       thread("older", "settled"),
     ];
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       keys(jumpTargets(panel({ threads, expanded: COLLAPSED, selection: "env/two" }))),
       ["env/two"],
     );
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       keys(jumpTargets(panel({ threads, expanded: COLLAPSED, selection: "env/older" }))),
       ["env/older"],
     );
     const files = [file("env", "/a.ts"), file("env", "/b.ts")];
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       keys(
         jumpTargets(
           panel({
@@ -119,7 +125,7 @@ describe("jumpTargets", () => {
       ),
       ["pult://env/b.ts"],
     );
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       keys(
         jumpTargets(
           panel({
@@ -132,33 +138,38 @@ describe("jumpTargets", () => {
     );
   });
 
-  test("reaches no settled thread while the Settled shelf is hidden, not even the selected one", () => {
-    const threads = [thread("active", "active"), thread("old", "settled")];
-    assert.deepEqual(
-      keys(jumpTargets(panel({ threads, settledShown: false, selection: "env/old" }))),
-      ["env/active"],
-    );
-    assert.deepEqual(
-      keys(
-        jumpTargets(
-          panel({ threads, settledShown: false, expanded: COLLAPSED, selection: "env/old" }),
+  NodeTest.test(
+    "reaches no settled thread while the Settled shelf is hidden, not even the selected one",
+    () => {
+      const threads = [thread("active", "active"), thread("old", "settled")];
+      NodeAssert.deepEqual(
+        keys(jumpTargets(panel({ threads, settledShown: false, selection: "env/old" }))),
+        ["env/active"],
+      );
+      NodeAssert.deepEqual(
+        keys(
+          jumpTargets(
+            panel({ threads, settledShown: false, expanded: COLLAPSED, selection: "env/old" }),
+          ),
         ),
-      ),
-      [],
-    );
-  });
+        [],
+      );
+    },
+  );
 
-  test("reaches the settled tail's shown threads, and the selected one beyond it", () => {
+  NodeTest.test("reaches the settled tail's shown threads, and the selected one beyond it", () => {
     const threads = ["a", "b", "c", "d"].map((id) => thread(id, "settled"));
-    assert.deepEqual(keys(jumpTargets(panel({ threads, settledCount: 2 }))), ["env/a", "env/b"]);
-    assert.deepEqual(keys(jumpTargets(panel({ threads, settledCount: 2, selection: "env/d" }))), [
+    NodeAssert.deepEqual(keys(jumpTargets(panel({ threads, settledCount: 2 }))), [
       "env/a",
       "env/b",
-      "env/d",
     ]);
+    NodeAssert.deepEqual(
+      keys(jumpTargets(panel({ threads, settledCount: 2, selection: "env/d" }))),
+      ["env/a", "env/b", "env/d"],
+    );
   });
 
-  test("reaches the Explorer's files alone while no environment is held", () => {
+  NodeTest.test("reaches the Explorer's files alone while no environment is held", () => {
     const targets = jumpTargets(
       panel({
         environmentIds: [],
@@ -166,22 +177,25 @@ describe("jumpTargets", () => {
         threads: [thread("one", "active")],
       }),
     );
-    assert.deepEqual(keys(targets), ["pult://gone/a.ts"]);
+    NodeAssert.deepEqual(keys(targets), ["pult://gone/a.ts"]);
   });
 });
 
-describe("draftCards", () => {
-  test("puts the selected draft first while it is empty, and leaves out drafts of environments not held", () => {
-    const drafts = [draft("full"), draft("elsewhere", "gone")];
-    const projects = (selected: string) =>
-      draftCards(drafts, { environmentId: "env", projectId: selected }, new Set(["env"])).map(
-        (each) => each.projectId,
-      );
-    assert.deepEqual(projects("empty"), ["empty", "full"]);
-    assert.deepEqual(projects("full"), ["full"]);
-  });
+NodeTest.describe("draftCards", () => {
+  NodeTest.test(
+    "puts the selected draft first while it is empty, and leaves out drafts of environments not held",
+    () => {
+      const drafts = [draft("full"), draft("elsewhere", "gone")];
+      const projects = (selected: string) =>
+        draftCards(drafts, { environmentId: "env", projectId: selected }, new Set(["env"])).map(
+          (each) => each.projectId,
+        );
+      NodeAssert.deepEqual(projects("empty"), ["empty", "full"]);
+      NodeAssert.deepEqual(projects("full"), ["full"]);
+    },
+  );
 
-  test("leaves out a Star's draft", () => {
+  NodeTest.test("leaves out a Star's draft", () => {
     const drafts = [draft("full"), draft("star")];
     const cards = draftCards(
       drafts,
@@ -189,7 +203,7 @@ describe("draftCards", () => {
       new Set(["env"]),
       (each) => each.projectId === "star",
     );
-    assert.deepEqual(
+    NodeAssert.deepEqual(
       cards.map((each) => each.projectId),
       ["full"],
     );
