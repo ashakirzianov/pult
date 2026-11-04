@@ -1,29 +1,8 @@
 {
-  "extends": "../../../tsconfig.base.json",
+  // apps/web's settings, which its code and the view's are written to; its `paths` resolve from apps/web.
+  "extends": "../../web/tsconfig.json",
   "compilerOptions": {
-    // apps/web/tsconfig.json's settings, which its code and the view's are written to.
-    "module": "Preserve",
-    "moduleResolution": "Bundler",
-    "erasableSyntaxOnly": false,
-    "verbatimModuleSyntax": false,
-    "jsx": "react-jsx",
-    "lib": ["ES2023", "ESNext.Disposable", "DOM", "DOM.Iterable"],
     "types": ["node"],
-    "paths": {
-      "~/*": ["../../web/src/*"]
-    },
-    "plugins": [
-      {
-        "name": "@effect/language-service",
-        "diagnosticSeverity": {
-          "globalDate": "off",
-          "globalConsole": "off",
-          "globalRandom": "off",
-          "globalTimers": "off",
-          "globalFetch": "off"
-        }
-      }
-    ],
     // The page's program (`../tsconfig.json`) reads the view through its declarations, so the
     // view and apps/web's source are checked once, with apps/web's settings; a composite
     // project lists every file it reaches.
