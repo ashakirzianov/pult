@@ -1,11 +1,9 @@
 # The thread view
 
-Upstream's thread view (turns and composer), which the thread pane mounts in the page (`../src/threads/pane.tsx`), built by the page's Vite (`../vite.config.ts`).
+Upstream's thread view (turns and composer), which the thread pane mounts in the page (`../src/threads/pane.tsx`): the repository's `apps/web`, built in place by the page's Vite (`../vite.config.ts`; `pult/decisions`, `thread-view-source`).
 
-- `t3/` is the copy: the fork's `apps/web` at the commit in `t3/UPSTREAM`, as far as `shell/` reaches it (`pult/decisions`, `thread-view-source`). It is upstream's, byte for byte, but for the edits `t3/EDITS.md` lists with their reasons; formatting and lint skip it.
-- `shell/` is ours: the entry (`main.tsx`, `startThreadView` and the host interface the pane fills), the app around the view, and the stubs.
-- `stubs.ts` maps the upstream modules our files replace; the build resolves every import of one to ours, and the copy keeps the original, so it still typechecks and merges.
+- This directory is ours: the entry (`main.tsx`, `startThreadView` and the host interface the pane fills), the app around the view, and the stubs.
+- `stubs.ts` maps the `apps/web` modules our files replace; the build resolves every import of one to ours, and `apps/web` keeps the original, so it still typechecks.
+- `tailwind.css` is `apps/web`'s stylesheet with `apps/web/src` added to Tailwind's sources.
 
-What the pane needs from the app around the view goes in `shell/`, or a stub; edit a copied file only when neither can do it, and list the edit in `t3/EDITS.md`.
-
-A PIN bump (`../vendor/t3code/PIN`): `pnpm vendor:sync`, `pnpm i`, then `pnpm vendor:merge`, which merges upstream's change into each copied file three ways, adds the files `shell/` now reaches and drops unedited ones it no longer does, and says when upstream's `apps/web/package.json` changed (the view's dependencies in `../package.json` follow it). A merge that leaves conflicts writes the pin to `t3/MERGING` instead of `t3/UPSTREAM`; resolve the markers and run it again to record it. Then fix what `pnpm typecheck` says. `pnpm vendor:check` fails while the copy is at another commit, holds a conflict marker, or differs from upstream in a file `t3/EDITS.md` does not list.
+What the pane needs from the app around the view goes here, or in a stub. When neither can do it, add a hook point to `apps/web`: a slot or context that leaves the fork's own web app upstream's without it, committed with its reason and a comment at the hook naming Pult's use, so git carries it through upstream's merges.
