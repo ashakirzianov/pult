@@ -2,6 +2,7 @@ import { AudioPreviewUnmountContext } from "../files/AudioPreview";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
+import { TimelineHeaderSlotOutlet } from "./TimelineHeaderSlot";
 import { WorkLogBlock } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
@@ -1086,6 +1087,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const listHeader = (
     <>
       {parentThreadLink === null ? listHeaderLeadingContent : null}
+      {/* Pult: a Star's fold of earlier conversations, scrolling with the turns. */}
+      <TimelineHeaderSlotOutlet />
       {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
       {parentThreadLink !== null ? listHeaderLeadingContent : null}
     </>
@@ -1230,9 +1233,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
     return (
       <>
         {activityAnnouncer}
+        <TimelineHeaderSlotOutlet
+          className="absolute inset-x-0 top-0 overflow-y-auto overscroll-y-contain bg-background pt-3 sm:pt-4"
+          style={{ maxHeight: `calc(100% - ${emptyPlaceholderInset}px)` }}
+        />
         <div
           className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
           style={{ paddingBottom: emptyPlaceholderInset }}
+          data-timeline-empty-hint
         >
           <p className="text-sm text-muted-foreground">Send a message to start the conversation.</p>
         </div>
