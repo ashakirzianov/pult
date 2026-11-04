@@ -1,0 +1,4 @@
+/* apps/web's stylesheet, its Tailwind classes found in its source as well as the page's, since
+   Tailwind looks for sources under the page's root (apps/pult) alone. */
+@import "../../web/src/index.css";
+@source "../../web/src";

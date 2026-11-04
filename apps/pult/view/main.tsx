@@ -2,7 +2,7 @@
 // upstream's turns and composer from `apps/web`, with the app around them ours
 // (`ThreadView.tsx`), on the page's connection, its React, Effect and the
 // repository's packages the page's own.
-import "~/index.css";
+import "./tailwind.css";
 import "./shell.css";
 
 import {
