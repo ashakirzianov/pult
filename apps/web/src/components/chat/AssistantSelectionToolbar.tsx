@@ -211,6 +211,7 @@ export function AssistantSelectionToolbar({
     }
   });
   const shown = selection !== null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- typing anywhere cites while the toolbar shows: a document listener for as long as it does.
   useEffect(() => {
     if (!shown) return;
     document.addEventListener("keydown", citeTyped, true);

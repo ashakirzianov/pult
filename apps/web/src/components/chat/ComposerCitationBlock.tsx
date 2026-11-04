@@ -27,15 +27,12 @@ import {
 import { assistantCitationNavigation } from "~/lib/assistantCitationNavigation";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerContextActionsContext } from "../composerContextPresentation";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-// Pult's composer citation: a block on its own line, the quote and then the
-// user's comment, edited in place. An assistant citation keeps its comment as
-// its node's attribute; a file or diff comment (upstream's review comment, a
-// context reference node) keeps it as its record's text in the draft. Either
-// way the comment is not document content, so the field is the node view's
-// own textarea; the editor enters it by key (`enterComposerCitationByKey`)
-// and the field leaves it by key. A comment left empty when the field loses
-// focus removes the citation.
+// Pult's hook point: a citation, or a file or diff comment, as a block on its own line, the quote
+// then the comment. The comment is the node's attribute or the draft's record, never document
+// content, so the field is the node view's own textarea, entered and left by key
+// (`enterComposerCitationByKey`); a comment empty when the field loses focus removes the citation.
 
 const CITATION_NODE = "composer-citation";
 const CONTEXT_REFERENCE_NODE = "composer-context-reference";
@@ -100,16 +97,9 @@ function citationAhead(view: EditorView, $pos: ResolvedPos, lineBelow = false): 
 }
 
 /**
- * The editor's side of the block's keys. A block moves as one character, the
- * caret resting before and after it, drawn as a bar above or below it
- * (`citationCaret`): Left and Right step onto a bar and over the block, as do
- * Up and Down, which keep the caret's column from line to line; Backspace or
- * Delete into a block enters its comment, at the end or at the start, and at
- * a bar facing a line, Backspace goes to the end of the line before, deleting
- * it when empty, and Delete deletes an empty line after. With Shift, and
- * Option or not, the arrows extend the selection over the block alone,
- * Option+Up and Option+Down off a line's edge left to the platform. Returns
- * whether it handled the key.
+ * The editor's side of the block's keys: a block moves as one character, the caret resting on a
+ * bar before and after it (`citationCaret`); Backspace or Delete into it enters its comment, and
+ * Shift+arrows extend the selection over the block alone. Returns whether it handled the key.
  */
 export function enterComposerCitationByKey(view: EditorView, event: KeyboardEvent): boolean {
   if (event.metaKey || event.ctrlKey || event.isComposing) return false;
@@ -253,12 +243,9 @@ function extendOverCitation(view: EditorView, event: KeyboardEvent): boolean {
 }
 
 /**
- * The caret at `pos` when it is beside a block where the editor cannot draw
- * it: at a line's start before a block, or at its end after one, the line
- * having no text on that side and the line break ProseMirror would draw it on
- * hidden (`shell.css`). It is drawn as a bar above or below the block
- * (`ComposerCitationCaretExtension`); between two blocks, one bar under the
- * first.
+ * The caret at `pos` beside a block where the editor cannot draw it, at an empty side of the line
+ * before or after a block, drawn instead as a bar above or below the block
+ * (`ComposerCitationCaretExtension`); between two blocks, one bar under the first.
  */
 function citationCaret(
   doc: ProseMirrorNode,
@@ -401,6 +388,7 @@ function CitationBlock({
   const [shownComment, setShownComment] = useState(savedComment);
   const tooLong = comment.length > maxLength;
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- the requested focus moves to a DOM field the editor's node view owns, after the commit.
   useEffect(() => {
     if (!focusRequested) return;
     // The editor reacts to losing focus, so the field takes it outside React's commit.
@@ -584,17 +572,23 @@ export function ComposerCitationBlock({
       editor={editor}
       matches={matches}
       quote={
-        <a
-          href="#"
-          className={QUOTE_CLASS_NAME}
-          title="Go to the quoted text"
-          onClick={(event) => {
-            event.preventDefault();
-            void navigate(assistantCitationNavigation(citation));
-          }}
-        >
-          {citation.text}
-        </a>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <a
+                href="#"
+                className={QUOTE_CLASS_NAME}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void navigate(assistantCitationNavigation(citation));
+                }}
+              />
+            }
+          >
+            {citation.text}
+          </TooltipTrigger>
+          <TooltipPopup side="top">Go to the quoted text</TooltipPopup>
+        </Tooltip>
       }
       savedComment={citation.comment ?? ""}
       maxLength={ASSISTANT_CITATION_MAX_COMMENT_LENGTH}
@@ -656,7 +650,7 @@ export function ComposerReviewCommentBlock({
   const actions = use(ComposerContextActionsContext);
   const requestedAt = reviewCommentFocusRequests.get(comment.id);
   const [focusRequested, setFocusRequested] = useState(
-    requestedAt !== undefined && Date.now() - requestedAt < FOCUS_REQUEST_TTL_MS,
+    () => requestedAt !== undefined && Date.now() - requestedAt < FOCUS_REQUEST_TTL_MS,
   );
   const quoted = comment.diff
     .split("\n")
@@ -668,19 +662,25 @@ export function ComposerReviewCommentBlock({
       matches={(node) => node.attrs.contextId === contextId}
       quote={
         <span className="flex min-w-0 flex-col gap-0.5">
-          <a
-            href="#"
-            className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
-            title="Open the file"
-            onClick={(event) => {
-              event.preventDefault();
-              actions.openMention(comment.filePath);
-            }}
-          >
-            {comment.filePath} ·{" "}
-            {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
-            {comment.rangeLabel}
-          </a>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <a
+                  href="#"
+                  className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    actions.openMention(comment.filePath);
+                  }}
+                />
+              }
+            >
+              {comment.filePath} ·{" "}
+              {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
+              {comment.rangeLabel}
+            </TooltipTrigger>
+            <TooltipPopup side="top">Open the file</TooltipPopup>
+          </Tooltip>
           <span className={`${QUOTE_CLASS_NAME} cursor-text font-mono text-xs`}>{quoted}</span>
         </span>
       }
