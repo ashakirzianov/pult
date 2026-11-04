@@ -303,6 +303,7 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
+import { ComposerReviewCommentEditContext } from "./ComposerCitationBlock";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -2653,6 +2654,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ensureLeadingBoundary?: boolean;
       citationCommentAnchor?: AssistantCitationSourceAnchor;
       clipboardData?: DataTransfer;
+      ownLine?: boolean;
     },
   ): boolean => {
     if (
@@ -2674,6 +2676,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       (options?.ensureLeadingBoundary ?? false) &&
       cursor > 0 &&
       !/\s/.test(prompt[cursor - 1] ?? "");
+    // Pult: a citation is a block on a line of its own.
+    if (options?.citationCommentAnchor) {
+      const leading = cursor > 0 && prompt[cursor - 1] !== "\n" ? "\n" : "";
+      const trailing = prompt[cursor] === "\n" ? "" : "\n";
+      return applyPromptReplacement(cursor, cursor, `${leading}${text.trimEnd()}${trailing}`, {
+        citationComment: {
+          start: cursor + leading.length,
+          sourceAnchor: options.citationCommentAnchor,
+          insertedSpaces: { before: false, after: false },
+        },
+        focusEditorAfterReplace: false,
+      });
+    }
+    // Pult: so is a file or diff comment.
+    if (options?.ownLine) {
+      const leading = cursor > 0 && prompt[cursor - 1] !== "\n" ? "\n" : "";
+      const trailing = prompt[cursor] === "\n" ? "" : "\n";
+      return applyPromptReplacement(cursor, cursor, `${leading}${text.trimEnd()}${trailing}`, {
+        focusEditorAfterReplace: false,
+      });
+    }
     const rangeEnd = extendReplacementRangeForTrailingSpace(prompt, cursor, text);
     return applyPromptReplacement(
       cursor,
@@ -2836,9 +2859,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const insertContextReferencesAtCaret = (
     references: ReadonlyArray<ComposerContextReference>,
   ): boolean =>
-    insertComposerText(`${references.map(formatInlineContextReference).join(" ")} `, "cursor", {
-      ensureLeadingBoundary: true,
-    });
+    // Pult: file and diff comments are blocks, each on a line of its own.
+    references.every((reference) => reference.kind === "review-comment")
+      ? insertComposerText(references.map(formatInlineContextReference).join("\n"), "cursor", {
+          ownLine: true,
+        })
+      : insertComposerText(`${references.map(formatInlineContextReference).join(" ")} `, "cursor", {
+          ensureLeadingBoundary: true,
+        });
+  // Pult: the file and diff comments' blocks edit their records in the draft.
+  const reviewCommentEdits = {
+    save: (comment: ReviewCommentContext) =>
+      addComposerDraftReviewComment(composerDraftTarget, comment, { appendReference: false }),
+    remove: (commentId: string) => removeComposerDraftReviewComment(composerDraftTarget, commentId),
+  };
   const insertContextReferencesAtCaretStable = useStableCallback(insertContextReferencesAtCaret);
   const setContextInsertionHandler = useComposerDraftStore(
     (store) => store.setContextInsertionHandler,
@@ -3776,72 +3810,74 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   />
                 ) : null}
                 <ComposerContextActionsContext value={composerContextActions}>
-                  <ComposerPromptEditor
-                    draftKey={composerDraftTargetKey}
-                    // Switching threads lands focus here, so the label names the thread.
-                    ariaLabel={activeThread ? `Message ${activeThread.title}` : "Message"}
-                    suggestionListId={composerSuggestionListId}
-                    activeSuggestionId={
-                      composerSuggestionListVisible && activeComposerMenuItem
-                        ? composerSuggestionOptionId(
-                            composerSuggestionListId,
-                            activeComposerMenuItem.id,
-                          )
-                        : undefined
-                    }
-                    editorRef={composerEditorRef}
-                    richTextEnabled={settings.composerRichTextEnabled}
-                    literalText={isLiteralPendingAnswer}
-                    isPathQueryActive={isPathQueryActiveStable}
-                    value={activePendingProgress ? activePendingProgress.customAnswer : prompt}
-                    cursor={composerCursor}
-                    contextRecords={composerContextRecords}
-                    buildContextClipboardFragment={buildContextClipboardFragmentStable}
-                    importContextFragment={importContextFragmentStable}
-                    skills={selectedProviderSkills}
-                    containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
-                    className={cn(
-                      showMobilePendingAnswerActions && "max-sm:pb-12",
-                      isComposerResting &&
-                        "my-0 max-h-8 min-h-8 redesign:min-h-8 overflow-hidden py-0 whitespace-pre! leading-8",
-                    )}
-                    placeholderClassName={cn(
-                      isComposerResting &&
-                        "flex items-center overflow-hidden whitespace-nowrap leading-8",
-                    )}
-                    onChange={onPromptChangeStable}
-                    onVisibleSelectionChange={expandComposerForEditorChangeStable}
-                    onCommandKeyDown={onComposerCommandKeyStable}
-                    onPageScrollKeyDown={onPageScrollKeyDown}
-                    onPageScrollKeyUp={onPageScrollKeyUp}
-                    onPageScrollRelease={onPageScrollRelease}
-                    onCitationSubmitAndSend={submitCitationAndSendStable}
-                    onCitationDraftSave={saveCitationDraftToPromptStable}
-                    onPaste={onComposerPasteStable}
-                    placeholder={
-                      isComposerApprovalState
-                        ? activePendingApproval?.supportsFeedback
-                          ? "Send feedback to decline this request"
-                          : "Send a message to decline and redirect the agent"
-                        : activePendingProgress
-                          ? isChoiceOnlyPendingQuestion
-                            ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
-                          : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
-                            : projectSelectionRequired
-                              ? "Choose a project above to start a thread"
-                              : showProviderUnavailable
-                                ? "Enable a provider in Settings to send a message"
-                                : (shellPlaceholder ?? DEFAULT_COMPOSER_PLACEHOLDER)
-                    }
-                    disabled={
-                      isConnecting ||
-                      projectSelectionRequired ||
-                      isChoiceOnlyPendingQuestion ||
-                      activePendingIsResponding
-                    }
-                  />
+                  <ComposerReviewCommentEditContext value={reviewCommentEdits}>
+                    <ComposerPromptEditor
+                      draftKey={composerDraftTargetKey}
+                      // Switching threads lands focus here, so the label names the thread.
+                      ariaLabel={activeThread ? `Message ${activeThread.title}` : "Message"}
+                      suggestionListId={composerSuggestionListId}
+                      activeSuggestionId={
+                        composerSuggestionListVisible && activeComposerMenuItem
+                          ? composerSuggestionOptionId(
+                              composerSuggestionListId,
+                              activeComposerMenuItem.id,
+                            )
+                          : undefined
+                      }
+                      editorRef={composerEditorRef}
+                      richTextEnabled={settings.composerRichTextEnabled}
+                      literalText={isLiteralPendingAnswer}
+                      isPathQueryActive={isPathQueryActiveStable}
+                      value={activePendingProgress ? activePendingProgress.customAnswer : prompt}
+                      cursor={composerCursor}
+                      contextRecords={composerContextRecords}
+                      buildContextClipboardFragment={buildContextClipboardFragmentStable}
+                      importContextFragment={importContextFragmentStable}
+                      skills={selectedProviderSkills}
+                      containerClassName={cn(isComposerResting && "min-w-0 flex-1")}
+                      className={cn(
+                        showMobilePendingAnswerActions && "max-sm:pb-12",
+                        isComposerResting &&
+                          "my-0 max-h-8 min-h-8 redesign:min-h-8 overflow-hidden py-0 whitespace-pre! leading-8",
+                      )}
+                      placeholderClassName={cn(
+                        isComposerResting &&
+                          "flex items-center overflow-hidden whitespace-nowrap leading-8",
+                      )}
+                      onChange={onPromptChangeStable}
+                      onVisibleSelectionChange={expandComposerForEditorChangeStable}
+                      onCommandKeyDown={onComposerCommandKeyStable}
+                      onPageScrollKeyDown={onPageScrollKeyDown}
+                      onPageScrollKeyUp={onPageScrollKeyUp}
+                      onPageScrollRelease={onPageScrollRelease}
+                      onCitationSubmitAndSend={submitCitationAndSendStable}
+                      onCitationDraftSave={saveCitationDraftToPromptStable}
+                      onPaste={onComposerPasteStable}
+                      placeholder={
+                        isComposerApprovalState
+                          ? activePendingApproval?.supportsFeedback
+                            ? "Send feedback to decline this request"
+                            : "Send a message to decline and redirect the agent"
+                          : activePendingProgress
+                            ? isChoiceOnlyPendingQuestion
+                              ? "Choose an option above"
+                              : "Type your own answer, or leave this blank to use the selected option"
+                            : showPlanFollowUpPrompt && activeProposedPlan
+                              ? "Add feedback to refine the plan, or leave this blank to implement it"
+                              : projectSelectionRequired
+                                ? "Choose a project above to start a thread"
+                                : showProviderUnavailable
+                                  ? "Enable a provider in Settings to send a message"
+                                  : (shellPlaceholder ?? DEFAULT_COMPOSER_PLACEHOLDER)
+                      }
+                      disabled={
+                        isConnecting ||
+                        projectSelectionRequired ||
+                        isChoiceOnlyPendingQuestion ||
+                        activePendingIsResponding
+                      }
+                    />
+                  </ComposerReviewCommentEditContext>
                 </ComposerContextActionsContext>
                 {isComposerResting ? collapsedComposerImagePreviews : null}
                 {showMobilePendingAnswerActions ? (
