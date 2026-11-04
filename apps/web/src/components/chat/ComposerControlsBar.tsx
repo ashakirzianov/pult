@@ -5,7 +5,9 @@ import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerControl } from "./ComposerControl";
+import { use } from "react";
 import {
+  ComposerControlsSlot,
   ComposerFooterModeControls,
   ComposerModelPicker,
   type RuntimeModeOption,
@@ -138,6 +140,8 @@ export function ComposerControlsBar(props: {
     getModelDisabledReason,
   } = props;
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
+  // Pult: the app's bar always names the thread's access, its own item there.
+  const accessInSlot = use(ComposerControlsSlot) !== null;
   const {
     accessDisplay,
     showModeBlock,
@@ -146,7 +150,7 @@ export function ComposerControlsBar(props: {
     overflowShowsPermissions,
     pickerOwnsModeShortcut,
   } = resolveComposerControlsOwnership({
-    matchesDefault: accessMatchesDefault || props.permissionsShownInStrip,
+    matchesDefault: !accessInSlot && (accessMatchesDefault || props.permissionsShownInStrip),
     planModeUiEnabled,
     collapsed: composerControlsCollapsed,
     measuredHiddenBlockCount,

@@ -56,9 +56,9 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
-  // Pult: in a slot, access is an item of its own, always shown, which the controls' overflow never hides.
+  // Pult: in a slot, access is an item of its own, which the controls' overflow never hides.
   const inSlot = use(ComposerControlsSlot) !== null;
-  const accessDisplay = inSlot ? "label" : (props.accessDisplay ?? "label");
+  const accessDisplay = props.accessDisplay ?? "label";
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(inSlot ? false : props.hidden);
   const permissionsChipRef = useRef<HTMLButtonElement>(null);

@@ -535,3 +535,8 @@ html:not([data-theme-id]) .pult-thread-view {
 .pult-thread-view [data-chat-thread-status-line="true"] {
   padding-inline: calc(var(--pult-composer-text-inset) - 0.25rem);
 }
+
+/* The settings run from the box's left edge; upstream's grouped footer packs them to the right. */
+.pult-composer-bar [data-chat-composer-controls="footer"] {
+  justify-content: flex-start;
+}
