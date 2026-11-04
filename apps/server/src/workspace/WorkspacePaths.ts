@@ -111,10 +111,6 @@ export const resolveWorkspaceRootPath = Effect.fnUntraced(function* (
   return path.resolve(expandHomePath(workspaceRoot.trim(), yield* HostProcess.HomeDirectory));
 });
 
-function toPosixRelativePath(input: string): string {
-  return input.replaceAll("\\", "/");
-}
-
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -194,7 +190,10 @@ const make = Effect.gen(function* () {
       }
 
       const absolutePath = path.resolve(input.workspaceRoot, normalizedInputPath);
-      const relativeToRoot = toPosixRelativePath(path.relative(input.workspaceRoot, absolutePath));
+      // Only the host separator becomes `/`: on POSIX `\` is a file name character.
+      const relativeToRoot = path
+        .relative(input.workspaceRoot, absolutePath)
+        .replaceAll(path.sep, "/");
       if (
         relativeToRoot.length === 0 ||
         relativeToRoot === "." ||

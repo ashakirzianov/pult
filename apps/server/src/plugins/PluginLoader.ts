@@ -25,7 +25,7 @@ import * as ServerConfig from "../config.ts";
 import { hostIdentity, type ServerBuild, serverBuild } from "../pluginHost.ts";
 
 /** The bare specifier a plugin build leaves external; resolved to the host entry here. */
-export const HOST_SPECIFIER = "@t3code/plugin-host";
+const HOST_SPECIFIER = "@t3code/plugin-host";
 
 /** Plugin names and build ids are single path segments. */
 const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

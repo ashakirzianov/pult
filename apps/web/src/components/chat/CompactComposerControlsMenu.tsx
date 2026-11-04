@@ -1,5 +1,5 @@
 import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
-import { memo, type ReactNode, useContext } from "react";
+import { memo, useContext, useRef } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
@@ -10,19 +10,20 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
-import { useComposerMenuProps } from "./composerEventScope";
-import { ComposerControlsSlot } from "./ComposerFooterControls";
+import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
+import {
+  ComposerControlsSlot,
+  ComposerPermissionsSection,
+  type RuntimeModeOption,
+} from "./ComposerFooterControls";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  runtimeModeOptions: ReadonlyArray<{
-    readonly mode: RuntimeMode;
-    readonly label: string;
-  }>;
+  runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showInteractionModeToggle: boolean;
-  traitsMenuContent?: ReactNode;
+  showPermissions?: boolean;
   size?: "sm" | "xs";
   /** Close the portaled popup when its trigger hides. */
   hidden?: boolean;
@@ -33,31 +34,29 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
   // Pult: in a slot, access is an item of its own (`ComposerFooterModeControls`), never in this menu.
-  const showAccess = useContext(ComposerControlsSlot) === null;
+  const showAccess = useContext(ComposerControlsSlot) === null && props.showPermissions !== false;
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <Menu open={open} onOpenChange={setOpen}>
+    <Menu
+      open={open}
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => focusRequestedPermission(isOpen, triggerRef.current)}
+    >
       <MenuTrigger
         render={
           <ComposerControl
+            ref={triggerRef}
             size={size}
             className="shrink-0"
             aria-label="More composer controls"
-            data-composer-shortcut={
-              props.traitsMenuContent ? "composer.mode composer.effort" : "composer.mode"
-            }
+            data-composer-shortcut={showAccess ? "composer.mode" : undefined}
           />
         }
       >
         <ComposerControlIcon icon={EllipsisIcon} size={size} />
       </MenuTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
-        {props.traitsMenuContent ? (
-          <>
-            {props.traitsMenuContent}
-            <MenuDivider />
-          </>
-        ) : null}
         {props.showInteractionModeToggle ? (
           <>
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
@@ -71,26 +70,15 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
               <MenuRadioItem value="default">Chat</MenuRadioItem>
               <MenuRadioItem value="plan">Plan</MenuRadioItem>
             </MenuRadioGroup>
-            <MenuDivider />
+            {showAccess ? <MenuDivider /> : null}
           </>
         ) : null}
         {showAccess ? (
-          <>
-            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
-            <MenuRadioGroup
-              value={props.runtimeMode}
-              onValueChange={(value) => {
-                if (!value || value === props.runtimeMode) return;
-                props.onRuntimeModeChange(value as RuntimeMode);
-              }}
-            >
-              {props.runtimeModeOptions.map((option) => (
-                <MenuRadioItem key={option.mode} value={option.mode}>
-                  {option.label}
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-          </>
+          <ComposerPermissionsSection
+            runtimeMode={props.runtimeMode}
+            runtimeModeOptions={props.runtimeModeOptions}
+            onRuntimeModeChange={props.onRuntimeModeChange}
+          />
         ) : null}
       </MenuPopup>
     </Menu>

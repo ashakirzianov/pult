@@ -388,7 +388,7 @@ function CitationBlock({
   const [shownComment, setShownComment] = useState(savedComment);
   const tooLong = comment.length > maxLength;
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- the requested focus moves to a DOM field the editor's node view owns, after the commit.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the requested focus moves to a DOM field the editor's node view owns, after the commit.
   useEffect(() => {
     if (!focusRequested) return;
     // The editor reacts to losing focus, so the field takes it outside React's commit.
