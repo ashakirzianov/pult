@@ -2512,6 +2512,54 @@ code {
   pointer-events: none;
 }
 
+/* A citation in the composer is a block of its own line
+   (`components/chat/ComposerCitationBlock.tsx`, added for Pult's Cite): the caret helpers
+   ProseMirror puts beside an inline node would each add an empty line, so
+   they go, but for the last line's trailing one, the caret's place after a
+   final citation. */
+.ProseMirror img.ProseMirror-separator:has(+ .node-composer-citation),
+.ProseMirror
+  img.ProseMirror-separator:has(+ .node-composer-context-reference [data-composer-citation-chip]),
+.ProseMirror
+  :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip]))
+  + img.ProseMirror-separator,
+.ProseMirror
+  > :not(:last-child)
+  :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip]))
+  + img.ProseMirror-separator
+  + br.ProseMirror-trailingBreak {
+  /* ProseMirror's own stylesheet pins its separators inline. */
+  display: none !important;
+}
+
+/* So the caret beside a citation, which those hidden breaks would carry, is
+   a blinking bar above or below the block (`ComposerCitationCaretExtension`),
+   the editor's own caret hidden meanwhile. */
+.ProseMirror[data-caret-at-citation] {
+  caret-color: transparent;
+}
+.ProseMirror:focus [data-citation-caret] [data-composer-citation-chip]::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  pointer-events: none;
+  animation: composer-citation-caret 1.06s steps(1) infinite;
+}
+.ProseMirror [data-citation-caret="before"] [data-composer-citation-chip]::before {
+  top: 0;
+}
+.ProseMirror [data-citation-caret="after"] [data-composer-citation-chip]::before {
+  bottom: 0;
+}
+@keyframes composer-citation-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* Rich-text task lists render as real checkboxes. Tiptap's TaskItem NodeView
    builds the <li> imperatively with only a data-checked attribute (no
    data-type), so items are targeted that way. Indentation comes from list
