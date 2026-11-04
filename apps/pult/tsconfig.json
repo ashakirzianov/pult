@@ -16,6 +16,6 @@
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo"
   },
   "include": ["src", "vite.config.ts"],
-  // The thread view is checked with the copy's settings, and read here through its declarations (`tsc -b`).
-  "references": [{ "path": "./thread-view" }]
+  // The thread view is checked with apps/web's settings, and read here through its declarations (`tsc -b`).
+  "references": [{ "path": "./view" }]
 }

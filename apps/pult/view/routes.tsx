@@ -54,8 +54,9 @@ export function makeThreadRouter(input: {
     component: () => null,
   });
 
-  // The fork's pages the thread view links to, so the links typecheck against
-  // this router; the app sends the view back from them.
+  // The fork's pages the thread view links to, so its links land somewhere; the
+  // app sends the view back from them. The links typecheck against apps/web's
+  // router, which registers itself with the router's types.
   const pullRequestsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "pull-requests",
@@ -85,10 +86,4 @@ export function makeThreadRouter(input: {
     routeTree,
     history: createMemoryHistory({ initialEntries: [input.initialPath] }),
   });
-}
-
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: ReturnType<typeof makeThreadRouter>;
-  }
 }

@@ -27,13 +27,15 @@ import { threadViewHostStarted } from "./host.ts";
 let nextObservedRequestId = 0;
 
 const layerRpcRequestObserver = Layer.succeed(EnvironmentRpcRequestObserver, {
-  observe: ({ environmentId, method }) =>
-    Effect.sync(() => {
+  // Every RPC passes through this observer, as upstream's; the request owns its span.
+  observe: Effect.fnUntraced(function* ({ environmentId, method }) {
+    return yield* Effect.sync(() => {
       nextObservedRequestId += 1;
       const requestId = `${environmentId}:${nextObservedRequestId}`;
       trackRpcRequestSent(requestId, method, `${method} · ${environmentId}`);
       return Effect.sync(() => acknowledgeRpcRequest(requestId));
-    }),
+    });
+  }),
 });
 
 const layerSnapshotLoader = Layer.mergeAll(

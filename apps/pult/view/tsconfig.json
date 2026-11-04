@@ -1,23 +1,38 @@
 {
-  "extends": "../vendor/t3code/tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    // The copy's settings (the fork's apps/web/tsconfig.json), which its code is written to.
+    // apps/web/tsconfig.json's settings, which its code and the view's are written to.
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "erasableSyntaxOnly": false,
     "verbatimModuleSyntax": false,
     "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "ESNext.Disposable", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "paths": {
-      "~/*": ["./t3/src/*"]
+      "~/*": ["../../web/src/*"]
     },
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "globalDate": "off",
+          "globalConsole": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "globalFetch": "off"
+        }
+      }
+    ],
     // The page's program (`../tsconfig.json`) reads the view through its declarations, so the
-    // copy is checked once, with its own settings.
+    // view and apps/web's source are checked once, with apps/web's settings; a composite
+    // project lists every file it reaches.
     "composite": true,
+    "rootDir": "../..",
     "noEmit": false,
     "emitDeclarationOnly": true,
-    "outDir": "../node_modules/.cache/thread-view-types"
+    "outDir": "../node_modules/.cache/view-types"
   },
-  "include": ["shell", "stubs.ts", "t3/src"]
+  "include": [".", "../../web/src"],
+  "exclude": ["../../web/src/**/*.test.ts", "../../web/src/**/*.test.tsx"]
 }
