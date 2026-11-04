@@ -17,7 +17,10 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
-import { ComposerControlsSlot } from "~/components/chat/ComposerFooterControls";
+import {
+  ComposerControlsSlot,
+  ComposerControlsSlotEntries,
+} from "~/components/chat/ComposerFooterControls";
 import { ConfirmDialogHost } from "~/components/ConfirmDialogHost";
 import { CustomSnoozeDialogHost } from "~/components/CustomSnoozeDialog";
 import { ShellComposerOptions, type ShellValue } from "~/components/chat/ShellComposerOptions";
@@ -29,6 +32,7 @@ import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
+import { ComposerBarActivity, ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { draftKey, heldDraft } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
@@ -314,6 +318,13 @@ export interface MountOptions {
   readonly placeholder?: ShellValue<string>;
 }
 
+/** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
+const composerBarEntries: ComposerControlsSlotEntries = {
+  Activity: ComposerBarActivity,
+  Notices: ComposerBarNotices,
+  Host: ComposerBarHost,
+};
+
 /**
  * Mounts the view above the pane's composer bar: the thread's settings
  * (model, reasoning, mode, attachments, the context window, a draft's
@@ -350,11 +361,13 @@ function mountView(
     <StrictMode>
       <AppAtomRegistryProvider>
         <ComposerControlsSlot value={bar}>
-          <ShellComposerOptions value={composerOptions}>
-            <TimelineHeaderSlot value={options.timelineHeader?.element ?? null}>
-              <RouterProvider router={router} />
-            </TimelineHeaderSlot>
-          </ShellComposerOptions>
+          <ComposerControlsSlotEntries value={composerBarEntries}>
+            <ShellComposerOptions value={composerOptions}>
+              <TimelineHeaderSlot value={options.timelineHeader?.element ?? null}>
+                <RouterProvider router={router} />
+              </TimelineHeaderSlot>
+            </ShellComposerOptions>
+          </ComposerControlsSlotEntries>
         </ComposerControlsSlot>
       </AppAtomRegistryProvider>
     </StrictMode>,

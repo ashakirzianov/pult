@@ -1,5 +1,5 @@
 import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
-import { memo, type ReactNode } from "react";
+import { memo, type ReactNode, useContext } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
@@ -11,6 +11,7 @@ import {
 } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
+import { ComposerControlsSlot } from "./ComposerFooterControls";
 import { useComposerMenuState } from "./useComposerMenuState";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
@@ -31,6 +32,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
   const [open, setOpen] = useComposerMenuState(props.hidden);
+  // Pult: in a slot, access is an item of its own (`ComposerFooterModeControls`), never in this menu.
+  const showAccess = useContext(ComposerControlsSlot) === null;
 
   return (
     <Menu open={open} onOpenChange={setOpen}>
@@ -71,20 +74,24 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuDivider />
           </>
         ) : null}
-        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
-        <MenuRadioGroup
-          value={props.runtimeMode}
-          onValueChange={(value) => {
-            if (!value || value === props.runtimeMode) return;
-            props.onRuntimeModeChange(value as RuntimeMode);
-          }}
-        >
-          {props.runtimeModeOptions.map((option) => (
-            <MenuRadioItem key={option.mode} value={option.mode}>
-              {option.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
+        {showAccess ? (
+          <>
+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
+            <MenuRadioGroup
+              value={props.runtimeMode}
+              onValueChange={(value) => {
+                if (!value || value === props.runtimeMode) return;
+                props.onRuntimeModeChange(value as RuntimeMode);
+              }}
+            >
+              {props.runtimeModeOptions.map((option) => (
+                <MenuRadioItem key={option.mode} value={option.mode}>
+                  {option.label}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );

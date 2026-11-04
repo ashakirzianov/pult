@@ -49,6 +49,7 @@ import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   memo,
   type ReactNode,
+  useContext,
   useEffect,
   useEffectEvent,
   useId,
@@ -204,7 +205,12 @@ import {
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
-import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
+import {
+  ComposerControlsSlot,
+  ComposerControlsSlotEntries,
+  ComposerControlsSlotItem,
+  ComposerFooterPrimaryActions,
+} from "./ComposerFooterControls";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -2313,7 +2319,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsTasksDrawerOpen((open) => !open);
   };
   const toggleTasksDrawerStable = useStableCallback(toggleTasksDrawer);
-  const hasBannerItems = props.bannerItems.length > 0;
+  // Pult: with a slot, the notices, the sync row and the tasks render there, not above the composer.
+  const controlsInSlot = useContext(ComposerControlsSlot) !== null;
+  const hasBannerItems = !controlsInSlot && props.bannerItems.length > 0;
   const hasBlockingComposerTopDrawer =
     activePendingApproval !== null || pendingUserInputs.length > 0;
   const showInlineTasksBadge =
@@ -2321,6 +2329,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeTaskSteps !== null &&
     !isTasksDrawerOpen &&
     !hasBlockingComposerTopDrawer &&
+    !controlsInSlot &&
     (hasBannerItems || showComposerTopDrawer || isComposerCollapsedMobile);
   const inlineTasksBadge = showInlineTasksBadge ? (
     <ComposerTasksBadge
@@ -2341,7 +2350,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const composerHasExpandedChrome =
     showComposerTopDrawer ||
-    isTasksDrawerOpen ||
+    (isTasksDrawerOpen && !controlsInSlot) ||
     composerMenuOpen ||
     isStashMenuOpen ||
     isDragOverComposer ||
@@ -2364,7 +2373,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const expandedComposerImages = isComposerResting
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
-  const composerControlsCollapsed = isComposerResting || isComposerCollapsedMobile;
+  const composerCollapsed = isComposerResting || isComposerCollapsedMobile;
+  // Pult: controls in the app's slot keep their expanded form while the composer rests.
+  const controlsSlot = useContext(ComposerControlsSlot);
+  const slotEntries = useContext(ComposerControlsSlotEntries);
+  const composerControlsCollapsed = composerCollapsed && controlsSlot === null;
   const showInlineRestingControls = composerControlsCollapsed && restingControlsHost === null;
   const composerControlsVisibleInStrip =
     composerControlsCollapsed && restingControlsHost !== null && restingControlsVisible;
@@ -2408,7 +2421,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const composerMainSurfaceRef = useComposerRestingTransition(
-    composerControlsCollapsed,
+    composerCollapsed,
     isComposerResting,
     restingComposerControlsRef,
     onComposerOverlayHeightChange,
@@ -2587,6 +2600,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     />
   );
   const showTasksTab =
+    !controlsInSlot &&
     !hasBannerItems &&
     !showComposerTopDrawer &&
     !isTasksDrawerOpen &&
@@ -3415,7 +3429,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ) {
           onTypingGuardFocus();
         }
-        if (composerControlsCollapsed && isInsideRestingComposerControlScope(activeElement)) {
+        if (composerCollapsed && isInsideRestingComposerControlScope(activeElement)) {
           return;
         }
         if (isInsideCollapsedComposerControls(activeElement)) {
@@ -3481,17 +3495,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           <ComposerBannerStack
             key={activeThreadId}
             className="relative z-0"
-            items={bannerStackItems}
+            items={controlsInSlot ? [] : bannerStackItems}
             attachedAbove={props.queuedRunsControl}
           />
-          {!activityStackItem && (shownSyncPhase || inlineTasksBadge) ? (
+          {controlsInSlot && slotEntries !== null ? (
+            <>
+              <ComposerControlsSlotItem item="activity">
+                <slotEntries.Activity
+                  phase={shownSyncPhase}
+                  progress={activeTasksProgress}
+                  steps={activeTaskSteps}
+                  tasksOpen={isTasksDrawerOpen}
+                  onTasksOpenChange={setIsTasksDrawerOpen}
+                />
+              </ComposerControlsSlotItem>
+              <ComposerControlsSlotItem item="notices">
+                <slotEntries.Notices items={props.bannerItems} />
+              </ComposerControlsSlotItem>
+            </>
+          ) : null}
+          {!controlsInSlot && !activityStackItem && (shownSyncPhase || inlineTasksBadge) ? (
             <ComposerBanner.Attachment>
               <ComposerBanner.Root data-chat-composer-activity-strip="true">
                 {shownSyncPhase ? <ComposerActivityRow phase={shownSyncPhase} /> : inlineTasksBadge}
               </ComposerBanner.Root>
             </ComposerBanner.Attachment>
           ) : null}
-          {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
+          {showComposerTopDrawer &&
+          (!isTasksDrawerOpen || hasBlockingComposerTopDrawer || controlsInSlot) ? (
             <ComposerBanner.Attachment>
               <ComposerBanner.Root
                 data-chat-composer-top-drawer="true"
@@ -3551,7 +3582,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </ComposerBanner.Root>
             </ComposerBanner.Attachment>
           ) : null}
-          {!activityStackItem &&
+          {!controlsInSlot &&
+          !activityStackItem &&
           isTasksDrawerOpen &&
           !hasBlockingComposerTopDrawer &&
           activeTasksProgress &&
@@ -3861,90 +3893,94 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     (showInlineRestingControls ? "bottom-[calc(2rem+1px)]" : "bottom-px"),
                 )}
               >
-                <div
-                  ref={attachExpandedComposerControls}
-                  data-chat-composer-controls="left"
-                  data-chat-composer-footer-controls="true"
-                  className={cn(
-                    "relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-0 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                    isComposerResting && "hidden",
-                  )}
-                >
-                  {composerControlsCollapsed ? null : composerControls}
-                </div>
-
-                <div
-                  ref={setRestingActionsElement}
-                  data-chat-composer-actions="right"
-                  data-chat-composer-transition-actions="true"
-                  data-chat-composer-primary-actions-compact={
-                    isComposerPrimaryActionsCompact ? "true" : "false"
-                  }
-                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
-                >
-                  {composerAttachButton}
-                  <ComposerFooterPrimaryActions
-                    compact={isComposerResting || isComposerPrimaryActionsCompact}
-                    canOperateThread={canOperateThread}
-                    activeContextWindow={
-                      settings.contextWindowMeterEnabled ? activeContextWindow : null
-                    }
-                    reserveContextWindowMeter={reserveContextWindowMeter}
-                    activeThreadModelDisplayName={activeThreadModelDisplayName}
-                    pendingAction={pendingPrimaryAction}
-                    isRunning={phase === "running"}
-                    canInterrupt={canInterrupt}
-                    followUpBehavior={followUpBehavior}
-                    canSteer={!isCompacting}
-                    alternateShortcutLabel={shortcutLabelForCommand(
-                      keybindings,
-                      "composer.sendAlternate",
-                      {
-                        context: {
-                          composerFocus: true,
-                          draftThreadRoute: routeKind === "draft",
-                          turnRunning: true,
-                          composerRequiresModifier: composerRequiresModifier(
-                            settings.sendShortcut,
-                            prompt,
-                          ),
-                        },
-                      },
+                <ComposerControlsSlotItem item="controls">
+                  <div
+                    ref={attachExpandedComposerControls}
+                    data-chat-composer-controls="left"
+                    data-chat-composer-footer-controls="true"
+                    className={cn(
+                      "relative -m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-0 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                      isComposerResting && controlsSlot === null && "hidden",
                     )}
-                    showPlanFollowUpPrompt={
-                      pendingUserInputs.length === 0 && showPlanFollowUpPrompt
+                  >
+                    {composerControlsCollapsed ? null : composerControls}
+                  </div>
+                </ComposerControlsSlotItem>
+
+                <ComposerControlsSlotItem item="actions">
+                  <div
+                    ref={setRestingActionsElement}
+                    data-chat-composer-actions="right"
+                    data-chat-composer-transition-actions="true"
+                    data-chat-composer-primary-actions-compact={
+                      isComposerPrimaryActionsCompact ? "true" : "false"
                     }
-                    promptHasText={prompt.trim().length > 0}
-                    isSendBusy={isSendBusy}
-                    sendDisabledReason={sendDisabledReason}
-                    isConnecting={isConnecting}
-                    isEnvironmentUnavailable={
-                      environmentUnavailable !== null ||
-                      noProviderAvailable ||
-                      projectSelectionRequired
-                    }
-                    isPreparingWorktree={isPreparingWorktree}
-                    hasSendableContent={composerSendState.hasSendableContent}
-                    canResume={showResumeAction}
-                    preserveComposerFocusOnPointerDown={isMobileViewport || isComposerResting}
-                    isEditingQueuedMessage={isEditingQueuedMessage}
-                    onSubmitMessage={handleSubmitMessageStable}
-                    onResume={onResume}
-                    onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                    onInterrupt={handleInterruptPrimaryActionStable}
-                    onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryActionStable}
-                    compactBeforeSendTokens={props.resumeCompactionTokens}
-                    keepFullHistory={props.keepFullHistory}
-                    onToggleKeepFullHistory={props.onToggleKeepFullHistory}
-                    compactDisabled={
-                      compactDisabled || noProviderAvailable || isSendBusy || isConnecting
-                    }
-                    compactDisabledReason={resolvedCompactDisabledReason}
-                    {...(compactCommandAvailable
-                      ? { onCompactContext: compactThreadContextStable }
-                      : {})}
-                  />
-                </div>
+                    className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                  >
+                    {composerAttachButton}
+                    <ComposerFooterPrimaryActions
+                      compact={isComposerResting || isComposerPrimaryActionsCompact}
+                      canOperateThread={canOperateThread}
+                      activeContextWindow={
+                        settings.contextWindowMeterEnabled ? activeContextWindow : null
+                      }
+                      reserveContextWindowMeter={reserveContextWindowMeter}
+                      activeThreadModelDisplayName={activeThreadModelDisplayName}
+                      pendingAction={pendingPrimaryAction}
+                      isRunning={phase === "running"}
+                      canInterrupt={canInterrupt}
+                      followUpBehavior={followUpBehavior}
+                      canSteer={!isCompacting}
+                      alternateShortcutLabel={shortcutLabelForCommand(
+                        keybindings,
+                        "composer.sendAlternate",
+                        {
+                          context: {
+                            composerFocus: true,
+                            draftThreadRoute: routeKind === "draft",
+                            turnRunning: true,
+                            composerRequiresModifier: composerRequiresModifier(
+                              settings.sendShortcut,
+                              prompt,
+                            ),
+                          },
+                        },
+                      )}
+                      showPlanFollowUpPrompt={
+                        pendingUserInputs.length === 0 && showPlanFollowUpPrompt
+                      }
+                      promptHasText={prompt.trim().length > 0}
+                      isSendBusy={isSendBusy}
+                      sendDisabledReason={sendDisabledReason}
+                      isConnecting={isConnecting}
+                      isEnvironmentUnavailable={
+                        environmentUnavailable !== null ||
+                        noProviderAvailable ||
+                        projectSelectionRequired
+                      }
+                      isPreparingWorktree={isPreparingWorktree}
+                      hasSendableContent={composerSendState.hasSendableContent}
+                      canResume={showResumeAction}
+                      preserveComposerFocusOnPointerDown={isMobileViewport || isComposerResting}
+                      isEditingQueuedMessage={isEditingQueuedMessage}
+                      onSubmitMessage={handleSubmitMessageStable}
+                      onResume={onResume}
+                      onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                      onInterrupt={handleInterruptPrimaryActionStable}
+                      onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryActionStable}
+                      compactBeforeSendTokens={props.resumeCompactionTokens}
+                      keepFullHistory={props.keepFullHistory}
+                      onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+                      compactDisabled={
+                        compactDisabled || noProviderAvailable || isSendBusy || isConnecting
+                      }
+                      compactDisabledReason={resolvedCompactDisabledReason}
+                      {...(compactCommandAvailable
+                        ? { onCompactContext: compactThreadContextStable }
+                        : {})}
+                    />
+                  </div>
+                </ComposerControlsSlotItem>
               </div>
             )}
             {showInlineRestingControls ? (
@@ -3971,6 +4007,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </ComposerSurface.Main>
       </div>
+      {controlsSlot === null || slotEntries === null ? null : (
+        <slotEntries.Host slot={controlsSlot} draft={routeKind === "draft"} />
+      )}
     </form>
   );
 });

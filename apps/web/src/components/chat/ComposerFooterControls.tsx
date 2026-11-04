@@ -6,9 +6,20 @@ import type {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { BotIcon, PencilRulerIcon } from "lucide-react";
-import { type ComponentProps, memo } from "react";
+import {
+  type ComponentProps,
+  type ComponentType,
+  createContext,
+  memo,
+  type ReactNode,
+  useContext,
+} from "react";
+import { createPortal } from "react-dom";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ThreadSyncPhase } from "../../threadSync";
+import type { ComposerBannerStackItem } from "./ComposerBannerStack";
+import type { ComposerTaskStep, ComposerTasksProgress } from "./ComposerTasksBadge";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
@@ -37,7 +48,9 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
 }) {
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
-  const [open, setOpen] = useComposerMenuState(props.hidden);
+  // Pult: in a slot, access is an item of its own, which the controls' overflow never hides.
+  const inSlot = useContext(ComposerControlsSlot) !== null;
+  const [open, setOpen] = useComposerMenuState(inSlot ? false : props.hidden);
   const runtimeModeOption =
     props.runtimeModeOptions.find((option) => option.mode === props.runtimeMode) ??
     supervisedRuntimeModeOption;
@@ -84,58 +97,124 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
 
   return (
     <>
-      <Tooltip>
-        <Select
-          open={open}
-          onOpenChange={setOpen}
-          value={props.runtimeMode}
-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
-        >
-          <TooltipTrigger
-            render={
-              <ComposerSelectControl
-                data-composer-shortcut="composer.mode"
-                size={size}
-                aria-label="Runtime mode"
-              />
-            }
+      <ComposerControlsSlotItem item="access">
+        <Tooltip>
+          <Select
+            open={open}
+            onOpenChange={setOpen}
+            value={props.runtimeMode}
+            onValueChange={(value) => props.onRuntimeModeChange(value!)}
           >
-            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            <SelectValue data-composer-control-label>{runtimeModeOption.label}</SelectValue>
-          </TooltipTrigger>
-          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-            {props.runtimeModeOptions.map((option) => {
-              const OptionIcon = option.icon;
-              return (
-                <SelectItem
-                  key={option.mode}
-                  value={option.mode}
-                  hideIndicator
-                  className="min-w-64"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
-                      </span>
+            <TooltipTrigger
+              render={
+                <ComposerSelectControl
+                  data-composer-shortcut="composer.mode"
+                  size={size}
+                  aria-label="Runtime mode"
+                />
+              }
+            >
+              <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
+              <SelectValue data-composer-control-label>{runtimeModeOption.label}</SelectValue>
+            </TooltipTrigger>
+            <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+              {props.runtimeModeOptions.map((option) => {
+                const OptionIcon = option.icon;
+                return (
+                  <SelectItem
+                    key={option.mode}
+                    value={option.mode}
+                    hideIndicator
+                    className="min-w-64"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid min-w-0 flex-1 gap-0.5">
+                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                          <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                          {option.label}
+                        </span>
+                        <span className="text-muted-foreground text-xs leading-4">
+                          {option.description}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectPopup>
-        </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
-      </Tooltip>
+                  </SelectItem>
+                );
+              })}
+            </SelectPopup>
+          </Select>
+          <TooltipPopup side="top">
+            {inSlot ? runtimeModeOption.label : runtimeModeOption.description}
+          </TooltipPopup>
+        </Tooltip>
+      </ComposerControlsSlotItem>
 
       {interactionModeToggle}
     </>
   );
 });
+
+/**
+ * Pult: where the composer's settings render instead of its footer, a bar the
+ * app around the view provides. Each item goes there in a wrapper naming it
+ * (`data-chat-composer-slot-item`), which the bar orders; without a slot the
+ * composer is upstream's.
+ */
+export const ComposerControlsSlot = createContext<HTMLElement | null>(null);
+
+/**
+ * Pult: with a slot, what the composer renders there in place of what it shows
+ * above itself (its sync and task progress, its notices), and the host that
+ * places the slot under its message; the app provides all three.
+ */
+export interface ComposerControlsSlotEntries {
+  readonly Activity: ComponentType<{
+    readonly phase: ThreadSyncPhase | null;
+    readonly progress: ComposerTasksProgress | null;
+    readonly steps: readonly ComposerTaskStep[] | null;
+    readonly tasksOpen: boolean;
+    readonly onTasksOpenChange: (open: boolean) => void;
+  }>;
+  readonly Notices: ComponentType<{ readonly items: ReadonlyArray<ComposerBannerStackItem> }>;
+  readonly Host: ComponentType<{ readonly slot: HTMLElement; readonly draft: boolean }>;
+}
+
+export const ComposerControlsSlotEntries = createContext<ComposerControlsSlotEntries | null>(null);
+
+export function ComposerControlsSlotItem(props: {
+  item: string;
+  level?: string | undefined;
+  children: ReactNode;
+}) {
+  const slot = useContext(ComposerControlsSlot);
+  if (slot === null) return props.children;
+  return createPortal(
+    <div
+      data-chat-composer-slot-item={props.item}
+      data-level={props.level}
+      data-chat-composer-resting-controls="true"
+      className="flex min-w-0 items-center gap-1"
+    >
+      {props.children}
+    </div>,
+    slot,
+  );
+}
+
+/**
+ * Pult: the bar's meter turns orange from this many tokens in context, and red
+ * from this share of the window (`data-level` on its slot item, `heavy` or
+ * `full`), ahead of upstream's red past 90%.
+ */
+const HEAVY_CONTEXT_TOKENS = 150_000;
+const FULL_CONTEXT_PERCENTAGE = 75;
+
+function contextLevel(usage: ContextWindowSnapshot | null) {
+  if (usage === null) return undefined;
+  if ((usage.usedPercentage ?? 0) >= FULL_CONTEXT_PERCENTAGE) return "full";
+  if (usage.usedTokens >= HEAVY_CONTEXT_TOKENS) return "heavy";
+  return undefined;
+}
 
 export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
@@ -180,17 +259,19 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
 }) {
   return (
     <>
-      {props.activeContextWindow ? (
-        <ContextWindowMeter
-          usage={props.activeContextWindow}
-          modelDisplayName={props.activeThreadModelDisplayName}
-          onCompact={props.onCompactContext}
-          compactDisabled={props.compactDisabled}
-          compactDisabledReason={props.compactDisabledReason}
-        />
-      ) : props.reserveContextWindowMeter ? (
-        <ContextWindowMeterPlaceholder />
-      ) : null}
+      <ComposerControlsSlotItem item="meter" level={contextLevel(props.activeContextWindow)}>
+        {props.activeContextWindow ? (
+          <ContextWindowMeter
+            usage={props.activeContextWindow}
+            modelDisplayName={props.activeThreadModelDisplayName}
+            onCompact={props.onCompactContext}
+            compactDisabled={props.compactDisabled}
+            compactDisabledReason={props.compactDisabledReason}
+          />
+        ) : props.reserveContextWindowMeter ? (
+          <ContextWindowMeterPlaceholder />
+        ) : null}
+      </ComposerControlsSlotItem>
       <ComposerPrimaryActions
         compact={props.compact}
         canOperateThread={props.canOperateThread}
