@@ -13,7 +13,7 @@ import * as NodePath from "node:path";
 import { build } from "./build.ts";
 
 const desktopDir = NodePath.dirname(import.meta.dirname);
-const repoRoot = NodePath.dirname(desktopDir);
+const shellDir = NodePath.dirname(desktopDir);
 // Required from Node, the `electron` package is the path of its binary.
 const electronPath: string = NodeModule.createRequire(import.meta.url)("electron");
 const pageUrl = new URL(process.env.PULT_DEV_SERVER_URL || "http://localhost:5190");
@@ -60,9 +60,9 @@ function startDevServer(): NodeChildProcess.ChildProcess {
   console.info(
     `[pult-desktop] nothing answers at ${pageUrl.href}; starting the dev server on port ${port}.`,
   );
-  const vp = NodePath.join(repoRoot, "node_modules/.bin/vp");
+  const vp = NodePath.join(shellDir, "node_modules/.bin/vp");
   return NodeChildProcess.spawn(vp, ["dev", "--port", port], {
-    cwd: repoRoot,
+    cwd: shellDir,
     env,
     stdio: "inherit",
     detached: true,
