@@ -219,16 +219,12 @@ html:not([data-theme-id]) .pult-thread-view {
 }
 
 /* Settings first, taking the room they measure their labels against; then
-   the thread's activity and notices, a draft's environment and branch, the
+   the thread's notices, a draft's environment and branch, the
    icons: the thread's Explorer and Source Control (the shell's,
    `data-chat-composer-slot-item="shell"`) and environment (the shell's), the
    context window, access (upstream's runtime mode), attachments. */
 .pult-composer-bar > [data-chat-composer-slot-item="controls"] {
   flex: 1 1 0;
-}
-
-.pult-composer-bar > [data-chat-composer-slot-item="activity"] {
-  order: 1;
 }
 
 .pult-composer-bar > [data-chat-composer-slot-item="notices"] {
@@ -369,12 +365,6 @@ html:not([data-theme-id]) .pult-thread-view {
   flex: none;
   align-items: center;
   gap: 2px;
-}
-
-.pult-bar-activity {
-  display: flex;
-  min-width: 0;
-  align-items: center;
 }
 
 /* The composer sits on the thread's canvas, not over its turns: the overlay

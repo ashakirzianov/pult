@@ -1,6 +1,10 @@
 import { getService, INotificationService } from "@codingame/monaco-vscode-api";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { request } from "@t3tools/client-runtime/rpc";
+import {
+  requestGuarded,
+  // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- the page runs none of upstream's atoms the client guard reads; the server checks the scopes itself.
+  RpcPermissionGuard,
+} from "@t3tools/client-runtime/rpc";
 import { makeEnvironmentServerConfigState } from "@t3tools/client-runtime/state/server";
 import { EnvironmentId, type ServerConfig, WS_METHODS } from "@t3tools/contracts";
 import {
@@ -16,6 +20,9 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { connection, environmentName, SERVER_CONFIG_OPTIONS } from "../connection/index.ts";
+
+/** The client's guard reads the session's scopes through upstream's atoms, which the page does not run; the server checks them itself. */
+const serverChecks = { authorize: () => Effect.void };
 
 /** What the Limits shelf reads: the accounts merged across the environments, when each environment's limits were last checked, and the notices. */
 export interface LimitsState {
@@ -173,10 +180,10 @@ class LimitsModel {
         connection.run(
           environment.environmentId,
           // As upstream's `refreshProviders` command sends it, on a session subscribed with the /usage-limits command.
-          request(WS_METHODS.serverRefreshProviders, {
+          requestGuarded(WS_METHODS.serverRefreshProviders, {
             workspaceSnapshotsOnDemand: true,
             usageLimitsCommand: true,
-          }),
+          }).pipe(Effect.provideService(RpcPermissionGuard, serverChecks)),
         ),
       ),
     );

@@ -1,33 +1,23 @@
 // What the composer shows above itself, as entries of Pult's composer bar
-// (`ThreadView.tsx`): upstream's notices, and the thread's sync and task
-// progress. Upstream's composer renders these here instead of above itself
-// while the app around the view provides the bar (`ComposerControlsSlot`).
-import type { ThreadSyncPhase } from "~/threadSync";
-import { ComposerActivityRow } from "~/components/chat/ComposerActivityStatus";
+// (`ThreadView.tsx`): upstream's notices. Upstream's composer renders them
+// here instead of above itself while the app around the view provides the bar
+// (`ComposerControlsSlot`). The thread's sync, its background work and its
+// goal are upstream's lines at the end of the timeline.
 import { ComposerBanner } from "~/components/chat/ComposerBanner";
 import type { ComposerBannerStackItem } from "~/components/chat/ComposerBannerStack";
-import { ComposerTasksBadge, ComposerTasksContent } from "~/components/chat/ComposerTasksBadge";
-import type { ComposerTaskStep, ComposerTasksProgress } from "~/components/chat/ComposerTasksBadge";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { useLayoutEffect, useRef } from "react";
 
-/** Upstream's stack order: urgent, errors and warnings first, then activity, then the rest. */
+/** Errors and warnings first, then upstream's stack order: the machine's notices, then what needs you. */
 function noticeRank(item: ComposerBannerStackItem) {
-  if (item.priority === "urgent" || item.variant === "error" || item.variant === "warning") {
-    return 0;
-  }
-  return item.priority === "activity" ? 1 : 2;
+  if (item.variant === "error" || item.variant === "warning") return 0;
+  return (item.group ?? "attention") === "environment" ? 1 : 2;
 }
 
 /** One notice in full, as upstream's stack shows it. */
 function Notice({ item }: { readonly item: ComposerBannerStackItem }) {
   return (
-    <ComposerBanner.Root
-      role="alert"
-      placement="floating"
-      variant={item.variant}
-      density="comfortable"
-    >
+    <ComposerBanner.Root role="alert" detached variant={item.variant} density="comfortable">
       <ComposerBanner.Row layout="wrap-actions">
         <ComposerBanner.Icon className="h-(--composer-banner-icon-column) self-start">
           {item.icon}
@@ -109,60 +99,6 @@ export function ComposerBarNotices({
         </span>
       ) : null}
     </div>
-  );
-}
-
-/**
- * The thread's activity: while its messages load or sync, that; else its
- * task progress, a button that opens the task list above the bar.
- */
-export function ComposerBarActivity({
-  phase,
-  progress,
-  steps,
-  tasksOpen,
-  onTasksOpenChange,
-}: {
-  readonly phase: ThreadSyncPhase | null;
-  readonly progress: ComposerTasksProgress | null;
-  readonly steps: readonly ComposerTaskStep[] | null;
-  readonly tasksOpen: boolean;
-  readonly onTasksOpenChange: (open: boolean) => void;
-}) {
-  if (phase !== null) {
-    return (
-      <div className="pult-bar-activity">
-        <ComposerActivityRow phase={phase} />
-      </div>
-    );
-  }
-  if (progress === null || steps === null || progress.totalSteps <= 0) return null;
-  return (
-    <Popover open={tasksOpen} onOpenChange={onTasksOpenChange}>
-      {/* The badge is upstream's button; the trigger around it opens and closes the list. */}
-      <PopoverTrigger render={<span className="pult-bar-activity" />}>
-        <ComposerTasksBadge
-          expanded={tasksOpen}
-          onToggle={() => {}}
-          placement="inline"
-          progress={progress}
-          steps={steps}
-        />
-      </PopoverTrigger>
-      <PopoverPopup
-        side="top"
-        align="start"
-        aria-label="Tasks"
-        className="w-[min(28rem,calc(100vw-2rem))]"
-      >
-        <ComposerTasksContent
-          expanded
-          onToggle={() => onTasksOpenChange(false)}
-          progress={progress}
-          steps={steps}
-        />
-      </PopoverPopup>
-    </Popover>
   );
 }
 

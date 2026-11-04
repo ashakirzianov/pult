@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "build": "tsc -b && vp build",
+    "build": "effect-tsgo tsrs -b && vp build",
     "preview": "vp preview",
-    "typecheck": "tsc -b",
+    "typecheck": "effect-tsgo tsrs -b",
     "test": "node --test \"src/**/*.test.ts\"",
     "desktop:dev": "pnpm --filter pult-desktop dev"
   },

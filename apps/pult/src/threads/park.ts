@@ -23,7 +23,7 @@ import type { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import * as Operations from "@t3tools/client-runtime/operations";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import { ThreadId } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 
 import { connection } from "../connection/index.ts";
@@ -54,15 +54,9 @@ const FEATURE_NAMES: Record<keyof ThreadFeatures, string> = {
 };
 
 // The thread commands mint their command ids with it.
-const webCrypto = Crypto.make({
-  randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-  digest: (algorithm, data) =>
-    Effect.promise(async () => {
-      const input = new Uint8Array(data.length);
-      input.set(data);
-      return new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, input.buffer));
-    }),
-});
+const webRandom = SecureRandom.make((size) =>
+  globalThis.crypto.getRandomValues(new Uint8Array(size)),
+);
 
 type Command = { readonly threadId: ThreadId };
 
@@ -72,11 +66,15 @@ type ThreadRef = Pick<ShellThread, "environmentId" | "id">;
 /** Runs a thread command on the thread's environment's live session. */
 function run<A, E>(
   target: ThreadRef,
-  effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor | Crypto.Crypto>,
+  effect: Effect.Effect<
+    A,
+    E,
+    EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+  >,
 ): Promise<A> {
   return connection.run(
     target.environmentId,
-    effect.pipe(Effect.provideService(Crypto.Crypto, webCrypto)),
+    effect.pipe(Effect.provideService(SecureRandom.SecureRandom, webRandom)),
   );
 }
 

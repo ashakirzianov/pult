@@ -87,11 +87,14 @@ const layerStores = Layer.mergeAll(
     clearVcsRefs: () => Effect.void,
     clear: () => Effect.void,
   }),
-  TokenStore.layer({
-    get: () => Effect.succeedNone,
-    put: () => Effect.void,
-    remove: () => Effect.void,
-  }),
+  Layer.succeed(
+    TokenStore.RemoteDpopAccessTokenStore,
+    TokenStore.make({
+      get: () => Effect.succeedNone,
+      put: () => Effect.void,
+      remove: () => Effect.void,
+    }),
+  ),
 );
 
 const NO_CONNECT = "T3 Connect is not available in Pult.";

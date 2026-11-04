@@ -32,7 +32,7 @@ import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
-import { ComposerBarActivity, ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
+import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { draftKey, heldDraft } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
@@ -320,7 +320,6 @@ export interface MountOptions {
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
 const composerBarEntries: ComposerControlsSlotEntries = {
-  Activity: ComposerBarActivity,
   Notices: ComposerBarNotices,
   Host: ComposerBarHost,
 };
@@ -328,7 +327,7 @@ const composerBarEntries: ComposerControlsSlotEntries = {
 /**
  * Mounts the view above the pane's composer bar: the thread's settings
  * (model, reasoning, mode, attachments, the context window, a draft's
- * environment and branch), its notices and its activity render there, out
+ * environment and branch) and its notices render there, out
  * of the composer, which keeps the message and its send button
  * (`ComposerControlsSlot`).
  */
