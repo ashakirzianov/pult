@@ -933,7 +933,7 @@
   font-size: 11px;
 }
 
-/* The provider's colour, upstream's (thread-view/shell/usageProviders.tsx), the foreground where it names an
+/* The provider's colour, upstream's (view/usageProviders.tsx), the foreground where it names an
    upstream variable the page lacks. */
 .pult-limits-provider {
   flex: none;
@@ -943,7 +943,7 @@
   background: var(--pult-limit-color, var(--vscode-foreground));
 }
 
-/* The provider's icon, upstream's model picker's (thread-view/shell/usageProviders.tsx), in place of the dot. */
+/* The provider's icon, upstream's model picker's (view/usageProviders.tsx), in place of the dot. */
 .pult-limits-provider-icon {
   display: inline-flex;
   flex: none;

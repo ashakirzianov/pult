@@ -1,8 +1,8 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
-import { appAtomRegistry } from "../t3/src/rpc/atomRegistry";
-import { environmentThreadDetails } from "../t3/src/state/threads";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { environmentThreadDetails } from "~/state/threads";
 import type { TurnCheckpoints } from "./host.ts";
 
 /**

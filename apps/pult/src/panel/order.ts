@@ -1,4 +1,4 @@
-import type { ProjectDraft } from "../../thread-view/shell/drafts.ts";
+import type { ProjectDraft } from "../../view/drafts.ts";
 import { scopedKey, type ShelfName, type ShellThread } from "../threads/store.ts";
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */

@@ -547,7 +547,7 @@ html:not([data-theme-id]) .pult-thread-view {
 }
 
 /* A citation in the composer is a block of its own line
-   (`t3/src/components/chat/ComposerCitationBlock.tsx`): the caret helpers
+   (`apps/web/src/components/chat/ComposerCitationBlock.tsx`): the caret helpers
    ProseMirror puts beside an inline node would each add an empty line, so
    they go, but for the last line's trailing one, the caret's place after a
    final citation. */

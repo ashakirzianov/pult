@@ -1,15 +1,15 @@
-import type { ProjectDraft } from "../../thread-view/shell/drafts.ts";
+import type { ProjectDraft } from "../../view/drafts.ts";
 import { isStarRoot } from "../stars/record.ts";
 import { threadStore } from "../threads/store.ts";
 
 export type { ProjectDraft };
 
-type Source = typeof import("../../thread-view/shell/drafts.ts");
+type Source = typeof import("../../view/drafts.ts");
 
 let source: Promise<Source> | undefined;
 
 /**
- * One of the thread view's composer lists (`thread-view/shell/drafts.ts`) for
+ * One of the thread view's composer lists (`view/drafts.ts`) for
  * `useSyncExternalStore`, loaded on the first subscriber without the rest
  * of the view, and `initial` until then.
  */
@@ -24,7 +24,7 @@ function lazyList<T>(
     get: () => value,
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
-      loading ??= (source ??= import("../../thread-view/shell/drafts.ts")).then((module) => {
+      loading ??= (source ??= import("../../view/drafts.ts")).then((module) => {
         const list = pick(module);
         const update = () => {
           value = list.get();

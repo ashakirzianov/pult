@@ -9,7 +9,7 @@ import {
 import { isProjectFaviconFallbackUrl } from "@t3tools/shared/projectFavicon";
 import { useSyncExternalStore } from "react";
 
-import { lucideIconSvg, projectFaviconCache } from "../../thread-view/shell/projectIcons.ts";
+import { lucideIconSvg, projectFaviconCache } from "../../view/projectIcons.ts";
 import { connection } from "../connection/index.ts";
 import { whenReady } from "../files/server.ts";
 import type { ShellThread } from "./store.ts";

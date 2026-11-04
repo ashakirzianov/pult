@@ -1,12 +1,12 @@
 // The shell's citations of files and diffs into a composer (`src/composer/cite.ts`):
 // upstream's file and diff comments, the draft context records its agent and its
 // timeline already read (`reviewCommentContext.ts`).
-import { requestReviewCommentFocus } from "../t3/src/components/chat/ComposerCitationBlock";
-import { nextFileCommentId } from "../t3/src/components/files/fileCommentAnnotations";
-import { useComposerDraftStore } from "../t3/src/composerDraftStore";
-import { reviewCommentContextReference } from "../t3/src/lib/composerContextRecords";
-import { formatInlineContextReference } from "../t3/src/lib/composerContextReferences";
-import { buildFileReviewComment, type ReviewCommentContext } from "../t3/src/reviewCommentContext";
+import { requestReviewCommentFocus } from "~/components/chat/ComposerCitationBlock";
+import { nextFileCommentId } from "~/components/files/fileCommentAnnotations";
+import { useComposerDraftStore } from "~/composerDraftStore";
+import { reviewCommentContextReference } from "~/lib/composerContextRecords";
+import { formatInlineContextReference } from "~/lib/composerContextReferences";
+import { buildFileReviewComment, type ReviewCommentContext } from "~/reviewCommentContext";
 import { type ComposerTarget, composerKey } from "./drafts.ts";
 
 /** A file's lines to cite: its path as the agent should read it, the lines, one-based and inclusive, and the file's text. */

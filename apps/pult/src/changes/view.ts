@@ -55,7 +55,7 @@ import type {
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
 import { ProjectId, ThreadId, type ReviewDiffPreviewSourceKind } from "@t3tools/contracts";
 
-import type { TurnCheckpoints } from "../../thread-view/shell/main.tsx";
+import type { TurnCheckpoints } from "../../view/main.tsx";
 
 import { pultUri } from "../panel/explorer.ts";
 import {

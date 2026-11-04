@@ -1,8 +1,8 @@
 // The thread view the page mounts in its thread pane (`src/threads/pane.tsx`):
-// upstream's turns and composer from the copy (`../t3/`), with the app around
-// them ours (`ThreadView.tsx`), on the page's connection, its React, Effect
-// and vendored packages the page's own.
-import "../t3/src/index.css";
+// upstream's turns and composer from `apps/web`, with the app around them ours
+// (`ThreadView.tsx`), on the page's connection, its React, Effect and the
+// repository's packages the page's own.
+import "~/index.css";
 import "./shell.css";
 
 import {
@@ -12,7 +12,7 @@ import {
   setAppearanceMode,
   setSystemColorSchemeSource,
   setTheme,
-} from "../t3/src/hooks/useTheme";
+} from "~/hooks/useTheme";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import { routeRightPanel } from "./rightPanel.ts";
 import {

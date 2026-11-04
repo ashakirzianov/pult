@@ -15,7 +15,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
-import { v2Projection } from "../../vendor/t3code/packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
+import { v2Projection } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import { decodeThreadSnapshot, threadSnapshotUrl } from "./history.ts";
 import { formatTranscript, parseTranscript } from "./transcript.ts";
 

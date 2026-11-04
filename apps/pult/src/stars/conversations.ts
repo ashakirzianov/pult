@@ -99,7 +99,7 @@ const lineageWorks = (thread: ShellThread, threads: ReadonlyArray<ShellThread>) 
 async function hasUnsentMessage(
   thread: Pick<ShellThread, "environmentId" | "id">,
 ): Promise<boolean> {
-  const { composerHasContent } = await import("../../thread-view/shell/drafts.ts");
+  const { composerHasContent } = await import("../../view/drafts.ts");
   return composerHasContent({
     kind: "thread",
     environmentId: thread.environmentId,

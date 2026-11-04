@@ -4,8 +4,8 @@
 // nothing of the view but the contracts and the icons' SVG.
 import type { ServerProvider } from "@t3tools/contracts";
 
-import { AntigravityIcon, ClaudeAI, type Icon, OpenAI } from "../t3/src/components/Icons.tsx";
-import { PROVIDER_PRESENTATION } from "../t3/src/components/usage/usageProviders.ts";
+import { AntigravityIcon, ClaudeAI, type Icon, OpenAI } from "~/components/Icons";
+import { PROVIDER_PRESENTATION } from "~/components/usage/usageProviders";
 
 /** A provider's short name and colour, by its driver; undefined for a driver upstream does not present. */
 export function usageProvider(

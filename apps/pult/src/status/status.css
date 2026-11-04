@@ -53,7 +53,7 @@
 }
 
 /* The file fades into the strip as the thread's turns fade into its
-   composer (`thread-view/shell/shell.css`, the same stops): a fade to the
+   composer (`view/shell.css`, the same stops): a fade to the
    editor's canvas above the strip's edge, over the file's last lines. The
    grid's cell clips its view, so the strip's is let overflow. */
 .monaco-workbench .split-view-view:has(> .pult-status-strip) {

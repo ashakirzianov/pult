@@ -1,5 +1,5 @@
 // The thread routes the view navigates between, in place of the fork's router
-// (`../t3/src/routes/`): the pane's app (`ThreadView.tsx`) brings its root,
+// (`apps/web/src/routes/`): the pane's app (`ThreadView.tsx`) brings its root,
 // with the providers and its own rules, and its landing page.
 import {
   createMemoryHistory,
@@ -11,8 +11,8 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { ThreadRouteView } from "../t3/src/components/ThreadRouteView";
-import { resolveThreadRouteTarget } from "../t3/src/threadRoutes";
+import { ThreadRouteView } from "~/components/ThreadRouteView";
+import { resolveThreadRouteTarget } from "~/threadRoutes";
 
 function ThreadLayout() {
   // Both thread routes render here, as upstream's `_chat` layout does, so a

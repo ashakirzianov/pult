@@ -3,7 +3,7 @@
 // transcripts render with upstream's markdown.
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 
-import { ConversationDivider, TranscriptEntries } from "../../thread-view/shell/StarTranscript.tsx";
+import { ConversationDivider, TranscriptEntries } from "../../view/StarTranscript.tsx";
 import { threadStore } from "../threads/store.ts";
 import {
   foldStore,

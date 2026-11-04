@@ -8,13 +8,10 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { MoonIcon, WrenchIcon } from "lucide-react";
 
-import ChatMarkdown from "../t3/src/components/ChatMarkdown";
-import {
-  MESSAGE_HEADING_LEVEL,
-  MessageAuthorHeading,
-} from "../t3/src/components/chat/TimelineRowParts";
-import { TimelineSystemDivider } from "../t3/src/components/chat/TimelineSystemDivider";
-import { cn } from "../t3/src/lib/utils";
+import ChatMarkdown from "~/components/ChatMarkdown";
+import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "~/components/chat/TimelineRowParts";
+import { TimelineSystemDivider } from "~/components/chat/TimelineSystemDivider";
+import { cn } from "~/lib/utils";
 
 /** One entry of a transcript, as `src/stars/transcript.ts` reads it back. */
 export interface TranscriptEntry {

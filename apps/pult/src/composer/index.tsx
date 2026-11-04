@@ -21,7 +21,7 @@ import {
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import { createRoot } from "react-dom/client";
 
-import type { MountedView, ViewTarget } from "../../thread-view/shell/main.tsx";
+import type { MountedView, ViewTarget } from "../../view/main.tsx";
 import { connection } from "../connection/connection.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { BarTip } from "../threads/barEntries.tsx";
@@ -86,23 +86,21 @@ export const composerStrip = {
 
 /**
  * Keeps `filled` to the selected composer: the thread view's composer store
- * (`thread-view/shell/drafts.ts`), loaded without the rest of the view.
+ * (`view/drafts.ts`), loaded without the rest of the view.
  */
 function followFilled(): void {
-  void import("../../thread-view/shell/drafts.ts").then(
-    ({ composerHasContent, onDidChangeComposers }) => {
-      const update = () => {
-        const target = selectedTarget();
-        setState({ filled: target !== null && composerHasContent(target) });
-      };
-      onDidChangeComposers(update);
-      onDidSelectThread(update);
-      // A Star's composer is its draft's until it wakes, then its conversation's.
-      starStore.subscribe(update);
-      connection.onDidChange(update);
-      update();
-    },
-  );
+  void import("../../view/drafts.ts").then(({ composerHasContent, onDidChangeComposers }) => {
+    const update = () => {
+      const target = selectedTarget();
+      setState({ filled: target !== null && composerHasContent(target) });
+    };
+    onDidChangeComposers(update);
+    onDidSelectThread(update);
+    // A Star's composer is its draft's until it wakes, then its conversation's.
+    starStore.subscribe(update);
+    connection.onDidChange(update);
+    update();
+  });
 }
 
 /** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
@@ -179,7 +177,7 @@ function stripView() {
  * The composer under a file (xaxis `pult/issues/file-citations`): while the
  * strip is open and the active editor is a file of the selected thread's or
  * draft's tab set, that thread's or draft's composer, a composer-only mount
- * of the thread view (`thread-view/shell/ThreadView.tsx`), in a view of the
+ * of the thread view (`view/ThreadView.tsx`), in a view of the
  * layout's grid between the editor part and the status strip. Mounted when
  * first shown, and again when the selection changes while it is open.
  * Started after the status strip, so it lands above it.

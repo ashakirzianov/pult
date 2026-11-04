@@ -10,7 +10,7 @@ import {
   composerDraftHasUserContent,
   type DraftId,
   useComposerDraftStore,
-} from "../t3/src/composerDraftStore";
+} from "~/composerDraftStore";
 
 const DRAFT_KEY_PREFIX = "pult-shell.draft:";
 

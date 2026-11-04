@@ -79,7 +79,7 @@ export interface WatchListener {
 }
 
 /**
- * What the workspace asks of its environment: the vendored project RPCs,
+ * What the workspace asks of its environment: the server's project RPCs,
  * the asset route and the server's features. A call rejects with the RPC's
  * error, or with `EnvironmentRpcUnavailableError` while the page has no live
  * connection.

@@ -2,19 +2,13 @@
 // (`ThreadView.tsx`): upstream's notices, and the thread's sync and task
 // progress. Upstream's composer renders these here instead of above itself
 // while the app around the view provides the bar (`ComposerControlsSlot`).
-import type { ThreadSyncPhase } from "../t3/src/threadSync";
-import { ComposerActivityRow } from "../t3/src/components/chat/ComposerActivityStatus";
-import { ComposerBanner } from "../t3/src/components/chat/ComposerBanner";
-import type { ComposerBannerStackItem } from "../t3/src/components/chat/ComposerBannerStack";
-import {
-  ComposerTasksBadge,
-  ComposerTasksContent,
-} from "../t3/src/components/chat/ComposerTasksBadge";
-import type {
-  ComposerTaskStep,
-  ComposerTasksProgress,
-} from "../t3/src/components/chat/ComposerTasksBadge";
-import { Popover, PopoverPopup, PopoverTrigger } from "../t3/src/components/ui/popover";
+import type { ThreadSyncPhase } from "~/threadSync";
+import { ComposerActivityRow } from "~/components/chat/ComposerActivityStatus";
+import { ComposerBanner } from "~/components/chat/ComposerBanner";
+import type { ComposerBannerStackItem } from "~/components/chat/ComposerBannerStack";
+import { ComposerTasksBadge, ComposerTasksContent } from "~/components/chat/ComposerTasksBadge";
+import type { ComposerTaskStep, ComposerTasksProgress } from "~/components/chat/ComposerTasksBadge";
+import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { useLayoutEffect, useRef } from "react";
 
 /** Upstream's stack order: urgent, errors and warnings first, then activity, then the rest. */

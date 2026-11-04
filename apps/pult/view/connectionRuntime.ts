@@ -1,6 +1,6 @@
-// Stands in for the copy's `src/connection/runtime.ts` (`../stubs.ts`): the
+// Stands in for `apps/web`'s `src/connection/runtime.ts` (`../stubs.ts`): the
 // thread view's state runtime over the connection the page owns. The page's
-// runtime (`src/connection/`) is the vendored connection over the page's
+// runtime (`src/connection/`) is the client runtime's connection over the page's
 // platform, one socket per environment; this adds what the app around the view brings
 // (the snapshot loaders, background activity reports, request latencies and
 // the browser's Crypto), so the view and the shell share one registry, each
@@ -18,10 +18,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Atom } from "effect/reactivity";
 
-import * as Dpop from "../t3/src/cloud/dpop";
-import type * as Upstream from "../t3/src/connection/runtime";
-import * as BackgroundActivityReporter from "../t3/src/lib/backgroundActivityReporter";
-import { acknowledgeRpcRequest, trackRpcRequestSent } from "../t3/src/rpc/requestLatencyState";
+import * as Dpop from "~/cloud/dpop";
+import type * as Upstream from "~/connection/runtime";
+import * as BackgroundActivityReporter from "~/lib/backgroundActivityReporter";
+import { acknowledgeRpcRequest, trackRpcRequestSent } from "~/rpc/requestLatencyState";
 import { threadViewHostStarted } from "./host.ts";
 
 let nextObservedRequestId = 0;

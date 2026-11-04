@@ -1,4 +1,4 @@
-// Stands in for the copy's `src/components/chat/PanelLayoutControls.tsx`
+// Stands in for `apps/web`'s `src/components/chat/PanelLayoutControls.tsx`
 // (`../stubs.ts`): no toggles for the thread details panel, the terminal
 // drawer or the right panel at the pane's top right. In Pult
 // those are the workbench's to show, not the thread view's; the panels'
@@ -8,7 +8,7 @@
 // same way.
 import { type ComponentProps, memo } from "react";
 
-import type * as Upstream from "../t3/src/components/chat/PanelLayoutControls";
+import type * as Upstream from "~/components/chat/PanelLayoutControls";
 
 export type PanelLayoutControlsProps = Upstream.PanelLayoutControlsProps;
 

@@ -8,7 +8,7 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 // Loaded with the view rather than with the page: upstream's modules read state as they load.
-const BarTooltip = lazy(() => import("../../thread-view/shell/BarTooltip.tsx"));
+const BarTooltip = lazy(() => import("../../view/BarTooltip.tsx"));
 
 /**
  * `children`, an entry of a composer bar, named in upstream's tooltip on

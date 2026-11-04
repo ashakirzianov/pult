@@ -8,7 +8,7 @@ import {
   hasUsageProviderIcon,
   UsageProviderIcon,
   usageProvider,
-} from "../../thread-view/shell/usageProviders.tsx";
+} from "../../view/usageProviders.tsx";
 import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { limitsShelf, type ShelfWindow } from "../limits/limits.ts";
 import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts";

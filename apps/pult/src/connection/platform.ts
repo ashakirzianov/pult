@@ -127,7 +127,7 @@ const layerCapabilities = Layer.mergeAll(
 );
 
 /**
- * What the vendored connection runtime asks of the page: fetch, the browser's
+ * What the client runtime asks of the page: fetch, the browser's
  * WebSocket, one per environment, which the runtime dials anew on each reconnect, the browser's
  * network events, the page coming back to the foreground as the wakeup, and
  * the environments the shell connects as its platform registrations, the way

@@ -91,7 +91,7 @@ function changesDiff(
  * Cite, first in a file's context menu and in either side of the changes
  * view's diff): the selected lines of the active file, or the cursor's line,
  * as a file comment in the selected thread's or draft's composer
- * (`thread-view/shell/citations.ts`), its path relative to the thread's
+ * (`view/citations.ts`), its path relative to the thread's
  * root; in a diff, as a diff comment of the lines and the other side's
  * between them (`diffExcerpt.ts`), labelled with the diff's source; and the
  * composer shown under the file. Hidden for a file of the Explorer
@@ -135,7 +135,7 @@ export function registerCiteCommand(): void {
           selection.endLineNumber > selection.startLineNumber && selection.endColumn === 1
             ? selection.endLineNumber - 1
             : selection.endLineNumber;
-        const citations = await import("../../thread-view/shell/citations.ts");
+        const citations = await import("../../view/citations.ts");
         const diff = changesDiff(editors.listDiffEditors(), editor);
         let cited: boolean;
         if (diff !== undefined) {

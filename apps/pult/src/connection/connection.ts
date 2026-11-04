@@ -106,7 +106,7 @@ interface Held {
 
 /**
  * The page's connections to its environments (`pult/decisions`,
- * `connection-owner`): the vendored runtime, with every environment the
+ * `connection-owner`): the client runtime, with every environment the
  * shell connects as a platform registration, so the registry's supervisors
  * dial one socket per environment and reconnect it. The thread view runs on
  * this runtime's services (`context`), the thread model follows each

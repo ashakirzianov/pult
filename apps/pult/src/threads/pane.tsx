@@ -17,7 +17,7 @@ import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { MountedView, MountOptions, ThreadViewMounts } from "../../thread-view/shell/main.tsx";
+import type { MountedView, MountOptions, ThreadViewMounts } from "../../view/main.tsx";
 
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
@@ -67,7 +67,7 @@ function run(command: string, ...args: unknown[]): void {
 }
 
 /**
- * Upstream's thread view (`thread-view/`), loaded with the first pane and
+ * Upstream's thread view (`view/`, over `apps/web`), loaded with the first pane and
  * started once on the page's connection: its state runtime runs on the
  * connection runtime's services, so the view shares the page's sockets, one
  * per environment, each pane mounting its target's environment.
@@ -80,7 +80,7 @@ function run(command: string, ...args: unknown[]): void {
 export function threadView() {
   started ??= (async () => {
     const [view, scheme] = await Promise.all([
-      import("../../thread-view/shell/main.tsx"),
+      import("../../view/main.tsx"),
       workbenchColorScheme(),
     ]);
     loaded = view.startThreadView({

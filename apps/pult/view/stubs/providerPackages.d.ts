@@ -1,4 +1,4 @@
-// The provider packages the copy's `src/components/settings/providerDriverMeta.ts`
+// The provider packages `apps/web`'s `src/components/settings/providerDriverMeta.ts`
 // imports, which the page does not install (`providerDriverMeta.ts` beside this file
 // stands in for that module in the build); declared so the copy still typechecks.
 declare module "@t3tools/provider-acp-registry/client" {

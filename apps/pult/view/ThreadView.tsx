@@ -16,22 +16,19 @@ import { type ReactNode, StrictMode, useEffect, useRef, useSyncExternalStore } f
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 
-import { BackgroundThreadContext } from "../t3/src/components/chat/backgroundThread";
-import { ComposerControlsSlot } from "../t3/src/components/chat/ComposerFooterControls";
-import { ConfirmDialogHost } from "../t3/src/components/ConfirmDialogHost";
-import { CustomSnoozeDialogHost } from "../t3/src/components/CustomSnoozeDialog";
-import {
-  ShellComposerOptions,
-  type ShellValue,
-} from "../t3/src/components/chat/ShellComposerOptions";
-import { TimelineHeaderSlot } from "../t3/src/components/chat/TimelineHeaderSlot";
-import { SidebarProvider } from "../t3/src/components/ui/sidebar";
-import { AnchoredToastProvider, ToastProvider, toastManager } from "../t3/src/components/ui/toast";
-import { type DraftId, useComposerDraftStore } from "../t3/src/composerDraftStore";
-import { useNewThreadHandler } from "../t3/src/hooks/useHandleNewThread";
-import { AppAtomRegistryProvider } from "../t3/src/rpc/atomRegistry";
-import { useProjects, useThreadProjection } from "../t3/src/state/entities";
-import { resolveThreadRouteTarget } from "../t3/src/threadRoutes";
+import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
+import { ComposerControlsSlot } from "~/components/chat/ComposerFooterControls";
+import { ConfirmDialogHost } from "~/components/ConfirmDialogHost";
+import { CustomSnoozeDialogHost } from "~/components/CustomSnoozeDialog";
+import { ShellComposerOptions, type ShellValue } from "~/components/chat/ShellComposerOptions";
+import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
+import { SidebarProvider } from "~/components/ui/sidebar";
+import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
+import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
+import { useProjects, useThreadProjection } from "~/state/entities";
+import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { draftKey, heldDraft } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";

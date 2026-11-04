@@ -3,7 +3,7 @@
 // attach button does. The shell loads it with the view, never before.
 import type { ReactElement } from "react";
 
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../t3/src/components/ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 /** `children`, the trigger, with `label` in a tooltip above it on hover and keyboard focus. */
 export default function BarTooltip({

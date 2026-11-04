@@ -16,7 +16,7 @@ import * as DateTime from "effect/DateTime";
 import {
   v2Project,
   v2ThreadShell,
-} from "../../vendor/t3code/packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
+} from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import {
   nextWake,
   NO_THREAD_FEATURES,

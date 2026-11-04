@@ -8,8 +8,8 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
-import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../t3/src/diffPanelStore";
-import { useRightPanelStore } from "../t3/src/rightPanelStore";
+import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelStore";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { threadViewHost } from "./host.ts";
 import { turnCheckpoints } from "./turnCheckpoints.ts";
 
