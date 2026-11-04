@@ -1,7 +1,7 @@
 // Stands in for `apps/web`'s `src/components/settings/providerDriverMeta.ts` (`../../stubs.ts`):
 // the registry of the providers built into the contracts, without the provider
-// packages (`@t3tools/provider-cursor` and the rest), which carry their servers'
-// SDKs and which the page does not install. Their providers show by name, with no icon.
+// packages (`@t3tools/provider-cursor` and the rest), which the page leaves out of
+// its bundle. Their providers show by name, with no icon.
 import {
   AntigravitySettings,
   ClaudeSettings,

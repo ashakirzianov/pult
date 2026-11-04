@@ -14,8 +14,7 @@ export const STUBS: Readonly<Record<string, string>> = {
   "../web/src/components/device/deviceModels.ts": "view/stubs/deviceModels.ts",
   // No panel toggles at the pane's top right, which are the workbench's business in Pult.
   "../web/src/components/chat/PanelLayoutControls.tsx": "view/panelLayoutControls.tsx",
-  // The provider registry without the provider packages, whose servers' SDKs
-  // the page does not install.
+  // The provider registry without the provider packages, which the page leaves out.
   "../web/src/components/settings/providerDriverMeta.ts": "view/stubs/providerDriverMeta.ts",
   // Client settings with the context window meter always on: Pult has no
   // settings page to turn it on.
