@@ -156,6 +156,7 @@ export function ThreadContent({
   const [failure, setFailure] = useState<string>();
   const [bar, setBar] = useState<HTMLElement>();
   const latest = useRef({ target, onPromoted, options });
+  // oxlint-disable-next-line react/refs -- the view's callbacks read the latest props without remounting it.
   latest.current = { target, onPromoted, options };
   const mounted = useRef<MountedView>(undefined);
   useEffect(() => {
@@ -194,6 +195,7 @@ export function ThreadContent({
       if (mounted.current === shown) mounted.current = undefined;
       if (shown !== undefined) queueMicrotask(() => shown.dispose());
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- a new generation remounts the view.
   }, [environmentId, generation]);
   // The thread a draft's view became, which the caller may learn of before the view goes there.
   const promotedTo = target.kind === "thread" ? target.threadId : undefined;

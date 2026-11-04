@@ -76,6 +76,7 @@ export function StarContent({ starId }: { starId: string }) {
     target: undefined,
     generation: 0,
   });
+  // oxlint-disable react/refs -- the mount's generation is derived during render from the target it last saw, so a change of target and the render showing it are one.
   if (target !== undefined && !sameTarget(target, mount.current.target)) {
     const { promoted, generation, target: shown } = mount.current;
     // The store may bring the thread before the view names it, or after.
@@ -103,9 +104,11 @@ export function StarContent({ starId }: { starId: string }) {
         mount.current.promoted = { environmentId, threadId };
       }}
       options={options}
+      // oxlint-disable-next-line react/no-unstable-nested-components -- a render prop the pane calls with the bar's element, not a component type.
       barEntries={(bar) => <StarBarEntries bar={bar} target={target} />}
     />
   );
+  // oxlint-enable react/refs
 }
 
 /**
