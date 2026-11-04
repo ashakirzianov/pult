@@ -1,0 +1,1032 @@
+/* The left panel (src/panel), themed on the workbench's sidebar colours. Its own box model, as the shell's UI
+   is React in the page and the workbench's default is the browser's (src/style.css). */
+.pult-panel,
+.pult-panel *,
+.pult-panel *::before,
+.pult-panel *::after {
+  box-sizing: border-box;
+}
+
+.pult-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+}
+
+/* A column, so the shelves after the cards can sit at its bottom. */
+.pult-panel-cards {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 8px;
+  list-style: none;
+}
+
+.pult-panel-cards > * {
+  flex: none;
+}
+
+/* The cards' margins, which a column does not collapse, as a list's would. */
+.pult-panel-cards > .pult-card + .pult-card {
+  margin-top: 0;
+}
+
+.pult-panel-empty {
+  padding: 8px 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-panel-empty p {
+  margin: 0 0 8px;
+}
+
+.pult-card {
+  margin: 2px 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.pult-card:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-card:has(.pult-card-select:focus-visible) {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* The card's selecting part: project, status and title, the whole card's width. */
+.pult-card-select {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+/* The card's border shows its keyboard focus; the workbench's ring on focused `tabindex` elements does not. */
+.pult-panel .pult-card .pult-card-select:focus {
+  outline: none;
+}
+
+/* The status slot: the status, and the thread's actions laid over it, hidden until the card is hovered or an action has keyboard focus. */
+.pult-card-slot {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  height: 18px;
+}
+
+.pult-card-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hovered, focused or with its menu open, the actions take the slot and the status steps out of it. */
+.pult-card:hover .pult-card-actions,
+.pult-card-actions:has(:focus-visible),
+.pult-card-slot-open .pult-card-actions {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pult-card:hover .pult-card-slot > .pult-card-status,
+.pult-card-slot:has(.pult-card-actions :focus-visible) > .pult-card-status,
+.pult-card-slot-open > .pult-card-status {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  /* Positioned, it paints over the actions; clicks go through it to them. */
+  pointer-events: none;
+}
+
+.pult-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The last action's glyph lines up with the status's right edge. */
+.pult-card-actions button:last-child {
+  margin-right: -4px;
+}
+
+.pult-card-actions button:hover,
+.pult-card-slot-open .pult-card-actions button[aria-expanded="true"] {
+  color: var(--vscode-foreground);
+}
+
+.pult-card-actions button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-card-actions .codicon {
+  font-size: 12px;
+}
+
+.pult-card-selected,
+.pult-card-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+  border-color: var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, transparent));
+}
+
+.pult-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* A codicon in the icon's place: the filter's card for an environment's folder. */
+.codicon.pult-card-icon {
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-card-project {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Beside the project, which then gives up the row's free space to it. */
+.pult-card-top:has(.pult-card-environment) .pult-card-project {
+  flex: 0 1 auto;
+}
+
+.pult-card-environment {
+  flex: 0 1 auto;
+  min-width: 2em;
+  margin-right: auto;
+  padding: 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 15px;
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
+}
+
+.pult-card-pin.codicon {
+  font-size: 12px;
+}
+
+/* A thread whose composer holds an unsent message: the status strip's composer dot (src/status/status.css). */
+.pult-card-unsent {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vscode-activityBarBadge-background);
+}
+
+.pult-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.pult-card-status .codicon {
+  font-size: 12px;
+}
+
+.pult-card-status-working {
+  color: var(--vscode-charts-blue, #4daafc);
+  font-weight: 500;
+}
+
+.pult-card-status-waiting {
+  font-weight: 500;
+}
+
+/* Working's elapsed time, a step back from the label. */
+.pult-card-elapsed {
+  font-weight: 400;
+}
+
+.pult-card-status-failed {
+  color: var(--vscode-errorForeground);
+  font-weight: 500;
+}
+
+/* Upstream's Woke, in its warning colour. */
+.pult-card-status-woke {
+  color: var(--vscode-editorWarning-foreground);
+  font-weight: 500;
+}
+
+.pult-card-title {
+  margin-top: 3px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 18px;
+}
+
+.pult-card-settled .pult-card-title {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* A Star's card (StarCard.tsx): one row, its mark, its name in a title's weight, its chip and its state. */
+.pult-star-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 22px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-star-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.pult-star-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.pult-star-row:has(.pult-card-environment) .pult-star-name {
+  flex: 0 1 auto;
+}
+
+.pult-star-awake {
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+.pult-star-asleep {
+  opacity: 0.75;
+}
+
+.pult-card-details {
+  padding: 0 10px 8px;
+}
+
+.pult-panel-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pult-panel-button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.pult-panel-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pult-panel-button .codicon {
+  font-size: 14px;
+}
+
+/* A shelf (Explorer, Ready, Working, Snoozed, Settled, Limits): upstream's collapsible header, label, rule and chevron, then its rows. */
+.pult-shelf {
+  margin-top: 6px;
+}
+
+.pult-panel-cards > .pult-shelf:first-child {
+  margin-top: 0;
+}
+
+/* The first shelf after Ready, or after Explorer while there is no Ready
+   (Working, Snoozed or Settled), takes the room Ready leaves, as upstream's
+   lower shelves sit at its sidebar's bottom; the rest follow it. */
+.pult-panel-cards > .pult-shelf-ready + .pult-shelf,
+.pult-panel-cards > .pult-shelf-explorer + .pult-shelf:not(.pult-shelf-ready) {
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.pult-shelf-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.pult-shelf-header:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* The workbench rings every focused button in its parts; in the panel, only keyboard focus shows. */
+.pult-panel button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.pult-shelf-header:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-shelf-snoozed .pult-shelf-header {
+  color: var(--vscode-charts-blue, #4daafc);
+}
+
+.pult-shelf-label {
+  flex: none;
+}
+
+.pult-shelf-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pult-shelf-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.pult-shelf-header .codicon {
+  flex: none;
+  font-size: 12px;
+}
+
+/* A shelf's chevron in a box as wide as the header's New Thread button, at the same right edge, so the two line up. */
+.pult-shelf > .pult-shelf-header {
+  padding-right: 0;
+}
+
+.pult-shelf > .pult-shelf-header > .codicon:last-child {
+  width: 26px;
+  text-align: center;
+}
+
+.pult-shelf-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pult-shelf-more {
+  padding: 4px 10px 6px;
+}
+
+/* The expanded card's subagents: a row each, selecting its thread. */
+.pult-card-subagents {
+  margin: 0 0 8px;
+}
+
+.pult-subagent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-subagent:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-subagent:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-subagent-selected,
+.pult-subagent-selected:hover {
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.pult-subagent .codicon {
+  flex: none;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-subagent-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The subagents' header inside a card: the shelves' header, a step smaller, its rule only a spacer. */
+.pult-card-subagents .pult-shelf-header {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.pult-subagents-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A stock view's filter (src/panel/filterCard.tsx), the Explorer tab's and
+   Source Control's, a card of the shell's own before the view's tree, the
+   body laid out as a column so the tree takes what is left, and is laid out
+   again for it. The card's lines are the thread cards'. */
+.pane-body:has(> .pult-view-filter) {
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-body:has(> .pult-view-filter) > .explorer-folders-view,
+.pane-body:has(> .pult-view-filter) > .scm-view {
+  flex: 1;
+  min-height: 0;
+}
+
+.pult-view-filter {
+  flex: none;
+  padding: 2px 8px 6px;
+}
+
+.pult-view-filter:empty {
+  display: none;
+}
+
+.pult-view-card,
+.pult-view-card * {
+  box-sizing: border-box;
+}
+
+.pult-view-card {
+  display: block;
+  padding: 7px 10px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent));
+}
+
+.pult-view-card-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-view-card-detail .codicon {
+  flex: none;
+  font-size: 12px;
+}
+
+.pult-view-card-detail > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-view-card-clear.codicon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--vscode-icon-foreground, inherit);
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pult-view-card:hover .pult-view-card-clear,
+.pult-view-card-clear:focus-visible {
+  opacity: 1;
+}
+
+.pult-view-card-clear.codicon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Close, which the workbench lists among the tab's own actions, before its
+   view's (src/panel/view.tsx), goes last; its label names its key, "Close (Escape)". */
+.part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label^="Close"]) {
+  order: 1;
+}
+
+/* The Explorer shelf (src/panel/ExplorerShelf.tsx): an environment, its open files indented under it, one compact row each, selected on the cards' background. */
+.pult-explorer-entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pult-explorer-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.pult-explorer-entry-nested {
+  padding-left: 26px;
+}
+
+.pult-explorer-entry:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-explorer-entry:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-explorer-entry-selected,
+.pult-explorer-entry-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+
+.pult-explorer-entry .codicon {
+  flex: none;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-explorer-entry-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-explorer-entry-detail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* The left panel's bottom row (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
+.pult-panel-footer {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 8px 0 6px;
+  border-right: 1px solid var(--vscode-sideBar-border, transparent);
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+}
+
+.pult-panel-footer *,
+.pult-panel-header *,
+.pult-panel-expand * {
+  box-sizing: border-box;
+}
+
+/* The top row is the sidebar's title: the Pult tab's header (src/panel/rows.tsx) in place of the
+   tab's name and buttons while that tab is open, else the tab's own title, after the traffic lights. */
+.pult-panel-header {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 8px;
+}
+
+.part.sidebar:not(.pult-header-in-title) > .composite.title > .pult-panel-header {
+  display: none;
+}
+
+.part.sidebar.pult-header-in-title > .composite.title {
+  padding: 0;
+}
+
+.part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header) {
+  display: none;
+}
+
+.part.sidebar:not(.pult-header-in-title) > .composite.title {
+  padding-left: calc(8px + var(--pult-traffic-lights, 0px));
+}
+
+/* In the desktop the top row drags the window, as a title bar does, its buttons excepted; in
+   VS Code mode a tab's title keeps its right-click menu, which a drag region would take. */
+.pult-panel-header,
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .composite.title {
+  -webkit-app-region: drag;
+}
+
+.part.sidebar > .composite.title :is(.title-actions, .global-actions) {
+  -webkit-app-region: no-drag;
+}
+
+.pult-panel-header-lights {
+  flex: none;
+  width: max(0px, calc(var(--pult-traffic-lights, 0px) - 8px));
+}
+
+.pult-panel-header-logo {
+  height: 14px;
+  margin-left: 4px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pult-panel-row-spacer {
+  flex: 1;
+}
+
+/* The rows' buttons, the tabs among them, as the thread view's bar's icon buttons: their size, radius and hover colour; the open tab keeps it. */
+.pult-panel-row-button,
+.pult-panel-tab {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.pult-panel-row-button:hover,
+.pult-panel-tab:hover,
+.pult-panel-tab-active {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.pult-panel-row-button:focus-visible,
+.pult-panel-tab:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-panel-tabs {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pult-panel-tab {
+  color: var(--vscode-activityBarTop-inactiveForeground, var(--vscode-descriptionForeground));
+}
+
+.pult-panel-tab .codicon {
+  font-size: 16px;
+}
+
+.pult-panel-tab-image {
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  mask: no-repeat 50% 50% / 16px;
+}
+
+.pult-panel-tab-label {
+  padding: 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pult-panel-tab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--vscode-activityBarBadge-background);
+  color: var(--vscode-activityBarBadge-foreground);
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* Expand Panel, while the panel is collapsed, at the window's top-left after the traffic lights, where the header's Collapse Panel sits, over the room the top-left editor group's tabs row leaves it (src/style.css). */
+.pult-panel-expand {
+  position: absolute;
+  top: 0;
+  left: var(--pult-traffic-lights, 0px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding-left: 2px;
+  color: var(--vscode-foreground);
+}
+
+.monaco-workbench:not(.nosidebar) > .pult-panel-expand {
+  display: none;
+}
+
+/* A row's jump shortcut while the jump modifier is held (`JumpHint.tsx`), upstream's badge: over the row's right end, vertically centred. */
+.pult-jump-hint {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  transform: translateY(-50%);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 10px;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-foreground);
+  box-shadow: 0 1px 2px var(--vscode-widget-shadow);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* On a card, over its status, in the top row. */
+.pult-card-select > .pult-jump-hint {
+  top: 6px;
+  right: 8px;
+  transform: none;
+}
+
+/* The Limits shelf (LimitsShelf.tsx): its header with Refresh on hover, before the chevron. */
+.pult-limits-header {
+  position: relative;
+}
+
+/* Its chevron lined up with the other shelves' (`.pult-shelf > .pult-shelf-header`). */
+.pult-limits-header > .pult-shelf-header {
+  padding-right: 0;
+}
+
+.pult-limits-header > .pult-shelf-header > .codicon:last-child {
+  width: 26px;
+  text-align: center;
+}
+
+.pult-limits-refresh {
+  position: absolute;
+  top: 4px;
+  right: 28px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.pult-limits-header:hover .pult-limits-refresh,
+.pult-limits-header:focus-within .pult-limits-refresh,
+.pult-limits-refresh:disabled {
+  display: inline-flex;
+}
+
+.pult-limits-refresh:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-foreground);
+}
+
+.pult-limits-refresh .codicon {
+  font-size: 14px;
+}
+
+/* The count of warning windows, in the composer bar's warning colour while any warns. */
+.pult-shelf-limits-warning .pult-shelf-count {
+  background: var(--warning, var(--vscode-editorWarning-foreground));
+  color: var(--vscode-editor-background);
+}
+
+/* An account: a compact line, then a line per window over its bar. */
+.pult-limits-account {
+  padding: 4px 8px 6px;
+}
+
+.pult-limits-account-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
+  font-size: 11px;
+}
+
+/* The provider's colour, upstream's (thread-view/shell/usageProviders.tsx), the foreground where it names an
+   upstream variable the page lacks. */
+.pult-limits-provider {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pult-limit-color, var(--vscode-foreground));
+}
+
+/* The provider's icon, upstream's model picker's (thread-view/shell/usageProviders.tsx), in place of the dot. */
+.pult-limits-provider-icon {
+  display: inline-flex;
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.pult-limits-provider-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pult-limits-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.pult-limits-plan {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* The account's chips at the line's end, together. */
+.pult-limits-account-top .pult-card-environment {
+  margin-right: 0;
+}
+
+.pult-limits-plan + .pult-card-environment,
+.pult-limits-name + .pult-card-environment {
+  margin-left: auto;
+}
+
+.pult-limits-windows {
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+  list-style: none;
+}
+
+.pult-limits-window {
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
+.pult-limits-window-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A thin bar of the share used, a tick where even pace would be. */
+.pult-limits-bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 22%, transparent);
+}
+
+.pult-limits-bar-used {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--pult-limit-color, var(--vscode-foreground));
+}
+
+.pult-limits-bar-pace {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 7px;
+  background: var(--vscode-foreground);
+  opacity: 0.6;
+}
+
+.pult-limits-window-warning {
+  color: var(--warning, var(--vscode-editorWarning-foreground));
+}
+
+.pult-limits-window-warning .pult-limits-bar-used {
+  background: var(--warning, var(--vscode-editorWarning-foreground));
+}

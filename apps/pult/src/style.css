@@ -1,0 +1,228 @@
+:root {
+  /* Until the workbench is up, as the page's background below; then the theme's (src/theme.ts). */
+  color-scheme: dark;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+}
+
+html,
+body,
+#workbench {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1f1f1f;
+  color: #ccc;
+}
+
+
+/* The thread view's stylesheet (upstream's, loaded with the view) resets the
+   whole page in its base layer, box-sizing: border-box on every element and
+   pseudo-element among it, which the workbench never asked for: an icon
+   label's icon is a 16px pseudo-element plus padding. This unlayered rule of
+   no specificity gives the workbench outside the view the browser's default
+   back, and loses to every rule of the workbench's own. */
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *)),
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::before,
+:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::after {
+  box-sizing: content-box;
+}
+
+/* The thread's tab (src/threads/pane.tsx) carries the view's header: its title set apart from file names. */
+.monaco-workbench .tab .monaco-icon-label.pult-thread-tab .label-name {
+  font-weight: 600;
+}
+
+/* The shell-rendered thread pane (src/threads): the thread view fills it. */
+.pult-thread-pane {
+  height: 100%;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+}
+
+.pult-thread-content {
+  height: 100%;
+}
+
+.pult-thread-empty {
+  padding: 2rem;
+  opacity: 0.7;
+}
+
+/* The thread's place in its pane's composer bar (src/threads/barEntries.tsx):
+   Explorer, its branch and environment, in the bar's text. */
+.pult-bar-entries {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  /* The bar's spacing (the thread view's `thread-view/shell/shell.css`), so its entries and ours sit one step apart. */
+  gap: var(--pult-bar-gap, 2px);
+}
+
+.pult-bar-entry {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 var(--pult-bar-item-padding, 6px);
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.pult-bar-entry .codicon {
+  font-size: 14px;
+}
+
+.pult-bar-entry-label {
+  min-width: 0;
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An icon button, as the bar's own (`thread-view/shell/shell.css`): its size, radius and hover colour. */
+.pult-bar-button {
+  justify-content: center;
+  width: var(--pult-bar-button-size, 26px);
+  height: var(--pult-bar-button-size, 26px);
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pult-bar-button:hover {
+  background: var(--accent, var(--vscode-toolbar-hoverBackground));
+  color: var(--vscode-foreground);
+}
+
+/* The desktop's title bar, merged into the page (src/desktop/titleBar.ts):
+   the editor groups along the window's top edge drag the window by their
+   tabs row, all but the tabs and the row's buttons; with the left panel
+   collapsed, the top-left group's row leaves the traffic lights their room
+   (`--pult-traffic-lights`, 0 in a browser and in full screen) and Expand
+   Panel its own (src/panel/rows.tsx). A group is
+   on the top edge unless a vertical split puts it below another, and is
+   the top-left one unless any split puts it after another. Browsers ignore
+   the app region. */
+.part.editor > .content .editor-group-container:not(.part.editor .monaco-split-view2.vertical > .monaco-scrollable-element > .split-view-container > .split-view-view:not(:first-child) *) > .title {
+  -webkit-app-region: drag;
+}
+
+.part.editor > .content .editor-group-container > .title :is(.tab, .editor-actions, .title-actions, .scrollbar) {
+  -webkit-app-region: no-drag;
+}
+
+.monaco-workbench.nosidebar .part.editor > .content .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *) > .title > .tabs-and-actions-container {
+  padding-left: calc(var(--pult-traffic-lights, 0px) + 30px);
+}
+
+/* Source Control's "No changes." (src/changes/view.ts), which the workbench
+   focuses when the view opens empty: no focus ring, as it holds nothing to act on. */
+#workbench\.view\.scm .welcome-view-content:focus {
+  outline: none;
+}
+
+/* What Pult's default mode hides and VS Code mode shows (src/mode.ts puts
+   `pult-mode-vscode` on the workbench while that mode is on): rules for what
+   no setting or context key turns off. Each one names what it hides. */
+
+/* The editor tabs' row's "More Actions…" dropdown, the tail of the editor title's toolbar (`.title-actions` while the tab bar shows a single tab). */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor .title :is(.editor-actions, .title-actions) .action-item:has(> .monaco-dropdown .codicon-toolbar-more) {
+  display: none;
+}
+
+/* The light themes' depth shadows, inset on the editor part's edges so the
+   sidebar and panel seem to float above it: under files the strip's fade is
+   the seam, and the shadow read as a second one. */
+.monaco-workbench.vs:not(.pult-mode-vscode) .part.editor::after {
+  box-shadow: none;
+}
+
+/* The scroll shadow under the tabs' row, Monaco's 6px inset shadow shown
+   while a file is scrolled, is the fade the thread's turns get under their
+   tab instead: the same stops as the strip's below (src/status/status.css),
+   downwards. The element is Monaco's overlay, shown and sized by it. */
+.monaco-workbench:not(.pult-mode-vscode) .monaco-editor .scroll-decoration {
+  height: 1.5rem;
+  box-shadow: none;
+  background: linear-gradient(
+    to bottom,
+    var(--vscode-editor-background) 0%,
+    color-mix(in srgb, var(--vscode-editor-background) 90%, transparent) 10%,
+    color-mix(in srgb, var(--vscode-editor-background) 70%, transparent) 24%,
+    color-mix(in srgb, var(--vscode-editor-background) 42%, transparent) 42%,
+    color-mix(in srgb, var(--vscode-editor-background) 18%, transparent) 62%,
+    color-mix(in srgb, var(--vscode-editor-background) 4%, transparent) 82%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* The active tab's top bar (`tab.activeBorderTop`) and its inset shadow
+   (`--vscode-shadow-active-tab`, a faint darkening at its top): the tab's
+   colour already tells it apart. The selectors mirror the workbench's own,
+   one step more specific. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active.tab-border-top > .tab-border-top-container,
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.selected.tab-border-top > .tab-border-top-container {
+  display: none;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+  box-shadow: none;
+}
+
+/* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the fade is the seam. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container.tabs-border-bottom::after {
+  display: none;
+}
+
+/* While a thread's or draft's tab is a group's only tab, its tabs' row is
+   the tab's colour, the editor's, with no border at the tab's right, so
+   the tab and the thread's canvas read as one. The row's background and the tab's
+   right border are inline styles the workbench sets from the theme, hence
+   the `!important`. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
+  background-color: var(--vscode-editor-background) !important;
+}
+
+/* The active tab's bottom line (`tab.activeBorder`, light grey in the light
+   themes): the last of the lines between the row and the content. The
+   workbench's rule names the row's wrapper too, so this one does. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container .tabs-container > .tab.active.tab-border-bottom > .tab-border-bottom-container {
+  display: none;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab:only-child:has(> .tab-label.pult-thread-tab) {
+  border-right: none !important;
+}
+
+/* The Explorer tab's title, the workspace's name while the file view is the
+   tab's only view (the part carries VS Code's own class for that case), is
+   "Explorer" as the tab is named; and its buttons are New File, New Folder
+   and Collapse Folders: Refresh and "Views and More Actions…" go. */
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2 {
+  font-size: 0;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2::before {
+  content: "Explorer";
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(> .codicon-refresh),
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(.codicon-toolbar-more) {
+  display: none;
+}
+
+/* The Pult tab's button in the left panel's bottom row (src/panel/PanelTabs.tsx):
+   every other tab's Close goes back to it. */
+.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tab[data-container="pult.panel"] {
+  display: none;
+}

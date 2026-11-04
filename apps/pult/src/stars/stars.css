@@ -1,0 +1,64 @@
+/* The fold of a Star's earlier conversations (src/stars/fold.tsx), at the top
+   of its timeline inside the thread view, in the view's own colours: its
+   toggle a divider as upstream's "Load earlier turns" is, Show more above the
+   oldest conversation shown, and a note while one is read. */
+.pult-star-fold-toggle,
+.pult-star-fold-more {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  padding: 6px 0 8px;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pult-star-fold-toggle:hover,
+.pult-star-fold-more:hover {
+  color: var(--foreground);
+}
+
+.pult-star-fold-toggle:focus-visible,
+.pult-star-fold-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.pult-star-fold-more {
+  justify-content: center;
+  padding-top: 0;
+}
+
+.pult-star-fold-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.pult-star-fold-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.pult-star-fold-label .codicon {
+  font-size: 12px;
+}
+
+.pult-star-fold-note {
+  margin: 0;
+  padding: 4px 4px 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* An open fold over a sleeping Star's empty draft hides the empty state's
+   line, which would show through under the fold's last conversation. */
+.messages-timeline-row-frame:has(.pult-star-fold[data-open]) ~ [data-timeline-empty-hint] {
+  visibility: hidden;
+}

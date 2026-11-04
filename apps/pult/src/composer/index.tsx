@@ -1,0 +1,290 @@
+import { getService, IContextKeyService, INotificationService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
+import { Direction, type Grid, type IView } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
+import { Emitter } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
+import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
+import { createRoot } from "react-dom/client";
+
+import type { MountedView, ViewTarget } from "../../thread-view/shell/main.tsx";
+import { connection } from "../connection/connection.ts";
+import { allowNativeTextMenu } from "../nativeTextMenu.ts";
+import { BarTip } from "../threads/barEntries.tsx";
+import { isShellTab, threadView } from "../threads/pane.tsx";
+import { starStore } from "../stars/model.ts";
+import { starComposerOptions } from "../stars/tab.tsx";
+import { isSwitchingThread, onDidSelectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
+import "./composer.css";
+
+const SHOW_COMPOSER = "pult-shell.showComposer";
+const HIDE_COMPOSER = "pult-shell.hideComposer";
+
+/** `pult.composerOpen`: whether the composer strip is open, shown under a file or not. */
+const ComposerOpenContext = new RawContextKey<boolean>("pult.composerOpen", false);
+
+/** `pult.hasComposer`: whether a thread or a project's draft is selected, whose composer the strip shows and Cite cites into. */
+export const HasComposerContext = new RawContextKey<boolean>("pult.hasComposer", false);
+
+/** The layout's grid and its editor part's view, as `src/status/` reaches them. */
+interface LayoutGrid {
+  readonly workbenchGrid: Grid<IView>;
+  readonly editorPartView: IView;
+}
+
+/**
+ * The composer strip's state: one switch for the page, open or closed, while
+ * open shown under any file of the selected thread or draft; whether a
+ * thread or draft is selected, whose composer there is to show; whether it
+ * shows now, when the status strip gives way to the composer's own bar; and
+ * whether that composer holds anything, which the status strip's entry marks.
+ */
+interface ComposerState {
+  readonly open: boolean;
+  readonly available: boolean;
+  readonly shown: boolean;
+  readonly filled: boolean;
+}
+
+let state: ComposerState = { open: false, available: false, shown: false, filled: false };
+const onDidChangeState = new Emitter<void>();
+const setState = (next: Partial<ComposerState>) => {
+  if (Object.entries(next).every(([key, value]) => state[key as keyof ComposerState] === value)) return;
+  state = { ...state, ...next };
+  onDidChangeState.fire();
+};
+
+/** The strip's state for `useSyncExternalStore`, and its switch. */
+export const composerStrip = {
+  get: () => state,
+  subscribe: (listener: () => void) => {
+    const subscription = onDidChangeState.event(listener);
+    return () => subscription.dispose();
+  },
+  setOpen: (open: boolean) => setState({ open }),
+};
+
+/**
+ * Keeps `filled` to the selected composer: the thread view's composer store
+ * (`thread-view/shell/drafts.ts`), loaded without the rest of the view.
+ */
+function followFilled(): void {
+  void import("../../thread-view/shell/drafts.ts").then(({ composerHasContent, onDidChangeComposers }) => {
+    const update = () => {
+      const target = selectedTarget();
+      setState({ filled: target !== null && composerHasContent(target) });
+    };
+    onDidChangeComposers(update);
+    onDidSelectThread(update);
+    // A Star's composer is its draft's until it wakes, then its conversation's.
+    starStore.subscribe(update);
+    connection.onDidChange(update);
+    update();
+  });
+}
+
+/** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
+export function selectedTarget(): ViewTarget | null {
+  const target = selectionTarget();
+  const environmentId = connection.environment(target?.environmentId ?? "")?.environmentId;
+  if (target === undefined || environmentId === undefined) return null;
+  return "threadId" in target
+    ? { kind: "thread", environmentId, threadId: target.threadId }
+    : { kind: "draft", environmentId, projectId: target.projectId };
+}
+
+/** The selected Star's composer as its tab has it (`starComposerOptions`), or upstream's for any other selection. */
+function selectedStarComposer() {
+  const starId = selectedStar();
+  return starId === undefined ? {} : starComposerOptions(starId);
+}
+
+const sameTarget = (left: ViewTarget | null, right: ViewTarget | null) => JSON.stringify(left) === JSON.stringify(right);
+
+/** The strip's height before its composer has rendered. */
+const INITIAL_HEIGHT = 120;
+
+/**
+ * The strip as a view of the workbench's grid, as tall as the composer it
+ * holds: upstream's composer is an overlay pinned to the bottom of the
+ * view's canvas, its turns hidden behind it here (`composer.css`), so the
+ * strip takes the overlay's height, followed as the message grows.
+ */
+function stripView() {
+  const element = document.createElement("div");
+  element.className = "pult-composer-strip";
+  allowNativeTextMenu(element);
+  const content = document.createElement("div");
+  content.className = "pult-composer-strip-content";
+  element.append(content);
+  const onDidChange = new Emitter<undefined>();
+  let height = INITIAL_HEIGHT;
+  const view: IView = {
+    element,
+    minimumWidth: 0,
+    maximumWidth: Number.POSITIVE_INFINITY,
+    get minimumHeight() {
+      return height;
+    },
+    get maximumHeight() {
+      return height;
+    },
+    onDidChange: onDidChange.event,
+    layout: () => {},
+  };
+  const resize = (next: number) => {
+    if (next <= 0 || next === height) return;
+    height = next;
+    onDidChange.fire(undefined);
+  };
+  // The overlay comes and goes with the view's routes, so the strip watches for it.
+  let observed: Element | null = null;
+  const sizes = new ResizeObserver(([entry]) => resize(Math.ceil(entry?.borderBoxSize[0]?.blockSize ?? 0)));
+  new MutationObserver(() => {
+    const overlay = content.querySelector("[data-chat-composer-overlay]");
+    if (overlay === observed) return;
+    if (observed !== null) sizes.unobserve(observed);
+    observed = overlay;
+    if (overlay !== null) sizes.observe(overlay);
+  }).observe(content, { childList: true, subtree: true });
+  return { view, content };
+}
+
+/**
+ * The composer under a file (xaxis `pult/issues/file-citations`): while the
+ * strip is open and the active editor is a file of the selected thread's or
+ * draft's tab set, that thread's or draft's composer, a composer-only mount
+ * of the thread view (`thread-view/shell/ThreadView.tsx`), in a view of the
+ * layout's grid between the editor part and the status strip. Mounted when
+ * first shown, and again when the selection changes while it is open.
+ * Started after the status strip, so it lands above it.
+ */
+export async function startComposerStrip(): Promise<void> {
+  const [editors, contextKeys] = await Promise.all([getService(IEditorService), getService(IContextKeyService)]);
+  const layout = (await getService(IWorkbenchLayoutService)) as unknown as Partial<LayoutGrid>;
+  const { workbenchGrid, editorPartView } = layout;
+  if (workbenchGrid === undefined || editorPartView === undefined) return;
+
+  const openKey = ComposerOpenContext.bindTo(contextKeys);
+  const hasComposerKey = HasComposerContext.bindTo(contextKeys);
+  const strip = stripView();
+  workbenchGrid.addView(strip.view, strip.view.minimumHeight, editorPartView, Direction.Down);
+  workbenchGrid.setViewVisible(strip.view, false);
+
+  let mounted: { target: ViewTarget; view: MountedView | undefined; disposed: boolean } | undefined;
+  const unmount = () => {
+    if (mounted === undefined) return;
+    mounted.disposed = true;
+    const view = mounted.view;
+    mounted = undefined;
+    if (view !== undefined) queueMicrotask(() => view.dispose());
+  };
+  const mount = (target: ViewTarget) => {
+    unmount();
+    const host = document.createElement("div");
+    host.className = "pult-composer-strip-view";
+    strip.content.replaceChildren(host);
+    const current: NonNullable<typeof mounted> = { target, view: undefined, disposed: false };
+    mounted = current;
+    void threadView().then(
+      (mounts) => {
+        if (current.disposed) return;
+        const view = mounts.mountComposer(host, target, selectedStarComposer());
+        const removeClose = addCloseEntry(view.bar);
+        current.view = {
+          bar: view.bar,
+          follow: view.follow,
+          dispose: () => {
+            removeClose();
+            view.dispose();
+          },
+        };
+      },
+      (error: unknown) => console.error("[pult-shell] the composer strip did not start", error),
+    );
+  };
+
+  const update = () => {
+    if (isSwitchingThread()) return;
+    const { open } = state;
+    openKey.set(open);
+    const active = editors.activeEditor;
+    const target = selectedTarget();
+    hasComposerKey.set(target !== null);
+    const visible = open && target !== null && active !== undefined && !isShellTab(active);
+    if (visible && !sameTarget(mounted?.target ?? null, target)) mount(target);
+    // A selection the strip no longer shows lets its composer go; the next one mounts when shown.
+    if (!sameTarget(mounted?.target ?? null, target)) unmount();
+    workbenchGrid.setViewVisible(strip.view, visible);
+    setState({ available: target !== null, shown: visible });
+  };
+  editors.onDidActiveEditorChange(update);
+  editors.onDidEditorsChange(update);
+  onDidSelectThread(update);
+  starStore.subscribe(update);
+  onDidChangeState.event(update);
+  connection.onDidChange(update);
+  update();
+  followFilled();
+}
+
+/**
+ * The composer's bar stands in for the status strip under a file, so it
+ * leads with the strip's way out: an X hiding the composer, which the bar
+ * orders first (`composer.css`).
+ */
+function addCloseEntry(bar: HTMLElement): () => void {
+  const entry = document.createElement("div");
+  entry.dataset.chatComposerSlotItem = "close";
+  entry.className = "pult-bar-entries";
+  bar.append(entry);
+  const root = createRoot(entry);
+  root.render(
+    <BarTip label="Hide composer">
+      <button type="button" className="pult-bar-entry pult-bar-button" aria-label="Hide composer" onClick={() => composerStrip.setOpen(false)}>
+        <i className="codicon codicon-close" aria-hidden />
+      </button>
+    </BarTip>,
+  );
+  return () => root.unmount();
+}
+
+/** The palette's Show Composer and Hide Composer, each offered while it would change something. Registered before the workbench starts. */
+export function registerComposerCommands(): void {
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: SHOW_COMPOSER,
+          title: { value: "Show Composer", original: "Show Composer" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+          precondition: ContextKeyExpr.not(ComposerOpenContext.key),
+        });
+      }
+
+      async run(): Promise<void> {
+        if (selectedTarget() === null) {
+          return void (await getService(INotificationService)).info("The composer shows under a file of a thread or a new thread.");
+        }
+        composerStrip.setOpen(true);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: HIDE_COMPOSER,
+          title: { value: "Hide Composer", original: "Hide Composer" },
+          category: { value: "Pult", original: "Pult" },
+          f1: true,
+          precondition: ComposerOpenContext,
+        });
+      }
+
+      run(): void {
+        composerStrip.setOpen(false);
+      }
+    },
+  );
+}

@@ -1,0 +1,23 @@
+{
+  "extends": "../vendor/t3code/tsconfig.base.json",
+  "compilerOptions": {
+    // The copy's settings (the fork's apps/web/tsconfig.json), which its code is written to.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "erasableSyntaxOnly": false,
+    "verbatimModuleSyntax": false,
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "~/*": ["./t3/src/*"]
+    },
+    // The page's program (`../tsconfig.json`) reads the view through its declarations, so the
+    // copy is checked once, with its own settings.
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "../node_modules/.cache/thread-view-types"
+  },
+  "include": ["shell", "stubs.ts", "t3/src"]
+}
