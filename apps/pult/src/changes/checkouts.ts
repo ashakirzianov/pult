@@ -102,11 +102,7 @@ export interface Change {
 }
 
 /** A source's files as changes: its stats, with how each changed from its patch; a file the truncated patch missed counts as modified. */
-export function changesOf(
-  environmentId: string,
-  cwd: string,
-  source: ReviewDiffPreviewSource,
-): Change[] {
+function changesOf(environmentId: string, cwd: string, source: ReviewDiffPreviewSource): Change[] {
   const parsed = new Map(patchFiles(source.diff).map((file) => [file.path, file]));
   const stats =
     source.files ?? [...parsed.values()].map((file) => ({ ...file, additions: 0, deletions: 0 }));

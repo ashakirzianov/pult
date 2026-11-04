@@ -16,7 +16,7 @@ export const Channel = {
  * the screen's points whatever the page's zoom, so main places them for the
  * zoom (`titleBarLayout`), as macOS 27 draws them: 14pt circles 9pt apart.
  */
-export const TOP_ROW_HEIGHT = 35;
+const TOP_ROW_HEIGHT = 35;
 const LIGHTS_X = 12;
 const LIGHT_SIZE = 14;
 const LIGHTS_GAP = 9;

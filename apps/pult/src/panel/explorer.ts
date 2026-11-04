@@ -114,7 +114,7 @@ function narrowedEnvironment(): string | undefined {
  * The Explorer workspace with the Explorer tab at `environmentId`'s folder, or
  * at every environment's without one: the Explorer shelf's environment entries.
  */
-export async function exploreEnvironment(environmentId: string | undefined): Promise<void> {
+async function exploreEnvironment(environmentId: string | undefined): Promise<void> {
   setExplored(environmentId);
   // The selection re-roots the folders.
   await selectExplorer(true);
@@ -133,7 +133,7 @@ export async function showThreads(): Promise<void> {
  * and the page's `pult:` provider serves them (`src/files/`). A thread with no project
  * root cannot narrow; its card says so.
  */
-export async function openThreadExplorer(): Promise<void> {
+async function openThreadExplorer(): Promise<void> {
   if (threadRootOfScope() === undefined) {
     (await getService(INotificationService)).info(
       "Pult: the selected thread has no project folder to explore.",
@@ -144,14 +144,14 @@ export async function openThreadExplorer(): Promise<void> {
 }
 
 /** The Explorer tab at every held environment's folder: the filter's card clears to it, a narrowed environment's to the Explorer workspace's folders. */
-export function openEnvironmentExplorer(): Promise<void> {
+function openEnvironmentExplorer(): Promise<void> {
   return narrowedEnvironment() === undefined
     ? openExplorer("environment")
     : exploreEnvironment(undefined);
 }
 
 /** Flips the scope in effect, and shows the Explorer tab. */
-export function toggleExplorerScope(): Promise<void> {
+function toggleExplorerScope(): Promise<void> {
   return effectiveRoot() === undefined ? openThreadExplorer() : openEnvironmentExplorer();
 }
 

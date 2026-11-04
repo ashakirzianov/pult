@@ -56,7 +56,7 @@ function homeResource(home: NonNullable<ReturnType<typeof primaryHome>>, path = 
 }
 
 /** The Star's `AGENTS.md`, its record and standing instructions, as a tab among the selection's, from the home that stands for it. */
-export async function editStarInstructions(star: Star): Promise<void> {
+async function editStarInstructions(star: Star): Promise<void> {
   const home = primaryHome(star);
   if (home === undefined)
     return void (await getService(INotificationService)).info(
@@ -72,7 +72,7 @@ export async function editStarInstructions(star: Star): Promise<void> {
  * selected, as its composer bar's Explorer narrows, else the environments'
  * folders with the Star's revealed, leaving the selection as it is.
  */
-export async function openStarFolder(star: Star): Promise<void> {
+async function openStarFolder(star: Star): Promise<void> {
   const commands = await getService(ICommandService);
   const home = primaryHome(star);
   if (home === undefined)

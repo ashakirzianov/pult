@@ -184,7 +184,7 @@ function isTransportError(cause: unknown): boolean {
 }
 
 /** An https page may not open plain http, except to this machine's loopback. */
-export function isMixedContent(origin: string, httpBaseUrl: string): boolean {
+function isMixedContent(origin: string, httpBaseUrl: string): boolean {
   if (!origin.startsWith("https:")) return false;
   const url = new URL(httpBaseUrl);
   return url.protocol === "http:" && !isLoopback(url.hostname);

@@ -211,7 +211,7 @@ export const settleThread = (target: ThreadRef) => park(target);
  */
 export const settleQuietly = (target: ThreadRef) =>
   run(target, Operations.settleThread({ threadId: ThreadId.make(target.id) }));
-export const snoozeThread = (target: ThreadRef, wake: string) => park(target, wake);
+const snoozeThread = (target: ThreadRef, wake: string) => park(target, wake);
 export const unsettleThread = (target: ThreadRef) =>
   void act(target, "settlement", (command) =>
     run(target, Operations.unsettleThread({ ...command, reason: "user" })),
@@ -220,9 +220,9 @@ export const wakeThread = (target: ThreadRef) =>
   void act(target, "snooze", (command) =>
     run(target, Operations.unsnoozeThread({ ...command, reason: "user" })),
   );
-export const pinThread = (target: ThreadRef) =>
+const pinThread = (target: ThreadRef) =>
   void act(target, "pinning", (command) => run(target, Operations.pinThread(command)));
-export const unpinThread = (target: ThreadRef) =>
+const unpinThread = (target: ThreadRef) =>
   void act(target, "pinning", (command) => run(target, Operations.unpinThread(command)));
 
 /** Copies the thread's link in its environment's own web app, where any browser can follow it. */
@@ -244,7 +244,7 @@ async function copyThreadLink(target: ThreadRef): Promise<void> {
  * conversation, on no shelf, offers Settle alone while it is open, which
  * puts the Star to sleep (`src/stars/`).
  */
-export function threadParkActions(target: ShellThread): ParkActions {
+function threadParkActions(target: ShellThread): ParkActions {
   const features = threadStore.environment(target.environmentId)?.features ?? NO_THREAD_FEATURES;
   if (target.parentId === null && isStarRoot(target.projectRoot)) {
     return {

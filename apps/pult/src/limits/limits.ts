@@ -24,7 +24,7 @@ export type UsageLimitsMode = (typeof USAGE_LIMITS_MODES)[number]["mode"];
 const WARNING_USED_PERCENT = 95;
 
 /** A window shows only once something of it is spent. */
-export const showsWindow = (window: ServerProviderUsageWindow) => window.usedPercent > 0;
+const showsWindow = (window: ServerProviderUsageWindow) => window.usedPercent > 0;
 
 /**
  * A window warns past 95% used, or while its pace runs out before its reset

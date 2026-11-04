@@ -189,7 +189,7 @@ function watchStream(
  * call: subscribed again whenever the server's watcher closes or the
  * subscription fails, until the root is found gone.
  */
-export function watchSession(
+function watchSession(
   subscription: Stream.Stream<
     ProjectWatchEntriesEvent,
     ProjectWatchEntriesError | EnvironmentAuthorizationError | RpcClientError.RpcClientError

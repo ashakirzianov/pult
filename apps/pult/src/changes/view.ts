@@ -1501,7 +1501,7 @@ let started: Promise<ChangesView> | undefined;
  * thread's checkout, open when the view lists it: the thread's bar's Source
  * Control, the thread view's "Open diff" and the changed files card's files.
  */
-export async function showChanges(
+async function showChanges(
   thread: ThreadSelection | null,
   path: string | null,
   turn: TurnCheckpoints | null = null,

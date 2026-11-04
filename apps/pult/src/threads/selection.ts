@@ -289,7 +289,7 @@ async function leaveHiddenStar(): Promise<void> {
  * (`pult/decisions`, `settings-selection`). Queued behind any switch in
  * flight, which swaps the editor part.
  */
-export function showSettings(): Promise<void> {
+function showSettings(): Promise<void> {
   return enqueue(async () => {
     const groups = await getService(IEditorGroupsService);
     const instantiation = await getService(IInstantiationService);
