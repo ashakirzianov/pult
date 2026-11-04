@@ -70,29 +70,27 @@ interface Followed {
  * restarts `followStream`, and so the shell state, empty until the snapshot
  * reloads.
  */
-function followShellState(
+const followShellState = Effect.fn("Pult.followShellState")(function* (
   environmentId: EnvironmentId,
   publish: (state: HeldShell | undefined) => void,
 ) {
-  return Effect.gen(function* () {
-    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-    const held = (state: EnvironmentShellState) =>
-      Option.match(state.snapshot, {
-        onNone: () => undefined,
-        onSome: (snapshot) => ({
-          snapshot,
-          generation: state.generation,
-          removedAt: state.removedAt,
-        }),
-      });
-    yield* registry
-      .followStream(
-        environmentId,
-        Stream.unwrap(makeEnvironmentShellState().pipe(Effect.map(SubscriptionRef.changes))),
-      )
-      .pipe(Stream.runForEach((state) => Effect.sync(() => publish(held(state)))));
-  });
-}
+  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+  const held = (state: EnvironmentShellState) =>
+    Option.match(state.snapshot, {
+      onNone: () => undefined,
+      onSome: (snapshot) => ({
+        snapshot,
+        generation: state.generation,
+        removedAt: state.removedAt,
+      }),
+    });
+  yield* registry
+    .followStream(
+      environmentId,
+      Stream.unwrap(makeEnvironmentShellState().pipe(Effect.map(SubscriptionRef.changes))),
+    )
+    .pipe(Stream.runForEach((state) => Effect.sync(() => publish(held(state)))));
+});
 
 /**
  * The page's thread model, after pult-extension's `ThreadsModel`: every held

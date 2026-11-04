@@ -1,6 +1,7 @@
 import {
   request,
   requestGuarded,
+  // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- the page runs none of upstream's atoms the client guard reads; the server checks the scopes itself.
   RpcPermissionGuard,
   runStreamGuarded,
 } from "@t3tools/client-runtime/rpc";

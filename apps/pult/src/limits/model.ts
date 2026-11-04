@@ -39,27 +39,28 @@ export interface LimitsState {
  * entry restarts `followStream`, and so the config's state, empty until the
  * session replays it; the page's cache store keeps nothing to start it from.
  */
-function followServerConfig(environmentId: EnvironmentId, publish: (config: ServerConfig) => void) {
-  return Effect.gen(function* () {
-    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-    yield* registry
-      .followStream(
-        environmentId,
-        Stream.unwrap(
-          makeEnvironmentServerConfigState(SERVER_CONFIG_OPTIONS).pipe(
-            Effect.map(SubscriptionRef.changes),
-          ),
+const followServerConfig = Effect.fn("Pult.followServerConfig")(function* (
+  environmentId: EnvironmentId,
+  publish: (config: ServerConfig) => void,
+) {
+  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+  yield* registry
+    .followStream(
+      environmentId,
+      Stream.unwrap(
+        makeEnvironmentServerConfigState(SERVER_CONFIG_OPTIONS).pipe(
+          Effect.map(SubscriptionRef.changes),
         ),
-      )
-      .pipe(
-        Stream.runForEach((state) =>
-          Effect.sync(() => {
-            if (Option.isSome(state)) publish(state.value.config);
-          }),
-        ),
-      );
-  });
-}
+      ),
+    )
+    .pipe(
+      Stream.runForEach((state) =>
+        Effect.sync(() => {
+          if (Option.isSome(state)) publish(state.value.config);
+        }),
+      ),
+    );
+});
 
 /** The freshest of a config's checks: its providers' limits and its hubs'. */
 function latestCheck(config: ServerConfig | null): string | null {

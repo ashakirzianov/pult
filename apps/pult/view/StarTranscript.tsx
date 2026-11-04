@@ -96,6 +96,7 @@ export function TranscriptEntries({
 }: { entries: ReadonlyArray<TranscriptEntry> } & Place) {
   const place = { environmentId, cwd };
   return entries.map((entry, index) => (
+    // oxlint-disable-next-line react/no-array-index-key -- a transcript is fixed text, never reordered, and two entries may share a time.
     <Entry key={`${entry.at}-${index}`} entry={entry} next={entries[index + 1]} place={place} />
   ));
 }

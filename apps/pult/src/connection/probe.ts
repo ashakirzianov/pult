@@ -75,19 +75,20 @@ export const probe = Effect.fn("pult.probe")(function* (input: ProbeInput) {
   const ticket = (bearerToken: string) =>
     issueRemoteWebSocketTicket({ httpBaseUrl, bearerToken }).pipe(Effect.as(bearerToken));
   const token = yield* ticket(credential).pipe(
-    Effect.catchTag("EnvironmentAuthInvalidError", () =>
-      bootstrapRemoteBearerSession({
-        httpBaseUrl,
-        credential,
-        clientMetadata: presentation.metadata,
-      }).pipe(
-        Effect.flatMap((session) => ticket(session.access_token)),
-        Effect.catchTags({
-          EnvironmentAuthInvalidError: () => Effect.fail(refusedToken(descriptor.label)),
-          EnvironmentRequestInvalidError: () => Effect.fail(refusedToken(descriptor.label)),
-        }),
-      ),
-    ),
+    Effect.catchTags({
+      EnvironmentAuthInvalidError: () =>
+        bootstrapRemoteBearerSession({
+          httpBaseUrl,
+          credential,
+          clientMetadata: presentation.metadata,
+        }).pipe(
+          Effect.flatMap((session) => ticket(session.access_token)),
+          Effect.catchTags({
+            EnvironmentAuthInvalidError: () => Effect.fail(refusedToken(descriptor.label)),
+            EnvironmentRequestInvalidError: () => Effect.fail(refusedToken(descriptor.label)),
+          }),
+        ),
+    }),
     Effect.catch((error) =>
       error instanceof ProbeError ? Effect.fail(error) : explainFailure(error, input, "credential"),
     ),

@@ -348,31 +348,29 @@ function pending({ profile }: Saved): ShellEnvironment {
 }
 
 /** The environment as its registry entry and supervisor stand, while it is registered. */
-function followEnvironment(
+const followEnvironment = Effect.fn("Pult.followEnvironment")(function* (
   environmentId: EnvironmentId,
   publish: (next: ShellEnvironment) => void,
 ) {
-  return Effect.gen(function* () {
-    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-    yield* registry
-      .followStream(
-        environmentId,
-        Stream.unwrap(
-          Effect.gen(function* () {
-            const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-            return Stream.zipLatestAll(
-              SubscriptionRef.changes(registry.entries).pipe(
-                Stream.map((entries) => entries.get(environmentId)),
-                Stream.filter((entry) => entry !== undefined),
-              ),
-              SubscriptionRef.changes(supervisor.state),
-            ).pipe(Stream.map(([entry, state]) => present(entry, state)));
-          }),
-        ),
-      )
-      .pipe(Stream.runForEach((next) => Effect.sync(() => publish(next))));
-  });
-}
+  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+  yield* registry
+    .followStream(
+      environmentId,
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+          return Stream.zipLatestAll(
+            SubscriptionRef.changes(registry.entries).pipe(
+              Stream.map((entries) => entries.get(environmentId)),
+              Stream.filter((entry) => entry !== undefined),
+            ),
+            SubscriptionRef.changes(supervisor.state),
+          ).pipe(Stream.map(([entry, state]) => present(entry, state)));
+        }),
+      ),
+    )
+    .pipe(Stream.runForEach((next) => Effect.sync(() => publish(next))));
+});
 
 function present(
   entry: ConnectionCatalogEntry,

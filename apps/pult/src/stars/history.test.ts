@@ -20,6 +20,7 @@ import { decodeThreadSnapshot, threadSnapshotUrl } from "./history.ts";
 import { formatTranscript, parseTranscript } from "./transcript.ts";
 
 const { thread } = v2Projection;
+const encodeSnapshot = Schema.encodeSync(Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot));
 
 /** A settled conversation of `count` exchanges, more than the socket's window of ten user turns holds. */
 function longConversation(count: number): OrchestrationV2ThreadProjection {
@@ -107,7 +108,7 @@ NodeTest.describe("decodeThreadSnapshot", () => {
     () => {
       const wire = JSON.parse(
         JSON.stringify(
-          Schema.encodeSync(Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot))({
+          encodeSnapshot({
             snapshotSequence: 7,
             projection: longConversation(14),
           }),

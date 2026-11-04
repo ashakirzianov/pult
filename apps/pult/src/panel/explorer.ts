@@ -14,13 +14,9 @@ import {
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import {
   Action2,
-  MenuId,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import {
-  ContextKeyExpr,
-  RawContextKey,
-} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import {
   StorageScope,
   StorageTarget,
@@ -57,7 +53,6 @@ import { type ShellThread, threadStore } from "../threads/store.ts";
 /** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
 export const PANEL_ID = "pult.panel";
 const EXPLORER_ID = "workbench.view.explorer";
-const FILE_VIEW_ID = "workbench.explorer.fileView";
 /** The explorer container's other views, which the Explorer tab does not show. */
 const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsView"];
 
