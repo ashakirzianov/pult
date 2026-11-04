@@ -29,7 +29,11 @@ export function getDisplayModelName(
   options?: { preferShortName?: boolean },
 ): string {
   const name = options?.preferShortName && model.shortName ? model.shortName : model.name;
-  return stripLeadingQualifier(name, model.subProvider);
+  // Pult: Opus 5.5, not Claude Opus 5.5; the server's manifest gives Claude models no shortName.
+  return stripLeadingQualifier(name, model.subProvider).replace(
+    /^Claude\s+(?=(?:Opus|Sonnet|Haiku|Fable)\b)/iu,
+    "",
+  );
 }
 
 export function getProviderRowLabel(
