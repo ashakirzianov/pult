@@ -20,8 +20,16 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
   menus.showContextMenu({
     getAnchor: () => anchor,
     getActions: () => [
-      toAction({ id: "pult-shell.editStarInstructions", label: "Edit Star Instructions", run: () => run("pult-shell.editStarInstructions", star.id) }),
-      toAction({ id: "pult-shell.openStarFolder", label: "Open Star Folder", run: () => run("pult-shell.openStarFolder", star.id) }),
+      toAction({
+        id: "pult-shell.editStarInstructions",
+        label: "Edit Star Instructions",
+        run: () => run("pult-shell.editStarInstructions", star.id),
+      }),
+      toAction({
+        id: "pult-shell.openStarFolder",
+        label: "Open Star Folder",
+        run: () => run("pult-shell.openStarFolder", star.id),
+      }),
     ],
   });
 }
@@ -62,7 +70,8 @@ export function StarCard({
         aria-current={selected || undefined}
         onClick={select}
         onKeyDown={(event) => {
-          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " "))
+            return;
           event.preventDefault();
           select();
         }}
@@ -81,7 +90,12 @@ export function StarCard({
       </div>
       {selected && subagents.length > 0 ? (
         <div className="pult-card-details">
-          <Subagents subagents={subagents} activities={activities} selection={selection} now={now} />
+          <Subagents
+            subagents={subagents}
+            activities={activities}
+            selection={selection}
+            now={now}
+          />
         </div>
       ) : null}
     </li>
@@ -92,11 +106,17 @@ function StarStatus({ star, now }: { star: Star; now: number }) {
   if (star.state === "working") {
     return (
       <span className="pult-card-status pult-card-status-working">
-        Working{star.current?.workingSince == null ? null : <Elapsed since={star.current.workingSince} />}
+        Working
+        {star.current?.workingSince == null ? null : <Elapsed since={star.current.workingSince} />}
       </span>
     );
   }
-  if (star.state === "awake") return <span className="pult-card-status pult-star-awake">Awake</span>;
+  if (star.state === "awake")
+    return <span className="pult-card-status pult-star-awake">Awake</span>;
   const since = age(asleepSince(star), now);
-  return <span className="pult-card-status pult-star-asleep">Asleep{since === "" ? "" : ` · ${since}`}</span>;
+  return (
+    <span className="pult-card-status pult-star-asleep">
+      Asleep{since === "" ? "" : ` · ${since}`}
+    </span>
+  );
 }

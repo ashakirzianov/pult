@@ -63,7 +63,9 @@ await createIndexedDBProviders();
 // and VS Code keeps the editor layout per workspace.
 const workspaceFile = Uri.file("/pult.code-workspace");
 const memory = new RegisteredFileSystemProvider(false);
-memory.registerFile(new RegisteredMemoryFile(workspaceFile, JSON.stringify({ folders: [] }, null, 2)));
+memory.registerFile(
+  new RegisteredMemoryFile(workspaceFile, JSON.stringify({ folders: [] }, null, 2)),
+);
 registerFileSystemOverlay(1, memory);
 
 startConnection();
@@ -105,7 +107,9 @@ const options: IWorkbenchConstructionOptions = {
   remoteAuthority,
   connectionToken,
   // In the desktop wrapper (`desktop/`) its preload's keychain-backed store; in a browser tab localStorage.
-  secretStorageProvider: window.pultDesktop ? desktopSecrets(window.pultDesktop) : localStorageSecrets,
+  secretStorageProvider: window.pultDesktop
+    ? desktopSecrets(window.pultDesktop)
+    : localStorageSecrets,
   // The shell's defaults, under the user's own settings: chrome off, editor stock.
   configurationDefaults: JSON.parse(defaultConfiguration) as Record<string, unknown>,
   productConfiguration: {

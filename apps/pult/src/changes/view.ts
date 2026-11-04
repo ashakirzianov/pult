@@ -27,13 +27,24 @@ import type { IExtUri } from "@codingame/monaco-vscode-api/vscode/vs/base/common
 import { ResourceTree } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resourceTree";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import type { ITextModel } from "@codingame/monaco-vscode-api/vscode/vs/editor/common/model";
-import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  MenuId,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
-import { ContextKeyExpr, RawContextKey, type IContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+  type IContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
 import { Registry } from "@codingame/monaco-vscode-api/vscode/vs/platform/registry/common/platform";
 import { registerColor } from "@codingame/monaco-vscode-api/vscode/vs/platform/theme/common/colorUtils";
-import { Extensions as ViewExtensions, type IViewsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
+import {
+  Extensions as ViewExtensions,
+  type IViewsRegistry,
+} from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import type {
   ISCMActionButtonDescriptor,
   ISCMProvider,
@@ -47,15 +58,45 @@ import { ProjectId, ThreadId, type ReviewDiffPreviewSourceKind } from "@t3tools/
 import type { TurnCheckpoints } from "../../thread-view/shell/main.tsx";
 
 import { pultUri } from "../panel/explorer.ts";
-import { onDidSelectThread, selectedThread, selectThread, type ThreadSelection } from "../threads/selection.ts";
+import {
+  onDidSelectThread,
+  selectedThread,
+  selectThread,
+  type ThreadSelection,
+} from "../threads/selection.ts";
 import { threadProjectIcon } from "../threads/projectIcon.ts";
 import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
 import { setChangesCard, mountChangesCard } from "./card.tsx";
-import { type Change, type Checkout, checkoutKey, checkoutName, checkoutsOf, shownChanges } from "./checkouts.ts";
-import { actionStarted, COMMIT_STARTED, commitFailure, commitPlaceholder, type CommitProgress, commitProgress } from "./commit.ts";
+import {
+  type Change,
+  type Checkout,
+  checkoutKey,
+  checkoutName,
+  checkoutsOf,
+  shownChanges,
+} from "./checkouts.ts";
+import {
+  actionStarted,
+  COMMIT_STARTED,
+  commitFailure,
+  commitPlaceholder,
+  type CommitProgress,
+  commitProgress,
+} from "./commit.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 import { changesServer } from "./server.ts";
-import { afterStep, hasSync, pullFailure, SYNC_INTERVAL_MS, syncAction, syncState, type SyncState, syncSteps, syncTitle, syncTooltip } from "./sync.ts";
+import {
+  afterStep,
+  hasSync,
+  pullFailure,
+  SYNC_INTERVAL_MS,
+  syncAction,
+  syncState,
+  type SyncState,
+  syncSteps,
+  syncTitle,
+  syncTooltip,
+} from "./sync.ts";
 
 /** The scheme of a change's two sides, served by the view's content provider from the server's file contents RPC. */
 const DIFF_SCHEME = "pult-diff";
@@ -89,7 +130,11 @@ interface Side {
 /** The group of a turn the thread view named, alone in the view while the filter's thread has one. */
 const TURN_GROUP = "turn";
 
-const GROUPS: ReadonlyArray<{ readonly id: string; readonly label: string; readonly kind: ReviewDiffPreviewSourceKind }> = [
+const GROUPS: ReadonlyArray<{
+  readonly id: string;
+  readonly label: string;
+  readonly kind: ReviewDiffPreviewSourceKind;
+}> = [
   { id: "changes", label: "Changes", kind: "branch-range" },
   { id: "working-tree", label: "Working Tree", kind: "working-tree" },
 ];
@@ -99,17 +144,61 @@ function groupLabel(kind: ReviewDiffPreviewSourceKind | undefined): string {
 }
 
 // The badges' colours, which VS Code's git extension registers and this build does not run: its defaults, which themes override.
-registerColor("gitDecoration.modifiedResourceForeground", { dark: "#E2C08D", light: "#895503", hcDark: "#E2C08D", hcLight: "#895503" }, "Modified files in the changes view.");
-registerColor("gitDecoration.addedResourceForeground", { dark: "#81B88B", light: "#587C0C", hcDark: "#A1E3AD", hcLight: "#374E06" }, "Added files in the changes view.");
-registerColor("gitDecoration.deletedResourceForeground", { dark: "#C74E39", light: "#AD0707", hcDark: "#C74E39", hcLight: "#AD0707" }, "Deleted files in the changes view.");
-registerColor("gitDecoration.renamedResourceForeground", { dark: "#73C991", light: "#007100", hcDark: "#73C991", hcLight: "#007100" }, "Renamed files in the changes view.");
+registerColor(
+  "gitDecoration.modifiedResourceForeground",
+  { dark: "#E2C08D", light: "#895503", hcDark: "#E2C08D", hcLight: "#895503" },
+  "Modified files in the changes view.",
+);
+registerColor(
+  "gitDecoration.addedResourceForeground",
+  { dark: "#81B88B", light: "#587C0C", hcDark: "#A1E3AD", hcLight: "#374E06" },
+  "Added files in the changes view.",
+);
+registerColor(
+  "gitDecoration.deletedResourceForeground",
+  { dark: "#C74E39", light: "#AD0707", hcDark: "#C74E39", hcLight: "#AD0707" },
+  "Deleted files in the changes view.",
+);
+registerColor(
+  "gitDecoration.renamedResourceForeground",
+  { dark: "#73C991", light: "#007100", hcDark: "#73C991", hcLight: "#007100" },
+  "Renamed files in the changes view.",
+);
 
 /** A change's badge through the decorations service, and its icon in the turn's group, whose rows the service does not badge. */
-const BADGES: Record<ChangeType, { readonly badge: string; readonly icon: ThemeIcon; readonly color: string; readonly label: string }> = {
-  change: { badge: "M", icon: Codicon.diffModified, color: "gitDecoration.modifiedResourceForeground", label: "Modified" },
-  new: { badge: "A", icon: Codicon.diffAdded, color: "gitDecoration.addedResourceForeground", label: "Added" },
-  deleted: { badge: "D", icon: Codicon.diffRemoved, color: "gitDecoration.deletedResourceForeground", label: "Deleted" },
-  "rename-pure": { badge: "R", icon: Codicon.diffRenamed, color: "gitDecoration.renamedResourceForeground", label: "Renamed" },
+const BADGES: Record<
+  ChangeType,
+  {
+    readonly badge: string;
+    readonly icon: ThemeIcon;
+    readonly color: string;
+    readonly label: string;
+  }
+> = {
+  change: {
+    badge: "M",
+    icon: Codicon.diffModified,
+    color: "gitDecoration.modifiedResourceForeground",
+    label: "Modified",
+  },
+  new: {
+    badge: "A",
+    icon: Codicon.diffAdded,
+    color: "gitDecoration.addedResourceForeground",
+    label: "Added",
+  },
+  deleted: {
+    badge: "D",
+    icon: Codicon.diffRemoved,
+    color: "gitDecoration.deletedResourceForeground",
+    label: "Deleted",
+  },
+  "rename-pure": {
+    badge: "R",
+    icon: Codicon.diffRenamed,
+    color: "gitDecoration.renamedResourceForeground",
+    label: "Renamed",
+  },
   "rename-changed": {
     badge: "R",
     icon: Codicon.diffRenamed,
@@ -139,7 +228,10 @@ function sideUri(change: Change, side: Side["side"]): URI {
 /** The diff's sides: the server's old one, and the live file for a working-tree change but a deletion, else the server's new one; a turn's both its checkpoints'. */
 function sides(change: Change): { readonly original: URI; readonly modified: URI } {
   const live = change.sourceKind === "working-tree" && change.changeType !== "deleted";
-  return { original: sideUri(change, "old"), modified: live ? fileUri(change) : sideUri(change, "new") };
+  return {
+    original: sideUri(change, "old"),
+    modified: live ? fileUri(change) : sideUri(change, "new"),
+  };
 }
 
 class ChangeResource implements ISCMResource {
@@ -196,7 +288,11 @@ class ChangesGroup implements ISCMResourceGroup {
   /** The tree view's folders, built when the view first asks. */
   get resourceTree() {
     if (this.tree === undefined) {
-      this.tree = new ResourceTree<ChangeResource, ChangesGroup>(this, this.provider.rootUri, this.extUri);
+      this.tree = new ResourceTree<ChangeResource, ChangesGroup>(
+        this,
+        this.provider.rootUri,
+        this.extUri,
+      );
       for (const resource of this.resources) this.tree.add(resource.sourceUri, resource);
     }
     return this.tree;
@@ -250,7 +346,11 @@ class ChangesProvider implements ISCMProvider {
     readonly inputBoxTextModel: ITextModel,
     extUri: IExtUri,
   ) {
-    this.acceptInputCommand = { id: COMMIT_COMMAND, title: "Commit", arguments: [checkoutKey(checkout.environmentId, checkout.root)] };
+    this.acceptInputCommand = {
+      id: COMMIT_COMMAND,
+      title: "Commit",
+      arguments: [checkoutKey(checkout.environmentId, checkout.root)],
+    };
     this.iconPath = checkout.worktree === null ? Codicon.repo : Codicon.worktree;
     this.groups = [
       new ChangesGroup(this, TURN_GROUP, "Changed Files", extUri),
@@ -290,7 +390,9 @@ interface Entry {
   /** The refresh in flight; a newer one's answer wins. */
   loading: Promise<void> | undefined;
   generation: number;
-  registered: { readonly repository: ISCMRepository; readonly provider: ChangesProvider } | undefined;
+  registered:
+    | { readonly repository: ISCMRepository; readonly provider: ChangesProvider }
+    | undefined;
   /** The message box's text, kept while the view does not show the checkout; null until it first shows. */
   message: string | null;
   /** The commit, push, pull or sync under way, as its progress events have it. */
@@ -351,7 +453,10 @@ class ChangesView {
   private readonly loadedTurns = new Map<string, Turn>();
   /** The decorated files, by `decorationKey`: what the view shows but a turn's. */
   private decorated = new Map<string, Change>();
-  private readonly contents = new Map<string, Promise<{ readonly oldContents: string; readonly newContents: string }>>();
+  private readonly contents = new Map<
+    string,
+    Promise<{ readonly oldContents: string; readonly newContents: string }>
+  >();
   private readonly decorationsChanged = new Emitter<URI[]>();
   /** The checkouts a file changed under, read again together once the burst settles. */
   private readonly stale = new Set<Entry>();
@@ -366,34 +471,64 @@ class ChangesView {
 
   /** Starts following the store, the selection and Source Control's visibility, with the `pult-diff:` sides and the badges registered. */
   static async start(): Promise<ChangesView> {
-    const [scm, scmView, models, languages, editors, commands, textModels, decorations, uriIdentity, contextKeys, views, notifications, progress, quickInput, files, host] =
-      await Promise.all([
-        getService(ISCMService),
-        getService(ISCMViewService),
-        getService(IModelService),
-        getService(ILanguageService),
-        getService(IEditorService),
-        getService(ICommandService),
-        getService(ITextModelService),
-        getService(IDecorationsService),
-        getService(IUriIdentityService),
-        getService(IContextKeyService),
-        getService(IViewsService),
-        getService(INotificationService),
-        getService(IProgressService),
-        getService(IQuickInputService),
-        getService(IFileService),
-        getService(IHostService),
-      ]);
+    const [
+      scm,
+      scmView,
+      models,
+      languages,
+      editors,
+      commands,
+      textModels,
+      decorations,
+      uriIdentity,
+      contextKeys,
+      views,
+      notifications,
+      progress,
+      quickInput,
+      files,
+      host,
+    ] = await Promise.all([
+      getService(ISCMService),
+      getService(ISCMViewService),
+      getService(IModelService),
+      getService(ILanguageService),
+      getService(IEditorService),
+      getService(ICommandService),
+      getService(ITextModelService),
+      getService(IDecorationsService),
+      getService(IUriIdentityService),
+      getService(IContextKeyService),
+      getService(IViewsService),
+      getService(INotificationService),
+      getService(IProgressService),
+      getService(IQuickInputService),
+      getService(IFileService),
+      getService(IHostService),
+    ]);
     const filteredKey = ChangesFilteredContext.bindTo(contextKeys);
     const view = new ChangesView(
-      { scm, scmView, models, editors, commands, notifications, progress, quickInput, extUri: uriIdentity.extUri, filteredKey },
+      {
+        scm,
+        scmView,
+        models,
+        editors,
+        commands,
+        notifications,
+        progress,
+        quickInput,
+        extUri: uriIdentity.extUri,
+        filteredKey,
+      },
       views,
     );
     textModels.registerTextModelContentProvider(DIFF_SCHEME, {
       provideTextContent: async (uri) => {
         const text = await view.sideContents(uri);
-        return models.getModel(uri) ?? models.createModel(text, languages.createByFilepathOrFirstLine(uri), uri);
+        return (
+          models.getModel(uri) ??
+          models.createModel(text, languages.createByFilepathOrFirstLine(uri), uri)
+        );
       },
     });
     decorations.registerDecorationsProvider({
@@ -408,7 +543,11 @@ class ChangesView {
     const { extUri } = uriIdentity;
     files.onDidFilesChange((event) => view.filesChanged((root) => event.affects(root)));
     files.onDidRunOperation(({ resource, target }) =>
-      view.filesChanged((root) => extUri.isEqualOrParent(resource, root) || (target !== undefined && extUri.isEqualOrParent(target.resource, root))),
+      view.filesChanged(
+        (root) =>
+          extUri.isEqualOrParent(resource, root) ||
+          (target !== undefined && extUri.isEqualOrParent(target.resource, root)),
+      ),
     );
     // What changed while the page was away (a terminal, another editor, a commit) shows on its return.
     host.onDidChangeFocus((focused) => {
@@ -425,12 +564,16 @@ class ChangesView {
   /** The thread the view is narrowed to: the selected one, while filtered. */
   private filterThread(): ShellThread | undefined {
     const selection = this.selection;
-    return !this.filtered || selection === null ? undefined : threadStore.thread(selection.environmentId, selection.threadId);
+    return !this.filtered || selection === null
+      ? undefined
+      : threadStore.thread(selection.environmentId, selection.threadId);
   }
 
   private entryOf(thread: ShellThread | undefined): Entry | undefined {
     const root = thread?.checkoutRoot ?? null;
-    return thread === undefined || root === null ? undefined : this.entries.get(checkoutKey(thread.environmentId, root));
+    return thread === undefined || root === null
+      ? undefined
+      : this.entries.get(checkoutKey(thread.environmentId, root));
   }
 
   /** The checkouts what the view shows comes from: the filter's thread's, or every one. */
@@ -445,7 +588,9 @@ class ChangesView {
   private syncStore(): void {
     const state = threadStore.get();
     const checkouts = checkoutsOf(state);
-    const keys = new Set(checkouts.map((checkout) => checkoutKey(checkout.environmentId, checkout.root)));
+    const keys = new Set(
+      checkouts.map((checkout) => checkoutKey(checkout.environmentId, checkout.root)),
+    );
     for (const [key, entry] of this.entries) {
       if (keys.has(key)) continue;
       entry.registered?.repository.dispose();
@@ -506,14 +651,17 @@ class ChangesView {
 
   /** Marks the checkouts whose root `touches` names as stale, reading them again once writes settle. */
   private filesChanged(touches: (root: URI) => boolean): void {
-    for (const entry of this.entries.values()) if (touches(pultUri(entry.checkout.environmentId, entry.checkout.root))) this.stale.add(entry);
+    for (const entry of this.entries.values())
+      if (touches(pultUri(entry.checkout.environmentId, entry.checkout.root)))
+        this.stale.add(entry);
     if (this.stale.size === 0 || this.staleTimer !== undefined) return;
     this.staleTimer = setTimeout(() => {
       this.staleTimer = undefined;
       const stale = [...this.stale];
       this.stale.clear();
       // A read already under way may predate the change.
-      for (const entry of stale) if (this.entries.get(entry.key) === entry) void this.refresh(entry, true);
+      for (const entry of stale)
+        if (this.entries.get(entry.key) === entry) void this.refresh(entry, true);
     }, FILE_CHANGE_DELAY_MS);
   }
 
@@ -564,7 +712,8 @@ class ChangesView {
   /** The checkout's status against its upstream, unless read within `SYNC_INTERVAL_MS` and not forced; the newest read wins. */
   private async readSync(entry: Entry, force: boolean): Promise<void> {
     const now = Date.now();
-    if (!force && entry.syncReadAt !== undefined && now - entry.syncReadAt < SYNC_INTERVAL_MS) return;
+    if (!force && entry.syncReadAt !== undefined && now - entry.syncReadAt < SYNC_INTERVAL_MS)
+      return;
     entry.syncReadAt = now;
     const generation = ++entry.syncGeneration;
     const { environmentId, root } = entry.checkout;
@@ -601,7 +750,10 @@ class ChangesView {
     const turn = this.shownTurn();
     const decorated = new Map<string, Change>();
     for (const entry of this.entries.values()) {
-      const shows = thread === undefined ? entry.shown !== undefined || hasSync(entry.sync) : entry === narrowed;
+      const shows =
+        thread === undefined
+          ? entry.shown !== undefined || hasSync(entry.sync)
+          : entry === narrowed;
       if (!shows) {
         entry.registered?.repository.dispose();
         entry.registered = undefined;
@@ -610,17 +762,23 @@ class ChangesView {
       entry.registered ??= this.register(entry);
       const registered = entry.registered;
       const entryTurn = entry === narrowed ? turn : undefined;
-      if (entryTurn === undefined) for (const change of entry.shown?.changes ?? []) decorated.set(decorationKey(fileUri(change)), change);
+      if (entryTurn === undefined)
+        for (const change of entry.shown?.changes ?? [])
+          decorated.set(decorationKey(fileUri(change)), change);
       this.syncActions(entry, entryTurn !== undefined);
       const { provider } = registered;
-      if (provider.rendered?.version === entry.version && provider.rendered.turn === entryTurn) continue;
+      if (provider.rendered?.version === entry.version && provider.rendered.turn === entryTurn)
+        continue;
       provider.rendered = { version: entry.version, turn: entryTurn };
       const open = (change: Change, preserveFocus: boolean) => this.open(change, preserveFocus);
       const turnGroup = provider.group(TURN_GROUP);
-      turnGroup.set((entryTurn?.changes ?? []).map((change) => new ChangeResource(turnGroup, change, open)));
+      turnGroup.set(
+        (entryTurn?.changes ?? []).map((change) => new ChangeResource(turnGroup, change, open)),
+      );
       for (const { id, kind } of GROUPS) {
         const group = provider.group(id);
-        const changes = entryTurn === undefined && entry.shown?.kind === kind ? entry.shown.changes : [];
+        const changes =
+          entryTurn === undefined && entry.shown?.kind === kind ? entry.shown.changes : [];
         group.set(changes.map((change) => new ChangeResource(group, change, open)));
       }
       provider.changed(entryTurn?.changes.length ?? entry.shown?.changes.length ?? 0);
@@ -649,10 +807,23 @@ class ChangesView {
     const { scm, scmView, models, extUri } = this.services;
     const { checkout } = entry;
     // The view's input widget takes the model; the input's value is what it holds.
-    const input = models.createModel("", null, URI.from({ scheme: "pult-scm-input", path: `/${++inputs}` }));
+    const input = models.createModel(
+      "",
+      null,
+      URI.from({ scheme: "pult-scm-input", path: `/${++inputs}` }),
+    );
     const environment = threadStore.distinguishing(checkout.environmentId);
-    const name = environment === undefined ? checkoutName(checkout) : `${checkoutName(checkout)} (${environment})`;
-    const provider = new ChangesProvider(checkout, pultUri(checkout.environmentId, checkout.root), name, input, extUri);
+    const name =
+      environment === undefined
+        ? checkoutName(checkout)
+        : `${checkoutName(checkout)} (${environment})`;
+    const provider = new ChangesProvider(
+      checkout,
+      pultUri(checkout.environmentId, checkout.root),
+      name,
+      input,
+      extUri,
+    );
     const repository = scm.registerSCMProvider(provider);
     // The view decides which checkouts show; the workbench, while repositories still arrive after a reload, hides one it
     // knew but did not show last time, from Source Control and from the badge.
@@ -690,21 +861,33 @@ class ChangesView {
     const placeholder = commitPlaceholder(branch);
     if (repository.input.placeholder !== placeholder) repository.input.placeholder = placeholder;
     const button = turnShown ? undefined : this.actionButton(entry, branch);
-    if (JSON.stringify(button) !== JSON.stringify(provider.actionButton.get())) provider.actionButton.set(button, undefined);
+    if (JSON.stringify(button) !== JSON.stringify(provider.actionButton.get()))
+      provider.actionButton.set(button, undefined);
   }
 
   /** The checkout's branch: its status's, else a worktree's own, else the filter's thread's on it, which a project's root does not record. */
   private branchOf(entry: Entry): string | null {
     if (entry.sync?.branch != null) return entry.sync.branch;
     const filtered = this.filterThread();
-    return entry.checkout.worktree?.branch ?? (filtered !== undefined && this.entryOf(filtered) === entry ? filtered.branch : null);
+    return (
+      entry.checkout.worktree?.branch ??
+      (filtered !== undefined && this.entryOf(filtered) === entry ? filtered.branch : null)
+    );
   }
 
   private actionButton(entry: Entry, branch: string | null): ISCMActionButtonDescriptor {
     const on = branch === null ? "" : ` on "${branch}"`;
     const running = entry.running;
     if (running !== undefined) {
-      return { command: { id: COMMIT_COMMAND, title: `$(loading~spin) ${running.label}`, tooltip: running.label, arguments: [entry.key] }, enabled: false };
+      return {
+        command: {
+          id: COMMIT_COMMAND,
+          title: `$(loading~spin) ${running.label}`,
+          tooltip: running.label,
+          arguments: [entry.key],
+        },
+        enabled: false,
+      };
     }
     const action = syncAction(entry.shown?.kind === "working-tree", entry.sync);
     switch (action.kind) {
@@ -716,7 +899,13 @@ class ChangesView {
             tooltip: `Commit All Changes${on}, untracked files included; with no message, the server writes one`,
             arguments: [entry.key],
           },
-          ...(action.enabled ? { secondaryCommands: [[{ id: COMMIT_PUSH_COMMAND, title: "Commit & Push", arguments: [entry.key] }]] } : {}),
+          ...(action.enabled
+            ? {
+                secondaryCommands: [
+                  [{ id: COMMIT_PUSH_COMMAND, title: "Commit & Push", arguments: [entry.key] }],
+                ],
+              }
+            : {}),
           enabled: action.enabled,
         };
       case "sync":
@@ -741,14 +930,23 @@ class ChangesView {
         };
       case "publish":
         return {
-          command: { id: PUSH_COMMAND, title: "$(cloud-upload) Publish Branch", tooltip: `Push "${branch}" and set its upstream`, arguments: [entry.key] },
+          command: {
+            id: PUSH_COMMAND,
+            title: "$(cloud-upload) Publish Branch",
+            tooltip: `Push "${branch}" and set its upstream`,
+            arguments: [entry.key],
+          },
           enabled: true,
         };
     }
   }
 
   /** Runs `action` on the checkout, its step on the button and the view's progress bar, reading it again after, since a hook may have changed its files. */
-  private async runAction(entry: Entry, label: string, action: (progressed: (next: CommitProgress) => void) => Promise<void>): Promise<void> {
+  private async runAction(
+    entry: Entry,
+    label: string,
+    action: (progressed: (next: CommitProgress) => void) => Promise<void>,
+  ): Promise<void> {
     if (entry.running !== undefined) return;
     const progressed = (next: CommitProgress) => {
       entry.running = next;
@@ -756,7 +954,9 @@ class ChangesView {
     };
     progressed(actionStarted(label));
     try {
-      await this.services.progress.withProgress({ location: ProgressLocation.Scm }, () => action(progressed));
+      await this.services.progress.withProgress({ location: ProgressLocation.Scm }, () =>
+        action(progressed),
+      );
     } finally {
       entry.running = undefined;
       this.syncActions(entry, entry.registered?.provider.rendered?.turn !== undefined);
@@ -777,7 +977,12 @@ class ChangesView {
     await this.runAction(entry, COMMIT_STARTED.label, async (progressed) => {
       const { notifications } = this.services;
       try {
-        const latest = await this.stacked(entry, push ? "commit_push" : "commit", message, progressed);
+        const latest = await this.stacked(
+          entry,
+          push ? "commit_push" : "commit",
+          message,
+          progressed,
+        );
         const result = latest.result;
         if (result?.commit.status === "skipped_no_changes") {
           notifications.info(`Pult: nothing to commit in ${name}.`);
@@ -788,7 +993,9 @@ class ChangesView {
           if (message === "" || push) notifications.info(`Pult: ${toast(result)}`);
         }
       } catch (error) {
-        notifications.error(`Pult could not ${push ? "commit and push" : "commit"} in ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`);
+        notifications.error(
+          `Pult could not ${push ? "commit and push" : "commit"} in ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`,
+        );
       }
     });
   }
@@ -799,9 +1006,12 @@ class ChangesView {
     await this.runAction(entry, "Pushing…", async (progressed) => {
       try {
         const latest = await this.stacked(entry, "push", "", progressed);
-        if (latest.result !== null) this.services.notifications.info(`Pult: ${toast(latest.result)}`);
+        if (latest.result !== null)
+          this.services.notifications.info(`Pult: ${toast(latest.result)}`);
       } catch (error) {
-        this.services.notifications.error(`Pult could not push ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`);
+        this.services.notifications.error(
+          `Pult could not push ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`,
+        );
       }
     });
   }
@@ -828,7 +1038,9 @@ class ChangesView {
           try {
             await this.stacked(entry, "push", "", progressed);
           } catch (error) {
-            this.services.notifications.error(`Pult could not push ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`);
+            this.services.notifications.error(
+              `Pult could not push ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`,
+            );
             return;
           }
         }
@@ -843,11 +1055,14 @@ class ChangesView {
     try {
       const result = await changesServer(entry.checkout.environmentId).pull(entry.checkout.root);
       this.stepped(entry, "pull");
-      if (result.status === "skipped_up_to_date") this.services.notifications.info(`Pult: ${name} is up to date.`);
+      if (result.status === "skipped_up_to_date")
+        this.services.notifications.info(`Pult: ${name} is up to date.`);
       return true;
     } catch (error) {
       console.error("[pult-shell] the pull failed", error);
-      this.services.notifications.error(`Pult could not pull ${name}. ${pullFailure(entry.sync, errorDetail(error))}`);
+      this.services.notifications.error(
+        `Pult could not pull ${name}. ${pullFailure(entry.sync, errorDetail(error))}`,
+      );
       return false;
     }
   }
@@ -919,7 +1134,8 @@ class ChangesView {
     }
     const thread = this.filterThread();
     const narrowed = thread === undefined ? undefined : this.entryOf(thread);
-    const candidates = narrowed !== undefined ? [narrowed] : [...this.entries.values()].filter(applies);
+    const candidates =
+      narrowed !== undefined ? [narrowed] : [...this.entries.values()].filter(applies);
     if (candidates.length === 0) {
       this.services.notifications.info(`Pult: ${none}`);
       return;
@@ -940,7 +1156,15 @@ class ChangesView {
     if (picked !== undefined) await run(picked.entry);
   }
 
-  private readonly actions: Record<ActionKind, { run: (entry: Entry) => Promise<void>; applies: (entry: Entry) => boolean; placeHolder: string; none: string }> = {
+  private readonly actions: Record<
+    ActionKind,
+    {
+      run: (entry: Entry) => Promise<void>;
+      applies: (entry: Entry) => boolean;
+      placeHolder: string;
+      none: string;
+    }
+  > = {
     commit: {
       run: (entry) => this.commit(entry),
       applies: (entry) => entry.registered !== undefined && entry.shown?.kind === "working-tree",
@@ -961,13 +1185,17 @@ class ChangesView {
     },
     pull: {
       run: (entry) => this.pull(entry),
-      applies: (entry) => entry.sync !== undefined && entry.sync.hasUpstream && entry.sync.behind > 0,
+      applies: (entry) =>
+        entry.sync !== undefined && entry.sync.hasUpstream && entry.sync.behind > 0,
       placeHolder: "Pull",
       none: "no checkout is behind its upstream.",
     },
     push: {
       run: (entry) => this.push(entry),
-      applies: (entry) => entry.sync !== undefined && entry.sync.branch !== null && (!entry.sync.hasUpstream ? entry.shown !== undefined : entry.sync.ahead > 0),
+      applies: (entry) =>
+        entry.sync !== undefined &&
+        entry.sync.branch !== null &&
+        (!entry.sync.hasUpstream ? entry.shown !== undefined : entry.sync.ahead > 0),
       placeHolder: "Push",
       none: "no checkout has commits to push.",
     },
@@ -979,21 +1207,32 @@ class ChangesView {
    * checkout's; and the change of `path` open when the view has it, the
    * turn's first.
    */
-  async show(thread: ThreadSelection | null, path: string | null, turn: TurnCheckpoints | null): Promise<void> {
+  async show(
+    thread: ThreadSelection | null,
+    path: string | null,
+    turn: TurnCheckpoints | null,
+  ): Promise<void> {
     const target = thread ?? this.selection;
     this.filtered = true;
     if (target !== null) {
       this.forgetTurn(target);
-      const checkoutRoot = threadStore.thread(target.environmentId, target.threadId)?.checkoutRoot ?? null;
-      if (turn !== null && checkoutRoot !== null) this.rememberTurn(target, loadTurn(target, checkoutRoot, turn));
+      const checkoutRoot =
+        threadStore.thread(target.environmentId, target.threadId)?.checkoutRoot ?? null;
+      if (turn !== null && checkoutRoot !== null)
+        this.rememberTurn(target, loadTurn(target, checkoutRoot, turn));
     }
     const selected = selectedThread();
-    if (thread !== null && (thread.threadId !== selected?.threadId || thread.environmentId !== selected.environmentId)) {
+    if (
+      thread !== null &&
+      (thread.threadId !== selected?.threadId || thread.environmentId !== selected.environmentId)
+    ) {
       await selectThread(thread.environmentId, thread.threadId);
     }
     await this.reveal();
     if (path === null || target === null) return;
-    const turnChange = (await this.turns.get(turnKey(target)))?.changes.find((change) => change.path === path);
+    const turnChange = (await this.turns.get(turnKey(target)))?.changes.find(
+      (change) => change.path === path,
+    );
     if (turnChange !== undefined) return this.open(turnChange, false);
     const entry = this.entryOf(threadStore.thread(target.environmentId, target.threadId));
     await entry?.loading;
@@ -1035,7 +1274,10 @@ class ChangesView {
   /** VS Code's diff editor on the change's two sides. */
   async open(change: Change, preserveFocus: boolean): Promise<void> {
     const { original, modified } = sides(change);
-    const group = change.sourceKind === "turn" ? `Turn ${this.shownTurn()?.turnCount ?? ""}`.trim() : groupLabel(change.sourceKind);
+    const group =
+      change.sourceKind === "turn"
+        ? `Turn ${this.shownTurn()?.turnCount ?? ""}`.trim()
+        : groupLabel(change.sourceKind);
     await this.services.editors.openEditor({
       original: { resource: original },
       modified: { resource: modified },
@@ -1046,7 +1288,15 @@ class ChangesView {
 
   private async sideContents(uri: URI): Promise<string> {
     const { change, side } = JSON.parse(uri.query) as Side;
-    const key = JSON.stringify([uri.authority, change.cwd, change.sourceKind, change.baseRef, change.headRef, change.previousPath, change.path]);
+    const key = JSON.stringify([
+      uri.authority,
+      change.cwd,
+      change.sourceKind,
+      change.baseRef,
+      change.headRef,
+      change.previousPath,
+      change.path,
+    ]);
     let loading = this.contents.get(key);
     if (loading === undefined && change.sourceKind === "turn") {
       loading = turnContents(uri.authority, change);
@@ -1082,7 +1332,10 @@ class ChangesView {
     const thread = this.filterThread();
     return {
       filtered: this.filtered,
-      filter: thread === undefined ? null : { environmentId: thread.environmentId, threadId: thread.id, root: thread.checkoutRoot },
+      filter:
+        thread === undefined
+          ? null
+          : { environmentId: thread.environmentId, threadId: thread.id, root: thread.checkoutRoot },
       turn: this.shownTurn()?.turnCount ?? null,
       visible: this.visible,
       checkouts: [...this.entries.values()].map((entry) => ({
@@ -1101,7 +1354,10 @@ class ChangesView {
   }
 }
 
-function sameKeys(left: ReadonlyMap<string, unknown>, right: ReadonlyMap<string, unknown>): boolean {
+function sameKeys(
+  left: ReadonlyMap<string, unknown>,
+  right: ReadonlyMap<string, unknown>,
+): boolean {
   return left.size === right.size && [...left.keys()].every((key) => right.has(key));
 }
 
@@ -1165,7 +1421,11 @@ function turnKey(selection: ThreadSelection): string {
  * whitespace kept, as the card counts it); a file the patch misses, or every
  * file when the patch fails, counts as modified.
  */
-async function loadTurn(selection: ThreadSelection, root: string, turn: TurnCheckpoints): Promise<Turn> {
+async function loadTurn(
+  selection: ThreadSelection,
+  root: string,
+  turn: TurnCheckpoints,
+): Promise<Turn> {
   const patch = await changesServer(selection.environmentId)
     .turnDiff({
       threadId: ThreadId.make(selection.threadId),
@@ -1203,7 +1463,10 @@ async function loadTurn(selection: ThreadSelection, root: string, turn: TurnChec
  * and a deletion's new side not at all, so a deletion based on a checkpoint
  * reads that checkpoint's file alone.
  */
-async function turnContents(environmentId: string, change: Change): Promise<{ readonly oldContents: string; readonly newContents: string }> {
+async function turnContents(
+  environmentId: string,
+  change: Change,
+): Promise<{ readonly oldContents: string; readonly newContents: string }> {
   const read = async (ref: string | null, path: string) => {
     if (ref === null) return "";
     const contents = await changesServer(environmentId).diffFileContents({
@@ -1238,7 +1501,11 @@ let started: Promise<ChangesView> | undefined;
  * thread's checkout, open when the view lists it: the thread's bar's Source
  * Control, the thread view's "Open diff" and the changed files card's files.
  */
-export async function showChanges(thread: ThreadSelection | null, path: string | null, turn: TurnCheckpoints | null = null): Promise<void> {
+export async function showChanges(
+  thread: ThreadSelection | null,
+  path: string | null,
+  turn: TurnCheckpoints | null = null,
+): Promise<void> {
   await (await started)?.show(thread, path, turn);
 }
 
@@ -1264,21 +1531,28 @@ export async function changesState() {
 export function registerChanges(): void {
   started = ChangesView.start();
   void mountChangesCard();
-  started.catch((error: unknown) => console.error("[pult-shell] the changes view did not start", error));
+  started.catch((error: unknown) =>
+    console.error("[pult-shell] the changes view did not start", error),
+  );
   CommandsRegistry.registerCommand(
     "pult-shell.showChanges",
     (_accessor, environmentId: unknown, threadId: unknown, path: unknown, turn: unknown) =>
       showChanges(
-        typeof environmentId === "string" && typeof threadId === "string" ? { environmentId, threadId } : null,
+        typeof environmentId === "string" && typeof threadId === "string"
+          ? { environmentId, threadId }
+          : null,
         typeof path === "string" ? path : null,
         isTurnCheckpoints(turn) ? turn : null,
       ),
   );
   // In place of "No source control providers registered.": a checkout without changes has none.
-  Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViewWelcomeContent("workbench.scm", {
-    content: "No changes.",
-    when: ContextKeyExpr.equals("scm.providerCount", 0),
-  });
+  Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViewWelcomeContent(
+    "workbench.scm",
+    {
+      content: "No changes.",
+      when: ContextKeyExpr.equals("scm.providerCount", 0),
+    },
+  );
   const category = { value: "Pult", original: "Pult" };
   registerAction2(
     class extends Action2 {
@@ -1300,7 +1574,12 @@ export function registerChanges(): void {
   registerAction2(
     class extends Action2 {
       constructor() {
-        super({ id: "pult-shell.showAllChanges", title: { value: "Show All Changes", original: "Show All Changes" }, category, f1: true });
+        super({
+          id: "pult-shell.showAllChanges",
+          title: { value: "Show All Changes", original: "Show All Changes" },
+          category,
+          f1: true,
+        });
       }
 
       async run(): Promise<void> {
@@ -1311,7 +1590,12 @@ export function registerChanges(): void {
   registerAction2(
     class extends Action2 {
       constructor() {
-        super({ id: COMMIT_COMMAND, title: { value: "Commit", original: "Commit" }, category, f1: true });
+        super({
+          id: COMMIT_COMMAND,
+          title: { value: "Commit", original: "Commit" },
+          category,
+          f1: true,
+        });
       }
 
       async run(_accessor: unknown, key: unknown): Promise<void> {
@@ -1360,6 +1644,13 @@ export function registerChanges(): void {
 
 function isTurnCheckpoints(value: unknown): value is TurnCheckpoints {
   if (typeof value !== "object" || value === null) return false;
-  const { turnCount, fromRef, toRef, files } = value as Partial<Record<keyof TurnCheckpoints, unknown>>;
-  return typeof turnCount === "number" && typeof fromRef === "string" && typeof toRef === "string" && Array.isArray(files);
+  const { turnCount, fromRef, toRef, files } = value as Partial<
+    Record<keyof TurnCheckpoints, unknown>
+  >;
+  return (
+    typeof turnCount === "number" &&
+    typeof fromRef === "string" &&
+    typeof toRef === "string" &&
+    Array.isArray(files)
+  );
 }

@@ -24,13 +24,22 @@ export interface DiffExcerpt {
 }
 
 /** Every row of the diff, the files' unchanged lines as context. */
-function rows(original: ReadonlyArray<string>, modified: ReadonlyArray<string>, mappings: ReadonlyArray<LineMapping>): Row[] {
+function rows(
+  original: ReadonlyArray<string>,
+  modified: ReadonlyArray<string>,
+  mappings: ReadonlyArray<LineMapping>,
+): Row[] {
   const out: Row[] = [];
   let oldLine = 1;
   let newLine = 1;
   const context = (untilOld: number) => {
     while (oldLine < untilOld && oldLine <= original.length && newLine <= modified.length) {
-      out.push({ change: "context", oldLineNumber: oldLine, newLineNumber: newLine, content: modified[newLine - 1] ?? "" });
+      out.push({
+        change: "context",
+        oldLineNumber: oldLine,
+        newLineNumber: newLine,
+        content: modified[newLine - 1] ?? "",
+      });
       oldLine += 1;
       newLine += 1;
     }
@@ -38,17 +47,32 @@ function rows(original: ReadonlyArray<string>, modified: ReadonlyArray<string>, 
   for (const mapping of mappings) {
     context(mapping.original.startLineNumber);
     for (; oldLine < mapping.original.endLineNumberExclusive; oldLine += 1) {
-      out.push({ change: "delete", oldLineNumber: oldLine, newLineNumber: null, content: original[oldLine - 1] ?? "" });
+      out.push({
+        change: "delete",
+        oldLineNumber: oldLine,
+        newLineNumber: null,
+        content: original[oldLine - 1] ?? "",
+      });
     }
-    for (newLine = mapping.modified.startLineNumber; newLine < mapping.modified.endLineNumberExclusive; newLine += 1) {
-      out.push({ change: "add", oldLineNumber: null, newLineNumber: newLine, content: modified[newLine - 1] ?? "" });
+    for (
+      newLine = mapping.modified.startLineNumber;
+      newLine < mapping.modified.endLineNumberExclusive;
+      newLine += 1
+    ) {
+      out.push({
+        change: "add",
+        oldLineNumber: null,
+        newLineNumber: newLine,
+        content: modified[newLine - 1] ?? "",
+      });
     }
   }
   context(Number.POSITIVE_INFINITY);
   return out;
 }
 
-const marker = (change: Row["change"]) => (change === "add" ? "+" : change === "delete" ? "-" : " ");
+const marker = (change: Row["change"]) =>
+  change === "add" ? "+" : change === "delete" ? "-" : " ";
 
 function label(selected: ReadonlyArray<Row>): string {
   const first = selected[0];
@@ -56,8 +80,12 @@ function label(selected: ReadonlyArray<Row>): string {
   if (first === undefined || last === undefined) return "line";
   const firstNumber = first.newLineNumber ?? first.oldLineNumber;
   const lastNumber = last.newLineNumber ?? last.oldLineNumber;
-  const sign = selected.every((row) => row.change === first.change) ? marker(first.change).trim() : "";
-  return firstNumber === lastNumber ? `${sign}${firstNumber}` : `${sign}${firstNumber} to ${sign}${lastNumber}`;
+  const sign = selected.every((row) => row.change === first.change)
+    ? marker(first.change).trim()
+    : "";
+  return firstNumber === lastNumber
+    ? `${sign}${firstNumber}`
+    : `${sign}${firstNumber} to ${sign}${lastNumber}`;
 }
 
 function range(selected: ReadonlyArray<Row>, key: "oldLineNumber" | "newLineNumber") {
@@ -82,7 +110,8 @@ export function diffExcerpt(input: {
 }): DiffExcerpt | null {
   const all = rows(input.original, input.modified, input.mappings);
   const key = input.side === "old" ? "oldLineNumber" : "newLineNumber";
-  const inSelection = (row: Row) => row[key] !== null && row[key] >= input.startLine && row[key] <= input.endLine;
+  const inSelection = (row: Row) =>
+    row[key] !== null && row[key] >= input.startLine && row[key] <= input.endLine;
   const startIndex = all.findIndex(inSelection);
   const endIndex = all.findLastIndex(inSelection);
   if (startIndex < 0) return null;

@@ -48,7 +48,10 @@ const ABSOLUTE = /^(\/|[A-Za-z]:[\\/])/;
  */
 export async function resolveThreadPath(input: ResolveInput): Promise<Resolution> {
   const own = input.checkoutRoot === null ? undefined : toUriPath(input.checkoutRoot);
-  const roots = [...input.checkouts.map((checkout) => toUriPath(checkout.root)), ...(own === undefined ? [] : [own])];
+  const roots = [
+    ...input.checkouts.map((checkout) => toUriPath(checkout.root)),
+    ...(own === undefined ? [] : [own]),
+  ];
   let key: string;
   let literal: string | undefined;
   if (ABSOLUTE.test(input.path)) {
@@ -60,7 +63,8 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
     key = input.path.replace(/^(\.\/)+/, "");
     literal = own === undefined ? undefined : joinPath(own, key);
   }
-  if (literal !== undefined && (await input.exists(literal))) return { kind: "open", path: literal };
+  if (literal !== undefined && (await input.exists(literal)))
+    return { kind: "open", path: literal };
   if (key === "") return { kind: "missing", key: input.path, error: undefined };
 
   const failures: Array<string> = [];
@@ -72,7 +76,11 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
           const root = toUriPath(checkout.root);
           return entries
             .filter((entry) => endsWithKey(entry, key))
-            .map((relativePath) => ({ checkout, relativePath, path: joinPath(root, relativePath) }));
+            .map((relativePath) => ({
+              checkout,
+              relativePath,
+              path: joinPath(root, relativePath),
+            }));
         } catch (error) {
           failures.push(error instanceof Error ? error.message : String(error));
           return [];
@@ -93,7 +101,11 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
   searches += others.length;
   const found = await searched(others);
   if (found.length > 0) return chosen(key, ordered(found, input.projectId));
-  return { kind: "missing", key, error: searches > 0 && failures.length === searches ? failures[0] : undefined };
+  return {
+    kind: "missing",
+    key,
+    error: searches > 0 && failures.length === searches ? failures[0] : undefined,
+  };
 }
 
 /** Whether an index entry is the key, or ends with it after a `/`: `files/paths.ts` is `src/files/paths.ts`, not `profiles/paths.ts`. */
@@ -103,13 +115,20 @@ export function endsWithKey(entry: string, key: string): boolean {
 
 function chosen(key: string, candidates: ReadonlyArray<Candidate>): Resolution {
   const [only] = candidates;
-  return candidates.length === 1 && only !== undefined ? { kind: "open", path: only.path } : { kind: "pick", key, candidates };
+  return candidates.length === 1 && only !== undefined
+    ? { kind: "open", path: only.path }
+    : { kind: "pick", key, candidates };
 }
 
 /** The thread's project's checkouts first, then the others by name, each checkout's files in the index's order. */
-function ordered(candidates: ReadonlyArray<Candidate>, projectId: string): ReadonlyArray<Candidate> {
+function ordered(
+  candidates: ReadonlyArray<Candidate>,
+  projectId: string,
+): ReadonlyArray<Candidate> {
   const rank = (candidate: Candidate) => (candidate.checkout.projectId === projectId ? 0 : 1);
   return candidates.toSorted(
-    (left, right) => rank(left) - rank(right) || checkoutName(left.checkout).localeCompare(checkoutName(right.checkout)),
+    (left, right) =>
+      rank(left) - rank(right) ||
+      checkoutName(left.checkout).localeCompare(checkoutName(right.checkout)),
   );
 }

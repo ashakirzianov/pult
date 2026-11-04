@@ -10,7 +10,12 @@ const NOW = Date.parse("2026-11-03T12:00:00.000Z");
 const HOUR = 60 * 60_000;
 
 /** A window `elapsed` of the way through its `hours`, with `usedPercent` spent; no reset clock with `elapsed` null. */
-function window(id: string, usedPercent: number, elapsed: number | null = 0.5, hours = 100): ServerProviderUsageWindow {
+function window(
+  id: string,
+  usedPercent: number,
+  elapsed: number | null = 0.5,
+  hours = 100,
+): ServerProviderUsageWindow {
   return {
     id,
     kind: "weekly",
@@ -18,15 +23,24 @@ function window(id: string, usedPercent: number, elapsed: number | null = 0.5, h
     usedPercent,
     ...(elapsed === null
       ? {}
-      : { resetsAt: new Date(NOW + (1 - elapsed) * hours * HOUR).toISOString(), windowDurationMins: hours * 60 }),
+      : {
+          resetsAt: new Date(NOW + (1 - elapsed) * hours * HOUR).toISOString(),
+          windowDurationMins: hours * 60,
+        }),
   };
 }
 
-const account = (key: string, ...windows: ServerProviderUsageWindow[]) => ({ key, limits: { windows } });
+const account = (key: string, ...windows: ServerProviderUsageWindow[]) => ({
+  key,
+  limits: { windows },
+});
 
 const shape = (shelf: ReturnType<typeof limitsShelf<ReturnType<typeof account>>>) =>
   shelf && {
-    accounts: shelf.accounts.map(({ account, windows }) => [account.key, windows.map(({ window, warning }) => `${window.id}${warning ? "!" : ""}`)]),
+    accounts: shelf.accounts.map(({ account, windows }) => [
+      account.key,
+      windows.map(({ window, warning }) => `${window.id}${warning ? "!" : ""}`),
+    ]),
     warnings: shelf.warnings,
     toggle: shelf.toggle,
   };
@@ -68,7 +82,15 @@ describe("limitsShelf", () => {
   });
 
   test("warn with every shown window warning offers no Show all", () => {
-    assert.equal(limitsShelf([account("claude", window("session", 99), window("weekly", 0))], NOW, "warn", false)?.toggle, null);
+    assert.equal(
+      limitsShelf(
+        [account("claude", window("session", 99), window("weekly", 0))],
+        NOW,
+        "warn",
+        false,
+      )?.toggle,
+      null,
+    );
   });
 
   test("always shows every window with something spent, and no zero window or account", () => {

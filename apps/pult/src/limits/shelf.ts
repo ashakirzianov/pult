@@ -16,7 +16,11 @@ interface ShelfState {
   readonly reveals: number;
 }
 
-let state: ShelfState = { expanded: storedExpanded(EXPANDED_KEY, true), showAll: false, reveals: 0 };
+let state: ShelfState = {
+  expanded: storedExpanded(EXPANDED_KEY, true),
+  showAll: false,
+  reveals: 0,
+};
 const listeners = new Set<() => void>();
 
 function set(next: Partial<ShelfState>): void {

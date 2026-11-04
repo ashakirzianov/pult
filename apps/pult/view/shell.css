@@ -292,11 +292,17 @@ html:not([data-theme-id]) .pult-thread-view {
 
 /* The context window meter's arc, orange once the context is heavy and red
    once it nears full (`contextLevel` in upstream's `ComposerFooterControls.tsx`). */
-.pult-composer-bar > [data-chat-composer-slot-item="meter"][data-level="heavy"] svg circle:last-child {
+.pult-composer-bar
+  > [data-chat-composer-slot-item="meter"][data-level="heavy"]
+  svg
+  circle:last-child {
   stroke: var(--warning);
 }
 
-.pult-composer-bar > [data-chat-composer-slot-item="meter"][data-level="full"] svg circle:last-child {
+.pult-composer-bar
+  > [data-chat-composer-slot-item="meter"][data-level="full"]
+  svg
+  circle:last-child {
   stroke: var(--color-error);
 }
 
@@ -428,7 +434,9 @@ html:not([data-theme-id]) .pult-thread-view {
   display: none;
 }
 
-.pult-composer-bar [data-slot="composer-context-strip"] :is(button, span[data-composer-context-control]) {
+.pult-composer-bar
+  [data-slot="composer-context-strip"]
+  :is(button, span[data-composer-context-control]) {
   height: calc(var(--spacing) * 7);
   gap: calc(var(--spacing) * 1.5);
   padding-inline: var(--pult-bar-item-padding);
@@ -441,7 +449,10 @@ html:not([data-theme-id]) .pult-thread-view {
   color: var(--color-foreground);
 }
 
-.pult-composer-bar [data-slot="composer-context-strip"] :is(button, span[data-composer-context-control]) svg {
+.pult-composer-bar
+  [data-slot="composer-context-strip"]
+  :is(button, span[data-composer-context-control])
+  svg {
   width: 1rem;
   height: 1rem;
   color: var(--vscode-icon-foreground);
@@ -541,8 +552,13 @@ html:not([data-theme-id]) .pult-thread-view {
    they go, but for the last line's trailing one, the caret's place after a
    final citation. */
 .pult-thread-view .ProseMirror img.ProseMirror-separator:has(+ .node-composer-citation),
-.pult-thread-view .ProseMirror img.ProseMirror-separator:has(+ .node-composer-context-reference [data-composer-citation-chip]),
-.pult-thread-view .ProseMirror :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip])) + img.ProseMirror-separator,
+.pult-thread-view
+  .ProseMirror
+  img.ProseMirror-separator:has(+ .node-composer-context-reference [data-composer-citation-chip]),
+.pult-thread-view
+  .ProseMirror
+  :is(.node-composer-citation, .node-composer-context-reference:has([data-composer-citation-chip]))
+  + img.ProseMirror-separator,
 .pult-thread-view
   .ProseMirror
   > :not(:last-child)
@@ -569,7 +585,10 @@ html:not([data-theme-id]) .pult-thread-view {
   pointer-events: none;
   animation: pult-citation-caret 1.06s steps(1) infinite;
 }
-.pult-thread-view .ProseMirror [data-citation-caret="before"] [data-composer-citation-chip]::before {
+.pult-thread-view
+  .ProseMirror
+  [data-citation-caret="before"]
+  [data-composer-citation-chip]::before {
   top: 0;
 }
 .pult-thread-view .ProseMirror [data-citation-caret="after"] [data-composer-citation-chip]::before {

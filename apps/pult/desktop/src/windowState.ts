@@ -14,7 +14,10 @@ export function windowState(file: string) {
   return {
     restore() {
       const saved = decode(readSaved(file));
-      if (saved === undefined || !screen.getAllDisplays().some(({ bounds }) => contains(bounds, saved))) {
+      if (
+        saved === undefined ||
+        !screen.getAllDisplays().some(({ bounds }) => contains(bounds, saved))
+      ) {
         return { ...DEFAULT_SIZE, maximized: false };
       }
       return saved;
@@ -45,7 +48,10 @@ function readSaved(file: string): unknown {
   try {
     return readJson(file);
   } catch (error) {
-    console.warn(`[pult-desktop] ${file} is unreadable, so the window opens at the default size:`, error);
+    console.warn(
+      `[pult-desktop] ${file} is unreadable, so the window opens at the default size:`,
+      error,
+    );
     return undefined;
   }
 }
@@ -63,10 +69,18 @@ function decode(json: unknown): (Rectangle & { maximized: boolean }) | undefined
   if (typeof json !== "object" || json === null) return undefined;
   const fields: Map<string, unknown> = new Map(Object.entries(json));
   const [x, y, width, height] = ["x", "y", "width", "height"].map((key) => fields.get(key));
-  if (!isNumber(x) || !isNumber(y) || !isNumber(width) || !isNumber(height) || width <= 0 || height <= 0) {
+  if (
+    !isNumber(x) ||
+    !isNumber(y) ||
+    !isNumber(width) ||
+    !isNumber(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
     return undefined;
   }
   return { x, y, width, height, maximized: fields.get("maximized") === true };
 }
 
-const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);

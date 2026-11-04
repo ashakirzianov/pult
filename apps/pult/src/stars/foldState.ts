@@ -26,7 +26,8 @@ function changed(): void {
 }
 
 function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "message" in error) return String(error.message);
+  if (typeof error === "object" && error !== null && "message" in error)
+    return String(error.message);
   return String(error);
 }
 
@@ -59,15 +60,22 @@ export function showOlder(starId: string): void {
   changed();
 }
 
-const keyOf = (environmentId: string, root: string, name: string) => `${environmentId}\n${root}\n${name}`;
+const keyOf = (environmentId: string, root: string, name: string) =>
+  `${environmentId}\n${root}\n${name}`;
 
-export const transcriptReading = (environmentId: string, root: string, name: string) => readings.get(keyOf(environmentId, root, name));
+export const transcriptReading = (environmentId: string, root: string, name: string) =>
+  readings.get(keyOf(environmentId, root, name));
 
 async function read(environmentId: string, root: string, name: string): Promise<TranscriptReading> {
   try {
-    const file = await environmentServer(environmentId).readFile({ cwd: root, relativePath: `${transcriptsFolder(environmentId)}/${name}` });
+    const file = await environmentServer(environmentId).readFile({
+      cwd: root,
+      relativePath: `${transcriptsFolder(environmentId)}/${name}`,
+    });
     const transcript = parseTranscript(file.contents);
-    return transcript === undefined ? { status: "failed", message: "It is not a transcript." } : { status: "ready", transcript, truncated: file.truncated };
+    return transcript === undefined
+      ? { status: "failed", message: "It is not a transcript." }
+      : { status: "ready", transcript, truncated: file.truncated };
   } catch (error) {
     return { status: "failed", message: errorMessage(error) };
   }

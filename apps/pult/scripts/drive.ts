@@ -27,7 +27,8 @@ const context = await chromium.launchPersistentContext(profile, {
 const page = context.pages()[0] ?? (await context.newPage());
 page.on("console", (message) => {
   const text = message.text();
-  if (message.type() === "error" || text.startsWith("[pult")) console.error(`[page] ${text.slice(0, 400)}`);
+  if (message.type() === "error" || text.startsWith("[pult"))
+    console.error(`[page] ${text.slice(0, 400)}`);
 });
 page.on("pageerror", (error) => console.error(`[page error] ${error.message}`));
 await page.goto(url);
@@ -43,7 +44,9 @@ for (const step of args) {
       console.log(JSON.stringify(await page.evaluate(rest), null, 2));
       break;
     case "fire":
-      await page.evaluate(`void (async () => { try { await (${rest}); } catch (e) { console.error('[pult-drive] ' + e); } })()`);
+      await page.evaluate(
+        `void (async () => { try { await (${rest}); } catch (e) { console.error('[pult-drive] ' + e); } })()`,
+      );
       break;
     case "type":
       await page.keyboard.type(rest);

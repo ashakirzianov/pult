@@ -13,7 +13,10 @@ let source: Promise<Source> | undefined;
  * `useSyncExternalStore`, loaded on the first subscriber without the rest
  * of the view, and `initial` until then.
  */
-function lazyList<T>(initial: T, pick: (module: Source) => { get(): T; subscribe(listener: () => void): () => void }) {
+function lazyList<T>(
+  initial: T,
+  pick: (module: Source) => { get(): T; subscribe(listener: () => void): () => void },
+) {
   let value = initial;
   const listeners = new Set<() => void>();
   let loading: Promise<void> | undefined;
@@ -41,7 +44,13 @@ export function isStarDraft(draft: Pick<ProjectDraft, "environmentId" | "project
 }
 
 /** The projects' unsent drafts, for Ready's draft cards. */
-export const projectDrafts = lazyList<ReadonlyArray<ProjectDraft>>([], (module) => module.projectDrafts);
+export const projectDrafts = lazyList<ReadonlyArray<ProjectDraft>>(
+  [],
+  (module) => module.projectDrafts,
+);
 
 /** The threads whose composer holds an unsent message, by the panel's `keyOf`, for their cards' mark. */
-export const threadsWithUnsentMessages = lazyList<ReadonlySet<string>>(new Set(), (module) => module.threadsWithUnsentMessages);
+export const threadsWithUnsentMessages = lazyList<ReadonlySet<string>>(
+  new Set(),
+  (module) => module.threadsWithUnsentMessages,
+);

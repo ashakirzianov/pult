@@ -22,6 +22,8 @@ export function startConnection(): void {
   connection.restore().catch(async (error: unknown) => {
     console.error("[pult-shell] reconnect failed", error);
     const cause = error instanceof Error ? error.message : String(error);
-    (await getService(INotificationService)).error(`Pult could not reconnect to the saved environments. ${cause}`);
+    (await getService(INotificationService)).error(
+      `Pult could not reconnect to the saved environments. ${cause}`,
+    );
   });
 }

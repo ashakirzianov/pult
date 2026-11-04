@@ -31,7 +31,12 @@ export type { MountedView, MountOptions, ViewTarget } from "./ThreadView.tsx";
 
 export interface ThreadViewMounts {
   /** The thread's turns and composer, on its environment. */
-  mount(element: HTMLElement, environmentId: string, threadId: string, options?: MountOptions): MountedView;
+  mount(
+    element: HTMLElement,
+    environmentId: string,
+    threadId: string,
+    options?: MountOptions,
+  ): MountedView;
   /**
    * The project's draft of a new thread, upstream's composer, which stays
    * mounted as the thread it creates and names it to `onPromoted`, with the
@@ -51,7 +56,12 @@ export interface ThreadViewMounts {
    * project's draft on `draftEnvironmentId` creates, before the view mounted
    * for that draft has been promoted to it (`mountDraft`'s `onPromoted`).
    */
-  draftCreates(draftEnvironmentId: string, projectId: string, environmentId: string, threadId: string): boolean;
+  draftCreates(
+    draftEnvironmentId: string,
+    projectId: string,
+    environmentId: string,
+    threadId: string,
+  ): boolean;
 }
 
 /**
@@ -66,7 +76,10 @@ export interface ThreadViewMounts {
 export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
-  setSystemColorSchemeSource({ isDark: () => host.colorScheme() === "dark", onChange: host.onDidChangeColorScheme });
+  setSystemColorSchemeSource({
+    isDark: () => host.colorScheme() === "dark",
+    onChange: host.onDidChangeColorScheme,
+  });
   if (readThemePreference() !== "system") setTheme("system");
   if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
@@ -76,6 +89,10 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     mountDraft: mountDraftView,
     mountComposer: mountComposerView,
     draftCreates: (draftEnvironmentId, projectId, environmentId, threadId) =>
-      isPromotion({ kind: "draft", environmentId: draftEnvironmentId, projectId }, environmentId, threadId),
+      isPromotion(
+        { kind: "draft", environmentId: draftEnvironmentId, projectId },
+        environmentId,
+        threadId,
+      ),
   };
 }

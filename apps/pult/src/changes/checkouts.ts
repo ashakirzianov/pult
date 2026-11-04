@@ -34,22 +34,46 @@ function trimSlash(path: string): string {
  */
 export function checkoutsOf(state: {
   readonly projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "name" | "root">>;
-  readonly threads: ReadonlyArray<Pick<ShellThread, "environmentId" | "projectId" | "projectName" | "projectRoot" | "checkoutRoot" | "branch">>;
+  readonly threads: ReadonlyArray<
+    Pick<
+      ShellThread,
+      "environmentId" | "projectId" | "projectName" | "projectRoot" | "checkoutRoot" | "branch"
+    >
+  >;
 }): Checkout[] {
   const checkouts = new Map<string, Checkout>();
   const add = (checkout: Checkout) => {
     const key = checkoutKey(checkout.environmentId, checkout.root);
     // A Star's folder is no project of the user's (`src/stars/`).
-    if (!checkouts.has(key) && !isStarRoot(checkout.root)) checkouts.set(key, { ...checkout, root: trimSlash(checkout.root) });
+    if (!checkouts.has(key) && !isStarRoot(checkout.root))
+      checkouts.set(key, { ...checkout, root: trimSlash(checkout.root) });
   };
   for (const project of state.projects) {
-    if (project.root !== null) add({ environmentId: project.environmentId, root: project.root, projectId: project.id, projectName: project.name, worktree: null });
+    if (project.root !== null)
+      add({
+        environmentId: project.environmentId,
+        root: project.root,
+        projectId: project.id,
+        projectName: project.name,
+        worktree: null,
+      });
   }
   for (const thread of state.threads) {
     const { environmentId, projectId, projectName, projectRoot, checkoutRoot } = thread;
-    if (projectRoot !== null) add({ environmentId, root: projectRoot, projectId, projectName, worktree: null });
-    if (checkoutRoot === null || (projectRoot !== null && trimSlash(checkoutRoot) === trimSlash(projectRoot))) continue;
-    add({ environmentId, root: checkoutRoot, projectId, projectName, worktree: { branch: thread.branch } });
+    if (projectRoot !== null)
+      add({ environmentId, root: projectRoot, projectId, projectName, worktree: null });
+    if (
+      checkoutRoot === null ||
+      (projectRoot !== null && trimSlash(checkoutRoot) === trimSlash(projectRoot))
+    )
+      continue;
+    add({
+      environmentId,
+      root: checkoutRoot,
+      projectId,
+      projectName,
+      worktree: { branch: thread.branch },
+    });
   }
   return [...checkouts.values()];
 }
@@ -78,9 +102,14 @@ export interface Change {
 }
 
 /** A source's files as changes: its stats, with how each changed from its patch; a file the truncated patch missed counts as modified. */
-export function changesOf(environmentId: string, cwd: string, source: ReviewDiffPreviewSource): Change[] {
+export function changesOf(
+  environmentId: string,
+  cwd: string,
+  source: ReviewDiffPreviewSource,
+): Change[] {
   const parsed = new Map(patchFiles(source.diff).map((file) => [file.path, file]));
-  const stats = source.files ?? [...parsed.values()].map((file) => ({ ...file, additions: 0, deletions: 0 }));
+  const stats =
+    source.files ?? [...parsed.values()].map((file) => ({ ...file, additions: 0, deletions: 0 }));
   return stats.map((stat) => {
     const file = parsed.get(stat.path);
     return {
@@ -110,10 +139,15 @@ export function shownChanges(
   environmentId: string,
   cwd: string,
   sources: ReadonlyArray<ReviewDiffPreviewSource>,
-): { readonly kind: ReviewDiffPreviewSourceKind; readonly changes: ReadonlyArray<Change> } | undefined {
+):
+  | { readonly kind: ReviewDiffPreviewSourceKind; readonly changes: ReadonlyArray<Change> }
+  | undefined {
   for (const kind of ["working-tree", "branch-range"] as const) {
     const source = sources.find((candidate) => candidate.kind === kind);
-    const changes = source === undefined || againstOwnUpstream(source) ? [] : changesOf(environmentId, cwd, source);
+    const changes =
+      source === undefined || againstOwnUpstream(source)
+        ? []
+        : changesOf(environmentId, cwd, source);
     if (changes.length > 0) return { kind, changes };
   }
   return undefined;

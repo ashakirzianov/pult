@@ -15,7 +15,10 @@ const copy = path.join(threadView, "t3");
 /** Resolves an import of a stubbed upstream module in the copy to its replacement (`thread-view/stubs.ts`). */
 function threadViewStubs(): Plugin {
   const replacements = new Map(
-    Object.entries(STUBS).map(([upstream, ours]) => [path.join(copy, upstream), path.join(threadView, ours)]),
+    Object.entries(STUBS).map(([upstream, ours]) => [
+      path.join(copy, upstream),
+      path.join(threadView, ours),
+    ]),
   );
   return {
     name: "pult:thread-view-stubs",
@@ -38,7 +41,8 @@ function threadViewRelease(): Plugin {
     enforce: "pre",
     transform: {
       filter: { code: { include: ["import.meta.env.DEV"] } },
-      handler: (code, id) => (id.startsWith(copy + path.sep) ? code.replaceAll("import.meta.env.DEV", "false") : null),
+      handler: (code, id) =>
+        id.startsWith(copy + path.sep) ? code.replaceAll("import.meta.env.DEV", "false") : null,
     },
   };
 }
@@ -49,7 +53,10 @@ function threadViewRelease(): Plugin {
  * compares like with like.
  */
 const appVersion: string = JSON.parse(
-  fs.readFileSync(path.join(import.meta.dirname, "vendor/t3code/packages/contracts/package.json"), "utf8"),
+  fs.readFileSync(
+    path.join(import.meta.dirname, "vendor/t3code/packages/contracts/package.json"),
+    "utf8",
+  ),
 ).version;
 
 // The fork's build-time configuration for its web app, all of it off: no T3 Connect, no hosted app.
@@ -87,7 +94,9 @@ export default defineConfig({
       async resolveId(source, importer, options) {
         const resolved = await this.resolve(source, importer, options);
         if (resolved == null) return undefined;
-        if (/node_modules\/(@codingame\/monaco-vscode|vscode|monaco-editor).*\.css$/.test(resolved.id)) {
+        if (
+          /node_modules\/(@codingame\/monaco-vscode|vscode|monaco-editor).*\.css$/.test(resolved.id)
+        ) {
           return { ...resolved, id: resolved.id + "?inline" };
         }
         return undefined;
@@ -95,7 +104,10 @@ export default defineConfig({
     },
   ],
   define: Object.fromEntries(
-    Object.entries(threadViewEnv).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
+    Object.entries(threadViewEnv).map(([key, value]) => [
+      `import.meta.env.${key}`,
+      JSON.stringify(value),
+    ]),
   ),
   optimizeDeps: {
     include: [
@@ -110,12 +122,22 @@ export default defineConfig({
   },
   // The fork's files, kept byte for byte (`scripts/vendor.ts`), and the copy, which merges
   // upstream's changes (`scripts/merge.ts`) in upstream's format.
-  fmt: { ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"] },
+  fmt: {
+    ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"],
+  },
   lint: { ignorePatterns: ["vendor/t3code/packages/**", "thread-view/t3/**"] },
   resolve: {
     // The copy's imports of its own `src/`.
     alias: [{ find: /^~\//, replacement: path.join(copy, "src") + "/" }],
     // One copy of each in the page: the workbench's singletons, and the client runtime the view and the shell share.
-    dedupe: ["vscode", "react", "react-dom", "effect", "@t3tools/client-runtime", "@t3tools/contracts", "@t3tools/shared"],
+    dedupe: [
+      "vscode",
+      "react",
+      "react-dom",
+      "effect",
+      "@t3tools/client-runtime",
+      "@t3tools/contracts",
+      "@t3tools/shared",
+    ],
   },
 });

@@ -5,7 +5,14 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 
 import { ConversationDivider, TranscriptEntries } from "../../thread-view/shell/StarTranscript.tsx";
 import { threadStore } from "../threads/store.ts";
-import { foldStore, foldView, readTranscript, setFoldOpen, showOlder, transcriptReading } from "./foldState.ts";
+import {
+  foldStore,
+  foldView,
+  readTranscript,
+  setFoldOpen,
+  showOlder,
+  transcriptReading,
+} from "./foldState.ts";
 import { starById, starStore } from "./model.ts";
 import { foldHome, type StarHome } from "./stars.ts";
 
@@ -16,7 +23,9 @@ function clock(iso: string): string {
   const time = new Date(iso);
   if (Number.isNaN(time.getTime())) return "";
   const now = new Date();
-  const hours = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(time);
+  const hours = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+    time,
+  );
   if (time.toDateString() === now.toDateString()) return hours;
   const day = new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -73,7 +82,8 @@ function useAnchoredHeight() {
     let settled = initial === null ? undefined : { scroller: initial, top: initial.scrollTop };
     const onScroll = (event: Event) => {
       const scroller = scrollerOf(element);
-      if (event.target === scroller && scroller !== null) settled = { scroller, top: scroller.scrollTop };
+      if (event.target === scroller && scroller !== null)
+        settled = { scroller, top: scroller.scrollTop };
     };
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     const observer = new ResizeObserver(() => {
@@ -86,7 +96,11 @@ function useAnchoredHeight() {
       const before = settled?.scroller === scroller ? settled.top : scroller.scrollTop;
       const header = listHeaderOf(element);
       // The anchor's end before the change, in the scroller's content, which no scrolling moves.
-      const end = (header ?? element).getBoundingClientRect().bottom - scroller.getBoundingClientRect().top + scroller.scrollTop - change;
+      const end =
+        (header ?? element).getBoundingClientRect().bottom -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop -
+        change;
       const listAdjusts = header !== null && before >= end - LIST_ADJUST_EPSILON;
       if (!listAdjusts && before <= end) scroller.scrollTop += change;
     });
@@ -99,17 +113,45 @@ function useAnchoredHeight() {
   return setElement;
 }
 
-function Conversation({ home, name, environmentName }: { home: StarHome; name: string; environmentName: string | undefined }) {
+function Conversation({
+  home,
+  name,
+  environmentName,
+}: {
+  home: StarHome;
+  name: string;
+  environmentName: string | undefined;
+}) {
   const reading = transcriptReading(home.environmentId, home.root, name);
-  if (reading === undefined || reading.status === "loading") return <p className="pult-star-fold-note">Reading the conversation…</p>;
-  if (reading.status === "failed") return <p className="pult-star-fold-note">Pult could not read this conversation: {reading.message}</p>;
+  if (reading === undefined || reading.status === "loading")
+    return <p className="pult-star-fold-note">Reading the conversation…</p>;
+  if (reading.status === "failed")
+    return (
+      <p className="pult-star-fold-note">
+        Pult could not read this conversation: {reading.message}
+      </p>
+    );
   const { transcript, truncated } = reading;
   return (
     <>
-      {transcript.partial ? <p className="pult-star-fold-note">The start of this conversation is not in its transcript, written from its latest turns alone.</p> : null}
-      <TranscriptEntries entries={transcript.entries} environmentId={home.environmentId} cwd={home.root} />
-      {truncated ? <p className="pult-star-fold-note">The rest of this conversation is in its file, {name}.</p> : null}
-      <ConversationDivider label={`Fell asleep ${clock(transcript.ended)}`.trim()} detail={environmentName} />
+      {transcript.partial ? (
+        <p className="pult-star-fold-note">
+          The start of this conversation is not in its transcript, written from its latest turns
+          alone.
+        </p>
+      ) : null}
+      <TranscriptEntries
+        entries={transcript.entries}
+        environmentId={home.environmentId}
+        cwd={home.root}
+      />
+      {truncated ? (
+        <p className="pult-star-fold-note">The rest of this conversation is in its file, {name}.</p>
+      ) : null}
+      <ConversationDivider
+        label={`Fell asleep ${clock(transcript.ended)}`.trim()}
+        detail={environmentName}
+      />
     </>
   );
 }
@@ -139,12 +181,18 @@ export default function StarFold({ starId }: { starId: string }) {
   // Oldest first, the newest right above the live view.
   const shown = view.open ? names.slice(-view.shown) : [];
   useEffect(() => {
-    if (home !== undefined) for (const name of shown) readTranscript(home.environmentId, home.root, name);
+    if (home !== undefined)
+      for (const name of shown) readTranscript(home.environmentId, home.root, name);
   });
   if (home === undefined || names.length === 0) return null;
   return (
     <div ref={anchor} className="pult-star-fold" data-open={view.open || undefined}>
-      <button type="button" className="pult-star-fold-toggle" aria-expanded={view.open} onClick={() => setFoldOpen(starId, !view.open)}>
+      <button
+        type="button"
+        className="pult-star-fold-toggle"
+        aria-expanded={view.open}
+        onClick={() => setFoldOpen(starId, !view.open)}
+      >
         <span className="pult-star-fold-rule" aria-hidden />
         <span className="pult-star-fold-label">
           <i className={`codicon codicon-chevron-${view.open ? "down" : "right"}`} aria-hidden />

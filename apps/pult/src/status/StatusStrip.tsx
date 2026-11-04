@@ -19,7 +19,13 @@ function run(command: string): void {
  * (`src/composer/`): "Composer", marked while that composer holds anything,
  * showing it under the file, whose own bar then stands in for this strip.
  */
-export function StatusStrip({ status, onMore }: { status: FileStatusStore; onMore: (anchor: HTMLElement) => void }) {
+export function StatusStrip({
+  status,
+  onMore,
+}: {
+  status: FileStatusStore;
+  onMore: (anchor: HTMLElement) => void;
+}) {
   const file = useSyncExternalStore(status.subscribe, status.get);
   const composer = useSyncExternalStore(composerStrip.subscribe, composerStrip.get);
   const position =

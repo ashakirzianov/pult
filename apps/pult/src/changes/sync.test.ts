@@ -3,7 +3,12 @@ import { describe, test } from "node:test";
 
 import { afterStep, pullFailure, syncAction, syncSteps, syncTitle, syncTooltip } from "./sync.ts";
 
-const state = (ahead: number, behind: number, hasUpstream = true, branch: string | null = "main") => ({ branch, hasUpstream, ahead, behind });
+const state = (
+  ahead: number,
+  behind: number,
+  hasUpstream = true,
+  branch: string | null = "main",
+) => ({ branch, hasUpstream, ahead, behind });
 
 describe("syncAction", () => {
   test("commits while the working tree has changes, whatever there is to sync", () => {
@@ -16,12 +21,19 @@ describe("syncAction", () => {
   });
 
   test("offers no sync to a branch both ahead and behind, which a fast-forward pull refuses", () => {
-    assert.deepEqual(syncAction(false, state(41, 1234)), { kind: "diverged", ahead: 41, behind: 1234 });
+    assert.deepEqual(syncAction(false, state(41, 1234)), {
+      kind: "diverged",
+      ahead: 41,
+      behind: 1234,
+    });
   });
 
   test("publishes a branch with no upstream, but not a detached HEAD", () => {
     assert.deepEqual(syncAction(false, state(0, 0, false)), { kind: "publish" });
-    assert.deepEqual(syncAction(false, state(0, 0, false, null)), { kind: "commit", enabled: false });
+    assert.deepEqual(syncAction(false, state(0, 0, false, null)), {
+      kind: "commit",
+      enabled: false,
+    });
   });
 
   test("offers nothing to a checkout in step with its upstream, or one not read yet", () => {
@@ -40,7 +52,10 @@ describe("sync", () => {
   test("counts what comes down, then what goes up", () => {
     assert.equal(syncTitle("sync", 2, 1), "$(sync) Sync Changes 1$(arrow-down) 2$(arrow-up)");
     assert.equal(syncTitle("sync", 2, 0), "$(sync) Sync Changes 2$(arrow-up)");
-    assert.equal(syncTitle("diverged", 41, 1234), "$(git-compare) Diverged 1234$(arrow-down) 41$(arrow-up)");
+    assert.equal(
+      syncTitle("diverged", 41, 1234),
+      "$(git-compare) Diverged 1234$(arrow-down) 41$(arrow-up)",
+    );
     assert.equal(syncTooltip(2, 1), "Pull 1 commit, then push 2 commits");
   });
 

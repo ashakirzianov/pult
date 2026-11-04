@@ -1,4 +1,9 @@
-import { request, requestGuarded, RpcPermissionGuard, runStreamGuarded } from "@t3tools/client-runtime/rpc";
+import {
+  request,
+  requestGuarded,
+  RpcPermissionGuard,
+  runStreamGuarded,
+} from "@t3tools/client-runtime/rpc";
 import {
   type GitActionProgressEvent,
   type GitRunStackedActionInput,
@@ -35,11 +40,15 @@ export function changesServer(environmentId: string) {
       await whenReady(environmentId);
       return connection.run(environmentId, request(WS_METHODS.reviewGetDiffPreview, input));
     },
-    diffFileContents: async (input: ReviewDiffFileContentsInput): Promise<ReviewDiffFileContentsResult> => {
+    diffFileContents: async (
+      input: ReviewDiffFileContentsInput,
+    ): Promise<ReviewDiffFileContentsResult> => {
       await whenReady(environmentId);
       return connection.run(environmentId, request(WS_METHODS.reviewGetDiffFileContents, input));
     },
-    turnDiff: async (input: OrchestrationGetTurnDiffInput): Promise<OrchestrationGetTurnDiffResult> => {
+    turnDiff: async (
+      input: OrchestrationGetTurnDiffInput,
+    ): Promise<OrchestrationGetTurnDiffResult> => {
       await whenReady(environmentId);
       return connection.run(environmentId, request(ORCHESTRATION_V2_WS_METHODS.getTurnDiff, input));
     },
@@ -51,14 +60,22 @@ export function changesServer(environmentId: string) {
     /** A fast-forward pull of the checkout's branch from its upstream; a diverged branch fails. */
     pull: async (cwd: string): Promise<VcsPullResult> => {
       await whenReady(environmentId);
-      return connection.run(environmentId, requestGuarded(WS_METHODS.vcsPull, { cwd }).pipe(Effect.provideService(RpcPermissionGuard, serverChecks)));
+      return connection.run(
+        environmentId,
+        requestGuarded(WS_METHODS.vcsPull, { cwd }).pipe(
+          Effect.provideService(RpcPermissionGuard, serverChecks),
+        ),
+      );
     },
     /**
      * The server's stacked git action, a stream: its progress events handed
      * to `onEvent` as they come, settling when the server ends the stream.
      * On failure the server sends `action_failed` first, then fails it.
      */
-    runStackedAction: async (input: GitRunStackedActionInput, onEvent: (event: GitActionProgressEvent) => void): Promise<void> => {
+    runStackedAction: async (
+      input: GitRunStackedActionInput,
+      onEvent: (event: GitActionProgressEvent) => void,
+    ): Promise<void> => {
       await whenReady(environmentId);
       return connection.run(
         environmentId,

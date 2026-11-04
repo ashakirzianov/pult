@@ -16,9 +16,17 @@ import type { PultDesktop } from "./api.ts";
 export function installDesktopTitleBar(desktop: PultDesktop): void {
   const { titleBar } = desktop;
   const layout = () =>
-    void titleBar.layout().then((room) => document.documentElement.style.setProperty("--pult-traffic-lights", `${room}px`));
+    void titleBar
+      .layout()
+      .then((room) =>
+        document.documentElement.style.setProperty("--pult-traffic-lights", `${room}px`),
+      );
   const followZoom = () => {
-    matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener("change", followZoom, { once: true });
+    matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+      "change",
+      followZoom,
+      { once: true },
+    );
     layout();
   };
   followZoom();

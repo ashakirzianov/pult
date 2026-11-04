@@ -3,7 +3,12 @@ import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { request } from "@t3tools/client-runtime/rpc";
 import { makeEnvironmentServerConfigState } from "@t3tools/client-runtime/state/server";
 import { EnvironmentId, type ServerConfig, WS_METHODS } from "@t3tools/contracts";
-import { collectLimitAccounts, collectLimitNotices, type LimitAccount, type LimitPresentations } from "@t3tools/shared/usageLimits";
+import {
+  collectLimitAccounts,
+  collectLimitNotices,
+  type LimitAccount,
+  type LimitPresentations,
+} from "@t3tools/shared/usageLimits";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -16,7 +21,11 @@ import { connection, environmentName, SERVER_CONFIG_OPTIONS } from "../connectio
 export interface LimitsState {
   readonly accounts: ReadonlyArray<LimitAccount>;
   /** Per held environment, in the connection's order: its name and its freshest check, null before any. */
-  readonly checks: ReadonlyArray<{ readonly environmentId: string; readonly name: string; readonly checkedAt: string | null }>;
+  readonly checks: ReadonlyArray<{
+    readonly environmentId: string;
+    readonly name: string;
+    readonly checkedAt: string | null;
+  }>;
   /** A failed probe, a hub with no accounts (`collectLimitNotices`). */
   readonly notices: ReadonlyArray<string>;
   /** Whether a refresh asked of the servers is under way. */
@@ -34,7 +43,14 @@ function followServerConfig(environmentId: EnvironmentId, publish: (config: Serv
   return Effect.gen(function* () {
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
     yield* registry
-      .followStream(environmentId, Stream.unwrap(makeEnvironmentServerConfigState(SERVER_CONFIG_OPTIONS).pipe(Effect.map(SubscriptionRef.changes))))
+      .followStream(
+        environmentId,
+        Stream.unwrap(
+          makeEnvironmentServerConfigState(SERVER_CONFIG_OPTIONS).pipe(
+            Effect.map(SubscriptionRef.changes),
+          ),
+        ),
+      )
       .pipe(
         Stream.runForEach((state) =>
           Effect.sync(() => {
@@ -48,10 +64,15 @@ function followServerConfig(environmentId: EnvironmentId, publish: (config: Serv
 /** The freshest of a config's checks: its providers' limits and its hubs'. */
 function latestCheck(config: ServerConfig | null): string | null {
   const checks = [
-    ...(config?.providers ?? []).flatMap((provider) => (provider.usageLimits === undefined ? [] : [provider.usageLimits.checkedAt])),
+    ...(config?.providers ?? []).flatMap((provider) =>
+      provider.usageLimits === undefined ? [] : [provider.usageLimits.checkedAt],
+    ),
     ...(config?.usageLimitSources ?? []).map((source) => source.checkedAt),
   ];
-  return checks.reduce<string | null>((latest, at) => (latest === null || Date.parse(at) > Date.parse(latest) ? at : latest), null);
+  return checks.reduce<string | null>(
+    (latest, at) => (latest === null || Date.parse(at) > Date.parse(latest) ? at : latest),
+    null,
+  );
 }
 
 /**
@@ -65,7 +86,10 @@ function latestCheck(config: ServerConfig | null): string | null {
  */
 class LimitsModel {
   /** By environment id, as the connection holds them. */
-  private readonly followed = new Map<string, { config: ServerConfig | null; readonly stop: () => void }>();
+  private readonly followed = new Map<
+    string,
+    { config: ServerConfig | null; readonly stop: () => void }
+  >();
   private state: LimitsState = { accounts: [], checks: [], notices: [], refreshing: false };
   private readonly listeners = new Set<() => void>();
 
@@ -108,14 +132,29 @@ class LimitsModel {
     const environments = connection.environments;
     const held = environments.flatMap((environment) => {
       const followed = this.followed.get(environment.environmentId);
-      return followed === undefined ? [] : [{ environment, name: environmentName(environment, environments), config: followed.config }];
+      return followed === undefined
+        ? []
+        : [
+            {
+              environment,
+              name: environmentName(environment, environments),
+              config: followed.config,
+            },
+          ];
     });
     const presentations: LimitPresentations = new Map(
-      held.map(({ environment, name, config }) => [EnvironmentId.make(environment.environmentId), { entry: { target: { label: name } }, serverConfig: config }]),
+      held.map(({ environment, name, config }) => [
+        EnvironmentId.make(environment.environmentId),
+        { entry: { target: { label: name } }, serverConfig: config },
+      ]),
     );
     this.state = {
       accounts: collectLimitAccounts(presentations),
-      checks: held.map(({ environment, name, config }) => ({ environmentId: environment.environmentId, name, checkedAt: latestCheck(config) })),
+      checks: held.map(({ environment, name, config }) => ({
+        environmentId: environment.environmentId,
+        name,
+        checkedAt: latestCheck(config),
+      })),
       notices: collectLimitNotices(presentations),
       refreshing,
     };
@@ -133,16 +172,23 @@ class LimitsModel {
         connection.run(
           environment.environmentId,
           // As upstream's `refreshProviders` command sends it, on a session subscribed with the /usage-limits command.
-          request(WS_METHODS.serverRefreshProviders, { workspaceSnapshotsOnDemand: true, usageLimitsCommand: true }),
+          request(WS_METHODS.serverRefreshProviders, {
+            workspaceSnapshotsOnDemand: true,
+            usageLimitsCommand: true,
+          }),
         ),
       ),
     );
     this.publish(false);
-    const failed = results.flatMap((result, index) => (result.status === "rejected" ? [{ environment: ready[index]!, error: result.reason }] : []));
+    const failed = results.flatMap((result, index) =>
+      result.status === "rejected" ? [{ environment: ready[index]!, error: result.reason }] : [],
+    );
     if (failed.length === 0) return;
     const notifications = await getService(INotificationService);
     for (const { environment, error } of failed) {
-      notifications.warn(`Pult could not refresh the usage limits of ${environmentName(environment, connection.environments)}: ${error instanceof Error ? error.message : String(error)}`);
+      notifications.warn(
+        `Pult could not refresh the usage limits of ${environmentName(environment, connection.environments)}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

@@ -1,4 +1,9 @@
-import { getService, IFileService, INotificationService, IQuickInputService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  IFileService,
+  INotificationService,
+  IQuickInputService,
+} from "@codingame/monaco-vscode-api";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import type { IQuickPickItem } from "@codingame/monaco-vscode-api/vscode/vs/platform/quickinput/common/quickInput";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
@@ -26,7 +31,12 @@ const ENTRY_LIMIT = 50;
  * match, or an absolute path under no checkout, is a notice rather than an
  * editor that fails to open.
  */
-export async function openThreadFile(environmentId: string, threadId: string, path: string, line: number | null): Promise<void> {
+export async function openThreadFile(
+  environmentId: string,
+  threadId: string,
+  path: string,
+  line: number | null,
+): Promise<void> {
   if (threadStore.thread(environmentId, threadId) === undefined) return;
   const [files, editors, notifications, quickInput] = await Promise.all([
     getService(IFileService),
@@ -38,13 +48,17 @@ export async function openThreadFile(environmentId: string, threadId: string, pa
   const thread = threadStore.thread(environmentId, threadId);
   if (thread === undefined) return;
   const state = threadStore.get();
-  const ofEnvironment = <Item extends { readonly environmentId: string }>(items: ReadonlyArray<Item>) =>
-    items.filter((item) => namesEnvironment(item.environmentId, environmentId));
+  const ofEnvironment = <Item extends { readonly environmentId: string }>(
+    items: ReadonlyArray<Item>,
+  ) => items.filter((item) => namesEnvironment(item.environmentId, environmentId));
   const resolution = await resolveThreadPath({
     path,
     checkoutRoot: thread.checkoutRoot ?? thread.projectRoot,
     projectId: thread.projectId,
-    checkouts: checkoutsOf({ projects: ofEnvironment(state.projects), threads: ofEnvironment(state.threads) }),
+    checkouts: checkoutsOf({
+      projects: ofEnvironment(state.projects),
+      threads: ofEnvironment(state.threads),
+    }),
     exists: (candidate) => files.exists(pultResource(environmentId, candidate)).catch(() => false),
     search: async (checkout, key) => {
       const { entries } = await environmentServer(environmentId).searchEntries({
@@ -59,11 +73,14 @@ export async function openThreadFile(environmentId: string, threadId: string, pa
   let opened: string | undefined;
   switch (resolution.kind) {
     case "outside":
-      return void notifications.warn(`Pult opens files only under the environment's projects: ${path}.`);
+      return void notifications.warn(
+        `Pult opens files only under the environment's projects: ${path}.`,
+      );
     case "missing": {
       const of = threadStore.distinguishing(environmentId);
       const where = `${thread.projectName} or any other project${of === undefined ? "" : ` of ${of}`}`;
-      const failed = resolution.error === undefined ? "" : ` The search failed: ${resolution.error}`;
+      const failed =
+        resolution.error === undefined ? "" : ` The search failed: ${resolution.error}`;
       return void notifications.warn(`No ${resolution.key} in ${where}.${failed}`);
     }
     case "open":
@@ -81,13 +98,22 @@ export async function openThreadFile(environmentId: string, threadId: string, pa
 }
 
 /** The quick pick among several files ending with the key, in Go to File's shape; Escape picks none. */
-async function pickCandidate(quickInput: IQuickInputService, key: string, candidates: ReadonlyArray<Candidate>): Promise<string | undefined> {
+async function pickCandidate(
+  quickInput: IQuickInputService,
+  key: string,
+  candidates: ReadonlyArray<Candidate>,
+): Promise<string | undefined> {
   const items = candidates.map((candidate) => ({
     label: baseName(candidate.relativePath),
-    description: [checkoutName(candidate.checkout), parentOf(candidate.relativePath)].filter((part) => part !== "").join(" · "),
+    description: [checkoutName(candidate.checkout), parentOf(candidate.relativePath)]
+      .filter((part) => part !== "")
+      .join(" · "),
     path: candidate.path,
   })) satisfies Array<IQuickPickItem & { readonly path: string }>;
-  const picked = await quickInput.pick(items, { placeHolder: `Open which ${key}?`, matchOnDescription: true });
+  const picked = await quickInput.pick(items, {
+    placeHolder: `Open which ${key}?`,
+    matchOnDescription: true,
+  });
   return picked?.path;
 }
 
@@ -97,8 +123,16 @@ async function pickCandidate(quickInput: IQuickInputService, key: string, candid
  * `scripts/drive.ts`; not in the palette, whose way to a file is Go to File.
  */
 export function registerOpenThreadFileCommand(): void {
-  CommandsRegistry.registerCommand("pult-shell.openThreadFile", (_accessor, environmentId: unknown, threadId: unknown, path: unknown, line: unknown) => {
-    if (typeof environmentId !== "string" || typeof threadId !== "string" || typeof path !== "string") return;
-    return openThreadFile(environmentId, threadId, path, typeof line === "number" ? line : null);
-  });
+  CommandsRegistry.registerCommand(
+    "pult-shell.openThreadFile",
+    (_accessor, environmentId: unknown, threadId: unknown, path: unknown, line: unknown) => {
+      if (
+        typeof environmentId !== "string" ||
+        typeof threadId !== "string" ||
+        typeof path !== "string"
+      )
+        return;
+      return openThreadFile(environmentId, threadId, path, typeof line === "number" ? line : null);
+    },
+  );
 }

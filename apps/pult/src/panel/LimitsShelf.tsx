@@ -4,7 +4,11 @@ import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { elapsedShare, formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import { hasUsageProviderIcon, UsageProviderIcon, usageProvider } from "../../thread-view/shell/usageProviders.tsx";
+import {
+  hasUsageProviderIcon,
+  UsageProviderIcon,
+  usageProvider,
+} from "../../thread-view/shell/usageProviders.tsx";
 import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { limitsShelf, type ShelfWindow } from "../limits/limits.ts";
 import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts";
@@ -40,7 +44,10 @@ export function LimitsShelf({ now }: { now: number }) {
   if (shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
-    <li ref={element} className={`pult-shelf pult-shelf-limits${shelf.warnings > 0 ? " pult-shelf-limits-warning" : ""}`}>
+    <li
+      ref={element}
+      className={`pult-shelf pult-shelf-limits${shelf.warnings > 0 ? " pult-shelf-limits-warning" : ""}`}
+    >
       <div className="pult-limits-header">
         <CollapsibleHeader
           label="Limits"
@@ -61,17 +68,30 @@ export function LimitsShelf({ now }: { now: number }) {
           disabled={limits.refreshing}
           onClick={() => void refreshLimits()}
         >
-          <i className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`} aria-hidden />
+          <i
+            className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`}
+            aria-hidden
+          />
         </button>
       </div>
       {view.expanded ? (
         <ul className="pult-shelf-cards pult-limits">
           {shelf.accounts.map(({ account, windows }) => (
-            <AccountRows key={account.key} account={account} windows={windows} several={several} now={now} />
+            <AccountRows
+              key={account.key}
+              account={account}
+              windows={windows}
+              several={several}
+              now={now}
+            />
           ))}
           {shelf.toggle === null ? null : (
             <li className="pult-shelf-more">
-              <button type="button" className="pult-panel-button" onClick={() => setLimitsShowAll(shelf.toggle === "all")}>
+              <button
+                type="button"
+                className="pult-panel-button"
+                onClick={() => setLimitsShowAll(shelf.toggle === "all")}
+              >
                 {shelf.toggle === "all" ? "Show all" : "Show less"}
               </button>
             </li>
@@ -108,15 +128,27 @@ function AccountRows({
     <li className="pult-limits-account" style={color}>
       <div className="pult-limits-account-top">
         {hasUsageProviderIcon(account.driver) ? (
-          <span className="pult-limits-provider-icon" title={providerName} aria-label={providerName}>
+          <span
+            className="pult-limits-provider-icon"
+            title={providerName}
+            aria-label={providerName}
+          >
             <UsageProviderIcon driver={account.driver} />
           </span>
         ) : (
           <span className="pult-limits-provider" title={providerName} aria-label={providerName} />
         )}
-        <span className="pult-limits-name">{account.displayName ?? account.email ?? providerName}</span>
-        {account.plan === undefined ? null : <span className="pult-limits-plan">{account.plan}</span>}
-        {several ? account.environments.map((environment) => <EnvironmentChip key={environment.environmentId} label={environment.label} />) : null}
+        <span className="pult-limits-name">
+          {account.displayName ?? account.email ?? providerName}
+        </span>
+        {account.plan === undefined ? null : (
+          <span className="pult-limits-plan">{account.plan}</span>
+        )}
+        {several
+          ? account.environments.map((environment) => (
+              <EnvironmentChip key={environment.environmentId} label={environment.label} />
+            ))
+          : null}
         {account.sourceLabel === null ? null : <EnvironmentChip label={account.sourceLabel} />}
       </div>
       <ul className="pult-limits-windows">
@@ -124,15 +156,27 @@ function AccountRows({
           const used = Math.round(window.usedPercent);
           const resets = formatResetsIn(window, now);
           const pace = elapsedShare(window, now);
-          const text = [window.label, `${used}%`, resets === null ? null : resets.charAt(0).toLowerCase() + resets.slice(1)]
+          const text = [
+            window.label,
+            `${used}%`,
+            resets === null ? null : resets.charAt(0).toLowerCase() + resets.slice(1),
+          ]
             .filter((part) => part !== null)
             .join(" · ");
           return (
-            <li key={window.id} className={`pult-limits-window${warning ? " pult-limits-window-warning" : ""}`}>
+            <li
+              key={window.id}
+              className={`pult-limits-window${warning ? " pult-limits-window-warning" : ""}`}
+            >
               <span className="pult-limits-window-text">{text}</span>
               <span className="pult-limits-bar" aria-hidden>
-                <span className="pult-limits-bar-used" style={{ width: `${Math.min(100, window.usedPercent)}%` }} />
-                {pace === null ? null : <span className="pult-limits-bar-pace" style={{ left: `${pace * 100}%` }} />}
+                <span
+                  className="pult-limits-bar-used"
+                  style={{ width: `${Math.min(100, window.usedPercent)}%` }}
+                />
+                {pace === null ? null : (
+                  <span className="pult-limits-bar-pace" style={{ left: `${pace * 100}%` }} />
+                )}
               </span>
             </li>
           );
@@ -171,10 +215,19 @@ async function showModeMenu(anchor: { x: number; y: number }): Promise<void> {
     getAnchor: () => anchor,
     getActions: () => [
       ...USAGE_LIMITS_MODES.map(({ mode, label }) =>
-        toAction({ id: `pult-shell.usageLimits.${mode}`, label, checked: mode === current, run: () => setUsageLimitsMode(mode) }),
+        toAction({
+          id: `pult-shell.usageLimits.${mode}`,
+          label,
+          checked: mode === current,
+          run: () => setUsageLimitsMode(mode),
+        }),
       ),
       new Separator(),
-      toAction({ id: "pult-shell.refreshUsageLimits", label: "Refresh Usage Limits", run: () => refreshLimits() }),
+      toAction({
+        id: "pult-shell.refreshUsageLimits",
+        label: "Refresh Usage Limits",
+        run: () => refreshLimits(),
+      }),
     ],
   });
 }

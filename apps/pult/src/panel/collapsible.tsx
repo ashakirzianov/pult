@@ -24,12 +24,22 @@ export function CollapsibleHeader({
   onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   return (
-    <button type="button" className="pult-shelf-header" aria-expanded={expanded} title={title} onClick={onToggle} onContextMenu={onContextMenu}>
+    <button
+      type="button"
+      className="pult-shelf-header"
+      aria-expanded={expanded}
+      title={title}
+      onClick={onToggle}
+      onContextMenu={onContextMenu}
+    >
       <span className="pult-shelf-label">{label}</span>
       {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
       <span className="pult-shelf-spacer" aria-hidden />
       {status}
-      <i className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-right"}`} aria-hidden />
+      <i
+        className={`codicon ${expanded ? "codicon-chevron-down" : "codicon-chevron-right"}`}
+        aria-hidden
+      />
     </button>
   );
 }

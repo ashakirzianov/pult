@@ -31,7 +31,16 @@ export interface StarHome {
 /** What a Star reads of a thread of its projects. */
 export type StarThread = Pick<
   ShellThread,
-  "environmentId" | "id" | "projectId" | "parentId" | "settled" | "settledAt" | "createdAt" | "working" | "workingSince" | "ageFrom"
+  | "environmentId"
+  | "id"
+  | "projectId"
+  | "parentId"
+  | "settled"
+  | "settledAt"
+  | "createdAt"
+  | "working"
+  | "workingSince"
+  | "ageFrom"
 >;
 
 /** Asleep while it has no current conversation, Working while that conversation's run is on, else Awake. */
@@ -65,28 +74,50 @@ export function starName(star: Pick<Star<StarThread>, "name">): string {
   return star.name.trim() === "" ? "Star" : star.name;
 }
 
-const trimSlash = (path: string) => (path.length > 1 && /[/\\]$/.test(path) ? path.slice(0, -1) : path);
+const trimSlash = (path: string) =>
+  path.length > 1 && /[/\\]$/.test(path) ? path.slice(0, -1) : path;
 
 /** The project of `environmentId` rooted at `root`, if there is one. */
-export function projectAt(projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "root">>, environmentId: string, root: string) {
-  return projects.find((project) => project.environmentId === environmentId && project.root !== null && trimSlash(project.root) === trimSlash(root));
+export function projectAt(
+  projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "root">>,
+  environmentId: string,
+  root: string,
+) {
+  return projects.find(
+    (project) =>
+      project.environmentId === environmentId &&
+      project.root !== null &&
+      trimSlash(project.root) === trimSlash(root),
+  );
 }
 
 const newestFirst = <Thread extends StarThread>(threads: ReadonlyArray<Thread>) =>
   threads.toSorted((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
 
 /** A Star's conversations among `threads`: the root threads of its homes' projects, newest first. */
-export function conversationsOf<Thread extends StarThread>(homes: ReadonlyArray<StarHome>, threads: ReadonlyArray<Thread>): Thread[] {
+export function conversationsOf<Thread extends StarThread>(
+  homes: ReadonlyArray<StarHome>,
+  threads: ReadonlyArray<Thread>,
+): Thread[] {
   return newestFirst(
     threads.filter(
       (thread) =>
         thread.parentId === null &&
-        homes.some((home) => home.projectId !== null && home.environmentId === thread.environmentId && home.projectId === thread.projectId),
+        homes.some(
+          (home) =>
+            home.projectId !== null &&
+            home.environmentId === thread.environmentId &&
+            home.projectId === thread.projectId,
+        ),
     ),
   );
 }
 
-const latestOf = (times: ReadonlyArray<string>) => times.reduce<string | null>((latest, time) => (latest === null || Date.parse(time) > Date.parse(latest) ? time : latest), null);
+const latestOf = (times: ReadonlyArray<string>) =>
+  times.reduce<string | null>(
+    (latest, time) => (latest === null || Date.parse(time) > Date.parse(latest) ? time : latest),
+    null,
+  );
 
 /**
  * The Stars of the folders read, in the order of their first folder: folders
@@ -113,8 +144,16 @@ export function starsOf<Thread extends StarThread>(
   return [...byId.values()].map(({ record, homes }) => {
     const roots = conversationsOf(homes, threads);
     const current = roots.find((thread) => !thread.settled) ?? null;
-    const ended = latestOf(roots.flatMap((thread) => (thread.settled && thread.settledAt !== null ? [thread.settledAt] : [])));
-    const transcribed = latestOf(homes.flatMap((home) => home.newestEnded ?? transcriptStart(home.transcripts.at(-1) ?? "") ?? []));
+    const ended = latestOf(
+      roots.flatMap((thread) =>
+        thread.settled && thread.settledAt !== null ? [thread.settledAt] : [],
+      ),
+    );
+    const transcribed = latestOf(
+      homes.flatMap(
+        (home) => home.newestEnded ?? transcriptStart(home.transcripts.at(-1) ?? "") ?? [],
+      ),
+    );
     return {
       id: record.id,
       name: record.name,
@@ -139,7 +178,10 @@ export function asleepSince(star: Pick<Star<StarThread>, "lastEnded" | "created"
  * home of its latest conversation's environment by default, else its first
  * home with a project; only homes of held environments, with a project.
  */
-export function wakeHome(star: Pick<Star<StarThread>, "homes" | "latest">, held: (environmentId: string) => boolean): StarHome | undefined {
+export function wakeHome(
+  star: Pick<Star<StarThread>, "homes" | "latest">,
+  held: (environmentId: string) => boolean,
+): StarHome | undefined {
   const homes = star.homes.filter((home) => home.projectId !== null && held(home.environmentId));
   return homes.find((home) => home.environmentId === star.latest?.environmentId) ?? homes[0];
 }
@@ -148,13 +190,17 @@ export function wakeHome(star: Pick<Star<StarThread>, "homes" | "latest">, held:
  * The home whose transcripts the fold shows: that of the environment the
  * current conversation runs on, else of the one that last ran.
  */
-export function foldHome(star: Pick<Star<StarThread>, "homes" | "current" | "latest">): StarHome | undefined {
+export function foldHome(
+  star: Pick<Star<StarThread>, "homes" | "current" | "latest">,
+): StarHome | undefined {
   const environmentId = (star.current ?? star.latest)?.environmentId;
   return star.homes.find((home) => home.environmentId === environmentId);
 }
 
 /** How many earlier conversations the fold counts, its home's transcripts; 0 hides the fold. */
-export function earlierConversations(star: Pick<Star<StarThread>, "homes" | "current" | "latest">): number {
+export function earlierConversations(
+  star: Pick<Star<StarThread>, "homes" | "current" | "latest">,
+): number {
   return foldHome(star)?.transcripts.length ?? 0;
 }
 
@@ -168,8 +214,14 @@ export function findStarOfThread<Thread extends StarThread>(
 }
 
 /** The Star whose home `projectId` is, on `environmentId`. */
-export function findStarOfProject<Thread extends StarThread>(stars: ReadonlyArray<Star<Thread>>, environmentId: string, projectId: string): Star<Thread> | undefined {
-  return stars.find((star) => star.homes.some((home) => home.environmentId === environmentId && home.projectId === projectId));
+export function findStarOfProject<Thread extends StarThread>(
+  stars: ReadonlyArray<Star<Thread>>,
+  environmentId: string,
+  projectId: string,
+): Star<Thread> | undefined {
+  return stars.find((star) =>
+    star.homes.some((home) => home.environmentId === environmentId && home.projectId === projectId),
+  );
 }
 
 /** The folders with a record and no project yet, on environments whose projects the page has: the page adopts each as a project. */
@@ -178,7 +230,11 @@ export function foldersToAdopt(
   projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "root">>,
   loaded: (environmentId: string) => boolean,
 ): StarFolder[] {
-  return folders.filter((folder) => loaded(folder.environmentId) && projectAt(projects, folder.environmentId, folder.root) === undefined);
+  return folders.filter(
+    (folder) =>
+      loaded(folder.environmentId) &&
+      projectAt(projects, folder.environmentId, folder.root) === undefined,
+  );
 }
 
 /** How the page stands with an environment's Stars, for the creation decision. */
@@ -220,5 +276,8 @@ export function creationTarget(input: {
       (environment.phase === "ready" && (environment.read !== "read" || !environment.loaded)),
   );
   if (unsure) return undefined;
-  return input.environments.find((environment) => environment.phase === "ready" && environment.read === "read" && !environment.attempted)?.id;
+  return input.environments.find(
+    (environment) =>
+      environment.phase === "ready" && environment.read === "read" && !environment.attempted,
+  )?.id;
 }

@@ -26,7 +26,12 @@ export interface ThreadViewHost {
    * whose view takes up the draft the view remembered for the project.
    */
   readonly openDraft: (environmentId: string, projectId: string) => void;
-  readonly openFile: (environmentId: string, threadId: string, path: string, line: number | null) => void;
+  readonly openFile: (
+    environmentId: string,
+    threadId: string,
+    path: string,
+    line: number | null,
+  ) => void;
   /** The thread's changes, a turn's when the view named one whose checkpoints it knows. */
   readonly openChanges: (
     environmentId: string,
@@ -65,7 +70,11 @@ export interface TurnCheckpoints {
   readonly turnCount: number;
   readonly fromRef: string;
   readonly toRef: string;
-  readonly files: ReadonlyArray<{ readonly path: string; readonly additions: number; readonly deletions: number }>;
+  readonly files: ReadonlyArray<{
+    readonly path: string;
+    readonly additions: number;
+    readonly deletions: number;
+  }>;
 }
 
 let current: ThreadViewHost | undefined;

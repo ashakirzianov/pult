@@ -6,7 +6,10 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { Emitter } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import { FileChangeType, type IFileChange } from "@codingame/monaco-vscode-api/vscode/vs/platform/files/common/files";
+import {
+  FileChangeType,
+  type IFileChange,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/files/common/files";
 import type { IWorkspaceFolder } from "@codingame/monaco-vscode-api/vscode/vs/platform/workspace/common/workspace";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -60,10 +63,17 @@ export function pultResource(environmentId: string, path: string): URI {
 /** The workspace's `pult:` folders on the environment, or on every held environment without one. */
 export function pultFolders(environmentId?: string): ReadonlyArray<IWorkspaceFolder> {
   if (services === undefined) return [];
-  const held = environmentId === undefined ? connection.environments.map((environment) => environment.environmentId) : [environmentId];
+  const held =
+    environmentId === undefined
+      ? connection.environments.map((environment) => environment.environmentId)
+      : [environmentId];
   return services.workspace
     .getWorkspace()
-    .folders.filter((folder) => folder.uri.scheme === PULT_SCHEME && held.some((id) => namesEnvironment(folder.uri.authority, id)));
+    .folders.filter(
+      (folder) =>
+        folder.uri.scheme === PULT_SCHEME &&
+        held.some((id) => namesEnvironment(folder.uri.authority, id)),
+    );
 }
 
 /** How long a call waits for the store to list the environment's projects. */
@@ -101,28 +111,40 @@ export function whenListed(environmentId: string): Promise<void> {
  */
 export function environmentShell(environmentId: string) {
   const state = threadStore.get();
-  const projects = state.projects.filter((project) => namesEnvironment(project.environmentId, environmentId));
-  const threads = state.threads.filter((thread) => namesEnvironment(thread.environmentId, environmentId));
+  const projects = state.projects.filter((project) =>
+    namesEnvironment(project.environmentId, environmentId),
+  );
+  const threads = state.threads.filter((thread) =>
+    namesEnvironment(thread.environmentId, environmentId),
+  );
   const known = new Map(projects.map((project) => [project.id, project]));
   for (const thread of threads) {
-    const project = known.has(thread.projectId) ? undefined : threadStore.project(thread.environmentId, thread.projectId);
+    const project = known.has(thread.projectId)
+      ? undefined
+      : threadStore.project(thread.environmentId, thread.projectId);
     if (project !== undefined) known.set(project.id, project);
   }
   return {
     projects: [...known.values()].flatMap((project) =>
-      project.root === null ? [] : [{ id: ProjectId.make(project.id), title: project.name, workspaceRoot: project.root }],
+      project.root === null
+        ? []
+        : [{ id: ProjectId.make(project.id), title: project.name, workspaceRoot: project.root }],
     ),
     threads: threads.map((thread) => ({
       id: ThreadId.make(thread.id),
       projectId: ProjectId.make(thread.projectId),
       worktreePath:
-        thread.checkoutRoot !== null && (thread.projectRoot === null || toUriPath(thread.checkoutRoot) !== toUriPath(thread.projectRoot))
+        thread.checkoutRoot !== null &&
+        (thread.projectRoot === null ||
+          toUriPath(thread.checkoutRoot) !== toUriPath(thread.projectRoot))
           ? thread.checkoutRoot
           : null,
       branch: thread.branch,
       deletedAt: null,
       updatedAt: DateTime.makeUnsafe(thread.updatedAt),
-      latestRunCompletedAt: thread.latestRun?.finishedAt ? DateTime.makeUnsafe(thread.latestRun.finishedAt) : null,
+      latestRunCompletedAt: thread.latestRun?.finishedAt
+        ? DateTime.makeUnsafe(thread.latestRun.finishedAt)
+        : null,
     })),
   };
 }
@@ -150,9 +172,18 @@ function hostOf(environmentId: string): WorkspaceFilesHost {
         ? []
         : services.models
             .getModels()
-            .filter(({ uri }) => uri.scheme === PULT_SCHEME && namesEnvironment(uri.authority, environmentId))
+            .filter(
+              ({ uri }) =>
+                uri.scheme === PULT_SCHEME && namesEnvironment(uri.authority, environmentId),
+            )
             .map(({ uri }) => uri.path),
-    changed: (list) => fileChanges.fire(list.map((change) => ({ type: CHANGE_TYPES[change.kind], resource: resource(change.path) }))),
+    changed: (list) =>
+      fileChanges.fire(
+        list.map((change) => ({
+          type: CHANGE_TYPES[change.kind],
+          resource: resource(change.path),
+        })),
+      ),
     decorated: (paths) => decorationChanges.fire(paths.map(resource)),
     openedReadOnly: (path, reason, byteLength) =>
       services?.notifications.warn(

@@ -18,7 +18,10 @@ export interface ParkActions {
  * settled, Snooze unless snoozed, Wake while snoozed, Pin or Unpin. A
  * subagent, on no shelf, has none.
  */
-export function parkActions(thread: Pick<ShellThread, "shelf" | "pinned">, features: ThreadFeatures): ParkActions {
+export function parkActions(
+  thread: Pick<ShellThread, "shelf" | "pinned">,
+  features: ThreadFeatures,
+): ParkActions {
   const listed = thread.shelf !== null;
   return {
     settle: features.settlement && listed && thread.shelf !== "settled",
@@ -46,7 +49,10 @@ export function nextAfterParking(
   const after = [...listed.slice(index + 1), ...listed.slice(0, Math.max(index, 0))];
   return (
     after.find(
-      (thread) => (thread.shelf === "pinned" || thread.shelf === "active") && thread.id !== parked && !parking.has(thread.id),
+      (thread) =>
+        (thread.shelf === "pinned" || thread.shelf === "active") &&
+        thread.id !== parked &&
+        !parking.has(thread.id),
     )?.id ?? null
   );
 }
@@ -62,6 +68,7 @@ export function parseCustomSnooze(text: string, now: Date): string | null {
     return resolveCustomSnooze({ mode: "duration", amount: duration[1]!, unit }, now);
   }
   const date = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/.exec(value);
-  if (date !== null) return resolveCustomSnooze({ mode: "date", date: date[1]!, time: date[2]! }, now);
+  if (date !== null)
+    return resolveCustomSnooze({ mode: "date", date: date[1]!, time: date[2]! }, now);
   return null;
 }

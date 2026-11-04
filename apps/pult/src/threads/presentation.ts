@@ -2,14 +2,35 @@
 // (`Sidebar.tsx` and `Sidebar.logic.ts` in the fork's web app): its shelves
 // and their order, its row status, and the store's flattened threads. Ported
 // from pult-extension's `src/threads/presentation.ts` and `src/shellBridge.ts`.
-import { type EnvironmentThreadShell, resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
-import { isThreadWorking, sortInboxThreadsByReturn, sortWorkingThreadsBySend } from "@t3tools/client-runtime/state/thread-inbox";
-import { canSnooze, effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import { resolveSettledThreadTimestamp, sortPinnedThreadsByOrderKey, sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  type EnvironmentThreadShell,
+  resolveThreadWorkingStartedAt,
+} from "@t3tools/client-runtime/state/models";
+import {
+  isThreadWorking,
+  sortInboxThreadsByReturn,
+  sortWorkingThreadsBySend,
+} from "@t3tools/client-runtime/state/thread-inbox";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
+import {
+  resolveSettledThreadTimestamp,
+  sortPinnedThreadsByOrderKey,
+  sortSettledThreads,
+} from "@t3tools/client-runtime/state/thread-sort";
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 
 import { isStarRoot } from "../stars/record.ts";
-import { scopedKey, type ShellProject, type ShellThread, type ShelfName, type ThreadFeatures } from "./store.ts";
+import {
+  scopedKey,
+  type ShellProject,
+  type ShellThread,
+  type ShelfName,
+  type ThreadFeatures,
+} from "./store.ts";
 
 /**
  * Before the server has said, none of the thread features (`pult/decisions`,
@@ -17,7 +38,11 @@ import { scopedKey, type ShellProject, type ShellThread, type ShelfName, type Th
  * server, no thread sits on those shelves and their actions are hidden, as
  * upstream's sidebar does.
  */
-export const NO_THREAD_FEATURES: ThreadFeatures = { settlement: false, snooze: false, pinning: false };
+export const NO_THREAD_FEATURES: ThreadFeatures = {
+  settlement: false,
+  snooze: false,
+  pinning: false,
+};
 
 export interface Shelves {
   readonly pinned: ReadonlyArray<EnvironmentThreadShell>;
@@ -57,7 +82,11 @@ function isListed(thread: EnvironmentThreadShell): boolean {
  * Upstream's shelf for a thread: snooze wins until its wake time, then
  * settlement wins over a stale pin. Null for a thread the sidebar does not list.
  */
-export function shelfOf(thread: EnvironmentThreadShell, now: string, features: ThreadFeatures): ShelfName | null {
+export function shelfOf(
+  thread: EnvironmentThreadShell,
+  now: string,
+  features: ThreadFeatures,
+): ShelfName | null {
   if (!isListed(thread)) return null;
   if (features.snooze && effectiveSnoozed(thread, { now })) return "snoozed";
   if (features.settlement && thread.settledOverride === "settled") return "settled";
@@ -79,7 +108,13 @@ export function shelve(
   featuresOf: (environmentId: string) => ThreadFeatures,
   observation: WorkingObservation = UNOBSERVED,
 ): Shelves {
-  const shelves: Record<ShelfName, Array<EnvironmentThreadShell>> = { pinned: [], active: [], working: [], snoozed: [], settled: [] };
+  const shelves: Record<ShelfName, Array<EnvironmentThreadShell>> = {
+    pinned: [],
+    active: [],
+    working: [],
+    snoozed: [],
+    settled: [],
+  };
   for (const thread of threads) {
     const shelf = shelfOf(thread, now, featuresOf(thread.environmentId));
     if (shelf === "active" && observation.isWorking(thread)) shelves.working.push(thread);
@@ -97,8 +132,13 @@ export function shelve(
 }
 
 /** The next time one of `threads` wakes from its snooze, after `now`. */
-export function nextWake(threads: ReadonlyArray<EnvironmentThreadShell>, now: number): number | null {
-  const wakes = threads.map((thread) => Date.parse(thread.snoozedUntil ?? "")).filter((ms) => ms > now);
+export function nextWake(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  now: number,
+): number | null {
+  const wakes = threads
+    .map((thread) => Date.parse(thread.snoozedUntil ?? ""))
+    .filter((ms) => ms > now);
   return wakes.length === 0 ? null : Math.min(...wakes);
 }
 
@@ -138,7 +178,11 @@ export function threadStatus(thread: EnvironmentThreadShell, now: string): Threa
         ? { label: "Limited", badge: "F" }
         : { label: "Failed", badge: "F" };
   }
-  if (thread.interactionMode === "plan" && thread.hasActionableProposedPlan && isLatestRunSettled(thread)) {
+  if (
+    thread.interactionMode === "plan" &&
+    thread.hasActionableProposedPlan &&
+    isLatestRunSettled(thread)
+  ) {
     return { label: "Plan Ready", badge: "W" };
   }
   if (isWoke(thread, now)) return { label: "Woke", badge: "W" };
@@ -180,7 +224,10 @@ function hasUnseenCompletion(thread: EnvironmentThreadShell): boolean {
 }
 
 /** A project as the store has it. */
-export function shellProject(environmentId: string, project: OrchestrationProjectShell): ShellProject {
+export function shellProject(
+  environmentId: string,
+  project: OrchestrationProjectShell,
+): ShellProject {
   return {
     environmentId,
     id: project.id,
@@ -220,20 +267,33 @@ export function shellThreads(
   observation: WorkingObservation = UNOBSERVED,
 ): Array<ShellThread> {
   const threads = environments.flatMap((environment) => environment.threads);
-  const features = new Map(environments.map((environment) => [environment.environmentId, environment.features]));
+  const features = new Map(
+    environments.map((environment) => [environment.environmentId, environment.features]),
+  );
   const featuresOf = (environmentId: string) => features.get(environmentId) ?? NO_THREAD_FEATURES;
   const byId = new Map(
     environments.flatMap((environment) =>
-      environment.projects.map((project) => [scopedKey(environment.environmentId, project.id), project] as const),
+      environment.projects.map(
+        (project) => [scopedKey(environment.environmentId, project.id), project] as const,
+      ),
     ),
   );
-  const inStar = (thread: EnvironmentThreadShell) => isStarRoot(byId.get(scopedKey(thread.environmentId, thread.projectId))?.workspaceRoot);
-  const shelves = shelve(threads.filter((thread) => !inStar(thread)), now, featuresOf, observation);
-  const subagents = threads.filter((thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent");
+  const inStar = (thread: EnvironmentThreadShell) =>
+    isStarRoot(byId.get(scopedKey(thread.environmentId, thread.projectId))?.workspaceRoot);
+  const shelves = shelve(
+    threads.filter((thread) => !inStar(thread)),
+    now,
+    featuresOf,
+    observation,
+  );
+  const subagents = threads.filter(
+    (thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent",
+  );
   const stars = threads.filter((thread) => isListed(thread) && inStar(thread));
   const present = (thread: EnvironmentThreadShell, shelf: ShelfName | null): ShellThread => {
     const project = byId.get(scopedKey(thread.environmentId, thread.projectId));
-    const settled = featuresOf(thread.environmentId).settlement && thread.settledOverride === "settled";
+    const settled =
+      featuresOf(thread.environmentId).settlement && thread.settledOverride === "settled";
     return {
       environmentId: thread.environmentId,
       id: thread.id,
@@ -265,7 +325,11 @@ export function shellThreads(
       latestRun:
         thread.latestRun === null
           ? null
-          : { status: thread.latestRun.status, startedAt: thread.latestRun.startedAt, finishedAt: thread.latestRun.completedAt },
+          : {
+              status: thread.latestRun.status,
+              startedAt: thread.latestRun.startedAt,
+              finishedAt: thread.latestRun.completedAt,
+            },
       goal: thread.goal?.objective ?? null,
     };
   };

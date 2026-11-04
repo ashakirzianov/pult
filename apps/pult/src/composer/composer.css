@@ -28,7 +28,10 @@
   overflow: visible;
 }
 
-.monaco-workbench .split-view-view.visible:has(> .pult-composer-strip) ~ .split-view-view > .pult-status-strip::before {
+.monaco-workbench
+  .split-view-view.visible:has(> .pult-composer-strip)
+  ~ .split-view-view
+  > .pult-status-strip::before {
   display: none;
 }
 

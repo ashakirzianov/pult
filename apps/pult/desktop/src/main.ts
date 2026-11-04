@@ -47,7 +47,10 @@ app.on("window-all-closed", () => {
 
 void app.whenReady().then(() => {
   if (!isDevelopment) {
-    dialog.showErrorBox(app.name, "This build has no page to show: Pult's desktop runs in development only so far.");
+    dialog.showErrorBox(
+      app.name,
+      "This build has no page to show: Pult's desktop runs in development only so far.",
+    );
     return app.quit();
   }
   app.dock?.setIcon(NodePath.join(repoRoot, "assets/pult/dev/macos-1024.png"));
@@ -70,7 +73,8 @@ void app.whenReady().then(() => {
 function devServerUrl(value: string | undefined): URL {
   if (!value) return DEFAULT_PAGE_URL;
   const url = URL.canParse(value) ? new URL(value) : undefined;
-  if (url?.protocol === "https:" || (url?.protocol === "http:" && isLoopback(url.hostname))) return url;
+  if (url?.protocol === "https:" || (url?.protocol === "http:" && isLoopback(url.hostname)))
+    return url;
   const message = `PULT_DEV_SERVER_URL is ${JSON.stringify(value)}, which Pult does not load: it takes a loopback http:// URL, as http://localhost:5194, or an https:// one, since the page's secrets travel over it.`;
   console.error(`[pult-desktop] ${message}`);
   // Safe before `ready`; it blocks until dismissed.
@@ -108,7 +112,10 @@ function openWindow(): void {
     // The page's chrome runs to the window's top edge: on macOS no title bar, the traffic lights in the
     // page's top row, at its start, placed again for the page's zoom once it loads (`titleBarLayout`).
     ...(process.platform === "darwin"
-      ? { titleBarStyle: "hidden" as const, trafficLightPosition: titleBarLayout(1, false).position }
+      ? {
+          titleBarStyle: "hidden" as const,
+          trafficLightPosition: titleBarLayout(1, false).position,
+        }
       : {}),
     webPreferences: {
       preload: NodePath.join(__dirname, "preload.cjs"),
@@ -146,14 +153,17 @@ function openWindow(): void {
   // Electron shows no context menu of its own; a text field's, which the page lets through
   // (`src/nativeTextMenu.ts`), is built here as the browser's: spelling, then editing.
   window.webContents.on("context-menu", (_event, params) => {
-    if (params.isEditable) Menu.buildFromTemplate(textFieldMenu(window.webContents, params)).popup({ window });
+    if (params.isEditable)
+      Menu.buildFromTemplate(textFieldMenu(window.webContents, params)).popup({ window });
   });
 
   // The dev server may not be up yet: show the empty window and say so; View, Reload loads it once it is.
   window.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
     // -3 is ERR_ABORTED, a load replaced by another.
     if (!isMainFrame || code === -3) return;
-    console.error(`[pult-desktop] ${url} did not load (${description}); is \`pnpm dev\` serving it? Reload with Cmd+R once it is.`);
+    console.error(
+      `[pult-desktop] ${url} did not load (${description}); is \`pnpm dev\` serving it? Reload with Cmd+R once it is.`,
+    );
     window.show();
   });
   // A failed load is reported above, so its rejected promise is not.
@@ -183,13 +193,19 @@ function handlePermissions(): void {
     const frames = PAGE_PERMISSIONS.get(permission);
     return frames !== undefined && sameOrigin(url) && (frames === "any frame" || isMainFrame);
   };
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, { requestingUrl, isMainFrame }) => {
-    const grant = granted(permission, requestingUrl, isMainFrame);
-    if (!grant) console.warn(`[pult-desktop] denied ${permission} to ${requestingUrl}${isMainFrame ? "" : " (a subframe)"}`);
-    callback(grant);
-  });
-  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, { isMainFrame }) =>
-    granted(permission, requestingOrigin, isMainFrame),
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback, { requestingUrl, isMainFrame }) => {
+      const grant = granted(permission, requestingUrl, isMainFrame);
+      if (!grant)
+        console.warn(
+          `[pult-desktop] denied ${permission} to ${requestingUrl}${isMainFrame ? "" : " (a subframe)"}`,
+        );
+      callback(grant);
+    },
+  );
+  session.defaultSession.setPermissionCheckHandler(
+    (_webContents, permission, requestingOrigin, { isMainFrame }) =>
+      granted(permission, requestingOrigin, isMainFrame),
   );
 }
 
@@ -208,7 +224,10 @@ function handleSecrets(): void {
 function handleWindowState(): void {
   handle(Channel.windowTitleBarLayout, (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
-    const { position, room } = titleBarLayout(event.sender.getZoomFactor(), window?.isFullScreen() ?? false);
+    const { position, room } = titleBarLayout(
+      event.sender.getZoomFactor(),
+      window?.isFullScreen() ?? false,
+    );
     if (process.platform === "darwin") window?.setWindowButtonPosition(position);
     return room;
   });
@@ -219,10 +238,18 @@ function handleWindowState(): void {
  * itself: a top frame at the page's origin, sending strings. A refusal or a
  * failure is a message for the page to show.
  */
-function handle<T>(channel: string, answer: (event: IpcMainInvokeEvent, ...args: string[]) => T): void {
+function handle<T>(
+  channel: string,
+  answer: (event: IpcMainInvokeEvent, ...args: string[]) => T,
+): void {
   ipcMain.handle(channel, (event, ...args: unknown[]): Reply<T> => {
-    if (!fromPage(event)) return { ok: false, error: `Pult refused ${channel} from ${event.senderFrame?.origin ?? "a closed frame"}.` };
-    if (!args.every((arg) => typeof arg === "string")) return { ok: false, error: `${channel} takes strings.` };
+    if (!fromPage(event))
+      return {
+        ok: false,
+        error: `Pult refused ${channel} from ${event.senderFrame?.origin ?? "a closed frame"}.`,
+      };
+    if (!args.every((arg) => typeof arg === "string"))
+      return { ok: false, error: `${channel} takes strings.` };
     try {
       return { ok: true, value: answer(event, ...args) };
     } catch (error) {
@@ -241,11 +268,15 @@ function sameOrigin(url: string): boolean {
 }
 
 function openOutside(url: string): void {
-  if (URL.canParse(url) && ["http:", "https:"].includes(new URL(url).protocol)) void shell.openExternal(url);
+  if (URL.canParse(url) && ["http:", "https:"].includes(new URL(url).protocol))
+    void shell.openExternal(url);
 }
 
 /** A text field's context menu: the misspelled word's suggestions and Learn Spelling, then the edit roles. */
-function textFieldMenu(contents: WebContents, params: ContextMenuParams): MenuItemConstructorOptions[] {
+function textFieldMenu(
+  contents: WebContents,
+  params: ContextMenuParams,
+): MenuItemConstructorOptions[] {
   const { misspelledWord, dictionarySuggestions, editFlags } = params;
   const spelling: MenuItemConstructorOptions[] =
     misspelledWord === ""
@@ -253,8 +284,14 @@ function textFieldMenu(contents: WebContents, params: ContextMenuParams): MenuIt
       : [
           ...(dictionarySuggestions.length === 0
             ? [{ label: "No Guesses Found", enabled: false }]
-            : dictionarySuggestions.map((suggestion) => ({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) }))),
-          { label: "Learn Spelling", click: () => contents.session.addWordToSpellCheckerDictionary(misspelledWord) },
+            : dictionarySuggestions.map((suggestion) => ({
+                label: suggestion,
+                click: () => contents.replaceMisspelling(suggestion),
+              }))),
+          {
+            label: "Learn Spelling",
+            click: () => contents.session.addWordToSpellCheckerDictionary(misspelledWord),
+          },
           { type: "separator" },
         ];
   return [
@@ -276,7 +313,12 @@ function applicationMenu(): Menu {
       label: "View",
       submenu: [
         ...(isDevelopment
-          ? [{ role: "reload" as const }, { role: "forceReload" as const }, { role: "toggleDevTools" as const }, { type: "separator" as const }]
+          ? [
+              { role: "reload" as const },
+              { role: "forceReload" as const },
+              { role: "toggleDevTools" as const },
+              { type: "separator" as const },
+            ]
           : []),
         { role: "resetZoom" },
         { role: "zoomIn" },

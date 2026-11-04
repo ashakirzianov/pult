@@ -61,7 +61,9 @@ export interface StarRecord {
 const KIND = "star";
 
 /** The lines of a file's front matter, between its opening `---` and its closing one, and where its body starts; undefined without one. */
-function frontMatter(text: string): { readonly lines: string[]; readonly bodyStart: number } | undefined {
+function frontMatter(
+  text: string,
+): { readonly lines: string[]; readonly bodyStart: number } | undefined {
   const opening = /^---\r?\n/.exec(text);
   if (opening === null) return undefined;
   const closing = /^---[ \t]*(\r?\n|$)/m;
@@ -69,7 +71,10 @@ function frontMatter(text: string): { readonly lines: string[]; readonly bodySta
   const match = closing.exec(rest);
   if (match === null) return undefined;
   const block = rest.slice(0, match.index);
-  return { lines: block === "" ? [] : block.replace(/\r?\n$/, "").split(/\r?\n/), bodyStart: opening[0].length + match.index + match[0].length };
+  return {
+    lines: block === "" ? [] : block.replace(/\r?\n$/, "").split(/\r?\n/),
+    bodyStart: opening[0].length + match.index + match[0].length,
+  };
 }
 
 /** A front matter line's key and value: a plain scalar, or a quoted one. */
@@ -89,7 +94,8 @@ function unquote(raw: string): string {
       // Not a JSON string after all: taken as written.
     }
   }
-  if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) return raw.slice(1, -1).replaceAll("''", "'");
+  if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2)
+    return raw.slice(1, -1).replaceAll("''", "'");
   return raw;
 }
 
@@ -97,13 +103,17 @@ function unquote(raw: string): string {
 export const quoted = (value: string) => JSON.stringify(value);
 
 /** A file's front matter, by key, and its body; undefined for a file without one. A Star's transcripts are read with it too (`transcript.ts`). */
-export function readFrontMatter(text: string): { readonly fields: ReadonlyMap<string, string>; readonly body: string } | undefined {
+export function readFrontMatter(
+  text: string,
+): { readonly fields: ReadonlyMap<string, string>; readonly body: string } | undefined {
   const matter = frontMatter(text);
   if (matter === undefined) return undefined;
-  const fields = new Map(matter.lines.flatMap((line) => {
-    const parsed = entry(line);
-    return parsed === undefined ? [] : [[parsed.key, parsed.value] as const];
-  }));
+  const fields = new Map(
+    matter.lines.flatMap((line) => {
+      const parsed = entry(line);
+      return parsed === undefined ? [] : [[parsed.key, parsed.value] as const];
+    }),
+  );
   return { fields, body: text.slice(matter.bodyStart) };
 }
 
@@ -113,7 +123,12 @@ export function parseRecord(text: string): StarRecord | undefined {
   if (fields === undefined) return undefined;
   const id = fields.get("id");
   if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
-  return { id, name: fields.get("name") ?? "", tint: fields.get("tint") || DEFAULT_TINT, created: fields.get("created") ?? "" };
+  return {
+    id,
+    name: fields.get("name") ?? "",
+    tint: fields.get("tint") || DEFAULT_TINT,
+    created: fields.get("created") ?? "",
+  };
 }
 
 /**
@@ -121,7 +136,10 @@ export function parseRecord(text: string): StarRecord | undefined {
  * in place or added at the end, every other line and the body as they were.
  * A file without front matter is returned as it is.
  */
-export function withRecordFields(text: string, changes: Partial<Pick<StarRecord, "name" | "tint">>): string {
+export function withRecordFields(
+  text: string,
+  changes: Partial<Pick<StarRecord, "name" | "tint">>,
+): string {
   const matter = frontMatter(text);
   if (matter === undefined) return text;
   const pending = new Map(Object.entries(changes).filter(([, value]) => value !== undefined));

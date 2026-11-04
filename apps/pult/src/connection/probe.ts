@@ -19,7 +19,6 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { FetchHttpClient, HttpClientError } from "effect/http";
 
-
 export class ProbeError extends Schema.TaggedError<ProbeError>()("ProbeError", {
   /** What the user has to fix: the address, the server's allowed origins, TLS, the token, or the server. */
   kind: Schema.Literals(["unreachable", "origin", "tls", "auth", "incompatible", "failed"]),

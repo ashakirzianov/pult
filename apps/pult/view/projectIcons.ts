@@ -12,5 +12,7 @@ export async function lucideIconSvg(name: string, color: string): Promise<string
     import("lucide-react"),
     import("react-dom/server"),
   ]);
-  return renderToStaticMarkup(createElement(lucideIconByName(name) ?? FolderCodeIcon, { color, size: 16 }));
+  return renderToStaticMarkup(
+    createElement(lucideIconByName(name) ?? FolderCodeIcon, { color, size: 16 }),
+  );
 }

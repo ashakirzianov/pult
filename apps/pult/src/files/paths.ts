@@ -76,15 +76,24 @@ export function namesEnvironment(authority: string, environmentId: string): bool
  * Undefined for no paths, or for paths on different Windows drives.
  */
 export function commonParent(paths: ReadonlyArray<string>): string | undefined {
-  const parents = paths.map((path) => path.split("/").filter((segment) => segment !== "").slice(0, -1));
+  const parents = paths.map((path) =>
+    path
+      .split("/")
+      .filter((segment) => segment !== "")
+      .slice(0, -1),
+  );
   const [first] = parents;
   if (first === undefined) return undefined;
   let length = 0;
-  while (length < first.length && parents.every((parent) => parent[length] === first[length])) length += 1;
+  while (length < first.length && parents.every((parent) => parent[length] === first[length]))
+    length += 1;
   const common = first.slice(0, length);
   const drive = /^[a-z]:$/i;
-  if (common.length === 0 && paths.some((path) => drive.test(path.split("/")[1] ?? ""))) return undefined;
-  return common.length === 1 && drive.test(common[0] ?? "") ? `/${common[0]}/` : `/${common.join("/")}`;
+  if (common.length === 0 && paths.some((path) => drive.test(path.split("/")[1] ?? "")))
+    return undefined;
+  return common.length === 1 && drive.test(common[0] ?? "")
+    ? `/${common[0]}/`
+    : `/${common.join("/")}`;
 }
 
 /**
@@ -93,15 +102,29 @@ export function commonParent(paths: ReadonlyArray<string>): string | undefined {
  * those roots, what is under them and the directories on the way to them;
  * any other folder, all that is under it.
  */
-export function folderShows(folder: string, knownRoots: ReadonlyArray<string>, path: string): boolean {
+export function folderShows(
+  folder: string,
+  knownRoots: ReadonlyArray<string>,
+  path: string,
+): boolean {
   if (relativeTo(folder, path) === undefined) return false;
   const below = projectsUnder(folder, knownRoots);
-  return below.length === 0 || below.some((root) => relativeTo(root, path) !== undefined || relativeTo(path, root) !== undefined);
+  return (
+    below.length === 0 ||
+    below.some(
+      (root) => relativeTo(root, path) !== undefined || relativeTo(path, root) !== undefined,
+    )
+  );
 }
 
 /** The outermost of `knownRoots` strictly under `folder`, or none when `folder` is in one of them, which then shows all that is under it. */
-export function projectsUnder(folder: string, knownRoots: ReadonlyArray<string>): ReadonlyArray<string> {
+export function projectsUnder(
+  folder: string,
+  knownRoots: ReadonlyArray<string>,
+): ReadonlyArray<string> {
   if (knownRoots.some((root) => relativeTo(root, folder) !== undefined)) return [];
   const below = knownRoots.filter((root) => relativeTo(folder, root) !== undefined);
-  return below.filter((root) => !below.some((other) => other !== root && relativeTo(other, root) !== undefined));
+  return below.filter(
+    (root) => !below.some((other) => other !== root && relativeTo(other, root) !== undefined),
+  );
 }

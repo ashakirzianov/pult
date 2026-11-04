@@ -36,7 +36,8 @@ const ROOM_PAST_LIGHTS = 4;
  */
 export function titleBarLayout(zoom: number, fullScreen: boolean) {
   const position = { x: LIGHTS_X, y: Math.round((TOP_ROW_HEIGHT * zoom - LIGHT_SIZE) / 2) };
-  const room = process.platform !== "darwin" || fullScreen ? 0 : LIGHTS_END / zoom + ROOM_PAST_LIGHTS;
+  const room =
+    process.platform !== "darwin" || fullScreen ? 0 : LIGHTS_END / zoom + ROOM_PAST_LIGHTS;
   return { position, room };
 }
 
@@ -45,7 +46,9 @@ export function titleBarLayout(zoom: number, fullScreen: boolean) {
  * error, which Electron would wrap in "Error invoking remote method …", so the
  * preload rejects with the message main wrote for the user.
  */
-export type Reply<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
+export type Reply<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
 
 /** How main hands the preload the app's version: an `additionalArguments` entry, read from the renderer's argv. */
 export const VERSION_ARG = "--pult-version=";

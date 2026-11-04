@@ -22,7 +22,13 @@ function run(command: string, ...args: unknown[]): void {
  * Pult's own settings first, then the workbench's Manage menu behind one
  * button, whose editors open as tabs beside it.
  */
-export function SettingsPage({ colorScheme, mode }: { colorScheme: ColorSchemeChoice; mode: ModeChoice }) {
+export function SettingsPage({
+  colorScheme,
+  mode,
+}: {
+  colorScheme: ColorSchemeChoice;
+  mode: ModeChoice;
+}) {
   return (
     <div className="pult-settings">
       <h1 className="pult-settings-title">Settings</h1>
@@ -66,11 +72,17 @@ function EnvironmentsSection() {
           {environments.map((environment) => (
             <li key={environment.environmentId} className="pult-settings-row">
               <div className="pult-settings-row-text">
-                <div className="pult-settings-row-label">{environmentName(environment, environments)}</div>
-                <div className="pult-settings-row-description">
-                  {[hostOf(environment), PHASES[environment.phase]].filter((part) => part !== undefined).join(" · ")}
+                <div className="pult-settings-row-label">
+                  {environmentName(environment, environments)}
                 </div>
-                {environment.error === null ? null : <div className="pult-settings-row-error">{environment.error}</div>}
+                <div className="pult-settings-row-description">
+                  {[hostOf(environment), PHASES[environment.phase]]
+                    .filter((part) => part !== undefined)
+                    .join(" · ")}
+                </div>
+                {environment.error === null ? null : (
+                  <div className="pult-settings-row-error">{environment.error}</div>
+                )}
               </div>
               <div className="pult-settings-row-actions">
                 {environment.phase === "ready" ? null : (
@@ -94,7 +106,11 @@ function EnvironmentsSection() {
           ))}
         </ul>
       )}
-      <button type="button" className="pult-settings-button pult-settings-button-primary" onClick={() => run("pult-shell.connect")}>
+      <button
+        type="button"
+        className="pult-settings-button pult-settings-button-primary"
+        onClick={() => run("pult-shell.connect")}
+      >
         Connect to Environment
       </button>
     </section>
@@ -122,7 +138,9 @@ function StarSection() {
       <h2>Star</h2>
       {stars.length === 0 ? (
         <p className="pult-settings-note">
-          {enabled ? "Pult creates your Star once it is connected to an environment." : "Pult creates no Star while it is hidden."}
+          {enabled
+            ? "Pult creates your Star once it is connected to an environment."
+            : "Pult creates no Star while it is hidden."}
         </p>
       ) : null}
       {stars.map((star) => (
@@ -210,14 +228,23 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">Instructions and folder</div>
           <div className="pult-settings-row-description">
-            Your Star reads its AGENTS.md at the start of every conversation, and keeps its memory in its folder.
+            Your Star reads its AGENTS.md at the start of every conversation, and keeps its memory
+            in its folder.
           </div>
         </div>
         <div className="pult-settings-row-actions">
-          <button type="button" className="pult-settings-button" onClick={() => run("pult-shell.editStarInstructions", star.id)}>
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => run("pult-shell.editStarInstructions", star.id)}
+          >
             Edit Instructions
           </button>
-          <button type="button" className="pult-settings-button" onClick={() => run("pult-shell.openStarFolder", star.id)}>
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => run("pult-shell.openStarFolder", star.id)}
+          >
             Open Star Folder
           </button>
         </div>
@@ -358,7 +385,10 @@ function VSCodeSection() {
   const showManageMenu = async () => {
     const anchor = button.current;
     if (anchor === null) return;
-    const [contextMenus, contextKeys] = await Promise.all([getService(IContextMenuService), getService(IContextKeyService)]);
+    const [contextMenus, contextKeys] = await Promise.all([
+      getService(IContextMenuService),
+      getService(IContextKeyService),
+    ]);
     contextMenus.showContextMenu({
       menuId: MenuId.GlobalActivity,
       menuActionOptions: { renderShortTitle: true },
@@ -373,11 +403,17 @@ function VSCodeSection() {
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">VS Code settings</div>
           <div className="pult-settings-row-description">
-            The workbench's own settings, keyboard shortcuts, profiles, themes and extensions, as its Manage menu offers them.
+            The workbench's own settings, keyboard shortcuts, profiles, themes and extensions, as
+            its Manage menu offers them.
           </div>
         </div>
         <div className="pult-settings-row-actions">
-          <button ref={button} type="button" className="pult-settings-button" onClick={() => void showManageMenu()}>
+          <button
+            ref={button}
+            type="button"
+            className="pult-settings-button"
+            onClick={() => void showManageMenu()}
+          >
             Open Menu…
           </button>
         </div>

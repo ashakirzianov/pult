@@ -1,5 +1,14 @@
-import { getService, IEditorService, ILanguageService, IMarkerService } from "@codingame/monaco-vscode-api";
-import { type ICodeEditor, isCodeEditor, isDiffEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
+import {
+  getService,
+  IEditorService,
+  ILanguageService,
+  IMarkerService,
+} from "@codingame/monaco-vscode-api";
+import {
+  type ICodeEditor,
+  isCodeEditor,
+  isDiffEditor,
+} from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
 import { DisposableStore } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import { MarkerSeverity } from "@codingame/monaco-vscode-api/vscode/vs/platform/markers/common/markers";
 
@@ -15,7 +24,14 @@ export interface FileStatus {
   readonly warnings: number;
 }
 
-const EMPTY: FileStatus = { language: null, line: null, column: null, selected: 0, errors: 0, warnings: 0 };
+const EMPTY: FileStatus = {
+  language: null,
+  line: null,
+  column: null,
+  selected: 0,
+  errors: 0,
+  warnings: 0,
+};
 
 /**
  * The active file's status, read from the workbench's own services as VS
@@ -44,14 +60,22 @@ export async function fileStatusStore() {
     const model = editor?.getModel();
     const position = editor?.getPosition();
     const selected =
-      editor?.getSelections()?.reduce((count, selection) => count + (model?.getValueLengthInRange(selection) ?? 0), 0) ?? 0;
+      editor
+        ?.getSelections()
+        ?.reduce((count, selection) => count + (model?.getValueLengthInRange(selection) ?? 0), 0) ??
+      0;
     const counts = { errors: 0, warnings: 0 };
-    for (const marker of markers.read({ severities: MarkerSeverity.Error | MarkerSeverity.Warning })) {
+    for (const marker of markers.read({
+      severities: MarkerSeverity.Error | MarkerSeverity.Warning,
+    })) {
       if (marker.severity === MarkerSeverity.Error) counts.errors += 1;
       else counts.warnings += 1;
     }
     return {
-      language: model === undefined || model === null ? null : languages.getLanguageName(model.getLanguageId()),
+      language:
+        model === undefined || model === null
+          ? null
+          : languages.getLanguageName(model.getLanguageId()),
       line: position?.lineNumber ?? null,
       column: position?.column ?? null,
       selected,

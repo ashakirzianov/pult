@@ -15,7 +15,6 @@ body,
   color: #ccc;
 }
 
-
 /* The thread view's stylesheet (upstream's, loaded with the view) resets the
    whole page in its base layer, box-sizing: border-box on every element and
    pseudo-element among it, which the workbench never asked for: an icon
@@ -110,15 +109,34 @@ body,
    on the top edge unless a vertical split puts it below another, and is
    the top-left one unless any split puts it after another. Browsers ignore
    the app region. */
-.part.editor > .content .editor-group-container:not(.part.editor .monaco-split-view2.vertical > .monaco-scrollable-element > .split-view-container > .split-view-view:not(:first-child) *) > .title {
+.part.editor
+  > .content
+  .editor-group-container:not(
+    .part.editor
+      .monaco-split-view2.vertical
+      > .monaco-scrollable-element
+      > .split-view-container
+      > .split-view-view:not(:first-child)
+      *
+  )
+  > .title {
   -webkit-app-region: drag;
 }
 
-.part.editor > .content .editor-group-container > .title :is(.tab, .editor-actions, .title-actions, .scrollbar) {
+.part.editor
+  > .content
+  .editor-group-container
+  > .title
+  :is(.tab, .editor-actions, .title-actions, .scrollbar) {
   -webkit-app-region: no-drag;
 }
 
-.monaco-workbench.nosidebar .part.editor > .content .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *) > .title > .tabs-and-actions-container {
+.monaco-workbench.nosidebar
+  .part.editor
+  > .content
+  .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *)
+  > .title
+  > .tabs-and-actions-container {
   padding-left: calc(var(--pult-traffic-lights, 0px) + 30px);
 }
 
@@ -133,7 +151,11 @@ body,
    no setting or context key turns off. Each one names what it hides. */
 
 /* The editor tabs' row's "More Actions…" dropdown, the tail of the editor title's toolbar (`.title-actions` while the tab bar shows a single tab). */
-.monaco-workbench:not(.pult-mode-vscode) .part.editor .title :is(.editor-actions, .title-actions) .action-item:has(> .monaco-dropdown .codicon-toolbar-more) {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  .title
+  :is(.editor-actions, .title-actions)
+  .action-item:has(> .monaco-dropdown .codicon-toolbar-more) {
   display: none;
 }
 
@@ -168,17 +190,42 @@ body,
    (`--vscode-shadow-active-tab`, a faint darkening at its top): the tab's
    colour already tells it apart. The selectors mirror the workbench's own,
    one step more specific. */
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active.tab-border-top > .tab-border-top-container,
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.selected.tab-border-top > .tab-border-top-container {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab.active.tab-border-top
+  > .tab-border-top-container,
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab.selected.tab-border-top
+  > .tab-border-top-container {
   display: none;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab.active {
   box-shadow: none;
 }
 
 /* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the fade is the seam. */
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container.tabs-border-bottom::after {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  > .tabs-and-actions-container.tabs-border-bottom::after {
   display: none;
 }
 
@@ -187,18 +234,36 @@ body,
    the tab and the thread's canvas read as one. The row's background and the tab's
    right border are inline styles the workbench sets from the theme, hence
    the `!important`. */
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
   background-color: var(--vscode-editor-background) !important;
 }
 
 /* The active tab's bottom line (`tab.activeBorder`, light grey in the light
    themes): the last of the lines between the row and the content. The
    workbench's rule names the row's wrapper too, so this one does. */
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title > .tabs-and-actions-container .tabs-container > .tab.active.tab-border-bottom > .tab-border-bottom-container {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  > .tabs-and-actions-container
+  .tabs-container
+  > .tab.active.tab-border-bottom
+  > .tab-border-bottom-container {
   display: none;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title .tabs-container > .tab:only-child:has(> .tab-label.pult-thread-tab) {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab:only-child:has(> .tab-label.pult-thread-tab) {
   border-right: none !important;
 }
 
@@ -206,18 +271,30 @@ body,
    tab's only view (the part carries VS Code's own class for that case), is
    "Explorer" as the tab is named; and its buttons are New File, New Folder
    and Collapse Folders: Refresh and "Views and More Actions…" go. */
-.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2 {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar.preserve-merged-workspace-name-case
+  > .composite.title
+  h2 {
   font-size: 0;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title h2::before {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar.preserve-merged-workspace-name-case
+  > .composite.title
+  h2::before {
   content: "Explorer";
   font-size: 11px;
   text-transform: uppercase;
 }
 
-.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(> .codicon-refresh),
-.monaco-workbench:not(.pult-mode-vscode) .part.sidebar.preserve-merged-workspace-name-case > .composite.title .action-item:has(.codicon-toolbar-more) {
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar.preserve-merged-workspace-name-case
+  > .composite.title
+  .action-item:has(> .codicon-refresh),
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar.preserve-merged-workspace-name-case
+  > .composite.title
+  .action-item:has(.codicon-toolbar-more) {
   display: none;
 }
 

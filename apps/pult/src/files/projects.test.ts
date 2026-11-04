@@ -46,13 +46,16 @@ describe("projectRoots", () => {
         thread("t5", { worktreePath: "/wt/nobranch", updatedAt: at(2) }),
       ],
     });
-    assert.deepEqual(roots.map((root) => [root.path, root.name]), [
-      ["/repos/axis", "axis"],
-      ["/repos/pult", "pult"],
-      ["/wt/tabs", "pult · thread-tabs"],
-      ["/wt/nobranch", "pult · nobranch"],
-      ["/wt/vfs", "pult · virtual-workspace"],
-    ]);
+    assert.deepEqual(
+      roots.map((root) => [root.path, root.name]),
+      [
+        ["/repos/axis", "axis"],
+        ["/repos/pult", "pult"],
+        ["/wt/tabs", "pult · thread-tabs"],
+        ["/wt/nobranch", "pult · nobranch"],
+        ["/wt/vfs", "pult · virtual-workspace"],
+      ],
+    );
   });
 });
 

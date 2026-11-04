@@ -1,4 +1,7 @@
-import type { IEditorOverrideServices, IWorkbenchConstructionOptions } from "@codingame/monaco-vscode-api";
+import type {
+  IEditorOverrideServices,
+  IWorkbenchConstructionOptions,
+} from "@codingame/monaco-vscode-api";
 import getAccessibilityServiceOverride from "@codingame/monaco-vscode-accessibility-service-override";
 import getBulkEditServiceOverride from "@codingame/monaco-vscode-bulk-edit-service-override";
 import getCommentsServiceOverride from "@codingame/monaco-vscode-comments-service-override";

@@ -544,7 +544,10 @@
   border-radius: 8px;
   font-size: 13px;
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
-  background: var(--vscode-list-inactiveSelectionBackground, color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent));
+  background: var(
+    --vscode-list-inactiveSelectionBackground,
+    color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent)
+  );
 }
 
 .pult-view-card-detail {

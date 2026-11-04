@@ -45,7 +45,11 @@ export interface ShellThread {
   readonly pinned: boolean;
   /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
-  readonly latestRun: { status: string; startedAt: string | null; finishedAt: string | null } | null;
+  readonly latestRun: {
+    status: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+  } | null;
   readonly goal: string | null;
 }
 
@@ -127,7 +131,12 @@ type Listener = (state: ThreadState) => void;
  * reports of their activity laid over.
  */
 class ThreadStore {
-  private presented: ThreadState = { environments: [], threads: [], projects: [], settled: { count: 0, loading: false, failed: false } };
+  private presented: ThreadState = {
+    environments: [],
+    threads: [],
+    projects: [],
+    settled: { count: 0, loading: false, failed: false },
+  };
   private state: ThreadState = this.presented;
   /**
    * Whether threads work, as the mounted thread view knows from its
@@ -165,7 +174,11 @@ class ThreadStore {
       const reported = this.activity.get(thread.id);
       // A run the model sees working wins; the view's word fills in where the model has none.
       if (reported === undefined || thread.working) return thread;
-      return { ...thread, working: reported.working, workingSince: reported.working ? reported.workingSince : null };
+      return {
+        ...thread,
+        working: reported.working,
+        workingSince: reported.working ? reported.workingSince : null,
+      };
     });
     this.state = { ...this.presented, threads };
     for (const listener of this.listeners) listener(this.state);
@@ -183,7 +196,9 @@ class ThreadStore {
 
   /** A thread by its environment and id. */
   thread(environmentId: string, threadId: string): ShellThread | undefined {
-    return this.state.threads.find((thread) => thread.id === threadId && thread.environmentId === environmentId);
+    return this.state.threads.find(
+      (thread) => thread.id === threadId && thread.environmentId === environmentId,
+    );
   }
 
   /** The environment of the first thread listed with `threadId`, for a caller that knows the id alone. */

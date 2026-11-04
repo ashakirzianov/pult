@@ -25,39 +25,61 @@ export function installDebugHandle(): void {
       // Every environment the page holds, in the order they were connected.
       connection: () => connection.environments,
       threads: () => threadStore.get(),
-      selected: () => selectedThread() ?? selectedDraft() ?? (selectedStar() === undefined ? undefined : { starId: selectedStar() }),
+      selected: () =>
+        selectedThread() ??
+        selectedDraft() ??
+        (selectedStar() === undefined ? undefined : { starId: selectedStar() }),
       // The Stars, each with its homes, its current conversation and its state.
       stars: () => starStore.get(),
       // What the changes view shows and why: its thread, root, group sizes and last failure.
       changes: () => changesState(),
       // The editor part's tabs, per group in grid order; `*` marks the active one.
       tabs: async () =>
-        (await getService(IEditorGroupsService)).getGroups(GroupsOrder.GRID_APPEARANCE).map((group) =>
-          group.editors.map((editor) => `${group.isActive(editor) ? "*" : ""}${editor.getName()}`),
-        ),
+        (await getService(IEditorGroupsService))
+          .getGroups(GroupsOrder.GRID_APPEARANCE)
+          .map((group) =>
+            group.editors.map(
+              (editor) => `${group.isActive(editor) ? "*" : ""}${editor.getName()}`,
+            ),
+          ),
       read: async (uri: URI) => {
         const files = await getService(IFileService);
         if (!files.hasProvider(uri)) return { provider: false };
         const file = await files.readFile(uri);
-        return { provider: true, size: file.size, text: new TextDecoder().decode(file.value.buffer).slice(0, 200) };
+        return {
+          provider: true,
+          size: file.size,
+          text: new TextDecoder().decode(file.value.buffer).slice(0, 200),
+        };
       },
-      exec: async (id: string, ...args: unknown[]) => (await getService(ICommandService)).executeCommand(id, ...args),
-      commands: (prefix = "pult.") => [...CommandsRegistry.getCommands().keys()].filter((id) => id.startsWith(prefix)),
+      exec: async (id: string, ...args: unknown[]) =>
+        (await getService(ICommandService)).executeCommand(id, ...args),
+      commands: (prefix = "pult.") =>
+        [...CommandsRegistry.getCommands().keys()].filter((id) => id.startsWith(prefix)),
       // What VS Code's "Developer: Restart Extension Host" does, which this workbench does not register.
       restartExtensionHost: async () => {
         const service = await getService(IExtensionService);
         if (await service.stopExtensionHosts("window.pult")) await service.startExtensionHosts();
       },
-      extensions: async () => (await getService(IExtensionService)).extensions.map((e) => e.identifier.value),
+      extensions: async () =>
+        (await getService(IExtensionService)).extensions.map((e) => e.identifier.value),
       // Each environment's phase and error, and each extension's state.
       status: async () => {
         const service = await getService(IExtensionService);
         return {
-          environments: connection.environments.map(({ label, phase, error }) => ({ label, phase, error })),
+          environments: connection.environments.map(({ label, phase, error }) => ({
+            label,
+            phase,
+            error,
+          })),
           extensions: Object.fromEntries(
             Object.entries(service.getExtensionsStatus()).map(([id, s]) => [
               id,
-              { activated: s.activationTimes !== undefined, messages: s.messages.map((m) => m.message), errors: s.runtimeErrors.map((e) => e.message) },
+              {
+                activated: s.activationTimes !== undefined,
+                messages: s.messages.map((m) => m.message),
+                errors: s.runtimeErrors.map((e) => e.message),
+              },
             ]),
           ),
         };

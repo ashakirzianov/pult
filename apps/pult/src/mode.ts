@@ -1,6 +1,13 @@
-import { getService, IConfigurationService, IContextKeyService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  IConfigurationService,
+  IContextKeyService,
+} from "@codingame/monaco-vscode-api";
 import { ConfigurationTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import {
   ConfigurationScope,
   Extensions as ConfigurationExtensions,
@@ -59,7 +66,8 @@ export function registerMode(): void {
           "VS Code's layout, with everything Pult's hides.",
         ],
         default: "pult",
-        description: "Which layout Pult shows: its own, or VS Code's, for an extension that needs what Pult hides.",
+        description:
+          "Which layout Pult shows: its own, or VS Code's, for an extension that needs what Pult hides.",
         scope: ConfigurationScope.APPLICATION,
       },
     },

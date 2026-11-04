@@ -131,7 +131,8 @@ class FakeServer implements WorkspaceServer {
   }) => {
     const path = resolve(input.cwd, input.relativePath);
     // The server writes only against a known workspace, a project's or worktree's root.
-    if (!this.workspaces.has(input.cwd)) throw failure("ProjectWriteFileError", "workspace_path_outside_root");
+    if (!this.workspaces.has(input.cwd))
+      throw failure("ProjectWriteFileError", "workspace_path_outside_root");
     this.writes.push({ path, expectedVersion: input.expectedVersion });
     const current = this.files.get(path);
     if (
@@ -309,7 +310,10 @@ describe("WorkspaceFiles on a stock server", () => {
     const { files } = openWindow(server, [], [HOME]);
 
     assert.deepEqual(await files.readDirectory(HOME), [["repo", "directory"]]);
-    assert.deepEqual((await files.readDirectory(ROOT)).map(([name]) => name).toSorted(), ["dist", "src"]);
+    assert.deepEqual((await files.readDirectory(ROOT)).map(([name]) => name).toSorted(), [
+      "dist",
+      "src",
+    ]);
   });
 
   it("stats a known root and what is under it before the root is a folder", async () => {
@@ -337,13 +341,10 @@ describe("WorkspaceFiles on a stock server", () => {
       rejection(files.rename(`${ROOT}/src/a.ts`, `${ROOT}/src/b.ts`)),
       rejection(files.copy(`${ROOT}/src/a.ts`, `${ROOT}/src/b.ts`, { overwrite: false })),
     ]);
-    assert.deepEqual(refusals.map((error) => error.code), [
-      "NoPermissions",
-      "NoPermissions",
-      "NoPermissions",
-      "NoPermissions",
-      "NoPermissions",
-    ]);
+    assert.deepEqual(
+      refusals.map((error) => error.code),
+      ["NoPermissions", "NoPermissions", "NoPermissions", "NoPermissions", "NoPermissions"],
+    );
     assert.deepEqual([...server.files.keys()], [`${ROOT}/src/a.ts`]);
   });
 
@@ -433,11 +434,20 @@ describe("WorkspaceFiles on either server", () => {
       await files.writeFile(`${OTHER_PROJECT}/x.ts`, text("y"), SAVE);
       assert.equal(decode(await files.readFile(`${OTHER_PROJECT}/x.ts`)), "y");
       // A path under no known root is refused.
-      assert.equal((await rejection(files.writeFile(`/nowhere/x.ts`, text("y"), SAVE))).code, "NoPermissions");
+      assert.equal(
+        (await rejection(files.writeFile(`/nowhere/x.ts`, text("y"), SAVE))).code,
+        "NoPermissions",
+      );
       const latin1 = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
-      assert.equal((await rejection(files.writeFile(`${ROOT}/src/a.ts`, latin1, SAVE))).code, "NoPermissions");
+      assert.equal(
+        (await rejection(files.writeFile(`${ROOT}/src/a.ts`, latin1, SAVE))).code,
+        "NoPermissions",
+      );
       // The one write that went through is the other project's, against its own root.
-      assert.deepEqual(server.writes.map((write) => write.path), [`${OTHER_PROJECT}/x.ts`]);
+      assert.deepEqual(
+        server.writes.map((write) => write.path),
+        [`${OTHER_PROJECT}/x.ts`],
+      );
     });
 
     it(`saves a project's file against the project's root under a folder above it, as the home is (${name})`, async () => {
@@ -462,7 +472,10 @@ describe("WorkspaceFiles on either server", () => {
       // The open editor re-stats, and the stat says read-only.
       assert.deepEqual(changes, [{ path: `${ROOT}/big.txt`, kind: "changed" }]);
       assert.equal((await files.stat(`${ROOT}/big.txt`)).readonly, true);
-      assert.equal((await rejection(files.writeFile(`${ROOT}/big.txt`, text("x"), SAVE))).code, "NoPermissions");
+      assert.equal(
+        (await rejection(files.writeFile(`${ROOT}/big.txt`, text("x"), SAVE))).code,
+        "NoPermissions",
+      );
       assert.deepEqual(server.writes, []);
     });
   }
@@ -481,7 +494,10 @@ describe("WorkspaceFiles on either server, a file the server cannot read back ex
       for (const path of [`${ROOT}/latin1.txt`, `${ROOT}/bom.txt`]) {
         await files.readFile(path);
         assert.equal((await files.stat(path)).readonly, true);
-        assert.equal((await rejection(files.writeFile(path, text("a"), SAVE))).code, "NoPermissions");
+        assert.equal(
+          (await rejection(files.writeFile(path, text("a"), SAVE))).code,
+          "NoPermissions",
+        );
       }
       assert.deepEqual(readOnly, [
         [`${ROOT}/latin1.txt`, "lossy"],
@@ -515,11 +531,10 @@ describe("WorkspaceFiles copying on a server with the fork's features", () => {
     assert.equal(server.files.get(`${ROOT}/logo 2.png`)?.contents, "\0PNG");
     assert.match(refused.message, /not UTF-8 text/);
     assert.equal(server.files.has(`${ROOT}/latin1 2.txt`), false);
-    assert.deepEqual(changes.map((change) => change.path), [
-      `${ROOT}/bom 2.txt`,
-      `${ROOT}/big 2.txt`,
-      `${ROOT}/logo 2.png`,
-    ]);
+    assert.deepEqual(
+      changes.map((change) => change.path),
+      [`${ROOT}/bom 2.txt`, `${ROOT}/big 2.txt`, `${ROOT}/logo 2.png`],
+    );
   });
 
   it("refuses to copy a truncated or non-UTF-8 file where the server cannot send its bytes", async () => {
@@ -544,9 +559,13 @@ describe("WorkspaceFiles copying on a server with the fork's features", () => {
 
     assert.equal(server.files.get(`${ROOT}/copy/a.ts`)?.contents, "export const a = 1;\n");
     assert.equal(server.files.get(`${ROOT}/copy/lib/b.ts`)?.contents, "b");
-    assert.equal((await rejection(files.copy(`${ROOT}/src`, `${ROOT}/src/inner`, { overwrite: false }))).code, "NoPermissions");
     assert.equal(
-      (await rejection(files.copy(`${ROOT}/src/a.ts`, `${ROOT}/copy/a.ts`, { overwrite: false }))).code,
+      (await rejection(files.copy(`${ROOT}/src`, `${ROOT}/src/inner`, { overwrite: false }))).code,
+      "NoPermissions",
+    );
+    assert.equal(
+      (await rejection(files.copy(`${ROOT}/src/a.ts`, `${ROOT}/copy/a.ts`, { overwrite: false })))
+        .code,
       "FileExists",
     );
   });
@@ -657,7 +676,10 @@ describe("WorkspaceFiles on a server with the fork's features", () => {
     await files.writeFile(`${ROOT}/src/a.ts`, text("export const a = 3;\n"), SAVE);
 
     assert.equal(server.files.get(`${ROOT}/src/a.ts`)?.contents, "export const a = 3;\n");
-    assert.deepEqual(server.writes.map((write) => write.expectedVersion), [read, written]);
+    assert.deepEqual(
+      server.writes.map((write) => write.expectedVersion),
+      [read, written],
+    );
   });
 
   it("fails a save over a file changed since it was read, keeping the change", async () => {
@@ -685,12 +707,19 @@ describe("WorkspaceFiles on a server with the fork's features", () => {
     const { server, files, changes } = setup(CAPABLE);
     await files.writeFile(`${ROOT}/src/b.ts`, text("b"), { create: true, overwrite: false });
     assert.equal(
-      (await rejection(files.writeFile(`${ROOT}/src/b.ts`, text("b"), { create: true, overwrite: false }))).code,
+      (
+        await rejection(
+          files.writeFile(`${ROOT}/src/b.ts`, text("b"), { create: true, overwrite: false }),
+        )
+      ).code,
       "FileExists",
     );
     await files.rename(`${ROOT}/src/b.ts`, `${ROOT}/src/c.ts`);
     await files.createDirectory(`${ROOT}/lib`);
-    assert.equal((await rejection(files.delete(`${ROOT}/src`, { recursive: false }))).code, "Unknown");
+    assert.equal(
+      (await rejection(files.delete(`${ROOT}/src`, { recursive: false }))).code,
+      "Unknown",
+    );
     await files.delete(`${ROOT}/src`, { recursive: true });
 
     assert.deepEqual([...server.files.keys()], []);
@@ -713,12 +742,15 @@ describe("WorkspaceFiles on a server with the fork's features", () => {
       rejection(files.rename(`${ROOT}/src/a.ts`, `${ROOT}/src/b.ts\t`)),
       rejection(files.delete(`${ROOT}/foo `, { recursive: false })),
     ]);
-    assert.deepEqual(refusals.map((error) => [error.code, error.message.includes("trims")]), [
-      ["NoPermissions", true],
-      ["NoPermissions", true],
-      ["NoPermissions", true],
-      ["NoPermissions", true],
-    ]);
+    assert.deepEqual(
+      refusals.map((error) => [error.code, error.message.includes("trims")]),
+      [
+        ["NoPermissions", true],
+        ["NoPermissions", true],
+        ["NoPermissions", true],
+        ["NoPermissions", true],
+      ],
+    );
     assert.equal(server.files.get(`${ROOT}/foo`)?.contents, "kept");
     assert.deepEqual(server.writes, []);
   });

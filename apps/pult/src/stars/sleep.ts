@@ -26,7 +26,10 @@ export type Wakefulness =
  * carries the live runs and subagents and the pending requests, whatever
  * their age, and the provider turns of the latest runs.
  */
-export type SleepInput = Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "providerTurns" | "runtimeRequests" | "subagents">;
+export type SleepInput = Pick<
+  OrchestrationV2ThreadProjection,
+  "thread" | "runs" | "providerTurns" | "runtimeRequests" | "subagents"
+>;
 
 /** A run on, as the server's settle check reads it; a provider turn counts through its run alone, so one a provider left unfinished holds nothing once its run ended. */
 const LIVE_RUNS: ReadonlySet<string> = new Set(["preparing", "starting", "running", "waiting"]);
@@ -45,22 +48,43 @@ const LIVE_SUBAGENTS: ReadonlySet<string> = new Set(["pending", "running", "wait
  */
 export function wakefulness(projection: SleepInput): Wakefulness {
   if (projection.runs.some((run) => LIVE_RUNS.has(run.status))) return { kind: "held", by: "run" };
-  if (projection.subagents.some((subagent) => LIVE_SUBAGENTS.has(subagent.status))) return { kind: "held", by: "subagent" };
+  if (projection.subagents.some((subagent) => LIVE_SUBAGENTS.has(subagent.status)))
+    return { kind: "held", by: "subagent" };
   if (projection.runs.some((run) => run.status === "queued")) return { kind: "held", by: "queued" };
-  if (projection.runtimeRequests.some((request) => request.status === "pending")) return { kind: "held", by: "request" };
+  if (projection.runtimeRequests.some((request) => request.status === "pending"))
+    return { kind: "held", by: "request" };
   const { unsettledAt } = projection.thread;
-  const from = (base: number) => (unsettledAt == null ? base : Math.max(base, DateTime.toEpochMillis(unsettledAt)));
+  const from = (base: number) =>
+    unsettledAt == null ? base : Math.max(base, DateTime.toEpochMillis(unsettledAt));
   const turns = projection.providerTurns
-    .flatMap((turn) => (turn.completedAt === null ? [] : [{ turn, completedAt: DateTime.toEpochMillis(turn.completedAt) }]))
+    .flatMap((turn) =>
+      turn.completedAt === null
+        ? []
+        : [{ turn, completedAt: DateTime.toEpochMillis(turn.completedAt) }],
+    )
     .toSorted((left, right) => left.completedAt - right.completedAt);
   const last = turns.at(-1);
   if (last === undefined) {
-    const finished = projection.runs.flatMap((run) => (run.completedAt === null ? [] : [DateTime.toEpochMillis(run.completedAt)]));
-    const base = finished.length > 0 ? Math.max(...finished) : DateTime.toEpochMillis(projection.thread.createdAt);
+    const finished = projection.runs.flatMap((run) =>
+      run.completedAt === null ? [] : [DateTime.toEpochMillis(run.completedAt)],
+    );
+    const base =
+      finished.length > 0
+        ? Math.max(...finished)
+        : DateTime.toEpochMillis(projection.thread.createdAt);
     return { kind: "deadline", at: from(base) + DEFAULT_CACHE_TTL_MS };
   }
-  const observed = turns.findLast(({ turn }) => turn.providerThreadId === last.turn.providerThreadId && turn.tokenUsage?.promptCacheTtlMs !== undefined);
-  return { kind: "deadline", at: from(last.completedAt) + (observed?.turn.tokenUsage?.promptCacheTtlMs ?? DEFAULT_CACHE_TTL_MS) };
+  const observed = turns.findLast(
+    ({ turn }) =>
+      turn.providerThreadId === last.turn.providerThreadId &&
+      turn.tokenUsage?.promptCacheTtlMs !== undefined,
+  );
+  return {
+    kind: "deadline",
+    at:
+      from(last.completedAt) +
+      (observed?.turn.tokenUsage?.promptCacheTtlMs ?? DEFAULT_CACHE_TTL_MS),
+  };
 }
 
 /** Whether a conversation with this wakefulness is asleep by `now`. */

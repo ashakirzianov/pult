@@ -1,5 +1,9 @@
 import { request } from "@t3tools/client-runtime/rpc";
-import { type OlderSettled, type OlderSettledPages, olderSettledCountKey } from "@t3tools/client-runtime/state/threads";
+import {
+  type OlderSettled,
+  type OlderSettledPages,
+  olderSettledCountKey,
+} from "@t3tools/client-runtime/state/threads";
 import {
   ORCHESTRATION_V2_WS_METHODS,
   type OrchestrationV2OlderSettledThreads,
@@ -19,7 +23,9 @@ const COUNT_REREAD_DELAY_MS = 500;
 
 const NO_PAGES: OlderSettledPages = { reads: [], frontier: null, status: "ready" };
 
-const countsOf = (counts: OrchestrationV2OlderSettledThreads["counts"]): ReadonlyMap<ProjectId, number> =>
+const countsOf = (
+  counts: OrchestrationV2OlderSettledThreads["counts"],
+): ReadonlyMap<ProjectId, number> =>
   new Map(counts.map(({ projectId, count }) => [projectId, count] as const));
 
 /**
@@ -45,7 +51,11 @@ export class OlderSettledThreads {
     private readonly onDidChange: () => void,
   ) {}
 
-  follow(snapshot: OrchestrationV2ShellSnapshot, generation: number, removedAt: ReadonlyMap<ThreadId, number>): void {
+  follow(
+    snapshot: OrchestrationV2ShellSnapshot,
+    generation: number,
+    removedAt: ReadonlyMap<ThreadId, number>,
+  ): void {
     const cut = snapshot.olderSettled;
     if (cut === undefined) {
       this.reset(generation);
@@ -57,14 +67,20 @@ export class OlderSettledThreads {
     if (generation !== this.generation || this.older?.before !== cut.before) {
       this.reset(generation);
       this.older = { before: cut.before, beforeMs, counts: countsOf(cut.counts) };
-      this.pages = generation === 0 ? NO_PAGES : { reads: [], frontier: { settledAt: cut.before }, status: "ready" };
+      this.pages =
+        generation === 0
+          ? NO_PAGES
+          : { reads: [], frontier: { settledAt: cut.before }, status: "ready" };
       this.snapshotKey = snapshot.snapshotSequence === cut.asOfSequence ? key : null;
       this.readKey = this.snapshotKey;
     }
     if (generation === 0 || key === this.readKey) return;
     this.readKey = key;
     clearTimeout(this.countTimer);
-    this.countTimer = setTimeout(() => void this.readCounts(generation, cut.before), COUNT_REREAD_DELAY_MS);
+    this.countTimer = setTimeout(
+      () => void this.readCounts(generation, cut.before),
+      COUNT_REREAD_DELAY_MS,
+    );
   }
 
   /** Reads the next page below the frontier, unless one is on its way, the last one failed, or none is left. */
@@ -75,7 +91,10 @@ export class OlderSettledThreads {
     this.pages = { ...pages, status: "pending" };
     this.onDidChange();
     connection
-      .run(this.environmentId, request(ORCHESTRATION_V2_WS_METHODS.getOlderSettledThreads, { before, limit: PAGE_SIZE }))
+      .run(
+        this.environmentId,
+        request(ORCHESTRATION_V2_WS_METHODS.getOlderSettledThreads, { before, limit: PAGE_SIZE }),
+      )
       .then(
         (page) => {
           if (this.generation !== generation) return;
@@ -107,10 +126,15 @@ export class OlderSettledThreads {
   }
 
   /** The pages' rows the shell does not hold: one it holds is newer, and one it removed is gone. */
-  rows(snapshot: OrchestrationV2ShellSnapshot, removedAt: ReadonlyMap<ThreadId, number>): ReadonlyArray<OrchestrationV2ThreadShell> {
+  rows(
+    snapshot: OrchestrationV2ShellSnapshot,
+    removedAt: ReadonlyMap<ThreadId, number>,
+  ): ReadonlyArray<OrchestrationV2ThreadShell> {
     if (this.pages.reads.length === 0) return [];
     const held = new Set(snapshot.threads.map((thread) => thread.id));
-    return this.pages.reads.flatMap((read) => read.threads.filter((thread) => !held.has(thread.id) && !removedAt.has(thread.id)));
+    return this.pages.reads.flatMap((read) =>
+      read.threads.filter((thread) => !held.has(thread.id) && !removedAt.has(thread.id)),
+    );
   }
 
   dispose(): void {
@@ -128,9 +152,17 @@ export class OlderSettledThreads {
 
   private async readCounts(generation: number, before: string): Promise<void> {
     const page = await connection
-      .run(this.environmentId, request(ORCHESTRATION_V2_WS_METHODS.getOlderSettledThreads, { before: { settledAt: before }, limit: 0 }))
+      .run(
+        this.environmentId,
+        request(ORCHESTRATION_V2_WS_METHODS.getOlderSettledThreads, {
+          before: { settledAt: before },
+          limit: 0,
+        }),
+      )
       .catch((error: unknown) => {
-        console.warn(`[pult-shell] could not read the older settled threads' count: ${String(error)}`);
+        console.warn(
+          `[pult-shell] could not read the older settled threads' count: ${String(error)}`,
+        );
         return null;
       });
     if (page === null || this.generation !== generation || this.older?.before !== before) return;

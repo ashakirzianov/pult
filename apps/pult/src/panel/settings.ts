@@ -1,5 +1,12 @@
-import { getService, IConfigurationService, IContextKeyService } from "@codingame/monaco-vscode-api";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  getService,
+  IConfigurationService,
+  IContextKeyService,
+} from "@codingame/monaco-vscode-api";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import {
   ConfigurationScope,
   Extensions as ConfigurationExtensions,
@@ -63,7 +70,10 @@ export function registerPanelSettings(): void {
       [SETTLED]: {
         type: "string",
         enum: SETTLED_CHOICES.map(({ value }) => value),
-        enumDescriptions: ["The Settled shelf shows at the left panel's bottom.", "The left panel shows no Settled shelf; Pult: Open Thread… still reaches settled threads."],
+        enumDescriptions: [
+          "The Settled shelf shows at the left panel's bottom.",
+          "The left panel shows no Settled shelf; Pult: Open Thread… still reaches settled threads.",
+        ],
         default: "shown",
         description: "Whether the left panel shows the Settled shelf.",
         scope: ConfigurationScope.APPLICATION,
@@ -80,7 +90,8 @@ export function registerPanelSettings(): void {
             title: { value: `${verb} Settled Shelf`, original: `${verb} Settled Shelf` },
             category: { value: "Pult", original: "Pult" },
             f1: true,
-            precondition: value === "shown" ? SettledHiddenContext : SettledHiddenContext.toNegated(),
+            precondition:
+              value === "shown" ? SettledHiddenContext : SettledHiddenContext.toNegated(),
           });
         }
 
@@ -94,7 +105,10 @@ export function registerPanelSettings(): void {
 
 /** Reads the settings into their stores and the context key, as soon as the services are up and on each change. Called before the workbench initialises. */
 export async function startPanelSettings(): Promise<void> {
-  const [configuration, contextKeys] = await Promise.all([getService(IConfigurationService), getService(IContextKeyService)]);
+  const [configuration, contextKeys] = await Promise.all([
+    getService(IConfigurationService),
+    getService(IContextKeyService),
+  ]);
   const settledHidden = SettledHiddenContext.bindTo(contextKeys);
   const readSettled = () => {
     const choice: SettledChoice = configuration.getValue(SETTLED) === "hidden" ? "hidden" : "shown";

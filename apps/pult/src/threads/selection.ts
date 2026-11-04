@@ -13,10 +13,20 @@ import {
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
-import { Action2, MenuId, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  Action2,
+  MenuId,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
-import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
+import {
+  StorageScope,
+  StorageTarget,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
@@ -25,7 +35,14 @@ import { isStarRoot } from "../stars/record.ts";
 import { starById, starOfProject, starOfThread, starTarget } from "../stars/model.ts";
 import { HasStarContext, pickStar } from "../stars/commands.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { DraftInput, isLeadTab, type LeadTab, onDidPromoteDraft, StarInput, ThreadInput } from "./pane.tsx";
+import {
+  DraftInput,
+  isLeadTab,
+  type LeadTab,
+  onDidPromoteDraft,
+  StarInput,
+  ThreadInput,
+} from "./pane.tsx";
 import { nextAfterParking } from "./parking.ts";
 import { isSubagent, scopedKey, type ShellProject, type ShelfName, threadStore } from "./store.ts";
 
@@ -164,10 +181,18 @@ function recordExplorerFiles(editors: IEditorService, storage: IStorageService):
     return [resource];
   });
   const active = editors.activeEditor?.resource;
-  const sameFiles = files.length === explorerFiles.files.length && files.every((file, index) => file.toString() === explorerFiles.files[index]?.toString());
+  const sameFiles =
+    files.length === explorerFiles.files.length &&
+    files.every((file, index) => file.toString() === explorerFiles.files[index]?.toString());
   if (sameFiles && active?.toString() === explorerFiles.active?.toString()) return;
   explorerFiles = { files, active };
-  if (!sameFiles) storage.store(EXPLORER_FILES_KEY, JSON.stringify(files.map(String)), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+  if (!sameFiles)
+    storage.store(
+      EXPLORER_FILES_KEY,
+      JSON.stringify(files.map(String)),
+      StorageScope.WORKSPACE,
+      StorageTarget.MACHINE,
+    );
   for (const listener of explorerFilesListeners) listener();
 }
 
@@ -181,7 +206,8 @@ function recordExplorerFiles(editors: IEditorService, storage: IStorageService):
 export function selectExplorer(showExplorerTab = false): Promise<void> {
   return enqueue(async () => {
     await switchTo(EXPLORER);
-    if (showExplorerTab) await (await getService(ICommandService)).executeCommand("workbench.view.explorer");
+    if (showExplorerTab)
+      await (await getService(ICommandService)).executeCommand("workbench.view.explorer");
   });
 }
 
@@ -189,7 +215,9 @@ export function selectExplorer(showExplorerTab = false): Promise<void> {
 export function showExplorerFile(resource: URI): Promise<void> {
   return enqueue(async () => {
     await switchTo(EXPLORER);
-    await (await getService(IEditorService)).openEditor({ resource, options: { revealIfOpened: true, pinned: true } });
+    await (
+      await getService(IEditorService)
+    ).openEditor({ resource, options: { revealIfOpened: true, pinned: true } });
   });
 }
 
@@ -241,7 +269,11 @@ export function selectStar(starId: string): Promise<void> {
  */
 async function leaveHiddenStar(): Promise<void> {
   if (starEnabled.get() || !isStar(selected)) return;
-  const keyed = threadStore.get().threads.map((thread) => ({ id: scopedKey(thread.environmentId, thread.id), shelf: thread.shelf, thread }));
+  const keyed = threadStore.get().threads.map((thread) => ({
+    id: scopedKey(thread.environmentId, thread.id),
+    shelf: thread.shelf,
+    thread,
+  }));
   const next = nextAfterParking(keyed, "", new Set());
   const thread = keyed.find((each) => each.id === next)?.thread;
   if (thread !== undefined) return selectThread(thread.environmentId, thread.id);
@@ -261,7 +293,9 @@ export function showSettings(): Promise<void> {
   return enqueue(async () => {
     const groups = await getService(IEditorGroupsService);
     const instantiation = await getService(IInstantiationService);
-    const holding = groups.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).find((group) => group.editors.some(isSettingsTab));
+    const holding = groups
+      .getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE)
+      .find((group) => group.editors.some(isSettingsTab));
     const group = holding ?? groups.activeGroup;
     const page = group.editors.find(isSettingsTab) ?? instantiation.createInstance(SettingsInput);
     await group.openEditor(page, { pinned: true });
@@ -296,7 +330,8 @@ export function selectDraft(environmentId: string, projectId: string): Promise<v
 function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<void> {
   return enqueue(async () => {
     const draft = selectedDraft();
-    if (draft?.projectId !== promoted.projectId || draft.environmentId !== promoted.environmentId) return;
+    if (draft?.projectId !== promoted.projectId || draft.environmentId !== promoted.environmentId)
+      return;
     const groups = await getService(IEditorGroupsService);
     const storage = await getService(IStorageService);
     const instantiation = await getService(IInstantiationService);
@@ -306,10 +341,24 @@ function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<
       for (const group of groups.getGroups(GroupsOrder.GRID_APPEARANCE)) {
         const tab = group.editors.find((editor) => editor instanceof DraftInput);
         if (tab === undefined) continue;
-        await group.replaceEditors([{ editor: tab, replacement: instantiation.createInstance(ThreadInput, next.environmentId, next.threadId) }]);
+        await group.replaceEditors([
+          {
+            editor: tab,
+            replacement: instantiation.createInstance(
+              ThreadInput,
+              next.environmentId,
+              next.threadId,
+            ),
+          },
+        ]);
       }
       selected = next;
-      storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+      storage.store(
+        STORAGE_KEY,
+        JSON.stringify(next),
+        StorageScope.WORKSPACE,
+        StorageTarget.MACHINE,
+      );
     } finally {
       switching = false;
     }
@@ -441,10 +490,17 @@ export async function restoreThreadSelection(): Promise<void> {
   if (typeof parsed === "object" && parsed !== null) selected = parsed as Selection;
   storage.remove(RETIRED_BEFORE_SETTINGS_KEY, StorageScope.WORKSPACE);
   const groups = await getService(IEditorGroupsService);
-  for (const set of groups.getWorkingSets()) if (set.name === RETIRED_SETTINGS_WORKING_SET) groups.deleteWorkingSet(set);
+  for (const set of groups.getWorkingSets())
+    if (set.name === RETIRED_SETTINGS_WORKING_SET) groups.deleteWorkingSet(set);
   const editors = await getService(IEditorService);
-  const files: unknown = JSON.parse(storage.get(EXPLORER_FILES_KEY, StorageScope.WORKSPACE) ?? "[]");
-  if (Array.isArray(files)) explorerFiles = { files: files.filter((file) => typeof file === "string").map((file) => URI.parse(file)), active: undefined };
+  const files: unknown = JSON.parse(
+    storage.get(EXPLORER_FILES_KEY, StorageScope.WORKSPACE) ?? "[]",
+  );
+  if (Array.isArray(files))
+    explorerFiles = {
+      files: files.filter((file) => typeof file === "string").map((file) => URI.parse(file)),
+      active: undefined,
+    };
   editors.onDidEditorsChange(() => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
     recordExplorerFiles(editors, storage);
@@ -490,7 +546,8 @@ export function registerSelectThreadCommand(): void {
       }
 
       async run(accessor: ServicesAccessor, first?: unknown, second?: unknown): Promise<void> {
-        if (typeof first === "string" && typeof second === "string") return selectThread(first, second);
+        if (typeof first === "string" && typeof second === "string")
+          return selectThread(first, second);
         if (typeof first === "string") {
           const environmentId = threadStore.environmentOfThread(first);
           if (environmentId === undefined) throw new Error(`Pult knows no thread ${first}.`);
@@ -508,7 +565,11 @@ export function registerSelectThreadCommand(): void {
                 {
                   thread,
                   label: thread.title,
-                  description: [thread.projectName, threadStore.distinguishing(thread.environmentId), SHELF_LABELS[thread.shelf]]
+                  description: [
+                    thread.projectName,
+                    threadStore.distinguishing(thread.environmentId),
+                    SHELF_LABELS[thread.shelf],
+                  ]
                     .filter((part) => part !== undefined)
                     .join(" · "),
                 },
@@ -517,7 +578,10 @@ export function registerSelectThreadCommand(): void {
         const picked = await quickInput.pick(items, {
           placeHolder: "Open a thread",
           matchOnDescription: true,
-          activeItem: items.find(({ thread }) => thread.id === current?.threadId && thread.environmentId === current.environmentId),
+          activeItem: items.find(
+            ({ thread }) =>
+              thread.id === current?.threadId && thread.environmentId === current.environmentId,
+          ),
         });
         if (picked !== undefined) await selectThread(picked.thread.environmentId, picked.thread.id);
       }
@@ -553,7 +617,9 @@ export function registerSelectThreadCommand(): void {
       }
 
       run(_accessor: ServicesAccessor, resource?: unknown): Promise<void> {
-        return typeof resource === "string" ? showExplorerFile(URI.parse(resource)) : selectExplorer();
+        return typeof resource === "string"
+          ? showExplorerFile(URI.parse(resource))
+          : selectExplorer();
       }
     },
   );
@@ -586,7 +652,10 @@ export function registerSelectThreadCommand(): void {
           // In the thread tab's title, left of Split Editor, while a subagent's thread tab is the active one.
           menu: {
             id: MenuId.EditorTitle,
-            when: ContextKeyExpr.and(SubagentSelectedContext, ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane")),
+            when: ContextKeyExpr.and(
+              SubagentSelectedContext,
+              ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane"),
+            ),
             group: "navigation",
             order: -100,
           },
@@ -607,7 +676,10 @@ export function registerSelectThreadCommand(): void {
           title: { value: "Show Settings", original: "Show Settings" },
           category: { value: "Pult", original: "Pult" },
           f1: true,
-          keybinding: { primary: KeyMod.CtrlCmd | KeyCode.Comma, weight: KeybindingWeight.WorkbenchContrib + 1 },
+          keybinding: {
+            primary: KeyMod.CtrlCmd | KeyCode.Comma,
+            weight: KeybindingWeight.WorkbenchContrib + 1,
+          },
         });
       }
 
@@ -637,12 +709,16 @@ function registerNewThreadCommand(): void {
           title: { value: "New Thread", original: "New Thread" },
           category: { value: "Pult", original: "Pult" },
           f1: true,
-          keybinding: { primary: KeyMod.CtrlCmd | KeyCode.KeyN, weight: KeybindingWeight.WorkbenchContrib + 1 },
+          keybinding: {
+            primary: KeyMod.CtrlCmd | KeyCode.KeyN,
+            weight: KeybindingWeight.WorkbenchContrib + 1,
+          },
         });
       }
 
       async run(accessor: ServicesAccessor, first?: unknown, second?: unknown): Promise<void> {
-        if (typeof first === "string" && typeof second === "string") return selectDraft(first, second);
+        if (typeof first === "string" && typeof second === "string")
+          return selectDraft(first, second);
         // Services are read before any await; the accessor is only valid synchronously.
         const quickInput = accessor.get(IQuickInputService);
         const notifications = accessor.get(INotificationService);
@@ -652,17 +728,26 @@ function registerNewThreadCommand(): void {
           if (project === undefined) throw new Error(`Pult knows no project ${first}.`);
           return selectDraft(project.environmentId, project.id);
         }
-        if (environments.length === 0) return notifications.info("Pult is not connected to an environment.");
+        if (environments.length === 0)
+          return notifications.info("Pult is not connected to an environment.");
         const selection = selectedThread();
         const thread = selection && threadStore.thread(selection.environmentId, selection.threadId);
-        const current = selectedDraft() ?? (thread && { environmentId: thread.environmentId, projectId: thread.projectId });
+        const current =
+          selectedDraft() ??
+          (thread && { environmentId: thread.environmentId, projectId: thread.projectId });
         const isCurrent = (project: ShellProject) =>
-          Number(project.id === current?.projectId && project.environmentId === current.environmentId);
+          Number(
+            project.id === current?.projectId && project.environmentId === current.environmentId,
+          );
         // A Star's project is no project of the user's (`src/stars/`).
         const sorted = projects
           .filter((project) => !isStarRoot(project.root))
-          .toSorted((left, right) => isCurrent(right) - isCurrent(left) || left.name.localeCompare(right.name));
-        if (sorted.length === 0) return notifications.info("No connected environment has projects.");
+          .toSorted(
+            (left, right) =>
+              isCurrent(right) - isCurrent(left) || left.name.localeCompare(right.name),
+          );
+        if (sorted.length === 0)
+          return notifications.info("No connected environment has projects.");
         const chosen =
           sorted.length === 1
             ? sorted[0]
@@ -671,7 +756,10 @@ function registerNewThreadCommand(): void {
                   sorted.map((project) => ({
                     project,
                     label: project.name,
-                    description: [threadStore.distinguishing(project.environmentId), project.root ?? undefined]
+                    description: [
+                      threadStore.distinguishing(project.environmentId),
+                      project.root ?? undefined,
+                    ]
                       .filter((part) => part !== undefined)
                       .join(" · "),
                   })),

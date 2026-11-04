@@ -6,10 +6,12 @@ export const SETTLED_TAIL_INITIAL_COUNT = 10;
 export const SETTLED_TAIL_PAGE_COUNT = 25;
 
 /** A thread's identity across environments (`scopedKey`), which the selection and the panel's maps go by. */
-export const keyOf = (thread: Pick<ShellThread, "environmentId" | "id">) => scopedKey(thread.environmentId, thread.id);
+export const keyOf = (thread: Pick<ShellThread, "environmentId" | "id">) =>
+  scopedKey(thread.environmentId, thread.id);
 
 /** A draft card's key, beside the threads' in the selection's snapshot. */
-export const draftKey = (draft: Pick<ProjectDraft, "environmentId" | "projectId">) => `draft:${scopedKey(draft.environmentId, draft.projectId)}`;
+export const draftKey = (draft: Pick<ProjectDraft, "environmentId" | "projectId">) =>
+  `draft:${scopedKey(draft.environmentId, draft.projectId)}`;
 
 export const environmentKey = (environmentId: string) => `environment:${environmentId}`;
 
@@ -32,20 +34,37 @@ export type ExplorerEntry<File extends FileRef> =
   | { readonly kind: "file"; readonly key: string; readonly file: File; readonly nested: boolean };
 
 /** The Explorer shelf's rows: each environment's, its open files under it, then the files of no held environment. */
-export function explorerEntries<File extends FileRef>(environmentIds: ReadonlyArray<string>, files: ReadonlyArray<File>): ExplorerEntry<File>[] {
-  const ofEnvironment = (file: File, environmentId: string) => file.scheme === "pult" && file.authority.toLowerCase() === environmentId.toLowerCase();
-  const fileEntry = (file: File, nested: boolean): ExplorerEntry<File> => ({ kind: "file", key: file.toString(), file, nested });
+export function explorerEntries<File extends FileRef>(
+  environmentIds: ReadonlyArray<string>,
+  files: ReadonlyArray<File>,
+): ExplorerEntry<File>[] {
+  const ofEnvironment = (file: File, environmentId: string) =>
+    file.scheme === "pult" && file.authority.toLowerCase() === environmentId.toLowerCase();
+  const fileEntry = (file: File, nested: boolean): ExplorerEntry<File> => ({
+    kind: "file",
+    key: file.toString(),
+    file,
+    nested,
+  });
   return [
     ...environmentIds.flatMap((environmentId) => [
       { kind: "environment" as const, key: environmentKey(environmentId), environmentId },
-      ...files.filter((file) => ofEnvironment(file, environmentId)).map((file) => fileEntry(file, true)),
+      ...files
+        .filter((file) => ofEnvironment(file, environmentId))
+        .map((file) => fileEntry(file, true)),
     ]),
-    ...files.filter((file) => !environmentIds.some((environmentId) => ofEnvironment(file, environmentId))).map((file) => fileEntry(file, false)),
+    ...files
+      .filter((file) => !environmentIds.some((environmentId) => ofEnvironment(file, environmentId)))
+      .map((file) => fileEntry(file, false)),
   ];
 }
 
 /** What a collapsible list shows: everything while `expanded`, else the selected item alone, if it is one of them. */
-export function shown<Item>(items: ReadonlyArray<Item>, expanded: boolean, isSelected: (item: Item) => boolean): ReadonlyArray<Item> {
+export function shown<Item>(
+  items: ReadonlyArray<Item>,
+  expanded: boolean,
+  isSelected: (item: Item) => boolean,
+): ReadonlyArray<Item> {
   if (expanded) return items;
   const selected = items.find(isSelected);
   return selected === undefined ? [] : [selected];
@@ -65,11 +84,23 @@ export function draftCards(
   const held = drafts.filter((draft) => environmentIds.has(draft.environmentId) && !isStars(draft));
   if (selected === undefined || !environmentIds.has(selected.environmentId)) return held;
   if (held.some((draft) => draftKey(draft) === draftKey(selected))) return held;
-  return [{ environmentId: selected.environmentId, projectId: selected.projectId, preview: "", createdAt: "" }, ...held];
+  return [
+    {
+      environmentId: selected.environmentId,
+      projectId: selected.projectId,
+      preview: "",
+      createdAt: "",
+    },
+    ...held,
+  ];
 }
 
 /** The settled shelf's tail: its first `count` threads, and the `selection`'s even when it lies beyond. */
-export function settledTail<Thread extends ThreadRef>(threads: ReadonlyArray<Thread>, count: number, selection: string | undefined): Thread[] {
+export function settledTail<Thread extends ThreadRef>(
+  threads: ReadonlyArray<Thread>,
+  count: number,
+  selection: string | undefined,
+): Thread[] {
   const visible = threads.slice(0, count);
   const beyond = threads.slice(count).find((thread) => keyOf(thread) === selection);
   if (beyond !== undefined) visible.push(beyond);
@@ -116,21 +147,40 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * its selected row alone, a hidden Settled shelf none. The Limits shelf's
  * rows, last, are none: they select nothing.
  */
-export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(panel: PanelRows<File, Thread>): JumpTarget<File, Thread>[] {
+export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
+  panel: PanelRows<File, Thread>,
+): JumpTarget<File, Thread>[] {
   const isHighlighted = (entry: ExplorerEntry<File>) => entry.key === panel.explorer.highlighted;
-  const stars = panel.stars.map((starId): JumpTarget<File, Thread> => ({ kind: "star", key: starKey(starId), starId }));
+  const stars = panel.stars.map((starId): JumpTarget<File, Thread> => ({
+    kind: "star",
+    key: starKey(starId),
+    starId,
+  }));
   const files = [
     ...stars,
-    ...shown(explorerEntries(panel.environmentIds, panel.explorer.files), panel.explorer.expanded, isHighlighted).flatMap(
-      (entry): JumpTarget<File, Thread>[] => (entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : []),
+    ...shown(
+      explorerEntries(panel.environmentIds, panel.explorer.files),
+      panel.explorer.expanded,
+      isHighlighted,
+    ).flatMap((entry): JumpTarget<File, Thread>[] =>
+      entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : [],
     ),
   ];
   if (panel.environmentIds.length === 0) return files;
-  const on = (...shelves: ReadonlyArray<ShelfName>) => panel.threads.filter((thread) => thread.shelf !== null && shelves.includes(thread.shelf));
-  const threadTarget = (thread: Thread): JumpTarget<File, Thread> => ({ kind: "thread", key: keyOf(thread), thread });
+  const on = (...shelves: ReadonlyArray<ShelfName>) =>
+    panel.threads.filter((thread) => thread.shelf !== null && shelves.includes(thread.shelf));
+  const threadTarget = (thread: Thread): JumpTarget<File, Thread> => ({
+    kind: "thread",
+    key: keyOf(thread),
+    thread,
+  });
   const isSelected = (target: JumpTarget<File, Thread>) => target.key === panel.selection;
   const ready: JumpTarget<File, Thread>[] = [
-    ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({ kind: "draft", key: draftKey(draft), draft })),
+    ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
+      kind: "draft",
+      key: draftKey(draft),
+      draft,
+    })),
     ...on("pinned", "active").map(threadTarget),
   ];
   return [
@@ -139,7 +189,11 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(pane
     ...shown(on("working").map(threadTarget), panel.expanded.working, isSelected),
     ...shown(on("snoozed").map(threadTarget), panel.expanded.snoozed, isSelected),
     ...(panel.settledShown
-      ? shown(settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget), panel.expanded.settled, isSelected)
+      ? shown(
+          settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
+          panel.expanded.settled,
+          isSelected,
+        )
       : []),
   ];
 }

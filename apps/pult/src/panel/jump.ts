@@ -1,7 +1,10 @@
 import { getService, ILifecycleService } from "@codingame/monaco-vscode-api";
 import { isMacintosh } from "@codingame/monaco-vscode-api/vscode/vs/base/common/platform";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 
 import { starStore } from "../stars/model.ts";
@@ -22,7 +25,15 @@ import { isSubagent, scopedKey, threadStore } from "../threads/store.ts";
 import { storedExpanded } from "./collapsible.tsx";
 import { isStarDraft, projectDrafts } from "./drafts.ts";
 import { exploredEnvironment } from "./explorer.ts";
-import { draftCards, draftKey, environmentKey, jumpTargets, type JumpTarget, SETTLED_TAIL_INITIAL_COUNT, starKey } from "./order.ts";
+import {
+  draftCards,
+  draftKey,
+  environmentKey,
+  jumpTargets,
+  type JumpTarget,
+  SETTLED_TAIL_INITIAL_COUNT,
+  starKey,
+} from "./order.ts";
 import { settledShelf } from "./settings.ts";
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft's (`draftKey`), a Star's (`starKey`), `explorer` for the Explorer workspace, or nothing. */
@@ -40,7 +51,8 @@ export function selectionSnapshot(): string | undefined {
 function selectedCardKey(): string | undefined {
   const selection = selectedThread();
   const thread = selection && threadStore.thread(selection.environmentId, selection.threadId);
-  if (thread !== undefined && isSubagent(thread)) return scopedKey(thread.environmentId, thread.rootId);
+  if (thread !== undefined && isSubagent(thread))
+    return scopedKey(thread.environmentId, thread.rootId);
   return selectionSnapshot();
 }
 
@@ -48,7 +60,8 @@ function selectedCardKey(): string | undefined {
 export function explorerHighlight(): string | undefined {
   if (!explorerSelected()) return undefined;
   const { files, active } = openExplorerFiles.get();
-  const activeFile = active !== undefined ? files.find((file) => file.toString() === active.toString()) : undefined;
+  const activeFile =
+    active !== undefined ? files.find((file) => file.toString() === active.toString()) : undefined;
   const explored = exploredEnvironment.get();
   return activeFile?.toString() ?? (explored !== undefined ? environmentKey(explored) : undefined);
 }
@@ -76,7 +89,11 @@ function currentTargets(): JumpTarget<URI>[] {
   return jumpTargets({
     stars: starEnabled.get() ? starStore.get().map((star) => star.id) : [],
     environmentIds,
-    explorer: { files: openExplorerFiles.get().files, highlighted: explorerHighlight(), expanded: storedExpanded(EXPANDED_KEYS.explorer, true) },
+    explorer: {
+      files: openExplorerFiles.get().files,
+      highlighted: explorerHighlight(),
+      expanded: storedExpanded(EXPANDED_KEYS.explorer, true),
+    },
     drafts: draftCards(projectDrafts.get(), selectedDraft(), new Set(environmentIds), isStarDraft),
     threads,
     selection: selectedCardKey(),
@@ -95,7 +112,9 @@ const JUMPS = 9;
 const jumpCommand = (index: number) => `pult-shell.jump.${index + 1}`;
 /** The jump modifier: Cmd on the Mac, Ctrl elsewhere, as upstream's `mod`. */
 const isJumpModifier = (event: KeyboardEvent) =>
-  (isMacintosh ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey && !event.shiftKey;
+  (isMacintosh ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) &&
+  !event.altKey &&
+  !event.shiftKey;
 const jumpLabel = (index: number) => `${isMacintosh ? "⌘" : "Ctrl+"}${index + 1}`;
 
 /** How long the jump modifier is held alone before the hints show, as upstream's. */
@@ -156,7 +175,10 @@ function followJumpKeys(): void {
   };
   const onKey = (event: KeyboardEvent) => {
     hold(window.pultDesktop !== undefined && isJumpModifier(event));
-    const digit = event.type === "keydown" && isJumpModifier(event) ? /^Digit([1-9])$/.exec(event.code)?.[1] : undefined;
+    const digit =
+      event.type === "keydown" && isJumpModifier(event)
+        ? /^Digit([1-9])$/.exec(event.code)?.[1]
+        : undefined;
     if (digit === undefined) return;
     event.preventDefault();
     event.stopPropagation();
@@ -204,7 +226,10 @@ export function registerJumps(): void {
         constructor() {
           super({
             id: jumpCommand(index),
-            title: { value: `Jump to Panel Row ${index + 1}`, original: `Jump to Panel Row ${index + 1}` },
+            title: {
+              value: `Jump to Panel Row ${index + 1}`,
+              original: `Jump to Panel Row ${index + 1}`,
+            },
             category: { value: "Pult", original: "Pult" },
           });
         }

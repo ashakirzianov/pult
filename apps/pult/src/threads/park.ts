@@ -7,8 +7,16 @@ import {
   IQuickInputService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
-import { type IAction, Separator, SubmenuAction, toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  type IAction,
+  Separator,
+  SubmenuAction,
+  toAction,
+} from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import type { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
@@ -66,11 +74,15 @@ function run<A, E>(
   target: ThreadRef,
   effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor | Crypto.Crypto>,
 ): Promise<A> {
-  return connection.run(target.environmentId, effect.pipe(Effect.provideService(Crypto.Crypto, webCrypto)));
+  return connection.run(
+    target.environmentId,
+    effect.pipe(Effect.provideService(Crypto.Crypto, webCrypto)),
+  );
 }
 
 function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "message" in error) return String(error.message);
+  if (typeof error === "object" && error !== null && "message" in error)
+    return String(error.message);
   return String(error);
 }
 
@@ -88,7 +100,11 @@ function thread(target: ThreadRef): ShellThread | undefined {
  * out: false when it failed, which a notification says, or the user cancelled
  * it, the action resolving to false.
  */
-async function act(target: ThreadRef, feature: keyof ThreadFeatures, action: (command: Command) => Promise<unknown>): Promise<boolean> {
+async function act(
+  target: ThreadRef,
+  feature: keyof ThreadFeatures,
+  action: (command: Command) => Promise<unknown>,
+): Promise<boolean> {
   const notifications = await getService(INotificationService);
   if (thread(target) === undefined) {
     notifications.info("Pult: select a thread first.");
@@ -128,7 +144,9 @@ async function customWake(): Promise<string | undefined> {
  */
 function newThreadIn(environmentId: string, projectId: string): void {
   void getService(ICommandService).then((commands) =>
-    commands.executeCommand("pult-shell.newThread", environmentId, projectId).catch(() => undefined),
+    commands
+      .executeCommand("pult-shell.newThread", environmentId, projectId)
+      .catch(() => undefined),
   );
 }
 
@@ -142,7 +160,11 @@ const isSelected = (target: ThreadRef) => {
  * the environments, skipping threads being parked; null for none.
  */
 function nextCard(parked: ThreadRef): ShellThread | null {
-  const keyed = threadStore.get().threads.map((each) => ({ id: scopedKey(each.environmentId, each.id), shelf: each.shelf, thread: each }));
+  const keyed = threadStore.get().threads.map((each) => ({
+    id: scopedKey(each.environmentId, each.id),
+    shelf: each.shelf,
+    thread: each,
+  }));
   const next = nextAfterParking(keyed, scopedKey(parked.environmentId, parked.id), parking);
   return keyed.find((each) => each.id === next)?.thread ?? null;
 }
@@ -164,7 +186,9 @@ async function park(target: ThreadRef, wake?: string): Promise<void> {
   try {
     done =
       wake === undefined
-        ? await act(target, "settlement", (command) => run(target, Operations.settleThread(command)))
+        ? await act(target, "settlement", (command) =>
+            run(target, Operations.settleThread(command)),
+          )
         : await act(target, "snooze", async (command) => {
             const snoozedUntil = wake === CUSTOM_WAKE ? await customWake() : wake;
             if (snoozedUntil === undefined) return false;
@@ -185,12 +209,17 @@ export const settleThread = (target: ThreadRef) => park(target);
  * falling asleep (`src/stars/conversations.ts`). Settling a settled thread
  * keeps its settlement.
  */
-export const settleQuietly = (target: ThreadRef) => run(target, Operations.settleThread({ threadId: ThreadId.make(target.id) }));
+export const settleQuietly = (target: ThreadRef) =>
+  run(target, Operations.settleThread({ threadId: ThreadId.make(target.id) }));
 export const snoozeThread = (target: ThreadRef, wake: string) => park(target, wake);
 export const unsettleThread = (target: ThreadRef) =>
-  void act(target, "settlement", (command) => run(target, Operations.unsettleThread({ ...command, reason: "user" })));
+  void act(target, "settlement", (command) =>
+    run(target, Operations.unsettleThread({ ...command, reason: "user" })),
+  );
 export const wakeThread = (target: ThreadRef) =>
-  void act(target, "snooze", (command) => run(target, Operations.unsnoozeThread({ ...command, reason: "user" })));
+  void act(target, "snooze", (command) =>
+    run(target, Operations.unsnoozeThread({ ...command, reason: "user" })),
+  );
 export const pinThread = (target: ThreadRef) =>
   void act(target, "pinning", (command) => run(target, Operations.pinThread(command)));
 export const unpinThread = (target: ThreadRef) =>
@@ -218,7 +247,14 @@ async function copyThreadLink(target: ThreadRef): Promise<void> {
 export function threadParkActions(target: ShellThread): ParkActions {
   const features = threadStore.environment(target.environmentId)?.features ?? NO_THREAD_FEATURES;
   if (target.parentId === null && isStarRoot(target.projectRoot)) {
-    return { settle: features.settlement && !target.settled, unsettle: false, snooze: false, wake: false, pin: false, unpin: false };
+    return {
+      settle: features.settlement && !target.settled,
+      unsettle: false,
+      snooze: false,
+      wake: false,
+      pin: false,
+      unpin: false,
+    };
   }
   return parkActions(target, features);
 }
@@ -234,16 +270,28 @@ function snoozeActions(target: ThreadRef): IAction[] {
       }),
     ),
     new Separator(),
-    toAction({ id: "pult-shell.snooze.custom", label: "Custom…", run: () => snoozeThread(target, CUSTOM_WAKE) }),
+    toAction({
+      id: "pult-shell.snooze.custom",
+      label: "Custom…",
+      run: () => snoozeThread(target, CUSTOM_WAKE),
+    }),
   ];
 }
 
 type Anchor = HTMLElement | { x: number; y: number };
 
 /** The card's clock: the snooze presets under it. `onHide` once the menu closes. */
-export async function showSnoozeMenu(target: ThreadRef, anchor: HTMLElement, onHide: () => void): Promise<void> {
+export async function showSnoozeMenu(
+  target: ThreadRef,
+  anchor: HTMLElement,
+  onHide: () => void,
+): Promise<void> {
   const menus = await getService(IContextMenuService);
-  menus.showContextMenu({ getAnchor: () => anchor, getActions: () => snoozeActions(target), onHide });
+  menus.showContextMenu({
+    getAnchor: () => anchor,
+    getActions: () => snoozeActions(target),
+    onHide,
+  });
 }
 
 /**
@@ -254,16 +302,24 @@ export async function showSnoozeMenu(target: ThreadRef, anchor: HTMLElement, onH
 export async function showThreadMenu(target: ShellThread, anchor: Anchor): Promise<void> {
   const menus = await getService(IContextMenuService);
   const offered = threadParkActions(target);
-  const action = (id: string, label: string, run: () => unknown) => toAction({ id: `pult-shell.${id}`, label, run });
+  const action = (id: string, label: string, run: () => unknown) =>
+    toAction({ id: `pult-shell.${id}`, label, run });
   const actions = [
     offered.pin ? action("pinThread", "Pin Thread", () => pinThread(target)) : null,
     offered.unpin ? action("unpinThread", "Unpin Thread", () => unpinThread(target)) : null,
     offered.settle ? action("settleThread", "Settle Thread", () => settleThread(target)) : null,
-    offered.unsettle ? action("unsettleThread", "Un-settle Thread", () => unsettleThread(target)) : null,
+    offered.unsettle
+      ? action("unsettleThread", "Un-settle Thread", () => unsettleThread(target))
+      : null,
     offered.snooze
       ? target.canSnooze
         ? new SubmenuAction("pult-shell.snoozeThread", "Snooze", snoozeActions(target))
-        : toAction({ id: "pult-shell.snoozeThread", label: "Snooze", enabled: false, run: () => undefined })
+        : toAction({
+            id: "pult-shell.snoozeThread",
+            label: "Snooze",
+            enabled: false,
+            run: () => undefined,
+          })
       : null,
     offered.wake ? action("wakeThread", "Wake Thread", () => wakeThread(target)) : null,
   ].filter((each) => each !== null);
@@ -273,7 +329,9 @@ export async function showThreadMenu(target: ShellThread, anchor: Anchor): Promi
       ...actions,
       ...(actions.length > 0 ? [new Separator()] : []),
       action("copyThreadLink", "Copy Thread Link", () => copyThreadLink(target)),
-      action("newThreadInProject", "New Thread in Project", () => newThreadIn(target.environmentId, target.projectId)),
+      action("newThreadInProject", "New Thread in Project", () =>
+        newThreadIn(target.environmentId, target.projectId),
+      ),
     ],
   });
 }
@@ -303,7 +361,9 @@ export function registerParkCommands(): void {
   // The selected thread, or the selected Star's conversation, which Settle Thread puts to sleep: the selection stays on the Star.
   const selected = () => {
     const selection = selectionTarget();
-    return selection === undefined || !("threadId" in selection) ? undefined : threadStore.thread(selection.environmentId, selection.threadId);
+    return selection === undefined || !("threadId" in selection)
+      ? undefined
+      : threadStore.thread(selection.environmentId, selection.threadId);
   };
   const command = (
     precondition: RawContextKey<boolean>,
@@ -329,32 +389,57 @@ export function registerParkCommands(): void {
         }
       },
     );
-  command(CONTEXT_KEYS.settle, "pult-shell.settleThread", "Settle Thread", (target) => settleThread(target));
-  command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) => unsettleThread(target));
-  command(CONTEXT_KEYS.snooze, "pult-shell.snoozeThread", "Snooze Thread…", async (target, accessor) => {
-    const quickInput = accessor.get(IQuickInputService);
-    const picked = await quickInput.pick(
-      [
-        ...resolveSnoozePresets(new Date()).map((preset) => ({ label: preset.label, description: preset.whenLabel, wake: preset.snoozedUntil })),
-        { label: "Custom…", wake: CUSTOM_WAKE },
-      ],
-      { placeHolder: "Snooze until" },
-    );
-    if (picked !== undefined) await snoozeThread(target, picked.wake);
-  });
-  command(CONTEXT_KEYS.wake, "pult-shell.wakeThread", "Wake Thread", (target) => wakeThread(target));
+  command(CONTEXT_KEYS.settle, "pult-shell.settleThread", "Settle Thread", (target) =>
+    settleThread(target),
+  );
+  command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) =>
+    unsettleThread(target),
+  );
+  command(
+    CONTEXT_KEYS.snooze,
+    "pult-shell.snoozeThread",
+    "Snooze Thread…",
+    async (target, accessor) => {
+      const quickInput = accessor.get(IQuickInputService);
+      const picked = await quickInput.pick(
+        [
+          ...resolveSnoozePresets(new Date()).map((preset) => ({
+            label: preset.label,
+            description: preset.whenLabel,
+            wake: preset.snoozedUntil,
+          })),
+          { label: "Custom…", wake: CUSTOM_WAKE },
+        ],
+        { placeHolder: "Snooze until" },
+      );
+      if (picked !== undefined) await snoozeThread(target, picked.wake);
+    },
+  );
+  command(CONTEXT_KEYS.wake, "pult-shell.wakeThread", "Wake Thread", (target) =>
+    wakeThread(target),
+  );
   command(CONTEXT_KEYS.pin, "pult-shell.pinThread", "Pin Thread", (target) => pinThread(target));
-  command(CONTEXT_KEYS.unpin, "pult-shell.unpinThread", "Unpin Thread", (target) => unpinThread(target));
-  command(ThreadSelectedContext, "pult-shell.copyThreadLink", "Copy Thread Link", (target) => copyThreadLink(target));
+  command(CONTEXT_KEYS.unpin, "pult-shell.unpinThread", "Unpin Thread", (target) =>
+    unpinThread(target),
+  );
+  command(ThreadSelectedContext, "pult-shell.copyThreadLink", "Copy Thread Link", (target) =>
+    copyThreadLink(target),
+  );
 
   void getService(IContextKeyService).then((contextKeys) => {
-    const keys = Object.entries(CONTEXT_KEYS).map(([action, key]) => [action as keyof ParkActions, key.bindTo(contextKeys)] as const);
+    const keys = Object.entries(CONTEXT_KEYS).map(
+      ([action, key]) => [action as keyof ParkActions, key.bindTo(contextKeys)] as const,
+    );
     const known = ThreadSelectedContext.bindTo(contextKeys);
     const update = () => {
       const target = selected();
       known.set(target !== undefined);
       for (const [action, key] of keys) {
-        key.set(target !== undefined && threadParkActions(target)[action] && (action !== "snooze" || target.canSnooze));
+        key.set(
+          target !== undefined &&
+            threadParkActions(target)[action] &&
+            (action !== "snooze" || target.canSnooze),
+        );
       }
     };
     threadStore.subscribe(update);

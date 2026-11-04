@@ -20,11 +20,15 @@ import { turnCheckpoints } from "./turnCheckpoints.ts";
 export function routeRightPanel(): void {
   const { open, openProactive } = useRightPanelStore.getState();
   useRightPanelStore.setState({
-    openFile: (ref, path, line) => threadViewHost().openFile(ref.environmentId, ref.threadId, path, line ?? null),
+    openFile: (ref, path, line) =>
+      threadViewHost().openFile(ref.environmentId, ref.threadId, path, line ?? null),
     open: (ref, kind) => {
       if (kind !== "diff") return open(ref, kind);
       // The view selects the turn and its file in the diff store before opening the surface.
-      const selection = selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, ref);
+      const selection = selectThreadDiffPanelSelection(
+        useDiffPanelStore.getState().byThreadKey,
+        ref,
+      );
       threadViewHost().openChanges(
         ref.environmentId,
         ref.threadId,
@@ -41,7 +45,9 @@ export function routeRightPanel(): void {
 
 /** The thread's details panel closed, whatever the store remembers of it. */
 export function closeThreadPanel(environmentId: string, threadId: string): void {
-  const key = scopedThreadKey(scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(threadId)));
+  const key = scopedThreadKey(
+    scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(threadId)),
+  );
   useRightPanelStore.setState((state) => ({
     threadPanelVisibilityByThreadKey: {
       ...state.threadPanelVisibilityByThreadKey,

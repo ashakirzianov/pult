@@ -26,7 +26,11 @@ await build();
 const server = (await answers(pageUrl)) ? undefined : startDevServer();
 if (server !== undefined) await ready(pageUrl, server);
 
-const electron = NodeChildProcess.spawn(electronPath, ["."], { cwd: desktopDir, env, stdio: "inherit" });
+const electron = NodeChildProcess.spawn(electronPath, ["."], {
+  cwd: desktopDir,
+  env,
+  stdio: "inherit",
+});
 // Ctrl+C stops the tree and is a clean exit, not a failure for pnpm to report.
 let interrupted = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -48,12 +52,21 @@ electron.on("exit", (code, signal) => {
  */
 function startDevServer(): NodeChildProcess.ChildProcess {
   if (pageUrl.protocol !== "http:") {
-    throw new Error(`Nothing answers at ${pageUrl.href}, and only a loopback http:// page is served from here.`);
+    throw new Error(
+      `Nothing answers at ${pageUrl.href}, and only a loopback http:// page is served from here.`,
+    );
   }
   const port = pageUrl.port === "" ? "80" : pageUrl.port;
-  console.info(`[pult-desktop] nothing answers at ${pageUrl.href}; starting the dev server on port ${port}.`);
+  console.info(
+    `[pult-desktop] nothing answers at ${pageUrl.href}; starting the dev server on port ${port}.`,
+  );
   const vp = NodePath.join(repoRoot, "node_modules/.bin/vp");
-  return NodeChildProcess.spawn(vp, ["dev", "--port", port], { cwd: repoRoot, env, stdio: "inherit", detached: true });
+  return NodeChildProcess.spawn(vp, ["dev", "--port", port], {
+    cwd: repoRoot,
+    env,
+    stdio: "inherit",
+    detached: true,
+  });
 }
 
 function stop(server: NodeChildProcess.ChildProcess | undefined): void {
@@ -79,10 +92,13 @@ async function answers(url: URL): Promise<boolean> {
 async function ready(url: URL, server: NodeChildProcess.ChildProcess): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (server.exitCode !== null) throw new Error(`The dev server exited with code ${server.exitCode} before it answered.`);
+    if (server.exitCode !== null)
+      throw new Error(`The dev server exited with code ${server.exitCode} before it answered.`);
     if (await answers(url)) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   stop(server);
-  throw new Error(`The dev server did not answer at ${url.href} within ${READY_TIMEOUT_MS / 1000} s.`);
+  throw new Error(
+    `The dev server did not answer at ${url.href} within ${READY_TIMEOUT_MS / 1000} s.`,
+  );
 }

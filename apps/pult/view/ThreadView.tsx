@@ -20,7 +20,10 @@ import { BackgroundThreadContext } from "../t3/src/components/chat/backgroundThr
 import { ComposerControlsSlot } from "../t3/src/components/chat/ComposerFooterControls";
 import { ConfirmDialogHost } from "../t3/src/components/ConfirmDialogHost";
 import { CustomSnoozeDialogHost } from "../t3/src/components/CustomSnoozeDialog";
-import { ShellComposerOptions, type ShellValue } from "../t3/src/components/chat/ShellComposerOptions";
+import {
+  ShellComposerOptions,
+  type ShellValue,
+} from "../t3/src/components/chat/ShellComposerOptions";
 import { TimelineHeaderSlot } from "../t3/src/components/chat/TimelineHeaderSlot";
 import { SidebarProvider } from "../t3/src/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../t3/src/components/ui/toast";
@@ -40,8 +43,14 @@ type ViewTarget =
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
 /** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
-export function isPromotion(draft: Extract<ViewTarget, { kind: "draft" }>, environmentId: string, threadId: string): boolean {
-  const draftId = localStorage.getItem(draftKey(draft.environmentId, draft.projectId)) as DraftId | null;
+export function isPromotion(
+  draft: Extract<ViewTarget, { kind: "draft" }>,
+  environmentId: string,
+  threadId: string,
+): boolean {
+  const draftId = localStorage.getItem(
+    draftKey(draft.environmentId, draft.projectId),
+  ) as DraftId | null;
   if (draftId === null) return false;
   const store = useComposerDraftStore.getState();
   const session = store.getDraftSession(draftId);
@@ -68,7 +77,10 @@ function targetPath(target: ViewTarget): string {
  * One mounted view and its target, which a draft's promotion turns into the
  * thread it created, live for the components that render by it.
  */
-function makeMount(initial: ViewTarget, onPromoted: (environmentId: string, threadId: string) => void) {
+function makeMount(
+  initial: ViewTarget,
+  onPromoted: (environmentId: string, threadId: string) => void,
+) {
   let target = initial;
   const listeners = new Set<() => void>();
   if (target.kind === "thread") closeThreadPanel(target.environmentId, target.threadId);
@@ -108,7 +120,12 @@ function followNavigation(router: AnyRouter, mount: Mount) {
   const goHome = () => void router.navigate({ to: mount.home(), replace: true });
   if (shown?.kind === "server") {
     const { environmentId, threadId } = shown.threadRef;
-    if (target.kind === "thread" && threadId === target.threadId && environmentId === target.environmentId) return;
+    if (
+      target.kind === "thread" &&
+      threadId === target.threadId &&
+      environmentId === target.environmentId
+    )
+      return;
     if (target.kind === "draft" && isPromotion(target, environmentId, threadId)) {
       mount.promote(environmentId, threadId);
       return;
@@ -124,7 +141,8 @@ function followNavigation(router: AnyRouter, mount: Mount) {
       const own =
         target.kind === "draft" &&
         (localStorage.getItem(draftKey(target.environmentId, target.projectId)) === shown.draftId ||
-          (session.projectId === target.projectId && session.environmentId === target.environmentId));
+          (session.projectId === target.projectId &&
+            session.environmentId === target.environmentId));
       if (own) {
         localStorage.setItem(draftKey(target.environmentId, target.projectId), shown.draftId);
         // The draft's details panel stays closed too, keyed by the thread id the draft holds.
@@ -145,7 +163,6 @@ function followNavigation(router: AnyRouter, mount: Mount) {
   });
   goHome();
 }
-
 
 /**
  * Reports the activity the mounted thread's projection knows to the shell:
@@ -328,7 +345,10 @@ function mountView(
   bar.className = "pult-composer-bar";
   element.append(main, bar);
   const root = createRoot(main);
-  const composerOptions = { draftHero: options.draftHero ?? true, placeholder: options.placeholder ?? null };
+  const composerOptions = {
+    draftHero: options.draftHero ?? true,
+    placeholder: options.placeholder ?? null,
+  };
   root.render(
     <StrictMode>
       <AppAtomRegistryProvider>
@@ -382,7 +402,13 @@ export function mountDraftView(
   onPromoted: (environmentId: string, threadId: string) => void,
   options: MountOptions = {},
 ): MountedView {
-  return mountView(element, { kind: "draft", environmentId, projectId }, onPromoted, false, options);
+  return mountView(
+    element,
+    { kind: "draft", environmentId, projectId },
+    onPromoted,
+    false,
+    options,
+  );
 }
 
 /**
@@ -392,7 +418,11 @@ export function mountDraftView(
  * shortcuts and paste to the pane's. A draft's promotion is the pane's to
  * tell the shell.
  */
-export function mountComposerView(element: HTMLElement, target: ViewTarget, options: MountOptions = {}): MountedView {
+export function mountComposerView(
+  element: HTMLElement,
+  target: ViewTarget,
+  options: MountOptions = {},
+): MountedView {
   return mountView(element, target, () => {}, true, options);
 }
 

@@ -46,11 +46,17 @@ function ChangesCard() {
   if (card === undefined) return null;
   return (
     <ViewFilterCard
-      icon={<img className="pult-card-icon" src={projectIconUri(card.project).toString(true)} alt="" />}
+      icon={
+        <img className="pult-card-icon" src={projectIconUri(card.project).toString(true)} alt="" />
+      }
       top={`${card.project.name} / ${card.turn === null ? card.group : `Turn ${card.turn}`}`}
       title={card.threadTitle}
-      {...(card.branch === null || card.turn !== null ? {} : { detail: { codicon: "git-branch", text: card.branch } })}
-      tooltip={card.turn === null ? "Only this thread's checkout" : `Only turn ${card.turn}'s changes`}
+      {...(card.branch === null || card.turn !== null
+        ? {}
+        : { detail: { codicon: "git-branch", text: card.branch } })}
+      tooltip={
+        card.turn === null ? "Only this thread's checkout" : `Only turn ${card.turn}'s changes`
+      }
       clearTitle="Clear the filter: show every checkout's changes"
       onClear={() => runCommand("pult-shell.showAllChanges")}
     />

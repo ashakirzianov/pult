@@ -48,7 +48,8 @@ function segment(id: string): string {
 }
 
 /** The folder of a Star's home holding the transcripts of the conversations run on `environmentId`, relative to the home. */
-export const transcriptsFolder = (environmentId: string) => `${CONVERSATIONS_DIRECTORY}/${segment(environmentId)}`;
+export const transcriptsFolder = (environmentId: string) =>
+  `${CONVERSATIONS_DIRECTORY}/${segment(environmentId)}`;
 
 const STAMP = /^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d):(\d\d)/;
 
@@ -71,7 +72,10 @@ export function transcriptStart(name: string): string | undefined {
 /** Whether a file of a transcripts' folder is a transcript, by its name. */
 export const isTranscriptName = (name: string) => transcriptStart(name) !== undefined;
 
-export type TranscriptInput = Pick<OrchestrationV2ThreadProjection, "thread" | "messages" | "nodes" | "visibleTurnItems">;
+export type TranscriptInput = Pick<
+  OrchestrationV2ThreadProjection,
+  "thread" | "messages" | "nodes" | "visibleTurnItems"
+>;
 
 type Item = OrchestrationV2TurnItem;
 
@@ -94,13 +98,20 @@ function toolLine(item: Item): string | undefined {
     case "command_execution":
       return `Ran: ${oneLine(item.input)}`;
     case "file_change": {
-      const counts = item.additions === undefined && item.deletions === undefined ? "" : ` (+${item.additions ?? 0} −${item.deletions ?? 0})`;
+      const counts =
+        item.additions === undefined && item.deletions === undefined
+          ? ""
+          : ` (+${item.additions ?? 0} −${item.deletions ?? 0})`;
       return `Edited ${item.fileName}${counts}`;
     }
     case "file_search":
-      return item.pattern === undefined ? "Searched files" : `Searched files: ${oneLine(item.pattern)}`;
+      return item.pattern === undefined
+        ? "Searched files"
+        : `Searched files: ${oneLine(item.pattern)}`;
     case "web_search":
-      return item.patterns === undefined || item.patterns.length === 0 ? "Searched the web" : `Searched the web: ${oneLine(item.patterns.join(", "))}`;
+      return item.patterns === undefined || item.patterns.length === 0
+        ? "Searched the web"
+        : `Searched the web: ${oneLine(item.patterns.join(", "))}`;
     case "dynamic_tool": {
       const name = item.toolName ?? "Tool";
       return item.title === null || item.title === name ? name : `${name}: ${oneLine(item.title)}`;
@@ -121,7 +132,11 @@ function toolLine(item: Item): string | undefined {
  * settled, since its end is its settlement. `partial` for a projection that
  * is a window of the latest turns, which the front matter then says.
  */
-export function formatTranscript(projection: TranscriptInput, environmentName: string, { partial = false } = {}): string | undefined {
+export function formatTranscript(
+  projection: TranscriptInput,
+  environmentName: string,
+  { partial = false } = {},
+): string | undefined {
   const { thread } = projection;
   if (thread.settledOverride !== "settled" || thread.settledAt === null) return undefined;
   const messages = new Map(projection.messages.map((message) => [message.id, message]));
@@ -140,7 +155,9 @@ export function formatTranscript(projection: TranscriptInput, environmentName: s
   };
   const sections: string[] = [];
   let turns = 0;
-  for (const { item } of projection.visibleTurnItems.toSorted((left, right) => left.position - right.position)) {
+  for (const { item } of projection.visibleTurnItems.toSorted(
+    (left, right) => left.position - right.position,
+  )) {
     if (inSubagent(item)) continue;
     const time = item.startedAt ?? item.updatedAt;
     if (item.type === "user_message" || item.type === "assistant_message") {
@@ -150,7 +167,9 @@ export function formatTranscript(projection: TranscriptInput, environmentName: s
       if (text === "") continue;
       if (item.type === "user_message") turns += 1;
       const role = item.type === "user_message" ? "User" : "Star";
-      sections.push(`### ${role} · ${second(message?.createdAt ?? time)}\n\n${text.replace(MARKER, "\\$1$2")}\n`);
+      sections.push(
+        `### ${role} · ${second(message?.createdAt ?? time)}\n\n${text.replace(MARKER, "\\$1$2")}\n`,
+      );
       continue;
     }
     const line = toolLine(item);
@@ -185,9 +204,13 @@ export interface Transcript {
 }
 
 /** What a transcript's front matter says of it: when its conversation ended, and whether it is partial; undefined for a file of none. */
-export function transcriptHead(text: string): { readonly ended: string | undefined; readonly partial: boolean } | undefined {
+export function transcriptHead(
+  text: string,
+): { readonly ended: string | undefined; readonly partial: boolean } | undefined {
   const fields = readFrontMatter(text)?.fields;
-  return fields && { ended: fields.get("ended") || undefined, partial: fields.get("partial") === "true" };
+  return (
+    fields && { ended: fields.get("ended") || undefined, partial: fields.get("partial") === "true" }
+  );
 }
 
 /** A transcript read back, its entries in order; undefined for a file with no front matter. */
@@ -199,7 +222,11 @@ export function parseTranscript(text: string): Transcript | undefined {
   let open: { kind: "user" | "star"; at: string; lines: string[] } | undefined;
   const close = () => {
     if (open === undefined) return;
-    entries.push({ kind: open.kind, at: open.at, text: open.lines.join("\n").trim().replace(ESCAPED_MARKER, "$1") });
+    entries.push({
+      kind: open.kind,
+      at: open.at,
+      text: open.lines.join("\n").trim().replace(ESCAPED_MARKER, "$1"),
+    });
     open = undefined;
   };
   for (const line of body.split(/\r?\n/)) {

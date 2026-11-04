@@ -16,7 +16,15 @@ import {
 import * as DateTime from "effect/DateTime";
 
 import { v2Projection } from "../../vendor/t3code/packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
-import { formatTranscript, parseTranscript, type TranscriptInput, transcriptHead, transcriptName, transcriptStart, transcriptsFolder } from "./transcript.ts";
+import {
+  formatTranscript,
+  parseTranscript,
+  type TranscriptInput,
+  transcriptHead,
+  transcriptName,
+  transcriptStart,
+  transcriptsFolder,
+} from "./transcript.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 const threadId = ThreadId.make("thread-star");
@@ -38,7 +46,13 @@ const base = (id: string, time: string, nodeId: string | null = "root") => ({
   updatedAt: at(time),
 });
 
-function message(id: string, role: "user" | "assistant", text: string, time: string, overrides: Partial<OrchestrationV2ConversationMessage> = {}): OrchestrationV2ConversationMessage {
+function message(
+  id: string,
+  role: "user" | "assistant",
+  text: string,
+  time: string,
+  overrides: Partial<OrchestrationV2ConversationMessage> = {},
+): OrchestrationV2ConversationMessage {
   return {
     createdBy: role === "user" ? "user" : "agent",
     creationSource: "web",
@@ -56,21 +70,70 @@ function message(id: string, role: "user" | "assistant", text: string, time: str
   };
 }
 
-function said(id: string, role: "user" | "assistant", text: string, time: string): OrchestrationV2TurnItem {
+function said(
+  id: string,
+  role: "user" | "assistant",
+  text: string,
+  time: string,
+): OrchestrationV2TurnItem {
   return role === "user"
-    ? { ...base(id, time), createdBy: "user", creationSource: "web", type: "user_message", messageId: MessageId.make(id), inputIntent: "turn_start", text, attachments: [] }
-    : { ...base(id, time), type: "assistant_message", messageId: MessageId.make(id), text, streaming: false };
+    ? {
+        ...base(id, time),
+        createdBy: "user",
+        creationSource: "web",
+        type: "user_message",
+        messageId: MessageId.make(id),
+        inputIntent: "turn_start",
+        text,
+        attachments: [],
+      }
+    : {
+        ...base(id, time),
+        type: "assistant_message",
+        messageId: MessageId.make(id),
+        text,
+        streaming: false,
+      };
 }
 
-const ran = (id: string, input: string, time: string, nodeId = "root"): OrchestrationV2TurnItem => ({ ...base(id, time, nodeId), type: "command_execution", input });
+const ran = (
+  id: string,
+  input: string,
+  time: string,
+  nodeId = "root",
+): OrchestrationV2TurnItem => ({ ...base(id, time, nodeId), type: "command_execution", input });
 
-const node = (id: string, kind: OrchestrationV2ExecutionNode["kind"], parentNodeId: string | null): OrchestrationV2ExecutionNode =>
-  ({ id: NodeId.make(id), threadId, runId: RunId.make("run"), parentNodeId: parentNodeId === null ? null : NodeId.make(parentNodeId), rootNodeId: NodeId.make("root"), kind, status: "completed" }) as OrchestrationV2ExecutionNode;
+const node = (
+  id: string,
+  kind: OrchestrationV2ExecutionNode["kind"],
+  parentNodeId: string | null,
+): OrchestrationV2ExecutionNode =>
+  ({
+    id: NodeId.make(id),
+    threadId,
+    runId: RunId.make("run"),
+    parentNodeId: parentNodeId === null ? null : NodeId.make(parentNodeId),
+    rootNodeId: NodeId.make("root"),
+    kind,
+    status: "completed",
+  }) as OrchestrationV2ExecutionNode;
 
-const projected = (items: ReadonlyArray<OrchestrationV2TurnItem>): OrchestrationV2ProjectedTurnItem[] =>
-  items.map((item, position) => ({ position, visibility: "local", sourceThreadId: threadId, sourceItemId: item.id, item }));
+const projected = (
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
+): OrchestrationV2ProjectedTurnItem[] =>
+  items.map((item, position) => ({
+    position,
+    visibility: "local",
+    sourceThreadId: threadId,
+    sourceItemId: item.id,
+    item,
+  }));
 
-function conversation(items: ReadonlyArray<OrchestrationV2TurnItem>, messages: ReadonlyArray<OrchestrationV2ConversationMessage>, settled = true): TranscriptInput {
+function conversation(
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
+  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
+  settled = true,
+): TranscriptInput {
   return {
     thread: {
       ...v2Projection.thread,
@@ -81,7 +144,11 @@ function conversation(items: ReadonlyArray<OrchestrationV2TurnItem>, messages: R
       settledAt: settled ? at("2026-11-03T14:32:40.000Z") : null,
     },
     messages,
-    nodes: [node("root", "root_turn", null), node("helper", "subagent", "root"), node("helper-tool", "tool_call", "helper")],
+    nodes: [
+      node("root", "root_turn", null),
+      node("helper", "subagent", "root"),
+      node("helper-tool", "tool_call", "helper"),
+    ],
     // Out of order: the timeline's positions order them.
     visibleTurnItems: projected(items).toReversed(),
   };
@@ -89,21 +156,36 @@ function conversation(items: ReadonlyArray<OrchestrationV2TurnItem>, messages: R
 
 const messages = [
   message("m1", "user", "What is on this week?", "2026-11-03T14:02:11.250Z"),
-  message("m2", "assistant", "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted", "2026-11-03T14:02:30.000Z"),
-  message("compact", "user", "/compact", "2026-11-03T14:20:00.000Z", { createdBy: "agent", creationSource: "server" }),
+  message(
+    "m2",
+    "assistant",
+    "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted",
+    "2026-11-03T14:02:30.000Z",
+  ),
+  message("compact", "user", "/compact", "2026-11-03T14:20:00.000Z", {
+    createdBy: "agent",
+    creationSource: "server",
+  }),
 ];
 
 const items = [
   said("m1", "user", "What is on this week?", "2026-11-03T14:02:11.250Z"),
   ran("t1", "cat   memory/week.md", "2026-11-03T14:02:15.000Z"),
   ran("t2", "ls", "2026-11-03T14:02:16.000Z", "helper-tool"),
-  { ...said("m2", "assistant", "", "2026-11-03T14:02:30.000Z"), text: "", textOmitted: true } as OrchestrationV2TurnItem,
+  {
+    ...said("m2", "assistant", "", "2026-11-03T14:02:30.000Z"),
+    text: "",
+    textOmitted: true,
+  } as OrchestrationV2TurnItem,
   said("compact", "user", "/compact", "2026-11-03T14:20:00.000Z"),
 ];
 
 describe("transcriptName", () => {
   test("names a transcript by its start in UTC, then its thread, so the names sort by start", () => {
-    assert.equal(transcriptName("2026-11-03T16:02:11.250+02:00", "thread/1"), "2026-11-03T14-02-11Z-thread_1.md");
+    assert.equal(
+      transcriptName("2026-11-03T16:02:11.250+02:00", "thread/1"),
+      "2026-11-03T14-02-11Z-thread_1.md",
+    );
     assert.equal(transcriptStart("2026-11-03T14-02-11Z-thread_1.md"), "2026-11-03T14:02:11.000Z");
     assert.equal(transcriptStart("notes.md"), undefined);
   });
@@ -161,14 +243,19 @@ describe("parseTranscript", () => {
     assert.deepEqual(transcript?.entries, [
       { kind: "user", at: "2026-11-03T14:02:11Z", text: "What is on this week?" },
       { kind: "tool", at: "2026-11-03T14:02:15Z", text: "Ran: cat memory/week.md" },
-      { kind: "star", at: "2026-11-03T14:02:30Z", text: "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted" },
+      {
+        kind: "star",
+        at: "2026-11-03T14:02:30Z",
+        text: "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted",
+      },
     ]);
     assert.deepEqual(transcriptHead(text), { ended: "2026-11-03T14:32:40.000Z", partial: false });
     assert.equal(parseTranscript("no front matter"), undefined);
   });
 
   test("a transcript of a window of the latest turns says it is partial, and reads back so", () => {
-    const text = formatTranscript(conversation(items, messages), "MacBook", { partial: true }) ?? "";
+    const text =
+      formatTranscript(conversation(items, messages), "MacBook", { partial: true }) ?? "";
     assert.match(text, /^turns: 1\npartial: true\n---\n/m);
     assert.equal(parseTranscript(text)?.partial, true);
     assert.deepEqual(transcriptHead(text), { ended: "2026-11-03T14:32:40.000Z", partial: true });

@@ -1,6 +1,11 @@
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { request } from "@t3tools/client-runtime/rpc";
-import { EnvironmentId, type ProjectIconColor, type ProjectIconOverride, WS_METHODS } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type ProjectIconColor,
+  type ProjectIconOverride,
+  WS_METHODS,
+} from "@t3tools/contracts";
 import { isProjectFaviconFallbackUrl } from "@t3tools/shared/projectFavicon";
 import { useSyncExternalStore } from "react";
 
@@ -60,10 +65,15 @@ export function projectIconUri(project: ProjectIconSource): URI {
   if (icon?.kind === "monogram") return svgUri(monogramSvg(icon.text, icon.color));
   const fetched =
     icon?.kind === "lucide"
-      ? image(`lucide|${icon.name}|${icon.color}`, () => lucideIconSvg(icon.name, COLOR_HEX.get(icon.color) ?? "#9ca3af").then(svgDataUrl))
+      ? image(`lucide|${icon.name}|${icon.color}`, () =>
+          lucideIconSvg(icon.name, COLOR_HEX.get(icon.color) ?? "#9ca3af").then(svgDataUrl),
+        )
       : project.root === null
         ? undefined
-        : image(`favicon|${project.environmentId}|${project.root}|${project.faviconPath ?? ""}`, () => favicon(project.environmentId, project.root ?? "", project.faviconPath));
+        : image(
+            `favicon|${project.environmentId}|${project.root}|${project.faviconPath ?? ""}`,
+            () => favicon(project.environmentId, project.root ?? "", project.faviconPath),
+          );
   return fetched ?? svgUri(monogramSvg(deriveMonogram(name), deriveColor(name)));
 }
 
@@ -127,7 +137,11 @@ function settle(key: string, src: string | null): void {
  * downscaled into the cache; null when the server finds none. A cached one
  * shows while the server is asked again.
  */
-async function favicon(environmentId: string, cwd: string, faviconPath: string | null): Promise<string | null> {
+async function favicon(
+  environmentId: string,
+  cwd: string,
+  faviconPath: string | null,
+): Promise<string | null> {
   const target = { environmentId: EnvironmentId.make(environmentId), cwd, faviconPath };
   const key = `favicon|${environmentId}|${cwd}|${faviconPath ?? ""}`;
   await projectFaviconCache.hydrate();
@@ -136,7 +150,13 @@ async function favicon(environmentId: string, cwd: string, faviconPath: string |
   await whenReady(environmentId);
   const { relativeUrl } = await connection.run(
     environmentId,
-    request(WS_METHODS.assetsCreateUrl, { resource: { _tag: "project-favicon", cwd, ...(faviconPath === null ? {} : { path: faviconPath }) } }),
+    request(WS_METHODS.assetsCreateUrl, {
+      resource: {
+        _tag: "project-favicon",
+        cwd,
+        ...(faviconPath === null ? {} : { path: faviconPath }),
+      },
+    }),
   );
   const base = connection.credential(environmentId)?.httpBaseUrl;
   if (base === undefined) throw Error(`No connection to ${environmentId}.`);
@@ -186,12 +206,19 @@ function emojiSvg(emoji: string): string {
 }
 
 function escapeXml(text: string): string {
-  return text.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c);
+  return text.replace(
+    /[<>&"]/g,
+    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c,
+  );
 }
 
 /** Upstream's `projectMonogram`: the first word's first glyph, then its first digit, or the last word's first glyph. */
 function deriveMonogram(projectName: string): string {
-  const words = projectName.normalize("NFKC").trim().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const words =
+    projectName
+      .normalize("NFKC")
+      .trim()
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
   const firstWord = words[0];
   if (firstWord === undefined) return "PR";
   const glyphs = Array.from(firstWord);

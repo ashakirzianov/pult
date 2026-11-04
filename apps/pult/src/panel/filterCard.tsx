@@ -68,13 +68,19 @@ function ExplorerCard() {
     <ViewFilterCard
       icon={
         filter.kind === "thread" ? (
-          <img className="pult-card-icon" src={projectIconUri(filter.project).toString(true)} alt="" />
+          <img
+            className="pult-card-icon"
+            src={projectIconUri(filter.project).toString(true)}
+            alt=""
+          />
         ) : (
           <i className="pult-card-icon codicon codicon-root-folder" aria-hidden />
         )
       }
       top={filter.kind === "thread" ? filter.project.name : filter.environment}
-      title={filter.kind === "thread" ? (filter.threadTitle ?? "New thread") : toHostPath(filter.path)}
+      title={
+        filter.kind === "thread" ? (filter.threadTitle ?? "New thread") : toHostPath(filter.path)
+      }
       tooltip={`Only ${filter.path}`}
       clearTitle="Clear the filter: show the environments' projects"
       onClear={() => runCommand("pult-shell.openEnvironmentExplorer")}
@@ -85,14 +91,17 @@ function ExplorerCard() {
 /** A view's tree, as far as the card needs it: its public layout and the scroll events that report its height. */
 interface ViewTree {
   layout(height: number, width?: number): void;
-  onDidScroll(listener: (event: { readonly height: number; readonly heightChanged: boolean }) => void): IDisposable;
+  onDidScroll(
+    listener: (event: { readonly height: number; readonly heightChanged: boolean }) => void,
+  ): IDisposable;
 }
 
 /** A view's tree, its field `tree`; undefined if a workbench bump renames it, and the card then costs the tree its bottom. */
 function viewTree(view: unknown): ViewTree | undefined {
   if (typeof view !== "object" || view === null || !("tree" in view)) return undefined;
   const { tree } = view;
-  if (typeof tree !== "object" || tree === null || !("layout" in tree) || !("onDidScroll" in tree)) return undefined;
+  if (typeof tree !== "object" || tree === null || !("layout" in tree) || !("onDidScroll" in tree))
+    return undefined;
   return tree as ViewTree;
 }
 
@@ -106,9 +115,15 @@ function viewTree(view: unknown): ViewTree | undefined {
  * that recreates its tree's element (the explorer's, when its folders go
  * from none to some) gets the card moved to the new one.
  */
-export async function mountViewCard(viewId: string, selector: string, card: ReactNode): Promise<void> {
+export async function mountViewCard(
+  viewId: string,
+  selector: string,
+  card: ReactNode,
+): Promise<void> {
   const views = await getService(IViewsService);
-  let mounted: { readonly container: HTMLElement; readonly root: Root; readonly dispose: () => void } | undefined;
+  let mounted:
+    | { readonly container: HTMLElement; readonly root: Root; readonly dispose: () => void }
+    | undefined;
   const mount = () => {
     const container = document.querySelector<HTMLElement>(selector);
     if (container === null || mounted?.container === container) return;

@@ -1,19 +1,15 @@
 {
   "name": "pult-shell",
-  "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "private": true,
   "description": "Pult's own shell: VS Code's workbench vendored through @codingame/monaco-vscode-api, centred on threads.",
+  "type": "module",
   "scripts": {
     "dev": "vp dev",
     "build": "tsc -b && vp build",
     "preview": "vp preview",
     "typecheck": "tsc -b",
     "desktop:dev": "pnpm --filter pult-desktop dev"
-  },
-  "packageManager": "pnpm@11.21.0",
-  "engines": {
-    "node": ">=24"
   },
   "dependencies": {
     "@base-ui/react": "1.5.0",
@@ -164,5 +160,9 @@
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "yaml": "catalog:"
-  }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.21.0"
 }

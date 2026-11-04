@@ -16,7 +16,12 @@ export const SYNC_INTERVAL_MS = 2 * 60_000;
 
 export function syncState(status: VcsStatusResult): SyncState | undefined {
   if (!status.isRepo) return undefined;
-  return { branch: status.refName, hasUpstream: status.hasUpstream, ahead: status.aheadCount, behind: status.behindCount };
+  return {
+    branch: status.refName,
+    hasUpstream: status.hasUpstream,
+    ahead: status.aheadCount,
+    behind: status.behindCount,
+  };
 }
 
 /** Whether the checkout has commits to pull or push, which keeps it in the view with a clean working tree. */
@@ -38,21 +43,36 @@ export type SyncAction =
 export function syncAction(uncommitted: boolean, state: SyncState | undefined): SyncAction {
   if (uncommitted) return { kind: "commit", enabled: true };
   if (state !== undefined && hasSync(state)) {
-    return { kind: state.ahead > 0 && state.behind > 0 ? "diverged" : "sync", ahead: state.ahead, behind: state.behind };
+    return {
+      kind: state.ahead > 0 && state.behind > 0 ? "diverged" : "sync",
+      ahead: state.ahead,
+      behind: state.behind,
+    };
   }
-  if (state !== undefined && !state.hasUpstream && state.branch !== null) return { kind: "publish" };
+  if (state !== undefined && !state.hasUpstream && state.branch !== null)
+    return { kind: "publish" };
   return { kind: "commit", enabled: false };
 }
 
 /** The Sync or Diverged button's title, with its counts as VS Code's git extension writes them. */
 export function syncTitle(kind: "sync" | "diverged", ahead: number, behind: number): string {
-  const counts = [behind > 0 ? `${behind}$(arrow-down)` : "", ahead > 0 ? `${ahead}$(arrow-up)` : ""].filter(Boolean).join(" ");
+  const counts = [
+    behind > 0 ? `${behind}$(arrow-down)` : "",
+    ahead > 0 ? `${ahead}$(arrow-up)` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return `${kind === "sync" ? "$(sync) Sync Changes" : "$(git-compare) Diverged"} ${counts}`.trim();
 }
 
 /** What the Sync button does, in words. */
 export function syncTooltip(ahead: number, behind: number): string {
-  const steps = [behind > 0 ? `pull ${commits(behind)}` : "", ahead > 0 ? `push ${commits(ahead)}` : ""].filter(Boolean).join(", then ");
+  const steps = [
+    behind > 0 ? `pull ${commits(behind)}` : "",
+    ahead > 0 ? `push ${commits(ahead)}` : "",
+  ]
+    .filter(Boolean)
+    .join(", then ");
   return steps.charAt(0).toUpperCase() + steps.slice(1);
 }
 
@@ -62,7 +82,10 @@ function commits(count: number): string {
 
 /** What a sync runs, in order: a pull while behind, then a push while ahead. */
 export function syncSteps(state: SyncState): ReadonlyArray<"pull" | "push"> {
-  return [...(state.behind > 0 ? (["pull"] as const) : []), ...(state.ahead > 0 ? (["push"] as const) : [])];
+  return [
+    ...(state.behind > 0 ? (["pull"] as const) : []),
+    ...(state.ahead > 0 ? (["push"] as const) : []),
+  ];
 }
 
 /**
@@ -70,7 +93,10 @@ export function syncSteps(state: SyncState): ReadonlyArray<"pull" | "push"> {
  * confirms it, which fetches and so comes a moment later: a commit one more
  * ahead, a push none ahead with an upstream, a pull none behind.
  */
-export function afterStep(state: SyncState | undefined, step: "commit" | "push" | "pull"): SyncState | undefined {
+export function afterStep(
+  state: SyncState | undefined,
+  step: "commit" | "push" | "pull",
+): SyncState | undefined {
   if (state === undefined) return undefined;
   switch (step) {
     case "commit":

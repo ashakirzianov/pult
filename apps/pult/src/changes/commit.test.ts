@@ -8,15 +8,31 @@ import { COMMIT_STARTED, commitFailure, commitProgress } from "./commit.ts";
 
 const base = { actionId: "a", cwd: "/repo", action: "commit" } as const;
 const follow = (events: ReadonlyArray<Record<string, unknown>>) =>
-  events.reduce((progress, event) => commitProgress(progress, { ...base, ...event } as GitActionProgressEvent), COMMIT_STARTED);
+  events.reduce(
+    (progress, event) => commitProgress(progress, { ...base, ...event } as GitActionProgressEvent),
+    COMMIT_STARTED,
+  );
 
 describe("commitProgress", () => {
   test("reads the server's phase, a hook while it runs, then the phase again", () => {
-    const generating = follow([{ kind: "action_started", phases: ["commit"] }, { kind: "phase_started", phase: "commit", label: "Generating commit message..." }]);
+    const generating = follow([
+      { kind: "action_started", phases: ["commit"] },
+      { kind: "phase_started", phase: "commit", label: "Generating commit message..." },
+    ]);
     assert.equal(generating.label, "Generating commit message…");
-    const hook = commitProgress(generating, { ...base, kind: "hook_started", hookName: "pre-commit" });
+    const hook = commitProgress(generating, {
+      ...base,
+      kind: "hook_started",
+      hookName: "pre-commit",
+    });
     assert.equal(hook.label, "Running pre-commit…");
-    const after = commitProgress(hook, { ...base, kind: "hook_finished", hookName: "pre-commit", exitCode: 0, durationMs: 10 });
+    const after = commitProgress(hook, {
+      ...base,
+      kind: "hook_finished",
+      hookName: "pre-commit",
+      exitCode: 0,
+      durationMs: 10,
+    });
     assert.equal(after.label, "Generating commit message…");
   });
 });
@@ -30,12 +46,20 @@ describe("commitFailure", () => {
       { kind: "hook_finished", hookName: "pre-commit", exitCode: 1, durationMs: 10 },
       { kind: "action_failed", phase: "commit", message: "Git commit failed." },
     ]);
-    assert.equal(commitFailure(progress, new Error("Source control action failed.")), "Git commit failed. lint: 2 errors");
+    assert.equal(
+      commitFailure(progress, new Error("Source control action failed.")),
+      "Git commit failed. lint: 2 errors",
+    );
   });
 
   test("the stream's error without one, and a line the message holds already left out", () => {
-    const progress = follow([{ kind: "hook_output", hookName: null, stream: "stderr", text: "fatal: no identity" }]);
-    assert.equal(commitFailure(progress, new Error("commit: fatal: no identity")), "commit: fatal: no identity");
+    const progress = follow([
+      { kind: "hook_output", hookName: null, stream: "stderr", text: "fatal: no identity" },
+    ]);
+    assert.equal(
+      commitFailure(progress, new Error("commit: fatal: no identity")),
+      "commit: fatal: no identity",
+    );
     assert.equal(commitFailure(COMMIT_STARTED, new Error("Socket closed.")), "Socket closed.");
   });
 });

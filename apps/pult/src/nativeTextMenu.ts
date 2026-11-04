@@ -14,5 +14,9 @@ export function allowNativeTextMenu(element: HTMLElement): void {
 }
 
 function isTextField(element: HTMLElement): boolean {
-  return element.isContentEditable || element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement;
+  return (
+    element.isContentEditable ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLInputElement
+  );
 }

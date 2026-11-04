@@ -9,7 +9,10 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { MoonIcon, WrenchIcon } from "lucide-react";
 
 import ChatMarkdown from "../t3/src/components/ChatMarkdown";
-import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "../t3/src/components/chat/TimelineRowParts";
+import {
+  MESSAGE_HEADING_LEVEL,
+  MessageAuthorHeading,
+} from "../t3/src/components/chat/TimelineRowParts";
 import { TimelineSystemDivider } from "../t3/src/components/chat/TimelineSystemDivider";
 import { cn } from "../t3/src/lib/utils";
 
@@ -26,7 +29,15 @@ interface Place {
   readonly cwd: string;
 }
 
-function Entry({ entry, next, place }: { entry: TranscriptEntry; next: TranscriptEntry | undefined; place: Place }) {
+function Entry({
+  entry,
+  next,
+  place,
+}: {
+  entry: TranscriptEntry;
+  next: TranscriptEntry | undefined;
+  place: Place;
+}) {
   const environmentId = EnvironmentId.make(place.environmentId);
   if (entry.kind === "user") {
     return (
@@ -47,17 +58,33 @@ function Entry({ entry, next, place }: { entry: TranscriptEntry; next: Transcrip
     );
   }
   // The space a row leaves below it, as the timeline's: more before the user's next message.
-  const space = next === undefined || next.kind === "user" ? "pb-4" : next.kind === "tool" && entry.kind === "tool" ? undefined : "pb-2";
+  const space =
+    next === undefined || next.kind === "user"
+      ? "pb-4"
+      : next.kind === "tool" && entry.kind === "tool"
+        ? undefined
+        : "pb-2";
   if (entry.kind === "star") {
     return (
       <div className={cn("relative min-w-0 px-1 py-0.5", space)} title={entry.at}>
         <MessageAuthorHeading>Star</MessageAuthorHeading>
-        <ChatMarkdown text={entry.text} cwd={place.cwd} environmentId={environmentId} headingLevelOffset={MESSAGE_HEADING_LEVEL} />
+        <ChatMarkdown
+          text={entry.text}
+          cwd={place.cwd}
+          environmentId={environmentId}
+          headingLevelOffset={MESSAGE_HEADING_LEVEL}
+        />
       </div>
     );
   }
   return (
-    <div className={cn("flex min-w-0 items-center gap-1.5 px-1 py-0.5 text-muted-foreground text-xs", space)} title={entry.at}>
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 px-1 py-0.5 text-muted-foreground text-xs",
+        space,
+      )}
+      title={entry.at}
+    >
       <WrenchIcon aria-hidden className="size-3 shrink-0" />
       <span className="min-w-0 truncate">{entry.text}</span>
     </div>
@@ -65,12 +92,24 @@ function Entry({ entry, next, place }: { entry: TranscriptEntry; next: Transcrip
 }
 
 /** A transcript's entries in order. */
-export function TranscriptEntries({ entries, environmentId, cwd }: { entries: ReadonlyArray<TranscriptEntry> } & Place) {
+export function TranscriptEntries({
+  entries,
+  environmentId,
+  cwd,
+}: { entries: ReadonlyArray<TranscriptEntry> } & Place) {
   const place = { environmentId, cwd };
-  return entries.map((entry, index) => <Entry key={`${entry.at}-${index}`} entry={entry} next={entries[index + 1]} place={place} />);
+  return entries.map((entry, index) => (
+    <Entry key={`${entry.at}-${index}`} entry={entry} next={entries[index + 1]} place={place} />
+  ));
 }
 
 /** The divider after a conversation: "Fell asleep 14:32", with its environment while the page holds several. */
-export function ConversationDivider({ label, detail }: { label: string; detail?: string | undefined }) {
+export function ConversationDivider({
+  label,
+  detail,
+}: {
+  label: string;
+  detail?: string | undefined;
+}) {
   return <TimelineSystemDivider label={label} detail={detail ?? null} icon={MoonIcon} />;
 }

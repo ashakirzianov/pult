@@ -6,7 +6,11 @@ import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/en
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
-import { composerDraftHasUserContent, type DraftId, useComposerDraftStore } from "../t3/src/composerDraftStore";
+import {
+  composerDraftHasUserContent,
+  type DraftId,
+  useComposerDraftStore,
+} from "../t3/src/composerDraftStore";
 
 const DRAFT_KEY_PREFIX = "pult-shell.draft:";
 
@@ -15,12 +19,14 @@ const DRAFT_KEY_PREFIX = "pult-shell.draft:";
  * handler and remembered here per project, in the page's localStorage beside
  * the store's own, so a reload or a later New Thread takes up the same draft.
  */
-export const draftKey = (environmentId: string, projectId: string) => `${DRAFT_KEY_PREFIX}${environmentId}/${projectId}`;
+export const draftKey = (environmentId: string, projectId: string) =>
+  `${DRAFT_KEY_PREFIX}${environmentId}/${projectId}`;
 
 /** The project's remembered draft while the composer store still holds it. */
 export function heldDraft(environmentId: string, projectId: string): DraftId | null {
   const draftId = localStorage.getItem(draftKey(environmentId, projectId)) as DraftId | null;
-  const session = draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId);
+  const session =
+    draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId);
   return session !== null && session.projectId === projectId ? draftId : null;
 }
 
@@ -48,14 +54,28 @@ function readDrafts(): ReadonlyArray<ProjectDraft> {
     if (draftId === null) continue;
     const session = store.getDraftSession(draftId);
     const composer = store.draftsByThreadKey[draftId];
-    if (session === null || session.promotedTo != null || composer === undefined || !composerDraftHasUserContent(composer)) continue;
-    drafts.push({ environmentId, projectId, preview: preview(composer), createdAt: session.createdAt });
+    if (
+      session === null ||
+      session.promotedTo != null ||
+      composer === undefined ||
+      !composerDraftHasUserContent(composer)
+    )
+      continue;
+    drafts.push({
+      environmentId,
+      projectId,
+      preview: preview(composer),
+      createdAt: session.createdAt,
+    });
   }
   return drafts.toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 function preview(composer: ComposerDraft): string {
-  const line = replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label).trim().split("\n", 1)[0] ?? "";
+  const line =
+    replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label)
+      .trim()
+      .split("\n", 1)[0] ?? "";
   if (line.length > 0) return line;
   // `images` mirrors `persistedAttachments` once rehydrated, hence the larger of the two, as upstream counts.
   const attachments =
@@ -74,7 +94,8 @@ function readUnsentThreads(): ReadonlyArray<string> {
   for (const [key, composer] of Object.entries(draftsByThreadKey)) {
     // A thread's composer is under its scoped key, `<environmentId>:<threadId>`; a draft's under its draft id, which parses as none or, a queued run's edit, as no thread a card shows.
     const thread = parseScopedThreadKey(key);
-    if (thread !== null && composerDraftHasUserContent(composer)) keys.push(`${thread.environmentId}/${thread.threadId}`);
+    if (thread !== null && composerDraftHasUserContent(composer))
+      keys.push(`${thread.environmentId}/${thread.threadId}`);
   }
   return keys.toSorted();
 }

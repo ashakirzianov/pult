@@ -1,5 +1,10 @@
 import { getService, INotificationService } from "@codingame/monaco-vscode-api";
-import { Action2, MenuId, MenuRegistry, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  MenuId,
+  MenuRegistry,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/services/codeEditorService.service";
 
@@ -19,7 +24,11 @@ const DIFF_SCHEME = "pult-diff";
 /** Where Cite applies: a `pult:` file, or a side of the changes view's diff, while a thread or a project's draft is selected. */
 const CITABLE = ContextKeyExpr.and(
   HasComposerContext,
-  ContextKeyExpr.or(ContextKeyExpr.equals("resourceScheme", "pult"), ContextKeyExpr.equals("resourceScheme", DIFF_SCHEME), ContextKeyExpr.has("isInDiffEditor")),
+  ContextKeyExpr.or(
+    ContextKeyExpr.equals("resourceScheme", "pult"),
+    ContextKeyExpr.equals("resourceScheme", DIFF_SCHEME),
+    ContextKeyExpr.has("isInDiffEditor"),
+  ),
 );
 
 /** The selected thread's or draft's root, or the selected Star's folder (`selectionTarget`), which a cited file's path is relative to. */
@@ -28,7 +37,13 @@ function selectedRoot(): string | undefined {
   if (target === undefined) return undefined;
   if ("threadId" in target) {
     const shown = threadStore.thread(target.environmentId, target.threadId);
-    return shown?.projectRoot ?? (shown === undefined ? undefined : threadStore.project(shown.environmentId, shown.projectId)?.root) ?? undefined;
+    return (
+      shown?.projectRoot ??
+      (shown === undefined
+        ? undefined
+        : threadStore.project(shown.environmentId, shown.projectId)?.root) ??
+      undefined
+    );
   }
   return threadStore.project(target.environmentId, target.projectId)?.root ?? undefined;
 }
@@ -38,14 +53,29 @@ function selectedRoot(): string | undefined {
  * the diff's mappings: the change's path, relative to the thread's root, and
  * source from the old side's `pult-diff:` query.
  */
-function changesDiff(diffs: ReturnType<ICodeEditorService["listDiffEditors"]>, editor: ICodeEditor) {
-  const diff = diffs.find((candidate) => candidate.getOriginalEditor() === editor || candidate.getModifiedEditor() === editor);
+function changesDiff(
+  diffs: ReturnType<ICodeEditorService["listDiffEditors"]>,
+  editor: ICodeEditor,
+) {
+  const diff = diffs.find(
+    (candidate) =>
+      candidate.getOriginalEditor() === editor || candidate.getModifiedEditor() === editor,
+  );
   const original = diff?.getOriginalEditor().getModel();
   const modified = diff?.getModifiedEditor().getModel();
   const mappings = diff?.getDiffComputationResult()?.changes2;
-  if (original === null || original === undefined || modified === null || modified === undefined || mappings === undefined) return undefined;
+  if (
+    original === null ||
+    original === undefined ||
+    modified === null ||
+    modified === undefined ||
+    mappings === undefined
+  )
+    return undefined;
   if (original.uri.scheme !== DIFF_SCHEME) return undefined;
-  const { change } = JSON.parse(original.uri.query) as { change: { path: string; sourceKind: string } };
+  const { change } = JSON.parse(original.uri.query) as {
+    change: { path: string; sourceKind: string };
+  };
   return {
     path: change.path,
     source: change.sourceKind === "working-tree" ? ("Uncommitted" as const) : ("Changes" as const),
@@ -86,14 +116,25 @@ export function registerCiteCommand(): void {
         const model = editor?.getModel();
         const selection = editor?.getSelection();
         const target = selectedTarget();
-        const notify = async (message: string) => (await getService(INotificationService)).info(message);
-        if (editor === null || editor === undefined || model === null || model === undefined || selection === null || selection === undefined) {
+        const notify = async (message: string) =>
+          (await getService(INotificationService)).info(message);
+        if (
+          editor === null ||
+          editor === undefined ||
+          model === null ||
+          model === undefined ||
+          selection === null ||
+          selection === undefined
+        ) {
           return void (await notify("Cite takes lines of an open file."));
         }
-        if (target === null) return void (await notify("Cite cites into the selected thread's composer."));
+        if (target === null)
+          return void (await notify("Cite cites into the selected thread's composer."));
         // A selection ending at a line's start does not take that line.
         const endLine =
-          selection.endLineNumber > selection.startLineNumber && selection.endColumn === 1 ? selection.endLineNumber - 1 : selection.endLineNumber;
+          selection.endLineNumber > selection.startLineNumber && selection.endColumn === 1
+            ? selection.endLineNumber - 1
+            : selection.endLineNumber;
         const citations = await import("../../thread-view/shell/citations.ts");
         const diff = changesDiff(editors.listDiffEditors(), editor);
         let cited: boolean;
@@ -120,7 +161,8 @@ export function registerCiteCommand(): void {
         } else {
           return void (await notify("Cite takes lines of a thread's file or of its changes."));
         }
-        if (!cited) return void (await notify("The composer is not ready yet. Try again in a moment."));
+        if (!cited)
+          return void (await notify("The composer is not ready yet. Try again in a moment."));
         composerStrip.setOpen(true);
       }
     },

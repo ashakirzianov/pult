@@ -27,13 +27,22 @@ export function threadSnapshotUrl(httpBaseUrl: string, threadId: string): URL {
 }
 
 /** The snapshot's body as the server's HTTP API encodes it, JSON through the schema's JSON codec. */
-export const decodeThreadSnapshot = Schema.decodeUnknownSync(Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot));
+export const decodeThreadSnapshot = Schema.decodeUnknownSync(
+  Schema.toCodecJson(OrchestrationV2ThreadDetailSnapshot),
+);
 
 /** Reads the thread's whole projection from its environment. */
-export async function readWholeProjection(credential: HttpCredential, threadId: string): Promise<OrchestrationV2ThreadProjection> {
+export async function readWholeProjection(
+  credential: HttpCredential,
+  threadId: string,
+): Promise<OrchestrationV2ThreadProjection> {
   const response = await fetch(threadSnapshotUrl(credential.httpBaseUrl, threadId), {
-    headers: { authorization: `Bearer ${credential.token}`, [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
+    headers: {
+      authorization: `Bearer ${credential.token}`,
+      [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT,
+    },
   });
-  if (!response.ok) throw new Error(`The server refused the thread's history: HTTP ${response.status}.`);
+  if (!response.ok)
+    throw new Error(`The server refused the thread's history: HTTP ${response.status}.`);
   return decodeThreadSnapshot(await response.json()).projection;
 }

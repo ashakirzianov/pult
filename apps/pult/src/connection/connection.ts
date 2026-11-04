@@ -46,9 +46,17 @@ export interface ShellEnvironment {
  * label, or where another shares the label (two servers on one machine), the
  * host its server answers on.
  */
-export function environmentName(environment: ShellEnvironment, environments: ReadonlyArray<ShellEnvironment>): string {
-  const shared = environments.some((other) => other.environmentId !== environment.environmentId && other.label === environment.label);
-  return shared && URL.canParse(environment.httpBaseUrl) ? new URL(environment.httpBaseUrl).host : environment.label;
+export function environmentName(
+  environment: ShellEnvironment,
+  environments: ReadonlyArray<ShellEnvironment>,
+): string {
+  const shared = environments.some(
+    (other) =>
+      other.environmentId !== environment.environmentId && other.label === environment.label,
+  );
+  return shared && URL.canParse(environment.httpBaseUrl)
+    ? new URL(environment.httpBaseUrl).host
+    : environment.label;
 }
 
 /**
@@ -58,7 +66,11 @@ export function environmentName(environment: ShellEnvironment, environments: Rea
  * since a session replays its own subscription only on an equal input and
  * opens a second one on the socket otherwise.
  */
-export const SERVER_CONFIG_OPTIONS = { environmentThemes: true, usageLimitSources: true, usageLimitsCommand: true } as const;
+export const SERVER_CONFIG_OPTIONS = {
+  environmentThemes: true,
+  usageLimitSources: true,
+  usageLimitsCommand: true,
+} as const;
 
 /** An environment the page connects to after a reload, with its bearer, in the workbench's secret storage. */
 const Saved = Schema.Struct({ profile: BearerConnectionProfile, token: Schema.String });
@@ -141,7 +153,13 @@ class ShellConnection {
    */
   credential(environmentId: string) {
     const saved = this.heldOf(environmentId)?.saved;
-    return saved && { label: saved.profile.label, httpBaseUrl: saved.profile.httpBaseUrl, token: saved.token };
+    return (
+      saved && {
+        label: saved.profile.label,
+        httpBaseUrl: saved.profile.httpBaseUrl,
+        token: saved.token,
+      }
+    );
   }
 
   /** Whether the page is about to connect without the user: it is restoring the environments saved before the reload. */
@@ -159,13 +177,23 @@ class ShellConnection {
    * session, and fail with `EnvironmentRpcUnavailableError` while there is
    * none or the page does not hold the environment.
    */
-  run<A, E>(environmentId: string, effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>): Promise<A> {
+  run<A, E>(
+    environmentId: string,
+    effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
+  ): Promise<A> {
     const id = this.heldOf(environmentId)?.saved.profile.environmentId;
     if (id === undefined) {
-      return Promise.reject(new EnvironmentRpcUnavailableError({ environmentId, message: "Pult is not connected to this environment." }));
+      return Promise.reject(
+        new EnvironmentRpcUnavailableError({
+          environmentId,
+          message: "Pult is not connected to this environment.",
+        }),
+      );
     }
     return this.runtime.runPromise(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.run(id, effect))),
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) => registry.run(id, effect)),
+      ),
     );
   }
 
@@ -184,7 +212,9 @@ class ShellConnection {
     const fiber = this.runtime.runFork(
       EnvironmentRegistry.EnvironmentRegistry.pipe(
         Effect.flatMap((registry) =>
-          registry.followStream(id, stream).pipe(Stream.runForEach((item) => Effect.sync(() => onItem(item)))),
+          registry
+            .followStream(id, stream)
+            .pipe(Stream.runForEach((item) => Effect.sync(() => onItem(item)))),
         ),
       ),
     );
@@ -202,7 +232,9 @@ class ShellConnection {
       const secrets = await getService(ISecretStorageService);
       let saved = Option.getOrUndefined(decodeSaved(await secrets.get(SAVED_KEY)));
       if (saved === undefined) {
-        const single = Option.getOrUndefined(decodeSingleSaved(await secrets.get(SINGLE_SAVED_KEY)));
+        const single = Option.getOrUndefined(
+          decodeSingleSaved(await secrets.get(SINGLE_SAVED_KEY)),
+        );
         saved = single === undefined ? [] : [single];
         if (single !== undefined) {
           await secrets.set(SAVED_KEY, encodeSaved(saved));
@@ -250,7 +282,9 @@ class ShellConnection {
     const id = this.heldOf(environmentId)?.saved.profile.environmentId;
     if (id === undefined) return Promise.resolve();
     return this.runtime.runPromise(
-      EnvironmentRegistry.EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.retryNow(id))),
+      EnvironmentRegistry.EnvironmentRegistry.pipe(
+        Effect.flatMap((registry) => registry.retryNow(id)),
+      ),
     );
   }
 
@@ -314,7 +348,10 @@ function pending({ profile }: Saved): ShellEnvironment {
 }
 
 /** The environment as its registry entry and supervisor stand, while it is registered. */
-function followEnvironment(environmentId: EnvironmentId, publish: (next: ShellEnvironment) => void) {
+function followEnvironment(
+  environmentId: EnvironmentId,
+  publish: (next: ShellEnvironment) => void,
+) {
   return Effect.gen(function* () {
     const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
     yield* registry
@@ -341,7 +378,9 @@ function present(
   entry: ConnectionCatalogEntry,
   state: SupervisorConnectionState,
 ): ShellEnvironment {
-  const profile = Option.getOrUndefined(Option.filter(entry.profile, Schema.is(BearerConnectionProfile)));
+  const profile = Option.getOrUndefined(
+    Option.filter(entry.profile, Schema.is(BearerConnectionProfile)),
+  );
   const base = {
     environmentId: entry.target.environmentId,
     label: entry.target.label,
@@ -352,11 +391,25 @@ function present(
   // An unsupported server blocks the supervisor; the registry then switches
   // the entry off and keeps the verdict there (pult-extension's `presentation.ts`).
   if (!entry.enabled || connection.phase === "unsupported") {
-    const reason = entry.unsupportedReason ?? connection.error ?? `${entry.target.label} does not support this Pult.`;
-    return { ...base, phase: "blocked", error: `${reason} Disconnect, then connect again after the update.` };
+    const reason =
+      entry.unsupportedReason ??
+      connection.error ??
+      `${entry.target.label} does not support this Pult.`;
+    return {
+      ...base,
+      phase: "blocked",
+      error: `${reason} Disconnect, then connect again after the update.`,
+    };
   }
   const phase = (
-    { connected: "ready", available: "connecting", connecting: "connecting", reconnecting: "reconnecting", offline: "offline", error: "blocked" } as const
+    {
+      connected: "ready",
+      available: "connecting",
+      connecting: "connecting",
+      reconnecting: "reconnecting",
+      offline: "offline",
+      error: "blocked",
+    } as const
   )[connection.phase];
   return { ...base, phase, error: connection.error };
 }

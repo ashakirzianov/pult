@@ -9,9 +9,15 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
-import type { IQuickPickItem, IQuickPickSeparator } from "@codingame/monaco-vscode-api/vscode/vs/platform/quickinput/common/quickInput";
+import type {
+  IQuickPickItem,
+  IQuickPickSeparator,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/quickinput/common/quickInput";
 import { buildProjectCreateCommand } from "@t3tools/client-runtime/operations/projects";
 import { request } from "@t3tools/client-runtime/rpc";
 import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
@@ -19,7 +25,15 @@ import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
 import { connection, ConnectedContext, pickEnvironment } from "../connection/index.ts";
 import { isStarRoot } from "../stars/record.ts";
 import { threadStore } from "../threads/store.ts";
-import { baseName, folderShows, joinPath, parentOf, projectsUnder, toHostPath, toUriPath } from "./paths.ts";
+import {
+  baseName,
+  folderShows,
+  joinPath,
+  parentOf,
+  projectsUnder,
+  toHostPath,
+  toUriPath,
+} from "./paths.ts";
 import { type ProjectRoot, projectRoots } from "./projects.ts";
 import { environmentServer } from "./server.ts";
 import { environmentShell, knownRoots, pultFolders, pultResource } from "./workspace.ts";
@@ -37,7 +51,10 @@ type SearchRoot = { readonly uri: URI; readonly name: string };
 function searchRoots(): Array<SearchRoot> {
   return pultFolders().flatMap((folder) => {
     const roots = projectRoots(environmentShell(folder.uri.authority));
-    const under = projectsUnder(folder.uri.path, roots.map((root) => toUriPath(root.path)));
+    const under = projectsUnder(
+      folder.uri.path,
+      roots.map((root) => toUriPath(root.path)),
+    );
     if (under.length === 0) return [folder];
     return under.map((path) => ({
       uri: folder.uri.with({ path }),
@@ -107,7 +124,12 @@ async function searchInFiles(accessor: ServicesAccessor): Promise<void> {
       editors.openEditor({
         resource: item.resource,
         options: {
-          selection: { startLineNumber: item.line, startColumn: item.start + 1, endLineNumber: item.line, endColumn: item.end + 1 },
+          selection: {
+            startLineNumber: item.line,
+            startColumn: item.start + 1,
+            endLineNumber: item.line,
+            endColumn: item.end + 1,
+          },
         },
       }),
   );
@@ -188,14 +210,20 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
   const commands = accessor.get(ICommandService);
   const quickInput = accessor.get(IQuickInputService);
   const notifications = accessor.get(INotificationService);
-  if (connection.environments.length === 0) return void commands.executeCommand("pult-shell.connect");
-  const environment = await pickEnvironment(connection.environments, "Open a project of an environment");
+  if (connection.environments.length === 0)
+    return void commands.executeCommand("pult-shell.connect");
+  const environment = await pickEnvironment(
+    connection.environments,
+    "Open a project of an environment",
+  );
   if (environment === undefined) return;
   const environmentId = environment.environmentId;
   const label = threadStore.distinguishing(environmentId);
   const named = (name: string) => (label === undefined ? name : `${name} (${label})`);
   // A Star's folder is no project of the user's (`src/stars/`).
-  const roots = projectRoots(environmentShell(environmentId)).filter((root) => !isStarRoot(root.path));
+  const roots = projectRoots(environmentShell(environmentId)).filter(
+    (root) => !isStarRoot(root.path),
+  );
   const listed: Array<ProjectItem | IQuickPickSeparator> = [];
   for (const root of roots) {
     if (root.worktree === null) listed.push({ type: "separator", label: root.project });
@@ -231,7 +259,10 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
   if (picked === undefined) return;
   let folder: { uri: URI; name: string };
   if (picked.root !== undefined) {
-    folder = { uri: pultResource(environmentId, toUriPath(picked.root.path)), name: named(picked.root.name) };
+    folder = {
+      uri: pultResource(environmentId, toUriPath(picked.root.path)),
+      name: named(picked.root.name),
+    };
   } else if (picked.create !== undefined) {
     try {
       const project = await connection.run(
@@ -245,14 +276,23 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
           }),
         ),
       );
-      folder = { uri: pultResource(environmentId, toUriPath(project.workspaceRoot)), name: named(project.title) };
+      folder = {
+        uri: pultResource(environmentId, toUriPath(project.workspaceRoot)),
+        name: named(project.title),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return void notifications.error(`Pult could not add ${picked.create} as a project: ${message}`);
+      return void notifications.error(
+        `Pult could not add ${picked.create} as a project: ${message}`,
+      );
     }
   } else return;
   // A folder in the workspace already, or one the explorer lists under one (the environment's folder above its projects), is shown where it is.
-  if (pultFolders(environmentId).some((existing) => folderShows(existing.uri.path, knownRoots(environmentId), folder.uri.path))) {
+  if (
+    pultFolders(environmentId).some((existing) =>
+      folderShows(existing.uri.path, knownRoots(environmentId), folder.uri.path),
+    )
+  ) {
     return void commands.executeCommand("revealInExplorer", folder.uri);
   }
   await (await getService(IWorkspaceEditingService)).addFolders([folder]);
@@ -293,7 +333,11 @@ export function registerFilesCommands(): void {
           category,
           f1: true,
           precondition: ConnectedContext,
-          keybinding: { primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyF, when: ConnectedContext, weight },
+          keybinding: {
+            primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyF,
+            when: ConnectedContext,
+            weight,
+          },
         });
       }
 

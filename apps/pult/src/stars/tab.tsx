@@ -18,7 +18,8 @@ const environmentsSnapshot = () => connection.environments;
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
 const threadsSnapshot = () => threadStore.get();
 
-const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined) => JSON.stringify(left) === JSON.stringify(right);
+const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined) =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 /**
  * How the Star's composer reads, in its tab and in the composer strip under
@@ -67,7 +68,11 @@ export function StarContent({ starId }: { starId: string }) {
     },
   }));
   // The view's mount: a new generation for a new target, but for the thread the draft became, which the view shows already.
-  const mount = useRef<{ target: StarTarget | undefined; generation: number; promoted?: { environmentId: string; threadId: string } }>({
+  const mount = useRef<{
+    target: StarTarget | undefined;
+    generation: number;
+    promoted?: { environmentId: string; threadId: string };
+  }>({
     target: undefined,
     generation: 0,
   });
@@ -76,13 +81,18 @@ export function StarContent({ starId }: { starId: string }) {
     // The store may bring the thread before the view names it, or after.
     const adopted =
       target.kind === "thread" &&
-      ((promoted?.environmentId === target.environmentId && promoted.threadId === target.threadId) ||
+      ((promoted?.environmentId === target.environmentId &&
+        promoted.threadId === target.threadId) ||
         (shown?.kind === "draft" && draftCreates(shown, target.environmentId, target.threadId)));
     mount.current = { target, generation: adopted ? generation : generation + 1 };
   }
   if (star === undefined) return <div className="pult-thread-empty">Reading your Star…</div>;
   if (target === undefined) {
-    return <div className="pult-thread-empty">Not connected to your Star's environment. Run “Pult: Connect to Environment”.</div>;
+    return (
+      <div className="pult-thread-empty">
+        Not connected to your Star's environment. Run “Pult: Connect to Environment”.
+      </div>
+    );
   }
   const paneTarget: PaneTarget = target;
   return (
@@ -109,14 +119,22 @@ function StarBarEntries({ bar, target }: { bar: HTMLElement; target: StarTarget 
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const held = state.environments.find((candidate) => candidate.id === target.environmentId);
   const environment =
-    target.kind === "draft" || held === undefined ? null : `Environment: ${held.label}${held.name === held.label ? "" : ` (${held.name})`}`;
-  const run = (command: string) => void getService(ICommandService).then((commands) => commands.executeCommand(command));
+    target.kind === "draft" || held === undefined
+      ? null
+      : `Environment: ${held.label}${held.name === held.label ? "" : ` (${held.name})`}`;
+  const run = (command: string) =>
+    void getService(ICommandService).then((commands) => commands.executeCommand(command));
   return (
     <>
       {createPortal(
         <div data-chat-composer-slot-item="shell" className="pult-bar-entries">
           <BarTip label="Explorer">
-            <button type="button" className="pult-bar-entry pult-bar-button" aria-label="Explorer" onClick={() => run("pult-shell.openThreadExplorer")}>
+            <button
+              type="button"
+              className="pult-bar-entry pult-bar-button"
+              aria-label="Explorer"
+              onClick={() => run("pult-shell.openThreadExplorer")}
+            >
               <i className="codicon codicon-files" aria-hidden />
             </button>
           </BarTip>
@@ -128,7 +146,11 @@ function StarBarEntries({ bar, target }: { bar: HTMLElement; target: StarTarget 
         : createPortal(
             <div data-chat-composer-slot-item="environment" className="pult-bar-entries">
               <BarTip label={environment}>
-                <button type="button" className="pult-bar-entry pult-bar-button" aria-label={environment}>
+                <button
+                  type="button"
+                  className="pult-bar-entry pult-bar-button"
+                  aria-label={environment}
+                >
                   <i className="codicon codicon-vm" aria-hidden />
                 </button>
               </BarTip>

@@ -1,5 +1,14 @@
-import { getService, IConfigurationService, INotificationService, IQuickInputService, type ServicesAccessor } from "@codingame/monaco-vscode-api";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  getService,
+  IConfigurationService,
+  INotificationService,
+  IQuickInputService,
+  type ServicesAccessor,
+} from "@codingame/monaco-vscode-api";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import {
   ConfigurationScope,
   Extensions as ConfigurationExtensions,
@@ -20,7 +29,8 @@ export { USAGE_LIMITS_MODES, type UsageLimitsMode } from "./limits.ts";
 const SETTING = "pult.panel.usageLimits";
 const DEFAULT_MODE: UsageLimitsMode = "warn";
 
-const isMode = (value: unknown): value is UsageLimitsMode => USAGE_LIMITS_MODES.some(({ mode }) => mode === value);
+const isMode = (value: unknown): value is UsageLimitsMode =>
+  USAGE_LIMITS_MODES.some(({ mode }) => mode === value);
 
 let mode: UsageLimitsMode = DEFAULT_MODE;
 const listeners = new Set<() => void>();
@@ -85,7 +95,12 @@ export function registerLimits(): void {
   registerAction2(
     class extends Action2 {
       constructor() {
-        super({ id: "pult-shell.showUsageLimits", title: { value: "Show Usage Limits", original: "Show Usage Limits" }, category, f1: true });
+        super({
+          id: "pult-shell.showUsageLimits",
+          title: { value: "Show Usage Limits", original: "Show Usage Limits" },
+          category,
+          f1: true,
+        });
       }
 
       async run(accessor: ServicesAccessor): Promise<void> {
@@ -113,7 +128,11 @@ export function registerLimits(): void {
 
       async run(accessor: ServicesAccessor): Promise<void> {
         const quickInput = accessor.get(IQuickInputService);
-        const items = USAGE_LIMITS_MODES.map(({ mode, label, description }) => ({ mode, label, description }));
+        const items = USAGE_LIMITS_MODES.map(({ mode, label, description }) => ({
+          mode,
+          label,
+          description,
+        }));
         const picked = await quickInput.pick(items, {
           placeHolder: "When the Limits shelf shows",
           activeItem: items.find((item) => item.mode === usageLimitsMode.get()),

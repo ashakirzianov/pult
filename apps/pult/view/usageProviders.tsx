@@ -8,7 +8,9 @@ import { AntigravityIcon, ClaudeAI, type Icon, OpenAI } from "../t3/src/componen
 import { PROVIDER_PRESENTATION } from "../t3/src/components/usage/usageProviders.ts";
 
 /** A provider's short name and colour, by its driver; undefined for a driver upstream does not present. */
-export function usageProvider(driver: ServerProvider["driver"]): { readonly label: string; readonly color: string } | undefined {
+export function usageProvider(
+  driver: ServerProvider["driver"],
+): { readonly label: string; readonly color: string } | undefined {
   return Object.values(PROVIDER_PRESENTATION).find((entry) => entry.driverKind === driver);
 }
 
@@ -27,9 +29,21 @@ export function hasUsageProviderIcon(driver: ServerProvider["driver"]): boolean 
 }
 
 /** A provider's icon, by its driver; nothing for a driver the page has no icon of. */
-export function UsageProviderIcon({ driver, className }: { driver: ServerProvider["driver"]; className?: string }) {
+export function UsageProviderIcon({
+  driver,
+  className,
+}: {
+  driver: ServerProvider["driver"];
+  className?: string;
+}) {
   const entry = ICONS[driver];
   if (entry === undefined) return null;
   const { icon: ProviderIcon, fill } = entry;
-  return <ProviderIcon className={className} style={fill === undefined ? undefined : { fill }} aria-hidden />;
+  return (
+    <ProviderIcon
+      className={className}
+      style={fill === undefined ? undefined : { fill }}
+      aria-hidden
+    />
+  );
 }

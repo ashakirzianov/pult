@@ -1,5 +1,12 @@
-import { getService, IConfigurationService, IContextKeyService } from "@codingame/monaco-vscode-api";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  getService,
+  IConfigurationService,
+  IContextKeyService,
+} from "@codingame/monaco-vscode-api";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import {
   ConfigurationScope,
   Extensions as ConfigurationExtensions,
@@ -43,7 +50,8 @@ export function registerStarSettings(): void {
       [ENABLED]: {
         type: "boolean",
         default: true,
-        description: "Whether the left panel shows your Star, Pult's durable agent, and Pult creates one when you have none. Off deletes nothing.",
+        description:
+          "Whether the left panel shows your Star, Pult's durable agent, and Pult creates one when you have none. Off deletes nothing.",
         scope: ConfigurationScope.APPLICATION,
       },
     },
@@ -72,7 +80,10 @@ export function registerStarSettings(): void {
 
 /** Reads the setting into its store and the context key, as soon as the services are up and on each change. Called before the workbench initialises. */
 export async function startStarSettings(): Promise<void> {
-  const [configuration, contextKeys] = await Promise.all([getService(IConfigurationService), getService(IContextKeyService)]);
+  const [configuration, contextKeys] = await Promise.all([
+    getService(IConfigurationService),
+    getService(IContextKeyService),
+  ]);
   const hidden = StarHiddenContext.bindTo(contextKeys);
   const read = () => {
     const enabled = configuration.getValue(ENABLED) !== false;

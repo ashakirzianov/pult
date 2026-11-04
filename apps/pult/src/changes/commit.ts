@@ -22,7 +22,10 @@ export function actionStarted(label: string): CommitProgress {
 export const COMMIT_STARTED = actionStarted("Committing…");
 
 /** The progress after one of the server's events, as upstream's source control control follows them. */
-export function commitProgress(current: CommitProgress, event: GitActionProgressEvent): CommitProgress {
+export function commitProgress(
+  current: CommitProgress,
+  event: GitActionProgressEvent,
+): CommitProgress {
   switch (event.kind) {
     case "action_started":
       return current;
@@ -36,7 +39,11 @@ export function commitProgress(current: CommitProgress, event: GitActionProgress
       return { ...current, output: event.text };
     case "hook_finished":
       // A failed hook's output stays for the failure's notification.
-      return { ...current, label: current.phaseLabel, output: event.exitCode === 0 ? null : current.output };
+      return {
+        ...current,
+        label: current.phaseLabel,
+        output: event.exitCode === 0 ? null : current.output,
+      };
     case "action_finished":
       return { ...current, result: event.result };
     case "action_failed":
@@ -52,9 +59,15 @@ function ellipsis(label: string): string {
 /** Why a commit failed: the server's message, or else the stream's error, then a hook's last line of output when the message does not hold it. */
 export function commitFailure(progress: CommitProgress, error: unknown): string {
   // What the connection rejects with need not be an `Error`: anything carrying a message gives it.
-  const message = progress.failure ?? (typeof error === "object" && error !== null && "message" in error ? String(error.message) : String(error));
+  const message =
+    progress.failure ??
+    (typeof error === "object" && error !== null && "message" in error
+      ? String(error.message)
+      : String(error));
   const output = progress.output?.trim();
-  return output === undefined || output === "" || message.includes(output) ? message : `${message} ${output}`;
+  return output === undefined || output === "" || message.includes(output)
+    ? message
+    : `${message} ${output}`;
 }
 
 /** The message box's placeholder, `{0}` the workbench's Accept Input keybinding, as the git extension words it. */

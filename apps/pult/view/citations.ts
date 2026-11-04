@@ -64,7 +64,12 @@ export function citeDiffLines(target: ComposerTarget, lines: DiffLines): boolean
     text: "",
     diff: lines.diff,
     fenceLanguage: "diff",
-    selection: { start: lines.startLine, side: lines.side, end: lines.endLine, endSide: lines.side },
+    selection: {
+      start: lines.startLine,
+      side: lines.side,
+      end: lines.endLine,
+      endSide: lines.side,
+    },
   });
 }
 

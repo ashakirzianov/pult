@@ -1,8 +1,23 @@
-import { getService, IContextKeyService, INotificationService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
-import { Direction, type Grid, type IView } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
+import {
+  getService,
+  IContextKeyService,
+  INotificationService,
+  IWorkbenchLayoutService,
+} from "@codingame/monaco-vscode-api";
+import {
+  Direction,
+  type Grid,
+  type IView,
+} from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
 import { Emitter } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { ContextKeyExpr, RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import { createRoot } from "react-dom/client";
 
@@ -13,7 +28,12 @@ import { BarTip } from "../threads/barEntries.tsx";
 import { isShellTab, threadView } from "../threads/pane.tsx";
 import { starStore } from "../stars/model.ts";
 import { starComposerOptions } from "../stars/tab.tsx";
-import { isSwitchingThread, onDidSelectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
+import {
+  isSwitchingThread,
+  onDidSelectThread,
+  selectedStar,
+  selectionTarget,
+} from "../threads/selection.ts";
 import "./composer.css";
 
 const SHOW_COMPOSER = "pult-shell.showComposer";
@@ -48,7 +68,8 @@ interface ComposerState {
 let state: ComposerState = { open: false, available: false, shown: false, filled: false };
 const onDidChangeState = new Emitter<void>();
 const setState = (next: Partial<ComposerState>) => {
-  if (Object.entries(next).every(([key, value]) => state[key as keyof ComposerState] === value)) return;
+  if (Object.entries(next).every(([key, value]) => state[key as keyof ComposerState] === value))
+    return;
   state = { ...state, ...next };
   onDidChangeState.fire();
 };
@@ -68,18 +89,20 @@ export const composerStrip = {
  * (`thread-view/shell/drafts.ts`), loaded without the rest of the view.
  */
 function followFilled(): void {
-  void import("../../thread-view/shell/drafts.ts").then(({ composerHasContent, onDidChangeComposers }) => {
-    const update = () => {
-      const target = selectedTarget();
-      setState({ filled: target !== null && composerHasContent(target) });
-    };
-    onDidChangeComposers(update);
-    onDidSelectThread(update);
-    // A Star's composer is its draft's until it wakes, then its conversation's.
-    starStore.subscribe(update);
-    connection.onDidChange(update);
-    update();
-  });
+  void import("../../thread-view/shell/drafts.ts").then(
+    ({ composerHasContent, onDidChangeComposers }) => {
+      const update = () => {
+        const target = selectedTarget();
+        setState({ filled: target !== null && composerHasContent(target) });
+      };
+      onDidChangeComposers(update);
+      onDidSelectThread(update);
+      // A Star's composer is its draft's until it wakes, then its conversation's.
+      starStore.subscribe(update);
+      connection.onDidChange(update);
+      update();
+    },
+  );
 }
 
 /** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
@@ -98,7 +121,8 @@ function selectedStarComposer() {
   return starId === undefined ? {} : starComposerOptions(starId);
 }
 
-const sameTarget = (left: ViewTarget | null, right: ViewTarget | null) => JSON.stringify(left) === JSON.stringify(right);
+const sameTarget = (left: ViewTarget | null, right: ViewTarget | null) =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 /** The strip's height before its composer has rendered. */
 const INITIAL_HEIGHT = 120;
@@ -138,7 +162,9 @@ function stripView() {
   };
   // The overlay comes and goes with the view's routes, so the strip watches for it.
   let observed: Element | null = null;
-  const sizes = new ResizeObserver(([entry]) => resize(Math.ceil(entry?.borderBoxSize[0]?.blockSize ?? 0)));
+  const sizes = new ResizeObserver(([entry]) =>
+    resize(Math.ceil(entry?.borderBoxSize[0]?.blockSize ?? 0)),
+  );
   new MutationObserver(() => {
     const overlay = content.querySelector("[data-chat-composer-overlay]");
     if (overlay === observed) return;
@@ -159,7 +185,10 @@ function stripView() {
  * Started after the status strip, so it lands above it.
  */
 export async function startComposerStrip(): Promise<void> {
-  const [editors, contextKeys] = await Promise.all([getService(IEditorService), getService(IContextKeyService)]);
+  const [editors, contextKeys] = await Promise.all([
+    getService(IEditorService),
+    getService(IContextKeyService),
+  ]);
   const layout = (await getService(IWorkbenchLayoutService)) as unknown as Partial<LayoutGrid>;
   const { workbenchGrid, editorPartView } = layout;
   if (workbenchGrid === undefined || editorPartView === undefined) return;
@@ -240,7 +269,12 @@ function addCloseEntry(bar: HTMLElement): () => void {
   const root = createRoot(entry);
   root.render(
     <BarTip label="Hide composer">
-      <button type="button" className="pult-bar-entry pult-bar-button" aria-label="Hide composer" onClick={() => composerStrip.setOpen(false)}>
+      <button
+        type="button"
+        className="pult-bar-entry pult-bar-button"
+        aria-label="Hide composer"
+        onClick={() => composerStrip.setOpen(false)}
+      >
         <i className="codicon codicon-close" aria-hidden />
       </button>
     </BarTip>,
@@ -264,7 +298,9 @@ export function registerComposerCommands(): void {
 
       async run(): Promise<void> {
         if (selectedTarget() === null) {
-          return void (await getService(INotificationService)).info("The composer shows under a file of a thread or a new thread.");
+          return void (await getService(INotificationService)).info(
+            "The composer shows under a file of a thread or a new thread.",
+          );
         }
         composerStrip.setOpen(true);
       }

@@ -35,11 +35,19 @@ export function DraftCard({
         className="pult-card-select"
         aria-current={selected || undefined}
         onClick={() =>
-          void getService(ICommandService).then((commands) => commands.executeCommand("pult-shell.newThread", environmentId, projectId))
+          void getService(ICommandService).then((commands) =>
+            commands.executeCommand("pult-shell.newThread", environmentId, projectId),
+          )
         }
       >
         <span className="pult-card-top">
-          <img className="pult-card-icon" src={projectIconUri(project ?? { environmentId, name, root: null, icon: null, faviconPath: null }).toString(true)} alt="" />
+          <img
+            className="pult-card-icon"
+            src={projectIconUri(
+              project ?? { environmentId, name, root: null, icon: null, faviconPath: null },
+            ).toString(true)}
+            alt=""
+          />
           <span className="pult-card-project">{name}</span>
           <EnvironmentChip label={environment} />
           <span className="pult-card-status">

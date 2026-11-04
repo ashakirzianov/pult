@@ -1,8 +1,20 @@
-import { getService, IConfigurationService, INotificationService, IWorkbenchLayoutService } from "@codingame/monaco-vscode-api";
-import { Direction, type Grid, type IView } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
+import {
+  getService,
+  IConfigurationService,
+  INotificationService,
+  IWorkbenchLayoutService,
+} from "@codingame/monaco-vscode-api";
+import {
+  Direction,
+  type Grid,
+  type IView,
+} from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
 import { HoverPosition } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/hover/hoverWidget";
 import { Event } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ConfigurationTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
 import { IHoverService } from "@codingame/monaco-vscode-api/vscode/vs/platform/hover/browser/hover.service";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
@@ -73,7 +85,13 @@ async function showMoreStatuses(anchor: HTMLElement): Promise<void> {
   const close = { hover: undefined as { dispose(): void } | undefined };
   for (const item of items) {
     const label = item.querySelector<HTMLElement>("a.statusbar-item-label");
-    if (label === null || DRAWN.has(item.id) || item.style.display === "none" || label.style.display === "none") continue;
+    if (
+      label === null ||
+      DRAWN.has(item.id) ||
+      item.style.display === "none" ||
+      label.style.display === "none"
+    )
+      continue;
     if (label.textContent.trim() === "" && label.querySelector(".codicon") === null) continue;
     // One shape per row, an icon's slot then the label: an entry's first icon, or none, and its text, or its name when it is an icon alone.
     const row = document.createElement("button");
@@ -138,20 +156,30 @@ export async function startStatusBar(): Promise<void> {
   ]);
   const layout = (await getService(IWorkbenchLayoutService)) as unknown as Partial<LayoutGrid>;
   const { workbenchGrid, editorPartView, statusBarPartView } = layout;
-  if (workbenchGrid === undefined || editorPartView === undefined || statusBarPartView === undefined) return;
+  if (
+    workbenchGrid === undefined ||
+    editorPartView === undefined ||
+    statusBarPartView === undefined
+  )
+    return;
 
   // The status bar under the editor part; the strip between the two. A moved
   // view comes back visible, while the layout keeps its own idea of whether
   // the bar is hidden and skips a hide it thinks is done, so the move ends by
   // setting the view's visibility to the setting's.
   workbenchGrid.moveView(statusBarPartView, STATUS_BAR_HEIGHT, editorPartView, Direction.Down);
-  workbenchGrid.setViewVisible(statusBarPartView, configuration.getValue(STATUS_BAR_VISIBLE) === true);
+  workbenchGrid.setViewVisible(
+    statusBarPartView,
+    configuration.getValue(STATUS_BAR_VISIBLE) === true,
+  );
   const strip = stripView();
   workbenchGrid.addView(strip, STRIP_HEIGHT, editorPartView, Direction.Down);
   workbenchGrid.setViewVisible(strip, false);
   stripElement = strip.element;
   statusBarElement = statusBarPartView.element;
-  createRoot(strip.element).render(<StatusStrip status={status} onMore={(anchor) => void showMoreStatuses(anchor)} />);
+  createRoot(strip.element).render(
+    <StatusStrip status={status} onMore={(anchor) => void showMoreStatuses(anchor)} />,
+  );
 
   const update = () => {
     if (isSwitchingThread()) return;
@@ -188,7 +216,9 @@ export function registerStatusCommands(): void {
       async run(): Promise<void> {
         const anchor = stripElement?.querySelector<HTMLElement>(".pult-bar-button");
         if (anchor === null || anchor === undefined || anchor.offsetParent === null) {
-          return void (await getService(INotificationService)).info("Pult's status bar shows under an open file.");
+          return void (await getService(INotificationService)).info(
+            "Pult's status bar shows under an open file.",
+          );
         }
         await showMoreStatuses(anchor);
       }

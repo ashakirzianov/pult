@@ -31,7 +31,10 @@ export function openSecretStore(file: string) {
       } catch (error) {
         if (!undecryptable.has(key)) {
           undecryptable.add(key);
-          console.warn(`[pult-desktop] the secret ${JSON.stringify(key)} in ${file} does not decrypt; it reads as absent until it is set again.`, error);
+          console.warn(
+            `[pult-desktop] the secret ${JSON.stringify(key)} in ${file} does not decrypt; it reads as absent until it is set again.`,
+            error,
+          );
         }
         return undefined;
       }
@@ -76,13 +79,18 @@ function decode(file: string): Map<string, string> {
     return moveAside(file, error.message);
   }
   if (json === undefined) return new Map();
-  if (typeof json !== "object" || json === null || Array.isArray(json)) return moveAside(file, "not a JSON object");
-  return new Map(Object.entries(json).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  if (typeof json !== "object" || json === null || Array.isArray(json))
+    return moveAside(file, "not a JSON object");
+  return new Map(
+    Object.entries(json).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
 }
 
 function moveAside(file: string, reason: string): Map<string, string> {
   const aside = `${file}.corrupt`;
   NodeFS.renameSync(file, aside);
-  console.warn(`[pult-desktop] ${file} does not parse (${reason}): moved aside to ${aside}; the secrets start empty.`);
+  console.warn(
+    `[pult-desktop] ${file} does not parse (${reason}): moved aside to ${aside}; the secrets start empty.`,
+  );
   return new Map();
 }

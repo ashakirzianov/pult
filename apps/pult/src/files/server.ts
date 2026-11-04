@@ -36,8 +36,10 @@ const RESUBSCRIBE_DELAY = "1 second";
  */
 export function environmentServer(environmentId: string): WorkspaceServer {
   /** An RPC the page sends on the environment's session. */
-  const call = <Tag extends Exclude<EnvironmentUnaryRpcTag, ClientGuardedRpcTag>>(tag: Tag, input: EnvironmentRpcInput<Tag>) =>
-    whenReady(environmentId).then(() => connection.run(environmentId, request(tag, input)));
+  const call = <Tag extends Exclude<EnvironmentUnaryRpcTag, ClientGuardedRpcTag>>(
+    tag: Tag,
+    input: EnvironmentRpcInput<Tag>,
+  ) => whenReady(environmentId).then(() => connection.run(environmentId, request(tag, input)));
   return {
     features: async () => {
       await whenReady(environmentId);
@@ -64,7 +66,9 @@ export function environmentServer(environmentId: string): WorkspaceServer {
         headers: { authorization: `Bearer ${credential.token}` },
       });
       if (!response.ok) {
-        throw new Error(`The server refused the bytes of ${relativePath}: HTTP ${response.status}.`);
+        throw new Error(
+          `The server refused the bytes of ${relativePath}: HTTP ${response.status}.`,
+        );
       }
       return new Uint8Array(await response.arrayBuffer());
     },
@@ -127,7 +131,9 @@ export function environmentHome(environmentId: string): Promise<string> {
   let home = homes.get(environmentId);
   if (home === undefined) {
     home = whenReady(environmentId)
-      .then(() => connection.run(environmentId, request(WS_METHODS.filesystemBrowse, { partialPath: "~/" })))
+      .then(() =>
+        connection.run(environmentId, request(WS_METHODS.filesystemBrowse, { partialPath: "~/" })),
+      )
       .then(({ parentPath }) => parentPath);
     home.catch(() => homes.delete(environmentId));
     homes.set(environmentId, home);
@@ -146,7 +152,6 @@ function unavailable(environmentId: string) {
   });
 }
 
-
 type WatchItem =
   | { readonly _tag: "subscribed" }
   | { readonly _tag: "changed"; readonly event: ProjectWatchEntriesEvent }
@@ -159,7 +164,9 @@ const gone: WatchItem = { _tag: "gone" };
  * A root's changes: a subscription on each session the supervisor opens,
  * ending for good once the root is gone.
  */
-function watchStream(cwd: string): Stream.Stream<WatchItem, never, EnvironmentSupervisor.EnvironmentSupervisor> {
+function watchStream(
+  cwd: string,
+): Stream.Stream<WatchItem, never, EnvironmentSupervisor.EnvironmentSupervisor> {
   return Stream.unwrap(
     Effect.gen(function* () {
       const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
@@ -167,7 +174,8 @@ function watchStream(cwd: string): Stream.Stream<WatchItem, never, EnvironmentSu
         Stream.switchMap(
           Option.match({
             onNone: () => Stream.empty,
-            onSome: (session) => watchSession(session.client[WS_METHODS.projectsWatchEntries]({ cwd })),
+            onSome: (session) =>
+              watchSession(session.client[WS_METHODS.projectsWatchEntries]({ cwd })),
           }),
         ),
         Stream.takeUntil((item) => item._tag === "gone"),

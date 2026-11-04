@@ -2,7 +2,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { commonParent, folderShows, locate, namesEnvironment, projectsUnder, relativeTo, toHostPath, toUriPath } from "./paths.ts";
+import {
+  commonParent,
+  folderShows,
+  locate,
+  namesEnvironment,
+  projectsUnder,
+  relativeTo,
+  toHostPath,
+  toUriPath,
+} from "./paths.ts";
 
 describe("pult: paths", () => {
   it("carries POSIX and Windows host paths", () => {
@@ -32,9 +41,18 @@ describe("pult: paths", () => {
   });
 
   it("finds the closest directory above every project, never a project itself", () => {
-    assert.equal(commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/axis"]), "/Users/anton/repos");
-    assert.equal(commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/pult/vendor"]), "/Users/anton/repos");
-    assert.equal(commonParent(["/Users/anton/repos/pult", "/Users/anton/.t3/scratch"]), "/Users/anton");
+    assert.equal(
+      commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/axis"]),
+      "/Users/anton/repos",
+    );
+    assert.equal(
+      commonParent(["/Users/anton/repos/pult", "/Users/anton/repos/pult/vendor"]),
+      "/Users/anton/repos",
+    );
+    assert.equal(
+      commonParent(["/Users/anton/repos/pult", "/Users/anton/.t3/scratch"]),
+      "/Users/anton",
+    );
     assert.equal(commonParent(["/Users/anton/repos/pult"]), "/Users/anton/repos");
     assert.equal(commonParent(["/srv/a", "/tmp/b"]), "/");
     assert.equal(commonParent(["/c:/Users/anton/a", "/c:/b"]), "/c:/");
@@ -43,7 +61,12 @@ describe("pult: paths", () => {
   });
 
   it("shows only the way to the projects under a folder above them", () => {
-    const roots = ["/home/repos/pult", "/home/repos/pult/vendor", "/home/.t3/scratch", "/elsewhere"];
+    const roots = [
+      "/home/repos/pult",
+      "/home/repos/pult/vendor",
+      "/home/.t3/scratch",
+      "/elsewhere",
+    ];
     assert.deepEqual(projectsUnder("/home", roots), ["/home/repos/pult", "/home/.t3/scratch"]);
     assert.equal(folderShows("/home", roots, "/home/repos"), true);
     assert.equal(folderShows("/home", roots, "/home/repos/pult/src/a.ts"), true);

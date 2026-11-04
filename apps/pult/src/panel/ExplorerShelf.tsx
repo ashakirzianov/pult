@@ -34,11 +34,18 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
   // Read on a change of the selection, the files or the environment explored, each of which re-renders the shelf.
   const highlighted = explorerHighlight();
   const names = new Map(environments.map((environment) => [environment.id, environment.name]));
-  const entries = explorerEntries(environments.map((environment) => environment.id), files);
+  const entries = explorerEntries(
+    environments.map((environment) => environment.id),
+    files,
+  );
   const shownEntries = shown(entries, expanded, (entry) => entry.key === highlighted);
   return (
     <li className="pult-shelf pult-shelf-explorer">
-      <CollapsibleHeader label="Explorer" expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      <CollapsibleHeader
+        label="Explorer"
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+      />
       {shownEntries.length > 0 ? (
         <ul className="pult-explorer-entries">
           {shownEntries.map((entry) => (
@@ -57,7 +64,11 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
                   icon="file"
                   label={baseName(entry.file)}
                   detail={folderName(entry.file)}
-                  title={entry.file.scheme === "pult" ? toHostPath(entry.file.path) : entry.file.toString(true)}
+                  title={
+                    entry.file.scheme === "pult"
+                      ? toHostPath(entry.file.path)
+                      : entry.file.toString(true)
+                  }
                   nested={entry.nested}
                   selected={entry.key === highlighted}
                   jumpKey={entry.key}

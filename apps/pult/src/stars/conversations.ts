@@ -1,5 +1,8 @@
 import { getService, IStorageService } from "@codingame/monaco-vscode-api";
-import { StorageScope, StorageTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
+import {
+  StorageScope,
+  StorageTarget,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { request } from "@t3tools/client-runtime/rpc";
 import { ORCHESTRATION_V2_WS_METHODS, ThreadId } from "@t3tools/contracts";
 
@@ -14,7 +17,12 @@ import { forgetTranscriptEnd, rereadStars, starStore } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { asleepBy, type Wakefulness, wakefulness } from "./sleep.ts";
 import { conversationsOf, type StarHome } from "./stars.ts";
-import { formatTranscript, transcriptHead, transcriptName, transcriptsFolder } from "./transcript.ts";
+import {
+  formatTranscript,
+  transcriptHead,
+  transcriptName,
+  transcriptsFolder,
+} from "./transcript.ts";
 
 /** The longest the page waits between looks at a deadline: a timer's clock stops while the machine sleeps, as the thread model's wake timer knows. */
 const CLOCK_CHECK_MS = 60_000;
@@ -40,13 +48,19 @@ interface Evaluation {
 }
 
 function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "message" in error) return String(error.message);
+  if (typeof error === "object" && error !== null && "message" in error)
+    return String(error.message);
   return String(error);
 }
 
 /** The conversation's projection over the socket: a window of its latest turns, whole in its runs, subagents and pending requests, which the sleep rule reads (`sleep.ts`). */
 const readProjection = (thread: Pick<ShellThread, "environmentId" | "id">) =>
-  connection.run(thread.environmentId, request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, { threadId: ThreadId.make(thread.id) }));
+  connection.run(
+    thread.environmentId,
+    request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, {
+      threadId: ThreadId.make(thread.id),
+    }),
+  );
 
 /**
  * The conversation's whole projection, for its transcript, from its
@@ -60,25 +74,41 @@ async function readHistory(thread: Pick<ShellThread, "environmentId" | "id">) {
     if (credential === undefined) throw new Error("The page holds no bearer for its environment.");
     return { projection: await readWholeProjection(credential, thread.id), partial: false };
   } catch (error) {
-    console.warn(`[pult-shell] could not read the whole of the Star's conversation ${thread.id}, its transcript from its latest turns alone: ${errorMessage(error)}`);
+    console.warn(
+      `[pult-shell] could not read the whole of the Star's conversation ${thread.id}, its transcript from its latest turns alone: ${errorMessage(error)}`,
+    );
     return { projection: await readProjection(thread), partial: true };
   }
 }
 
 /** What of a shell row can change a conversation's wakefulness: its projection is read again when it changes. */
-const stampOf = (thread: ShellThread) => JSON.stringify([thread.updatedAt, thread.latestRun, thread.canSnooze]);
+const stampOf = (thread: ShellThread) =>
+  JSON.stringify([thread.updatedAt, thread.latestRun, thread.canSnooze]);
 
 /** Whether a thread below the conversation works, its subagents' and theirs, as the store has them: a subagent thread's run holds the Star awake as the conversation's own does. */
 const lineageWorks = (thread: ShellThread, threads: ReadonlyArray<ShellThread>) =>
-  threads.some((each) => each.environmentId === thread.environmentId && each.rootId === thread.id && each.id !== thread.id && each.working);
+  threads.some(
+    (each) =>
+      each.environmentId === thread.environmentId &&
+      each.rootId === thread.id &&
+      each.id !== thread.id &&
+      each.working,
+  );
 
 /** Whether the conversation's composer holds anything the user wrote or attached, by the composer store. */
-async function hasUnsentMessage(thread: Pick<ShellThread, "environmentId" | "id">): Promise<boolean> {
+async function hasUnsentMessage(
+  thread: Pick<ShellThread, "environmentId" | "id">,
+): Promise<boolean> {
   const { composerHasContent } = await import("../../thread-view/shell/drafts.ts");
-  return composerHasContent({ kind: "thread", environmentId: thread.environmentId, threadId: thread.id });
+  return composerHasContent({
+    kind: "thread",
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+  });
 }
 
-const sameInstant = (left: string | undefined, right: string) => left !== undefined && Date.parse(left) === Date.parse(right);
+const sameInstant = (left: string | undefined, right: string) =>
+  left !== undefined && Date.parse(left) === Date.parse(right);
 
 /**
  * The Stars' conversations, kept by the page (xaxis `pult/issues/star-sleep`):
@@ -138,7 +168,12 @@ class StarConversations {
           if (retry !== undefined) next = Math.min(next, retry);
           continue;
         }
-        if (threadStore.environment(thread.environmentId)?.features.settlement !== true || thread.working || lineageWorks(thread, threads)) continue;
+        if (
+          threadStore.environment(thread.environmentId)?.features.settlement !== true ||
+          thread.working ||
+          lineageWorks(thread, threads)
+        )
+          continue;
         // What the user wrote and has not sent would drop out of view with the conversation.
         if (unsent.has(key)) continue;
         open.add(key);
@@ -163,7 +198,11 @@ class StarConversations {
       }
     }
     for (const key of this.evaluations.keys()) if (!open.has(key)) this.evaluations.delete(key);
-    if (next !== Number.POSITIVE_INFINITY) this.timer = setTimeout(() => this.update(), Math.min(Math.max(next - now, 0) + 1, CLOCK_CHECK_MS));
+    if (next !== Number.POSITIVE_INFINITY)
+      this.timer = setTimeout(
+        () => this.update(),
+        Math.min(Math.max(next - now, 0) + 1, CLOCK_CHECK_MS),
+      );
   }
 
   /** Reads the conversation's projection and its wakefulness by it, then looks again. */
@@ -172,12 +211,15 @@ class StarConversations {
     try {
       evaluation.wakefulness = wakefulness(await readProjection(thread));
     } catch (error) {
-      console.warn(`[pult-shell] could not read the Star's conversation ${thread.id}: ${errorMessage(error)}`);
+      console.warn(
+        `[pult-shell] could not read the Star's conversation ${thread.id}: ${errorMessage(error)}`,
+      );
       evaluation.wakefulness = undefined;
     }
     evaluation.reading = false;
     evaluation.readAt = Date.now();
-    if (this.evaluations.get(scopedKey(thread.environmentId, thread.id)) === evaluation) this.update();
+    if (this.evaluations.get(scopedKey(thread.environmentId, thread.id)) === evaluation)
+      this.update();
   }
 
   /** Puts the conversation to sleep once its fresh projection says so: settles it, its transcript following as the page sees it settled. */
@@ -197,7 +239,9 @@ class StarConversations {
       // Asleep, by this page or another: the store brings the settlement, and with it the transcript.
       if (settled || (!unsent && asleepBy(state, Date.now()))) evaluation.wakefulness = undefined;
     } catch (error) {
-      console.warn(`[pult-shell] could not put the Star's conversation ${thread.id} to sleep: ${errorMessage(error)}`);
+      console.warn(
+        `[pult-shell] could not put the Star's conversation ${thread.id} to sleep: ${errorMessage(error)}`,
+      );
       // Read again a while later, as one held awake is.
       evaluation.wakefulness = undefined;
       evaluation.readAt = Date.now();
@@ -212,34 +256,56 @@ class StarConversations {
    * once per settlement, a few at a time; when it next may try again after a
    * failure, if it is waiting on one.
    */
-  private keep(homes: ReadonlyArray<StarHome>, thread: ShellThread, now: number): number | undefined {
+  private keep(
+    homes: ReadonlyArray<StarHome>,
+    thread: ShellThread,
+    now: number,
+  ): number | undefined {
     const key = scopedKey(thread.environmentId, thread.id);
     const settledAt = thread.settledAt;
-    if (settledAt === null || this.record === undefined || this.kept.get(key) === settledAt || this.keeping.has(key)) return undefined;
+    if (
+      settledAt === null ||
+      this.record === undefined ||
+      this.kept.get(key) === settledAt ||
+      this.keeping.has(key)
+    )
+      return undefined;
     const home = homes.find((each) => each.environmentId === thread.environmentId);
     // Recorded whole for this settlement and listed still: trusted, its file not read.
-    if (this.record.get(key) === settledAt && home?.transcripts.includes(transcriptName(thread.createdAt, thread.id))) {
+    if (
+      this.record.get(key) === settledAt &&
+      home?.transcripts.includes(transcriptName(thread.createdAt, thread.id))
+    ) {
       this.kept.set(key, settledAt);
       return undefined;
     }
     const failedAt = this.keepFailedAt.get(key);
     if (failedAt !== undefined && now - failedAt < RETRY_MS) return failedAt + RETRY_MS;
-    if (home === undefined || connection.environment(home.environmentId)?.phase !== "ready" || this.keeping.size >= TRANSCRIPTS_AT_ONCE) return undefined;
+    if (
+      home === undefined ||
+      connection.environment(home.environmentId)?.phase !== "ready" ||
+      this.keeping.size >= TRANSCRIPTS_AT_ONCE
+    )
+      return undefined;
     this.keeping.add(key);
-    void this.write(home, thread, settledAt).then(
-      (whole) => {
-        this.kept.set(key, settledAt);
-        this.keepFailedAt.delete(key);
-        if (whole) void this.remember(key, settledAt);
-      },
-      (error: unknown) => {
-        console.warn(`[pult-shell] could not write the transcript of the Star's conversation ${thread.id}: ${errorMessage(error)}`);
-        this.keepFailedAt.set(key, Date.now());
-      },
-    ).finally(() => {
-      this.keeping.delete(key);
-      this.update();
-    });
+    void this.write(home, thread, settledAt)
+      .then(
+        (whole) => {
+          this.kept.set(key, settledAt);
+          this.keepFailedAt.delete(key);
+          if (whole) void this.remember(key, settledAt);
+        },
+        (error: unknown) => {
+          console.warn(
+            `[pult-shell] could not write the transcript of the Star's conversation ${thread.id}: ${errorMessage(error)}`,
+          );
+          this.keepFailedAt.set(key, Date.now());
+        },
+      )
+      .finally(() => {
+        this.keeping.delete(key);
+        this.update();
+      });
     return undefined;
   }
 
@@ -252,12 +318,18 @@ class StarConversations {
     const name = transcriptName(thread.createdAt, thread.id);
     const relativePath = `${transcriptsFolder(home.environmentId)}/${name}`;
     const server = environmentServer(home.environmentId);
-    const existing = home.transcripts.includes(name) ? await server.readFile({ cwd: home.root, relativePath, allowMissing: true }) : undefined;
+    const existing = home.transcripts.includes(name)
+      ? await server.readFile({ cwd: home.root, relativePath, allowMissing: true })
+      : undefined;
     const present = existing !== undefined && existing.exists !== false;
     const head = present ? transcriptHead(existing.contents) : undefined;
     if (head !== undefined && sameInstant(head.ended, settledAt) && !head.partial) return true;
     const { projection, partial } = await readHistory(thread);
-    const contents = formatTranscript(projection, threadStore.environment(home.environmentId)?.name ?? home.environmentId, { partial });
+    const contents = formatTranscript(
+      projection,
+      threadStore.environment(home.environmentId)?.name ?? home.environmentId,
+      { partial },
+    );
     // Un-settled since: its next settlement writes it.
     if (contents === undefined) return false;
     const whole = !partial && sameInstant(transcriptHead(contents)?.ended, settledAt);
@@ -273,13 +345,20 @@ class StarConversations {
   private async readRecord(): Promise<void> {
     let entries: Array<[string, string]> = [];
     try {
-      const stored = (await getService(IStorageService)).get(RECORD_STORAGE_KEY, StorageScope.APPLICATION);
+      const stored = (await getService(IStorageService)).get(
+        RECORD_STORAGE_KEY,
+        StorageScope.APPLICATION,
+      );
       const parsed: unknown = stored === undefined ? {} : JSON.parse(stored);
       if (typeof parsed === "object" && parsed !== null) {
-        entries = Object.entries(parsed).flatMap(([key, value]) => (typeof value === "string" ? [[key, value] as [string, string]] : []));
+        entries = Object.entries(parsed).flatMap(([key, value]) =>
+          typeof value === "string" ? [[key, value] as [string, string]] : [],
+        );
       }
     } catch (error) {
-      console.warn(`[pult-shell] could not read the record of the Stars' transcripts: ${errorMessage(error)}`);
+      console.warn(
+        `[pult-shell] could not read the record of the Stars' transcripts: ${errorMessage(error)}`,
+      );
     }
     this.record = new Map(entries);
     this.update();
@@ -294,7 +373,12 @@ class StarConversations {
       if (this.record.size <= RECORD_LIMIT) break;
       this.record.delete(oldest);
     }
-    (await getService(IStorageService)).store(RECORD_STORAGE_KEY, JSON.stringify(Object.fromEntries(this.record)), StorageScope.APPLICATION, StorageTarget.MACHINE);
+    (await getService(IStorageService)).store(
+      RECORD_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(this.record)),
+      StorageScope.APPLICATION,
+      StorageTarget.MACHINE,
+    );
   }
 }
 

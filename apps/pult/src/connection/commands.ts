@@ -5,10 +5,12 @@ import {
   IQuickInputService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
 import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
-
 
 import { connection, type ShellEnvironment } from "./connection.ts";
 import { ConnectedContext } from "./contextKey.ts";
@@ -42,7 +44,8 @@ export function registerConnectionCommands(): void {
       async run(_accessor: ServicesAccessor, pairingLink?: unknown): Promise<void> {
         if (import.meta.env.DEV && typeof pairingLink === "string") {
           const input = parseConnectInput(pairingLink);
-          if (input._tag !== "PairingLink") throw new Error("pult-shell.connect takes a complete pairing link.");
+          if (input._tag !== "PairingLink")
+            throw new Error("pult-shell.connect takes a complete pairing link.");
           return connection.connect(input.target);
         }
         return connect();
@@ -84,9 +87,13 @@ export function registerConnectionCommands(): void {
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
         if (typeof environmentId === "string") return connection.retryNow(environmentId);
-        const waiting = connection.environments.filter((environment) => environment.phase !== "ready");
+        const waiting = connection.environments.filter(
+          (environment) => environment.phase !== "ready",
+        );
         if (waiting.length === 0) {
-          return void (await getService(INotificationService)).info("Pult: every environment is connected.");
+          return void (await getService(INotificationService)).info(
+            "Pult: every environment is connected.",
+          );
         }
         const picked = await pickEnvironment(waiting, "Retry an environment's connection now");
         if (picked !== undefined) await connection.retryNow(picked.environmentId);
@@ -96,9 +103,17 @@ export function registerConnectionCommands(): void {
 }
 
 /** How an environment's connection stands, for a pick: its server's host and phase, and its error when it has one. */
-function describeEnvironment(environment: ShellEnvironment): { description: string; detail?: string } {
-  const host = URL.canParse(environment.httpBaseUrl) ? `${new URL(environment.httpBaseUrl).host} · ` : "";
-  return { description: `${host}${environment.phase}`, ...(environment.error === null ? {} : { detail: environment.error }) };
+function describeEnvironment(environment: ShellEnvironment): {
+  description: string;
+  detail?: string;
+} {
+  const host = URL.canParse(environment.httpBaseUrl)
+    ? `${new URL(environment.httpBaseUrl).host} · `
+    : "";
+  return {
+    description: `${host}${environment.phase}`,
+    ...(environment.error === null ? {} : { detail: environment.error }),
+  };
 }
 
 /**
@@ -110,8 +125,14 @@ export async function pickEnvironment(
   placeHolder: string,
 ): Promise<ShellEnvironment | undefined> {
   if (environments.length <= 1) return environments[0];
-  const picked = await (await getService(IQuickInputService)).pick(
-    environments.map((environment) => ({ label: environment.label, ...describeEnvironment(environment), environment })),
+  const picked = await (
+    await getService(IQuickInputService)
+  ).pick(
+    environments.map((environment) => ({
+      label: environment.label,
+      ...describeEnvironment(environment),
+      environment,
+    })),
     { placeHolder, matchOnDescription: true },
   );
   return picked?.environment;
@@ -132,7 +153,8 @@ async function connect(): Promise<void> {
   });
   if (value === undefined) return;
   const input = parseConnectInput(value);
-  if (input._tag === "Invalid") return void (await getService(INotificationService)).error(input.message);
+  if (input._tag === "Invalid")
+    return void (await getService(INotificationService)).error(input.message);
   if (input._tag === "PairingLink") return void (await attach(input.target));
   // A refused token asks again.
   for (;;) {
@@ -152,12 +174,15 @@ async function connect(): Promise<void> {
  * probe's, or the secret storage's when it cannot keep the bearer (the
  * desktop wrapper refuses to store it without the system keychain).
  */
-async function attach(target: ResolvedRemotePairingTarget): Promise<"connected" | "failed" | ProbeError["kind"]> {
+async function attach(
+  target: ResolvedRemotePairingTarget,
+): Promise<"connected" | "failed" | ProbeError["kind"]> {
   const host = new URL(target.httpBaseUrl).host;
   const progress = await getService(IProgressService);
   try {
-    await progress.withProgress({ location: ProgressLocation.Notification, title: `Pult: connecting to ${host}…` }, () =>
-      connection.connect(target),
+    await progress.withProgress(
+      { location: ProgressLocation.Notification, title: `Pult: connecting to ${host}…` },
+      () => connection.connect(target),
     );
     return "connected";
   } catch (error) {

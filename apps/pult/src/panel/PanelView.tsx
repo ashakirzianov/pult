@@ -5,7 +5,13 @@ import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
 import type { Star } from "../stars/stars.ts";
 import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
-import { settleThread, showSnoozeMenu, showThreadMenu, unsettleThread, wakeThread } from "../threads/park.ts";
+import {
+  settleThread,
+  showSnoozeMenu,
+  showThreadMenu,
+  unsettleThread,
+  wakeThread,
+} from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
 import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
 import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
@@ -20,12 +26,25 @@ import {
 } from "../threads/store.ts";
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
-import { isStarDraft, type ProjectDraft, projectDrafts, threadsWithUnsentMessages } from "./drafts.ts";
+import {
+  isStarDraft,
+  type ProjectDraft,
+  projectDrafts,
+  threadsWithUnsentMessages,
+} from "./drafts.ts";
 import { ExplorerShelf } from "./ExplorerShelf.tsx";
 import { EXPANDED_KEYS, selectionSnapshot, showingSettled } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { LimitsShelf } from "./LimitsShelf.tsx";
-import { draftCards as draftCardsOf, draftKey, keyOf, SETTLED_TAIL_INITIAL_COUNT, SETTLED_TAIL_PAGE_COUNT, settledTail, starKey } from "./order.ts";
+import {
+  draftCards as draftCardsOf,
+  draftKey,
+  keyOf,
+  SETTLED_TAIL_INITIAL_COUNT,
+  SETTLED_TAIL_PAGE_COUNT,
+  settledTail,
+  starKey,
+} from "./order.ts";
 import { settledShelf } from "./settings.ts";
 import { StarCard } from "./StarCard.tsx";
 
@@ -53,20 +72,33 @@ function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Acti
   for (const thread of threads) {
     if (!thread.working) continue;
     // Its ancestors up the lineage; one already marked has its own marked too.
-    for (let key = parentOf(thread); key !== null && !waitingOnSubagents.has(key); key = parentOf(byKey.get(key))) {
+    for (
+      let key = parentOf(thread);
+      key !== null && !waitingOnSubagents.has(key);
+      key = parentOf(byKey.get(key))
+    ) {
       waitingOnSubagents.add(key);
     }
   }
   return new Map(
     threads.map((thread): [string, Activity] => [
       keyOf(thread),
-      thread.working ? (thread.waiting ? "waiting" : "working") : waitingOnSubagents.has(keyOf(thread)) ? "waiting" : null,
+      thread.working
+        ? thread.waiting
+          ? "waiting"
+          : "working"
+        : waitingOnSubagents.has(keyOf(thread))
+          ? "waiting"
+          : null,
     ]),
   );
 }
 
 /** Each thread's subagents, nested ones too, by the key of the thread at the top of their lineage: active first, then newest first. */
-function subagentsByRoot(threads: ReadonlyArray<ShellThread>, activities: Map<string, Activity>): Map<string, ShellThread[]> {
+function subagentsByRoot(
+  threads: ReadonlyArray<ShellThread>,
+  activities: Map<string, Activity>,
+): Map<string, ShellThread[]> {
   const byRoot = new Map<string, ShellThread[]>();
   for (const thread of threads) {
     if (!isSubagent(thread)) continue;
@@ -106,7 +138,9 @@ export function PanelView() {
   // Read on the selection's change, which re-renders the panel.
   const draft = selectedDraft();
   const drafts = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  const listed = state.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active");
+  const listed = state.threads.filter(
+    (thread) => thread.shelf === "pinned" || thread.shelf === "active",
+  );
   const working = state.threads.filter((thread) => thread.shelf === "working");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
@@ -114,9 +148,12 @@ export function PanelView() {
   const settledShown = useSyncExternalStore(settledShelf.subscribe, settledShelf.get) === "shown";
   const activities = threadActivities(state.threads);
   const subagents = subagentsByRoot(state.threads, activities);
-  const environments = new Map(state.environments.map((environment) => [environment.id, environment]));
+  const environments = new Map(
+    state.environments.map((environment) => [environment.id, environment]),
+  );
   /** The environment's name on its cards, while there are several to tell apart. */
-  const chip = (environmentId: string) => (state.environments.length > 1 ? environments.get(environmentId)?.name : undefined);
+  const chip = (environmentId: string) =>
+    state.environments.length > 1 ? environments.get(environmentId)?.name : undefined;
   // The card the selection expands: the selected thread's own, or for a subagent its root's.
   const selectedThread = state.threads.find((thread) => keyOf(thread) === selection);
   const selectedCard =
@@ -149,7 +186,10 @@ export function PanelView() {
         environment={chip(star.current?.environmentId ?? star.homes[0]?.environmentId ?? "")}
         subagents={conversation === undefined ? [] : (subagents.get(conversation) ?? [])}
         activities={activities}
-        selected={selection === starKey(star.id) || (conversation !== undefined && selectedCard === conversation)}
+        selected={
+          selection === starKey(star.id) ||
+          (conversation !== undefined && selectedCard === conversation)
+        }
         selection={selection}
         now={now}
       />
@@ -176,7 +216,11 @@ export function PanelView() {
         {state.environments.length === 0 ? (
           <li className="pult-panel-empty">
             <p>Not connected.</p>
-            <button type="button" className="pult-panel-button" onClick={() => run("pult-shell.connect")}>
+            <button
+              type="button"
+              className="pult-panel-button"
+              onClick={() => run("pult-shell.connect")}
+            >
               Connect to Environment
             </button>
           </li>
@@ -194,21 +238,47 @@ export function PanelView() {
             {listed.map(card)}
           </Shelf>
         ) : state.threads.length === 0 ? (
-          <li className="pult-panel-empty">No threads in {state.environments.map((environment) => environment.label).join(", ")}.</li>
+          <li className="pult-panel-empty">
+            No threads in {state.environments.map((environment) => environment.label).join(", ")}.
+          </li>
         ) : null}
         {working.length > 0 ? (
-          <Shelf name="working" label="Working" threads={working} selection={selectedCard} render={card}>
+          <Shelf
+            name="working"
+            label="Working"
+            threads={working}
+            selection={selectedCard}
+            render={card}
+          >
             {working.map(card)}
           </Shelf>
         ) : null}
         {snoozed.length > 0 ? (
-          <Shelf name="snoozed" label="Snoozed" threads={snoozed} selection={selectedCard} render={card}>
+          <Shelf
+            name="snoozed"
+            label="Snoozed"
+            threads={snoozed}
+            selection={selectedCard}
+            render={card}
+          >
             {snoozed.map(card)}
           </Shelf>
         ) : null}
         {settledShown && (settled.length > 0 || state.settled.count > 0) ? (
-          <Shelf name="settled" label="Settled" threads={settled} count={state.settled.count} selection={selectedCard} render={card}>
-            <SettledTail threads={settled} shelf={state.settled} selection={selectedCard} render={card} />
+          <Shelf
+            name="settled"
+            label="Settled"
+            threads={settled}
+            count={state.settled.count}
+            selection={selectedCard}
+            render={card}
+          >
+            <SettledTail
+              threads={settled}
+              shelf={state.settled}
+              selection={selectedCard}
+              render={card}
+            />
           </Shelf>
         ) : null}
         <LimitsShelf now={now} />
@@ -254,14 +324,21 @@ function Shelf({
   const selected = expanded ? undefined : threads.find((thread) => keyOf(thread) === selection);
   return (
     <li className={`pult-shelf pult-shelf-${name}`}>
-      <CollapsibleHeader label={label} count={name === "ready" ? undefined : count} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      <CollapsibleHeader
+        label={label}
+        count={name === "ready" ? undefined : count}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+      />
       {expanded ? (
         <ul className="pult-shelf-cards">
           {lead}
           {children}
         </ul>
       ) : selectedLead !== null || selected !== undefined ? (
-        <ul className="pult-shelf-cards">{selected !== undefined ? render(selected) : selectedLead}</ul>
+        <ul className="pult-shelf-cards">
+          {selected !== undefined ? render(selected) : selectedLead}
+        </ul>
       ) : null}
     </li>
   );
@@ -306,9 +383,15 @@ function SettledTail({
             type="button"
             className="pult-panel-button"
             disabled={shelf.loading}
-            onClick={() => (shelf.failed ? retrySettledThreads() : setCount(count + SETTLED_TAIL_PAGE_COUNT))}
+            onClick={() =>
+              shelf.failed ? retrySettledThreads() : setCount(count + SETTLED_TAIL_PAGE_COUNT)
+            }
           >
-            {shelf.loading ? "Loading…" : shelf.failed ? "Retry" : `Show ${Math.min(hidden, SETTLED_TAIL_PAGE_COUNT)} more`}
+            {shelf.loading
+              ? "Loading…"
+              : shelf.failed
+                ? "Retry"
+                : `Show ${Math.min(hidden, SETTLED_TAIL_PAGE_COUNT)} more`}
           </button>
         </li>
       ) : null}
@@ -347,10 +430,15 @@ function ThreadCard({
 }) {
   const select = () => run("pult-shell.selectThread", thread.environmentId, thread.id);
   // The selected thread's composer shows its message itself.
-  const unsent = useSyncExternalStore(threadsWithUnsentMessages.subscribe, threadsWithUnsentMessages.get).has(keyOf(thread)) && !selected;
+  const unsent =
+    useSyncExternalStore(threadsWithUnsentMessages.subscribe, threadsWithUnsentMessages.get).has(
+      keyOf(thread),
+    ) && !selected;
   useProjectIcons();
   return (
-    <li className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}>
+    <li
+      className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}
+    >
       {/* A button by role, as upstream's card: its actions are buttons inside it. */}
       <div
         role="button"
@@ -359,7 +447,8 @@ function ThreadCard({
         aria-current={selected || undefined}
         onClick={select}
         onKeyDown={(event) => {
-          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " "))
+            return;
           event.preventDefault();
           select();
         }}
@@ -369,11 +458,23 @@ function ThreadCard({
         }}
       >
         <span className="pult-card-top">
-          <img className="pult-card-icon" src={projectIconUri(threadProjectIcon(thread)).toString(true)} alt="" />
+          <img
+            className="pult-card-icon"
+            src={projectIconUri(threadProjectIcon(thread)).toString(true)}
+            alt=""
+          />
           <span className="pult-card-project">{thread.projectName}</span>
           <EnvironmentChip label={environment} />
-          {thread.pinned ? <i className="codicon codicon-pinned pult-card-pin" title="Pinned" aria-label="Pinned" /> : null}
-          {unsent ? <span className="pult-card-unsent" title="Unsent message" aria-label="Unsent message" /> : null}
+          {thread.pinned ? (
+            <i
+              className="codicon codicon-pinned pult-card-pin"
+              title="Pinned"
+              aria-label="Pinned"
+            />
+          ) : null}
+          {unsent ? (
+            <span className="pult-card-unsent" title="Unsent message" aria-label="Unsent message" />
+          ) : null}
           <StatusSlot thread={thread} features={features}>
             <Status thread={thread} activity={activities.get(keyOf(thread)) ?? null} now={now} />
           </StatusSlot>
@@ -383,7 +484,12 @@ function ThreadCard({
       </div>
       {selected && subagents.length > 0 ? (
         <div className="pult-card-details">
-          <Subagents subagents={subagents} activities={activities} selection={selection} now={now} />
+          <Subagents
+            subagents={subagents}
+            activities={activities}
+            selection={selection}
+            now={now}
+          />
         </div>
       ) : null}
     </li>
@@ -416,7 +522,9 @@ export function Subagents({
     .map((subagent) => subagent.workingSince)
     .filter((start) => start !== null)
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  const shown = expanded ? subagents : subagents.filter((subagent) => keyOf(subagent) === selection);
+  const shown = expanded
+    ? subagents
+    : subagents.filter((subagent) => keyOf(subagent) === selection);
   const row = (subagent: ShellThread) => (
     <li key={keyOf(subagent)}>
       <button
@@ -470,10 +578,19 @@ export function Subagents({
  * the feature. The actions stay shown while the clock's menu is open, and a
  * click on one does not select the card.
  */
-function StatusSlot({ thread, features, children }: { thread: ShellThread; features: ThreadFeatures; children: React.ReactNode }) {
+function StatusSlot({
+  thread,
+  features,
+  children,
+}: {
+  thread: ShellThread;
+  features: ThreadFeatures;
+  children: React.ReactNode;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const offered = parkActions(thread, features);
-  const onCard = thread.shelf === "pinned" || thread.shelf === "active" || thread.shelf === "working";
+  const onCard =
+    thread.shelf === "pinned" || thread.shelf === "active" || thread.shelf === "working";
   const actions = [
     onCard && offered.snooze && thread.canSnooze ? (
       <button
@@ -492,18 +609,35 @@ function StatusSlot({ thread, features, children }: { thread: ShellThread; featu
       </button>
     ) : null,
     onCard && offered.settle ? (
-      <button key="settle" type="button" title="Settle thread" onClick={() => void settleThread(thread)}>
+      <button
+        key="settle"
+        type="button"
+        title="Settle thread"
+        onClick={() => void settleThread(thread)}
+      >
         <i className="codicon codicon-check" aria-hidden />
         Settle
       </button>
     ) : null,
     offered.wake ? (
-      <button key="wake" type="button" title="Wake thread" aria-label="Wake thread" onClick={() => wakeThread(thread)}>
+      <button
+        key="wake"
+        type="button"
+        title="Wake thread"
+        aria-label="Wake thread"
+        onClick={() => wakeThread(thread)}
+      >
         <i className="codicon codicon-bell" aria-hidden />
       </button>
     ) : null,
     offered.unsettle ? (
-      <button key="unsettle" type="button" title="Un-settle thread" aria-label="Un-settle thread" onClick={() => unsettleThread(thread)}>
+      <button
+        key="unsettle"
+        type="button"
+        title="Un-settle thread"
+        aria-label="Un-settle thread"
+        onClick={() => unsettleThread(thread)}
+      >
         <i className="codicon codicon-discard" aria-hidden />
       </button>
     ) : null,
@@ -521,7 +655,15 @@ function StatusSlot({ thread, features, children }: { thread: ShellThread; featu
 }
 
 /** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age. */
-function Status({ thread, activity, now }: { thread: ShellThread; activity: Activity; now: number }) {
+function Status({
+  thread,
+  activity,
+  now,
+}: {
+  thread: ShellThread;
+  activity: Activity;
+  now: number;
+}) {
   if (activity === "working") {
     return (
       <span className="pult-card-status pult-card-status-working">
@@ -529,8 +671,10 @@ function Status({ thread, activity, now }: { thread: ShellThread; activity: Acti
       </span>
     );
   }
-  if (activity === "waiting") return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
-  if (thread.latestRun?.status === "failed") return <span className="pult-card-status pult-card-status-failed">Failed</span>;
+  if (activity === "waiting")
+    return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
+  if (thread.latestRun?.status === "failed")
+    return <span className="pult-card-status pult-card-status-failed">Failed</span>;
   if (thread.woke) {
     return (
       <span className="pult-card-status pult-card-status-woke">
@@ -548,7 +692,8 @@ function Status({ thread, activity, now }: { thread: ShellThread; activity: Acti
   if (thread.shelf === "settled") {
     return (
       <span className="pult-card-status">
-        <i className="codicon codicon-check" aria-hidden /> {age(thread.ageFrom ?? thread.updatedAt, now)}
+        <i className="codicon codicon-check" aria-hidden />{" "}
+        {age(thread.ageFrom ?? thread.updatedAt, now)}
       </span>
     );
   }

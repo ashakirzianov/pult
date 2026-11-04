@@ -32,13 +32,25 @@ export function BarTip({ label, children }: { label: string; children: ReactElem
  * an icon whose name shows in a tooltip. The bar orders its entries by their
  * `data-chat-composer-slot-item`.
  */
-export function ThreadBarEntries({ bar, environmentId, threadId }: { bar: HTMLElement; environmentId: string; threadId: string }) {
+export function ThreadBarEntries({
+  bar,
+  environmentId,
+  threadId,
+}: {
+  bar: HTMLElement;
+  environmentId: string;
+  threadId: string;
+}) {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
-  const thread = state.threads.find((candidate) => candidate.id === threadId && candidate.environmentId === environmentId);
+  const thread = state.threads.find(
+    (candidate) => candidate.id === threadId && candidate.environmentId === environmentId,
+  );
   if (thread === undefined) return null;
   const held = state.environments.find((candidate) => candidate.id === environmentId);
   const environment =
-    held === undefined ? null : `Environment: ${held.label}${held.name === held.label ? "" : ` (${held.name})`}`;
+    held === undefined
+      ? null
+      : `Environment: ${held.label}${held.name === held.label ? "" : ` (${held.name})`}`;
   const run = (command: string, ...args: unknown[]) =>
     void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
   return (
@@ -79,7 +91,11 @@ export function ThreadBarEntries({ bar, environmentId, threadId }: { bar: HTMLEl
         : createPortal(
             <div data-chat-composer-slot-item="environment" className="pult-bar-entries">
               <BarTip label={environment}>
-                <button type="button" className="pult-bar-entry pult-bar-button" aria-label={environment}>
+                <button
+                  type="button"
+                  className="pult-bar-entry pult-bar-button"
+                  aria-label={environment}
+                >
                   <i className="codicon codicon-vm" aria-hidden />
                 </button>
               </BarTip>

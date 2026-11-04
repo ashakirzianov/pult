@@ -1,5 +1,8 @@
 import { Event } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
-import { Disposable, type IDisposable } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
+import {
+  Disposable,
+  type IDisposable,
+} from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import {
   createFileSystemProviderError,
@@ -22,7 +25,13 @@ import { connection } from "../connection/index.ts";
 import { type FilesErrorCode, type Stat, toFilesError, type WorkspaceFiles } from "./files.ts";
 import { namesEnvironment, PULT_SCHEME } from "./paths.ts";
 import { whenReady } from "./server.ts";
-import { decorationChanges, fileChanges, servicesReady, whenListed, workspaceFiles } from "./workspace.ts";
+import {
+  decorationChanges,
+  fileChanges,
+  servicesReady,
+  whenListed,
+  workspaceFiles,
+} from "./workspace.ts";
 
 const ERROR_CODES: Record<FilesErrorCode, FileSystemProviderErrorCode> = {
   FileNotFound: FileSystemProviderErrorCode.FileNotFound,
@@ -43,7 +52,9 @@ const ERROR_CODES: Record<FilesErrorCode, FileSystemProviderErrorCode> = {
  * environments are back.
  */
 export class PultFileSystemProvider
-  implements IFileSystemProviderWithFileReadWriteCapability, IFileSystemProviderWithFileFolderCopyCapability
+  implements
+    IFileSystemProviderWithFileReadWriteCapability,
+    IFileSystemProviderWithFileFolderCopyCapability
 {
   readonly capabilities =
     FileSystemProviderCapabilities.FileReadWrite |
@@ -65,7 +76,10 @@ export class PultFileSystemProvider
 
   readdir(resource: URI): Promise<Array<[string, FileType]>> {
     return this.call(resource, (files, path) => files.readDirectory(path)).then((entries) =>
-      entries.map(([name, kind]) => [name, kind === "directory" ? FileType.Directory : FileType.File]),
+      entries.map(([name, kind]) => [
+        name,
+        kind === "directory" ? FileType.Directory : FileType.File,
+      ]),
     );
   }
 
@@ -84,7 +98,9 @@ export class PultFileSystemProvider
   }
 
   delete(resource: URI, options: IFileDeleteOptions): Promise<void> {
-    return this.call(resource, (files, path) => files.delete(path, { recursive: options.recursive }));
+    return this.call(resource, (files, path) =>
+      files.delete(path, { recursive: options.recursive }),
+    );
   }
 
   /** The file service deletes an existing target itself before an overwriting move. */
@@ -94,7 +110,13 @@ export class PultFileSystemProvider
 
   /** The file service copies through this rather than a read and a write; see `WorkspaceFiles.copy`. */
   copy(from: URI, to: URI, options: IFileOverwriteOptions): Promise<void> {
-    return this.call(to, () => this.call(from, (files, path) => files.copy(path, to.path, { overwrite: options.overwrite }), to));
+    return this.call(to, () =>
+      this.call(
+        from,
+        (files, path) => files.copy(path, to.path, { overwrite: options.overwrite }),
+        to,
+      ),
+    );
   }
 
   /** Runs `operation` on the files of the environment `resource` names; a move or copy (`across`) stays within one environment. */
@@ -123,7 +145,12 @@ export class PultFileSystemProvider
 }
 
 function toStat(stat: Stat): IStat {
-  const type = stat.kind === "directory" ? FileType.Directory : stat.kind === "file" ? FileType.File : FileType.Unknown;
+  const type =
+    stat.kind === "directory"
+      ? FileType.Directory
+      : stat.kind === "file"
+        ? FileType.File
+        : FileType.Unknown;
   return {
     type: stat.symlink ? type | FileType.SymbolicLink : type,
     ctime: stat.ctime,
@@ -145,12 +172,19 @@ export const workspaceDecorations: IDecorationsProvider = {
   label: "Pult",
   onDidChange: decorationChanges.event,
   provideDecorations: (resource) => {
-    if (resource.scheme !== PULT_SCHEME || connection.environment(resource.authority) === undefined) return undefined;
+    if (resource.scheme !== PULT_SCHEME || connection.environment(resource.authority) === undefined)
+      return undefined;
     const files = workspaceFiles(resource.authority);
     if (files.isGone(resource.path)) {
-      return { weight: 10, letter: "!", tooltip: "Gone from the host", color: "list.errorForeground" };
+      return {
+        weight: 10,
+        letter: "!",
+        tooltip: "Gone from the host",
+        color: "list.errorForeground",
+      };
     }
-    if (files.isIgnored(resource.path)) return { weight: 10, tooltip: "Ignored", color: IGNORED_FOREGROUND };
+    if (files.isIgnored(resource.path))
+      return { weight: 10, tooltip: "Ignored", color: IGNORED_FOREGROUND };
     return undefined;
   },
 };

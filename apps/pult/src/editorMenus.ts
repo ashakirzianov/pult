@@ -1,5 +1,13 @@
-import { MenuId, MenuRegistry, isIMenuItem, isISubmenuItem } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { ContextKeyExpr, type ContextKeyExpression } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  MenuId,
+  MenuRegistry,
+  isIMenuItem,
+  isISubmenuItem,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  ContextKeyExpr,
+  type ContextKeyExpression,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 
 import { VSCodeModeContext } from "./mode.ts";
 
@@ -27,7 +35,10 @@ const VSCODE_MODE_COMMANDS = new Set([
   "workbench.action.copyEditorGroupToNewWindow",
   "workbench.action.newEmptyEditorWindow",
 ]);
-const VSCODE_MODE_SUBMENUS = new Set([MenuId.EditorTabsBarShowTabsSubmenu, MenuId.EditorActionsPositionSubmenu]);
+const VSCODE_MODE_SUBMENUS = new Set([
+  MenuId.EditorTabsBarShowTabsSubmenu,
+  MenuId.EditorActionsPositionSubmenu,
+]);
 const MENUS = [MenuId.EditorTabsBarContext, MenuId.EditorTitleContext, MenuId.CommandPalette];
 
 /**
@@ -40,7 +51,11 @@ export function gateEditorMenus(): void {
   const gated = new Set<string>();
   for (const menu of MENUS) {
     for (const item of MenuRegistry.getMenuItems(menu)) {
-      const key = isIMenuItem(item) ? item.command.id : isISubmenuItem(item) ? item.submenu.id : undefined;
+      const key = isIMenuItem(item)
+        ? item.command.id
+        : isISubmenuItem(item)
+          ? item.submenu.id
+          : undefined;
       const gate = isIMenuItem(item)
         ? VSCODE_MODE_COMMANDS.has(item.command.id)
         : isISubmenuItem(item) && VSCODE_MODE_SUBMENUS.has(item.submenu);
@@ -50,6 +65,9 @@ export function gateEditorMenus(): void {
       gated.add(key);
     }
   }
-  const missing = [...VSCODE_MODE_COMMANDS, ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id)].filter((id) => !gated.has(id));
+  const missing = [
+    ...VSCODE_MODE_COMMANDS,
+    ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id),
+  ].filter((id) => !gated.has(id));
   if (missing.length > 0) console.warn("[pult-shell] menu entries not found to gate:", missing);
 }

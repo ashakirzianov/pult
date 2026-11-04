@@ -7,7 +7,10 @@ import {
   IQuickInputService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
-import { Action2, registerAction2 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import {
+  Action2,
+  registerAction2,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 
 import { connection, pickEnvironment } from "../connection/index.ts";
@@ -25,11 +28,18 @@ export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
 
 /** The Star `starId` names, or with none the page's one, or one picked in the shell's quick input while it holds several. */
-export async function pickStar(quickInput: IQuickInputService, starId: unknown, placeHolder: string): Promise<Star | undefined> {
+export async function pickStar(
+  quickInput: IQuickInputService,
+  starId: unknown,
+  placeHolder: string,
+): Promise<Star | undefined> {
   if (typeof starId === "string") return starById(starId);
   const stars = starStore.get();
   if (stars.length <= 1) return stars[0];
-  const environmentsOf = (star: Star) => star.homes.map((home) => threadStore.environment(home.environmentId)?.name ?? home.environmentId).join(", ");
+  const environmentsOf = (star: Star) =>
+    star.homes
+      .map((home) => threadStore.environment(home.environmentId)?.name ?? home.environmentId)
+      .join(", ");
   const picked = await quickInput.pick(
     stars.map((star) => ({ star, label: starName(star), description: environmentsOf(star) })),
     { placeHolder },
@@ -39,14 +49,22 @@ export async function pickStar(quickInput: IQuickInputService, starId: unknown, 
 
 /** The `pult:` URI of a path under the home's folder. */
 function homeResource(home: NonNullable<ReturnType<typeof primaryHome>>, path = "") {
-  return pultResource(home.environmentId, toUriPath(path === "" ? home.root : `${home.root.replace(/[/\\]+$/, "")}/${path}`));
+  return pultResource(
+    home.environmentId,
+    toUriPath(path === "" ? home.root : `${home.root.replace(/[/\\]+$/, "")}/${path}`),
+  );
 }
 
 /** The Star's `AGENTS.md`, its record and standing instructions, as a tab among the selection's, from the home that stands for it. */
 export async function editStarInstructions(star: Star): Promise<void> {
   const home = primaryHome(star);
-  if (home === undefined) return void (await getService(INotificationService)).info("Pult is not connected to your Star's environment.");
-  await (await getService(IEditorService)).openEditor({ resource: homeResource(home, RECORD_FILE), options: { pinned: true } });
+  if (home === undefined)
+    return void (await getService(INotificationService)).info(
+      "Pult is not connected to your Star's environment.",
+    );
+  await (
+    await getService(IEditorService)
+  ).openEditor({ resource: homeResource(home, RECORD_FILE), options: { pinned: true } });
 }
 
 /**
@@ -57,8 +75,12 @@ export async function editStarInstructions(star: Star): Promise<void> {
 export async function openStarFolder(star: Star): Promise<void> {
   const commands = await getService(ICommandService);
   const home = primaryHome(star);
-  if (home === undefined) return void (await getService(INotificationService)).info("Pult is not connected to your Star's environment.");
-  if (selectedStar() === star.id) return void (await commands.executeCommand("pult-shell.openThreadExplorer"));
+  if (home === undefined)
+    return void (await getService(INotificationService)).info(
+      "Pult is not connected to your Star's environment.",
+    );
+  if (selectedStar() === star.id)
+    return void (await commands.executeCommand("pult-shell.openThreadExplorer"));
   await commands.executeCommand("pult-shell.openEnvironmentExplorer");
   await commands.executeCommand("revealInExplorer", homeResource(home));
 }
@@ -78,13 +100,24 @@ export function registerStarCommands(): void {
   registerAction2(
     class extends Action2 {
       constructor() {
-        super({ id: "pult-shell.createStar", title: { value: "Create Star", original: "Create Star" }, category, f1: true, precondition: CanCreateStarContext });
+        super({
+          id: "pult-shell.createStar",
+          title: { value: "Create Star", original: "Create Star" },
+          category,
+          f1: true,
+          precondition: CanCreateStarContext,
+        });
       }
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
         if (typeof environmentId === "string") return createStar(environmentId);
-        const candidates = connection.environments.filter((environment) => canCreateStarOn(environment.environmentId));
-        if (candidates.length === 0) return void (await getService(INotificationService)).info("Every connected environment has a Star.");
+        const candidates = connection.environments.filter((environment) =>
+          canCreateStarOn(environment.environmentId),
+        );
+        if (candidates.length === 0)
+          return void (await getService(INotificationService)).info(
+            "Every connected environment has a Star.",
+          );
         const picked = await pickEnvironment(candidates, "Create a Star on an environment");
         if (picked !== undefined) await createStar(picked.environmentId);
       }
@@ -103,7 +136,11 @@ export function registerStarCommands(): void {
       }
 
       async run(accessor: ServicesAccessor, starId?: unknown): Promise<void> {
-        const star = await pickStar(accessor.get(IQuickInputService), starId, "Edit a Star's instructions");
+        const star = await pickStar(
+          accessor.get(IQuickInputService),
+          starId,
+          "Edit a Star's instructions",
+        );
         if (star !== undefined) await editStarInstructions(star);
       }
     },
@@ -121,7 +158,11 @@ export function registerStarCommands(): void {
       }
 
       async run(accessor: ServicesAccessor, starId?: unknown): Promise<void> {
-        const star = await pickStar(accessor.get(IQuickInputService), starId, "Open a Star's folder");
+        const star = await pickStar(
+          accessor.get(IQuickInputService),
+          starId,
+          "Open a Star's folder",
+        );
         if (star !== undefined) await openStarFolder(star);
       }
     },
@@ -131,7 +172,9 @@ export function registerStarCommands(): void {
     const canCreate = CanCreateStarContext.bindTo(contextKeys);
     const update = () => {
       hasStar.set(starStore.get().length > 0);
-      canCreate.set(connection.environments.some((environment) => canCreateStarOn(environment.environmentId)));
+      canCreate.set(
+        connection.environments.some((environment) => canCreateStarOn(environment.environmentId)),
+      );
     };
     starStore.subscribe(update);
     connection.onDidChange(update);

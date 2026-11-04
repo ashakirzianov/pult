@@ -14,10 +14,15 @@ import type { TurnCheckpoints } from "./host.ts";
  * when the turn has no ready checkpoint.
  */
 export function turnCheckpoints(ref: ScopedThreadRef, runId: string): TurnCheckpoints | null {
-  const projection = Option.getOrNull(appAtomRegistry.get(environmentThreadDetails.stateAtom(ref)).data);
+  const projection = Option.getOrNull(
+    appAtomRegistry.get(environmentThreadDetails.stateAtom(ref)).data,
+  );
   if (projection === null) return null;
   const to = projection.checkpoints.find(
-    (checkpoint) => checkpoint.runId === runId && checkpoint.appRunOrdinal !== null && checkpoint.status === "ready",
+    (checkpoint) =>
+      checkpoint.runId === runId &&
+      checkpoint.appRunOrdinal !== null &&
+      checkpoint.status === "ready",
   );
   if (to === undefined || to.appRunOrdinal === null) return null;
   const from = projection.checkpoints.find(

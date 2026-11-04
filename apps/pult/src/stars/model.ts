@@ -64,10 +64,15 @@ function hostJoin(base: string, ...segments: ReadonlyArray<string>): string {
   return [base.replace(/[/\\]+$/, ""), ...segments].join("/");
 }
 
-const lastSegment = (path: string) => path.split(/[/\\]/).filter((segment) => segment !== "").at(-1) ?? path;
+const lastSegment = (path: string) =>
+  path
+    .split(/[/\\]/)
+    .filter((segment) => segment !== "")
+    .at(-1) ?? path;
 
 function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "message" in error) return String(error.message);
+  if (typeof error === "object" && error !== null && "message" in error)
+    return String(error.message);
   return String(error);
 }
 
@@ -83,7 +88,9 @@ async function listed(server: WorkspaceServer, cwd: string, directoryPath: strin
     return (await server.listEntries({ cwd, directoryPath })).entries;
   } catch (error) {
     if (toFilesError(error, directoryPath).code !== "FileNotFound") throw error;
-    const there = await server.readFile({ cwd, relativePath: directoryPath, allowMissing: true }).catch(() => undefined);
+    const there = await server
+      .readFile({ cwd, relativePath: directoryPath, allowMissing: true })
+      .catch(() => undefined);
     if (there?.exists === false) return null;
     throw error;
   }
@@ -96,7 +103,10 @@ async function readRecordFile(server: WorkspaceServer, root: string) {
 }
 
 /** What `AGENTS.md` at `root` is: none, a Star's record, or someone else's file. */
-async function recordAt(server: WorkspaceServer, root: string): Promise<"absent" | "star" | "other"> {
+async function recordAt(
+  server: WorkspaceServer,
+  root: string,
+): Promise<"absent" | "star" | "other"> {
   const file = await readRecordFile(server, root);
   if (file === undefined) return "absent";
   return parseRecord(file.contents) === undefined ? "other" : "star";
@@ -104,20 +114,31 @@ async function recordAt(server: WorkspaceServer, root: string): Promise<"absent"
 
 /** When each transcript read ended, by its front matter, by environment, home and name: read once per page session, and again once the page rewrites it. */
 const transcriptEnds = new Map<string, string>();
-const transcriptKey = (environmentId: string, root: string, name: string) => JSON.stringify([environmentId, root, name]);
+const transcriptKey = (environmentId: string, root: string, name: string) =>
+  JSON.stringify([environmentId, root, name]);
 
 /** When the transcript `name` of the home at `root` ended, by its front matter; undefined where it says none or cannot be read. */
-async function transcriptEnd(server: WorkspaceServer, environmentId: string, root: string, name: string): Promise<string | undefined> {
+async function transcriptEnd(
+  server: WorkspaceServer,
+  environmentId: string,
+  root: string,
+  name: string,
+): Promise<string | undefined> {
   const key = transcriptKey(environmentId, root, name);
   const known = transcriptEnds.get(key);
   if (known !== undefined) return known;
   try {
-    const file = await server.readFile({ cwd: root, relativePath: `${transcriptsFolder(environmentId)}/${name}` });
+    const file = await server.readFile({
+      cwd: root,
+      relativePath: `${transcriptsFolder(environmentId)}/${name}`,
+    });
     const ended = transcriptHead(file.contents)?.ended;
     if (ended !== undefined) transcriptEnds.set(key, ended);
     return ended;
   } catch (error) {
-    console.warn(`[pult-shell] could not read when the Star's conversation ${name} ended: ${errorMessage(error)}`);
+    console.warn(
+      `[pult-shell] could not read when the Star's conversation ${name} ended: ${errorMessage(error)}`,
+    );
     return undefined;
   }
 }
@@ -138,18 +159,34 @@ async function readFolders(server: WorkspaceServer, environmentId: string, home:
         const root = hostJoin(home, STARS_DIRECTORY, lastSegment(entry.path));
         const record = parseRecord((await readRecordFile(server, root))?.contents ?? "");
         if (record === undefined) return [];
-        const listing = await listed(server, root, transcriptsFolder(environmentId)).catch(() => null);
+        const listing = await listed(server, root, transcriptsFolder(environmentId)).catch(
+          () => null,
+        );
         const transcripts = (listing ?? [])
           .flatMap((entry) => (entry.kind === "file" ? [lastSegment(entry.path)] : []))
           .filter(isTranscriptName)
           .toSorted();
         const newest = transcripts.at(-1);
-        const newestEnded = newest === undefined ? undefined : await transcriptEnd(server, environmentId, root, newest);
-        return [{ environmentId, root, record, transcripts, ...(newestEnded === undefined ? {} : { newestEnded }) }];
+        const newestEnded =
+          newest === undefined
+            ? undefined
+            : await transcriptEnd(server, environmentId, root, newest);
+        return [
+          {
+            environmentId,
+            root,
+            record,
+            transcripts,
+            ...(newestEnded === undefined ? {} : { newestEnded }),
+          },
+        ];
       }),
   );
   for (const result of results) {
-    if (result.status === "rejected") console.warn(`[pult-shell] could not read a Star's folder on ${environmentId}: ${errorMessage(result.reason)}`);
+    if (result.status === "rejected")
+      console.warn(
+        `[pult-shell] could not read a Star's folder on ${environmentId}: ${errorMessage(result.reason)}`,
+      );
   }
   return {
     folders: results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])),
@@ -159,9 +196,15 @@ async function readFolders(server: WorkspaceServer, environmentId: string, home:
 
 /** Whether a failed `project.create` names another project at its root, where the server sends the failure's cause. */
 function isWorkspaceConflict(error: unknown): boolean {
-  const cause = typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
-  const tag = typeof cause === "object" && cause !== null && "_tag" in cause ? cause._tag : undefined;
-  return tag === "ProjectWorkspaceConflictError" || tag === "ProjectConflictError" || /already (belongs to|exists for)/i.test(errorMessage(cause));
+  const cause =
+    typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
+  const tag =
+    typeof cause === "object" && cause !== null && "_tag" in cause ? cause._tag : undefined;
+  return (
+    tag === "ProjectWorkspaceConflictError" ||
+    tag === "ProjectConflictError" ||
+    /already (belongs to|exists for)/i.test(errorMessage(cause))
+  );
 }
 
 /** The roots the page refused to make a Star in, by environment: each told once per page session. */
@@ -210,7 +253,12 @@ class StarsModel {
   /** Whether the environment's Stars' folder was read, every folder in it, and holds no Star: a Star may be created on it by hand. */
   canCreateOn(environmentId: string): boolean {
     const reading = this.readings.get(environmentId);
-    return reading?.read === "read" && reading.complete && reading.folders.length === 0 && connection.environment(environmentId)?.phase === "ready";
+    return (
+      reading?.read === "read" &&
+      reading.complete &&
+      reading.folders.length === 0 &&
+      connection.environment(environmentId)?.phase === "ready"
+    );
   }
 
   /** Follows every environment the connection holds and no other, reading each one's Stars as it becomes ready. */
@@ -225,7 +273,17 @@ class StarsModel {
     for (const environment of environments) {
       let reading = this.readings.get(environment.environmentId);
       if (reading === undefined) {
-        reading = { read: "pending", folders: [], complete: false, attempted: false, adopted: new Set(), wasReady: false, watch: undefined, generation: 0, timer: undefined };
+        reading = {
+          read: "pending",
+          folders: [],
+          complete: false,
+          attempted: false,
+          adopted: new Set(),
+          wasReady: false,
+          watch: undefined,
+          generation: 0,
+          timer: undefined,
+        };
         this.readings.set(environment.environmentId, reading);
       }
       const ready = environment.phase === "ready";
@@ -254,10 +312,13 @@ class StarsModel {
       reading.read = "read";
       reading.folders = folders?.folders ?? [];
       reading.complete = folders?.complete ?? true;
-      if (folders !== null) await this.watch(environmentId, reading, server, hostJoin(home, STARS_DIRECTORY));
+      if (folders !== null)
+        await this.watch(environmentId, reading, server, hostJoin(home, STARS_DIRECTORY));
     } catch (error) {
       if (reading.generation !== generation) return;
-      console.warn(`[pult-shell] could not read the Stars of ${environmentId}: ${errorMessage(error)}`);
+      console.warn(
+        `[pult-shell] could not read the Stars of ${environmentId}: ${errorMessage(error)}`,
+      );
       reading.read = "failed";
     }
     this.update();
@@ -270,14 +331,21 @@ class StarsModel {
    * no second one, and the watch starts only if the model still follows the
    * reading and the placeholder is still its watch.
    */
-  private async watch(environmentId: string, reading: Reading, server: WorkspaceServer, directory: string): Promise<void> {
+  private async watch(
+    environmentId: string,
+    reading: Reading,
+    server: WorkspaceServer,
+    directory: string,
+  ): Promise<void> {
     if (reading.watch !== undefined) return;
     const placeholder: Disposable = { dispose: () => {} };
     reading.watch = placeholder;
     const watchable = await server.features().then(
       (features) => features.watchEntries,
       (error: unknown) => {
-        console.warn(`[pult-shell] could not watch the Stars of ${environmentId}: ${errorMessage(error)}`);
+        console.warn(
+          `[pult-shell] could not watch the Stars of ${environmentId}: ${errorMessage(error)}`,
+        );
         return false;
       },
     );
@@ -306,7 +374,17 @@ class StarsModel {
     const stars = starsOf(folders, projects, threads);
     // The readings too, which tell where a Star may be created.
     const signature = JSON.stringify([
-      stars.map((star) => [star.id, star.name, star.tint, star.homes, star.state, star.current?.id, star.current?.workingSince, star.latest?.id, star.lastEnded]),
+      stars.map((star) => [
+        star.id,
+        star.name,
+        star.tint,
+        star.homes,
+        star.state,
+        star.current?.id,
+        star.current?.workingSince,
+        star.latest?.id,
+        star.lastEnded,
+      ]),
       [...this.readings.values()].map((reading) => reading.read),
     ]);
     if (signature !== this.signature) {
@@ -328,7 +406,8 @@ class StarsModel {
           phase: environment.phase,
           loaded: threadStore.environment(environment.environmentId)?.loaded === true,
           // A folder it could not read may be the Star.
-          read: reading?.read === "read" && !reading.complete ? "failed" : (reading?.read ?? "pending"),
+          read:
+            reading?.read === "read" && !reading.complete ? "failed" : (reading?.read ?? "pending"),
           attempted: reading?.attempted ?? false,
         };
       }),
@@ -338,14 +417,19 @@ class StarsModel {
 
   /** Makes each folder with a record and no project a project, once per connect: the folder of a Star made elsewhere, or by a creation cut short. */
   private adopt(folders: ReadonlyArray<StarFolder>): void {
-    const loaded = (environmentId: string) => threadStore.environment(environmentId)?.loaded === true;
+    const loaded = (environmentId: string) =>
+      threadStore.environment(environmentId)?.loaded === true;
     for (const folder of foldersToAdopt(folders, threadStore.get().projects, loaded)) {
       const reading = this.readings.get(folder.environmentId);
       if (reading === undefined || reading.adopted.has(folder.root)) continue;
       reading.adopted.add(folder.root);
       void this.createProject(folder.environmentId, folder.root).then(
-        (projectId) => setStarIcon(folder.environmentId, projectId).then(() => this.read(folder.environmentId)),
-        (error: unknown) => console.warn(`[pult-shell] could not adopt the Star at ${folder.root}: ${errorMessage(error)}`),
+        (projectId) =>
+          setStarIcon(folder.environmentId, projectId).then(() => this.read(folder.environmentId)),
+        (error: unknown) =>
+          console.warn(
+            `[pult-shell] could not adopt the Star at ${folder.root}: ${errorMessage(error)}`,
+          ),
       );
     }
   }
@@ -380,7 +464,9 @@ class StarsModel {
         this.halted = true;
         if (refused.has(key)) return;
         refused.add(key);
-        notifications.error(`Pult did not create your Star: ~/${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER} exists and is not a Star.`);
+        notifications.error(
+          `Pult did not create your Star: ~/${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER} exists and is not a Star.`,
+        );
       };
       const project = projectAt(threadStore.get().projects, environmentId, root);
       const entries = await listed(server, home, `${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER}`);
@@ -392,7 +478,9 @@ class StarsModel {
         const ours =
           project !== undefined &&
           this.made.has(key) &&
-          entries.every((entry) => [MEMORY_DIRECTORY, CONVERSATIONS_DIRECTORY].includes(lastSegment(entry.path)));
+          entries.every((entry) =>
+            [MEMORY_DIRECTORY, CONVERSATIONS_DIRECTORY].includes(lastSegment(entry.path)),
+          );
         if (!ours) return refuse();
       }
       let projectId = project?.id;
@@ -421,17 +509,24 @@ class StarsModel {
       if (found === "star") return;
       if (found === "other") return refuse();
       const record = newRecord(crypto.randomUUID(), new Date().toISOString());
-      await server.writeFile({ cwd: root, relativePath: RECORD_FILE, contents: stockInstructions(record) });
+      await server.writeFile({
+        cwd: root,
+        relativePath: RECORD_FILE,
+        contents: stockInstructions(record),
+      });
       created = { environmentId, root, record, transcripts: [] };
       await setStarIcon(environmentId, projectId);
-      notifications.prompt(Severity.Info, "Your Star is ready.", [{ label: "Open Star", run: () => void openStar(record.id) }]);
+      notifications.prompt(Severity.Info, "Your Star is ready.", [
+        { label: "Open Star", run: () => void openStar(record.id) },
+      ]);
     } catch (error) {
       this.halted = true;
       notifications.error(`Pult could not create your Star: ${errorMessage(error)}`);
     } finally {
       // The new folder counts until the re-read lands, which a read already under way may not: no second Star meanwhile.
       const folder = created;
-      if (folder !== undefined && !reading.folders.some((each) => each.root === folder.root)) reading.folders = [...reading.folders, folder];
+      if (folder !== undefined && !reading.folders.some((each) => each.root === folder.root))
+        reading.folders = [...reading.folders, folder];
       await this.read(environmentId);
       this.creating = false;
       this.update();
@@ -457,7 +552,10 @@ class StarsModel {
    * holds, a read-modify-write of `AGENTS.md`'s front matter alone, over the
    * version read where the server tells versions; a failure notifies.
    */
-  async setFields(starId: string, changes: Partial<Pick<StarRecord, "name" | "tint">>): Promise<void> {
+  async setFields(
+    starId: string,
+    changes: Partial<Pick<StarRecord, "name" | "tint">>,
+  ): Promise<void> {
     const star = this.stars.find((candidate) => candidate.id === starId);
     if (star === undefined) return;
     const notifications = await getService(INotificationService);
@@ -495,7 +593,12 @@ function mutate(environmentId: string, mutation: ProjectMutation) {
 
 /** The 🌟 upstream's UI shows for the Star's project. */
 function setStarIcon(environmentId: string, projectId: string) {
-  return mutate(environmentId, { type: "project.update", commandId: newCommandId(), projectId: ProjectId.make(projectId), projectIcon: STAR_PROJECT_ICON });
+  return mutate(environmentId, {
+    type: "project.update",
+    commandId: newCommandId(),
+    projectId: ProjectId.make(projectId),
+    projectIcon: STAR_PROJECT_ICON,
+  });
 }
 
 /** Selects the Star, through its command, which `selection.ts` registers. */
@@ -524,9 +627,13 @@ export const createStar = (environmentId: string) => model.create(environmentId)
 /** Reads the environment's Stars' folders again: after the page wrote a transcript, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 /** Forgets when a transcript ended, before its rewrite is read. */
-export const forgetTranscriptEnd = (environmentId: string, root: string, name: string) => transcriptEnds.delete(transcriptKey(environmentId, root, name));
+export const forgetTranscriptEnd = (environmentId: string, root: string, name: string) =>
+  transcriptEnds.delete(transcriptKey(environmentId, root, name));
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
-export const setStarFields = (starId: string, changes: Partial<Pick<StarRecord, "name" | "tint">>) => model.setFields(starId, changes);
+export const setStarFields = (
+  starId: string,
+  changes: Partial<Pick<StarRecord, "name" | "tint">>,
+) => model.setFields(starId, changes);
 
 /** Whether the page holds the environment. */
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
@@ -537,19 +644,28 @@ const held = (environmentId: string) => connection.environment(environmentId) !=
  * none of its homes has a project on a held environment.
  */
 export function starTarget(star: Star): StarTarget | undefined {
-  if (star.current !== null) return { kind: "thread", environmentId: star.current.environmentId, threadId: star.current.id };
+  if (star.current !== null)
+    return { kind: "thread", environmentId: star.current.environmentId, threadId: star.current.id };
   const home = wakeHome(star, held);
-  return home?.projectId == null ? undefined : { kind: "draft", environmentId: home.environmentId, projectId: home.projectId };
+  return home?.projectId == null
+    ? undefined
+    : { kind: "draft", environmentId: home.environmentId, projectId: home.projectId };
 }
 
 /** The home whose folder stands for the Star, its instructions and its folder: its current conversation's or wake's, else its first held one. */
 export function primaryHome(star: Star) {
   const target = starTarget(star);
-  return star.homes.find((home) => home.environmentId === target?.environmentId && held(home.environmentId)) ?? star.homes.find((home) => held(home.environmentId));
+  return (
+    star.homes.find(
+      (home) => home.environmentId === target?.environmentId && held(home.environmentId),
+    ) ?? star.homes.find((home) => held(home.environmentId))
+  );
 }
 
 /** The Star a thread is the conversation of: a root thread of one of its homes' projects, in any state. */
-export function starOfThread(thread: Pick<ShellThread, "environmentId" | "projectId" | "parentId">): Star | undefined {
+export function starOfThread(
+  thread: Pick<ShellThread, "environmentId" | "projectId" | "parentId">,
+): Star | undefined {
   return findStarOfThread(model.get(), thread);
 }
 

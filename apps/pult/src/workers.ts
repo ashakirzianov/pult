@@ -6,7 +6,10 @@ const workers: Partial<Record<string, URL>> = {
     "@codingame/monaco-vscode-api/workers/extensionHost.worker",
     import.meta.url,
   ),
-  TextMateWorker: new URL("@codingame/monaco-vscode-textmate-service-override/worker", import.meta.url),
+  TextMateWorker: new URL(
+    "@codingame/monaco-vscode-textmate-service-override/worker",
+    import.meta.url,
+  ),
   OutputLinkDetectionWorker: new URL(
     "@codingame/monaco-vscode-output-service-override/worker",
     import.meta.url,
@@ -15,7 +18,10 @@ const workers: Partial<Record<string, URL>> = {
     "@codingame/monaco-vscode-language-detection-worker-service-override/worker",
     import.meta.url,
   ),
-  LocalFileSearchWorker: new URL("@codingame/monaco-vscode-search-service-override/worker", import.meta.url),
+  LocalFileSearchWorker: new URL(
+    "@codingame/monaco-vscode-search-service-override/worker",
+    import.meta.url,
+  ),
 };
 
 export function installWorkers(): void {

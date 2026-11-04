@@ -10,7 +10,11 @@ import {
   ProfileStore,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
-import { ClientCapabilities, Persistence, PlatformConnectionSource } from "@t3tools/client-runtime/platform";
+import {
+  ClientCapabilities,
+  Persistence,
+  PlatformConnectionSource,
+} from "@t3tools/client-runtime/platform";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { layerRemoteHttpClient } from "@t3tools/client-runtime/rpc";
 import * as Effect from "effect/Effect";
@@ -20,7 +24,8 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
-const unsupported = (detail: string) => Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail }));
+const unsupported = (detail: string) =>
+  Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail }));
 
 /** Events of `target` as a stream of `value`, for the runtime's network and wakeup sources. */
 function domEvents<A>(target: EventTarget, events: ReadonlyArray<[string, A]>) {
@@ -58,7 +63,10 @@ const layerStores = Layer.mergeAll(
       remove: (id) => Effect.sync(() => void credentials.delete(id)),
     });
   }),
-  Layer.succeed(Persistence.ConnectionTargetStore, { list: Effect.succeed([]), listDisabled: Effect.succeed([]) }),
+  Layer.succeed(Persistence.ConnectionTargetStore, {
+    list: Effect.succeed([]),
+    listDisabled: Effect.succeed([]),
+  }),
   Layer.succeed(Persistence.ConnectionRegistrationStore, {
     register: () => Effect.void,
     setRoutes: () => Effect.void,
@@ -79,7 +87,11 @@ const layerStores = Layer.mergeAll(
     clearVcsRefs: () => Effect.void,
     clear: () => Effect.void,
   }),
-  TokenStore.layer({ get: () => Effect.succeedNone, put: () => Effect.void, remove: () => Effect.void }),
+  TokenStore.layer({
+    get: () => Effect.succeedNone,
+    put: () => Effect.void,
+    remove: () => Effect.void,
+  }),
 );
 
 const NO_CONNECT = "T3 Connect is not available in Pult.";
@@ -89,7 +101,10 @@ const layerCapabilities = Layer.mergeAll(
     metadata: { label: "Pult", deviceType: "desktop" },
   }),
   Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, { bearerToken: Effect.succeedNone }),
-  Layer.succeed(ClientCapabilities.CloudSession, { identity: Effect.succeedNone, clerkToken: unsupported(NO_CONNECT) }),
+  Layer.succeed(ClientCapabilities.CloudSession, {
+    identity: Effect.succeedNone,
+    clerkToken: unsupported(NO_CONNECT),
+  }),
   Layer.succeed(ClientCapabilities.RelayDeviceIdentity, { deviceId: Effect.succeedNone }),
   Layer.succeed(ClientCapabilities.SshEnvironmentGateway, {
     provision: () => unsupported("SSH environments are not available in Pult."),
@@ -97,10 +112,16 @@ const layerCapabilities = Layer.mergeAll(
     disconnect: () => Effect.void,
   }),
   Layer.succeed(ManagedRelay.ManagedRelayDpopSigner, {
-    thumbprint: Effect.fail(new ManagedRelay.ManagedRelayDpopKeyLoadError({ keyStore: "indexed-db", cause: NO_CONNECT })),
+    thumbprint: Effect.fail(
+      new ManagedRelay.ManagedRelayDpopKeyLoadError({ keyStore: "indexed-db", cause: NO_CONNECT }),
+    ),
     createProof: (input) =>
       Effect.fail(
-        new ManagedRelay.ManagedRelayDpopProofCreationError({ method: input.method, url: input.url, cause: NO_CONNECT }),
+        new ManagedRelay.ManagedRelayDpopProofCreationError({
+          method: input.method,
+          url: input.url,
+          cause: NO_CONNECT,
+        }),
       ),
   }),
 );
@@ -113,7 +134,9 @@ const layerCapabilities = Layer.mergeAll(
  * a desktop-local backend is registered. T3 Connect (an empty relay URL
  * disables the relay client), SSH and a primary local environment are off.
  */
-export function platformLayer(registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>) {
+export function platformLayer(
+  registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,
+) {
   return ManagedRelay.layer({ relayUrl: "", clientId: "t3-web" }).pipe(
     Layer.provideMerge(
       Layer.mergeAll(

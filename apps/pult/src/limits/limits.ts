@@ -5,9 +5,17 @@ import { paceOf } from "@t3tools/shared/usageLimits";
 
 /** The shelf's modes, `pult.panel.usageLimits`, in the order the settings page and the palette's pick list them. */
 export const USAGE_LIMITS_MODES = [
-  { mode: "warn", label: "When warning", description: "Only the limits past 95% or running out before their reset." },
+  {
+    mode: "warn",
+    label: "When warning",
+    description: "Only the limits past 95% or running out before their reset.",
+  },
   { mode: "always", label: "Always", description: "Every limit with something spent." },
-  { mode: "hidden", label: "Hidden", description: "No Limits shelf; Pult: Show Usage Limits still shows it." },
+  {
+    mode: "hidden",
+    label: "Hidden",
+    description: "No Limits shelf; Pult: Show Usage Limits still shows it.",
+  },
 ] as const;
 
 export type UsageLimitsMode = (typeof USAGE_LIMITS_MODES)[number]["mode"];
@@ -65,18 +73,28 @@ export function limitsShelf<Account extends AccountRef>(
   const all = accounts
     .map((account) => ({
       account,
-      windows: account.limits.windows.filter(showsWindow).map((window) => ({ window, warning: warns(window, now) })),
+      windows: account.limits.windows
+        .filter(showsWindow)
+        .map((window) => ({ window, warning: warns(window, now) })),
     }))
     .filter((account) => account.windows.length > 0);
   const shown = all.reduce((count, account) => count + account.windows.length, 0);
-  const warnings = all.reduce((count, account) => count + account.windows.filter((window) => window.warning).length, 0);
+  const warnings = all.reduce(
+    (count, account) => count + account.windows.filter((window) => window.warning).length,
+    0,
+  );
   if (showAll || mode === "always") {
-    return all.length === 0 ? null : { accounts: all, warnings, toggle: mode === "always" ? null : "less" };
+    return all.length === 0
+      ? null
+      : { accounts: all, warnings, toggle: mode === "always" ? null : "less" };
   }
   if (mode === "hidden" || warnings === 0) return null;
   return {
     accounts: all
-      .map((account) => ({ ...account, windows: account.windows.filter((window) => window.warning) }))
+      .map((account) => ({
+        ...account,
+        windows: account.windows.filter((window) => window.warning),
+      }))
       .filter((account) => account.windows.length > 0),
     warnings,
     toggle: shown > warnings ? "all" : null,

@@ -1,4 +1,9 @@
-import { getService, IDecorationsService, ILabelService, IWorkspaceContextService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  IDecorationsService,
+  ILabelService,
+  IWorkspaceContextService,
+} from "@codingame/monaco-vscode-api";
 import { IExplorerService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/files/browser/files.service";
 import { registerCustomProvider } from "@codingame/monaco-vscode-files-service-override";
 
@@ -42,7 +47,10 @@ export function registerPultFiles(): void {
 async function followWorkspace(provider: PultFileSystemProvider): Promise<void> {
   await servicesReady;
   (await getService(IDecorationsService)).registerDecorationsProvider(workspaceDecorations);
-  (await getService(ILabelService)).registerFormatter({ scheme: PULT_SCHEME, formatting: { label: "${path}", separator: "/" } });
+  (await getService(ILabelService)).registerFormatter({
+    scheme: PULT_SCHEME,
+    formatting: { label: "${path}", separator: "/" },
+  });
   (await getService(IWorkspaceContextService)).onDidChangeWorkspaceFolders(() => {
     for (const files of allWorkspaceFiles()) void files.syncWatches();
   });
@@ -52,19 +60,24 @@ async function followWorkspace(provider: PultFileSystemProvider): Promise<void> 
   const followConnection = () => {
     const environments = connection.environments;
     for (const environmentId of followed.keys()) {
-      if (!environments.some((environment) => environment.environmentId === environmentId)) followed.delete(environmentId);
+      if (!environments.some((environment) => environment.environmentId === environmentId))
+        followed.delete(environmentId);
     }
     releaseWorkspaceFiles();
     let reconnected = false;
     for (const environment of environments) {
-      const state = followed.get(environment.environmentId) ?? { ready: false, completions: new Map() };
+      const state = followed.get(environment.environmentId) ?? {
+        ready: false,
+        completions: new Map(),
+      };
       followed.set(environment.environmentId, state);
       const ready = environment.phase === "ready";
       // Changes made while the environment was offline went unseen.
       if (ready && !state.ready) {
         const files = workspaceFiles(environment.environmentId);
         void files.syncWatches();
-        for (const folder of pultFolders(environment.environmentId)) void files.refresh(folder.uri.path);
+        for (const folder of pultFolders(environment.environmentId))
+          void files.refresh(folder.uri.path);
         reconnected = true;
       }
       state.ready = ready;

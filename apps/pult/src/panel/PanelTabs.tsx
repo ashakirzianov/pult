@@ -1,4 +1,11 @@
-import { getService, IActivityService, ICommandService, IPaneCompositePartService, IStorageService, IViewDescriptorService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  IActivityService,
+  ICommandService,
+  IPaneCompositePartService,
+  IStorageService,
+  IViewDescriptorService,
+} from "@codingame/monaco-vscode-api";
 import { DisposableStore } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import { FileAccess } from "@codingame/monaco-vscode-api/vscode/vs/base/common/network";
 import { ThemeIcon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/themables";
@@ -44,7 +51,11 @@ export async function panelTabStore() {
     const active = panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
     const stored = new Map<string, { pinned?: boolean; order?: number }>();
     try {
-      for (const entry of JSON.parse(storage.get(PINNED_KEY, StorageScope.PROFILE) ?? "[]") as { id: string; pinned?: boolean; order?: number }[]) {
+      for (const entry of JSON.parse(storage.get(PINNED_KEY, StorageScope.PROFILE) ?? "[]") as {
+        id: string;
+        pinned?: boolean;
+        order?: number;
+      }[]) {
         stored.set(entry.id, entry);
       }
     } catch {
@@ -54,12 +65,22 @@ export async function panelTabStore() {
       stored.get(container.id)?.order ?? container.order ?? Number.MAX_SAFE_INTEGER;
     return views
       .getViewContainersByLocation(ViewContainerLocation.Sidebar)
-      .map((container, index) => ({ container, index, model: views.getViewContainerModel(container) }))
-      .filter(({ container, model }) => model.activeViewDescriptors.length > 0 && (stored.get(container.id)?.pinned !== false || container.id === active))
+      .map((container, index) => ({
+        container,
+        index,
+        model: views.getViewContainerModel(container),
+      }))
+      .filter(
+        ({ container, model }) =>
+          model.activeViewDescriptors.length > 0 &&
+          (stored.get(container.id)?.pinned !== false || container.id === active),
+      )
       .sort((a, b) => order(a.container) - order(b.container) || a.index - b.index)
       .map(({ container, model }) => {
         const icon = model.icon;
-        const badge = activities.getViewContainerActivities(container.id).find((activity) => activity.badge instanceof NumberBadge)?.badge;
+        const badge = activities
+          .getViewContainerActivities(container.id)
+          .find((activity) => activity.badge instanceof NumberBadge)?.badge;
         return {
           id: container.id,
           title: model.title,
@@ -141,9 +162,15 @@ export function PanelTabs({ store }: { store: PanelTabStore }) {
           ) : "className" in tab.icon ? (
             <i className={tab.icon.className} aria-hidden />
           ) : (
-            <i className="pult-panel-tab-image" style={{ maskImage: `url("${tab.icon.url}")` }} aria-hidden />
+            <i
+              className="pult-panel-tab-image"
+              style={{ maskImage: `url("${tab.icon.url}")` }}
+              aria-hidden
+            />
           )}
-          {tab.badge === undefined ? null : <span className="pult-panel-tab-badge">{tab.badge}</span>}
+          {tab.badge === undefined ? null : (
+            <span className="pult-panel-tab-badge">{tab.badge}</span>
+          )}
         </button>
       ))}
     </div>
