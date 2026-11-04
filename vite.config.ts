@@ -143,6 +143,8 @@ export default defineConfig({
                   ...TEST_EXCLUDE,
                   ...TEST_CONFIG_PACKAGES.map((dir) => `${dir}/**`),
                   "native/kde-snap-shot/**",
+                  // Pult's shell tests with `node --test`, through its own `test` script.
+                  "apps/pult/**",
                 ],
               },
             },
