@@ -1,5 +1,7 @@
 packages:
   - apps/*
+  # Pult's desktop wrapper, a package of its own inside the shell's app.
+  - apps/pult/desktop
   - examples/plugins/*
   - infra/*
   - oxlint-plugin-t3code
