@@ -95,7 +95,6 @@
     "@vitejs/plugin-react": "^6.1.2",
     "oxc-transform-react": "~0.152.0",
     "playwright": "^1.64.1",
-    "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

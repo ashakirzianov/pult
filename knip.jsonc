@@ -91,6 +91,31 @@
       // reports an entire component module when nothing imports it.
       "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
     },
+    "apps/pult": {
+      // The page's build swaps these in for apps/web's modules by path (view/stubs.ts), the
+      // tests run under node --test, and scripts/drive.ts runs directly.
+      "entry": [
+        "view/connectionRuntime.ts!",
+        "view/panelLayoutControls.tsx!",
+        "view/stubs/*.ts!",
+        "src/**/*.test.ts",
+        "scripts/drive.ts",
+      ],
+      "ignoreIssues": {
+        // A stub exports what the apps/web module it replaces exports.
+        "view/connectionRuntime.ts": ["exports"],
+        // The pane loads the view's entry with a dynamic import.
+        "view/main.tsx": ["exports"],
+        // The identity seam names every value the packaged app will read (pult/decisions, identity-seam).
+        "src/identity.ts": ["exports", "duplicates"],
+      },
+      // The workbench's service overrides, pinned at one version beside the ones the page imports.
+      "ignoreDependencies": ["@codingame/monaco-vscode-.*"],
+    },
+    "apps/pult/desktop": {
+      // scripts/build.ts bundles main and the preload by path.
+      "entry": ["src/main.ts!", "src/preload.ts!", "scripts/*.ts"],
+    },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
       "ignoreDependencies": ["@astrojs/check"],
