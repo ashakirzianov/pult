@@ -3,21 +3,19 @@ import * as path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
-// Vite+'s `fmt` and `lint` settings, which it declares on Vite's config.
-import type {} from "vite-plus";
-import { STUBS } from "./thread-view/stubs.ts";
+import { STUBS } from "./view/stubs.ts";
 
-// The thread view (`thread-view/`): the tracked copy of the fork's apps/web in
-// `t3/`, and the files of ours around it in `shell/`.
-const threadView = path.join(import.meta.dirname, "thread-view");
-const copy = path.join(threadView, "t3");
+// The thread view: upstream's web app, `apps/web`, built in place, and the files
+// of ours around it in `view/`.
+const view = path.join(import.meta.dirname, "view");
+const webSource = path.join(import.meta.dirname, "../web/src");
 
-/** Resolves an import of a stubbed upstream module in the copy to its replacement (`thread-view/stubs.ts`). */
+/** Resolves an import of a stubbed upstream module in `apps/web` to its replacement (`view/stubs.ts`). */
 function threadViewStubs(): Plugin {
   const replacements = new Map(
     Object.entries(STUBS).map(([upstream, ours]) => [
-      path.join(copy, upstream),
-      path.join(threadView, ours),
+      path.join(import.meta.dirname, upstream),
+      path.join(import.meta.dirname, ours),
     ]),
   );
   return {
@@ -32,7 +30,7 @@ function threadViewStubs(): Plugin {
 }
 
 /**
- * The copy built as for a release in the page's development build too: upstream's development
+ * `apps/web` built as for a release in the page's development build too: upstream's development
  * build marks itself, its stage label "Dev" and that stage's artwork on the send button.
  */
 function threadViewRelease(): Plugin {
@@ -42,21 +40,20 @@ function threadViewRelease(): Plugin {
     transform: {
       filter: { code: { include: ["import.meta.env.DEV"] } },
       handler: (code, id) =>
-        id.startsWith(copy + path.sep) ? code.replaceAll("import.meta.env.DEV", "false") : null,
+        id.startsWith(webSource + path.sep)
+          ? code.replaceAll("import.meta.env.DEV", "false")
+          : null,
     },
   };
 }
 
 /**
- * The fork's release at the pin, which its release stamps on `contracts` as on
- * its apps: the view reports it as its own, so upstream's version check
- * compares like with like.
+ * The repository's release, which its release stamps on `contracts` as on its
+ * apps: the view reports it as its own, so upstream's version check compares
+ * like with like.
  */
 const appVersion: string = JSON.parse(
-  fs.readFileSync(
-    path.join(import.meta.dirname, "vendor/t3code/packages/contracts/package.json"),
-    "utf8",
-  ),
+  fs.readFileSync(path.join(import.meta.dirname, "../../packages/contracts/package.json"), "utf8"),
 ).version;
 
 // The fork's build-time configuration for its web app, all of it off: no T3 Connect, no hosted app.
@@ -84,8 +81,8 @@ export default defineConfig({
   plugins: [
     threadViewStubs(),
     threadViewRelease(),
-    // The copy is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
-    react({ compiler: { sources: [threadView + path.sep] } }),
+    // The view is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
+    react({ compiler: { sources: [webSource + path.sep, view + path.sep] } }),
     tailwindcss(),
     {
       // The vendored workbench imports its CSS as strings and injects it itself.
@@ -116,25 +113,21 @@ export default defineConfig({
       "@codingame/monaco-vscode-api/monaco",
     ],
   },
+  // Another port is `vp dev --port <port>`; a server's allowed origins name the page's.
   server: {
     port: 5190,
     strictPort: true,
   },
-  // The fork's files, kept byte for byte (`scripts/vendor.ts`), and the copy, which merges
-  // upstream's changes (`scripts/merge.ts`) in upstream's format.
-  fmt: {
-    ignorePatterns: ["vendor/t3code/packages/**", "vendor/t3code/patches/**", "thread-view/t3/**"],
-  },
-  lint: { ignorePatterns: ["vendor/t3code/packages/**", "thread-view/t3/**"] },
   resolve: {
-    // The copy's imports of its own `src/`.
-    alias: [{ find: /^~\//, replacement: path.join(copy, "src") + "/" }],
-    // One copy of each in the page: the workbench's singletons, and the client runtime the view and the shell share.
+    // `apps/web`'s imports of its own `src/`.
+    alias: [{ find: /^~\//, replacement: webSource + "/" }],
+    // One copy of each in the page: the workbench's singletons, and the client runtime and router the view and the shell share.
     dedupe: [
       "vscode",
       "react",
       "react-dom",
       "effect",
+      "@tanstack/react-router",
       "@t3tools/client-runtime",
       "@t3tools/contracts",
       "@t3tools/shared",
