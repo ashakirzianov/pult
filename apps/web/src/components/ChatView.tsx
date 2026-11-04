@@ -250,6 +250,7 @@ import {
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { ComposerControlsSlot, ComposerControlsSlotItem } from "./chat/ComposerFooterControls";
+import { ShellComposerOptions } from "./chat/ShellComposerOptions";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
@@ -1513,14 +1514,18 @@ export default function ChatView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
-  const isDraftHeroState = resolveDraftHeroState({
-    isLocalDraftThread,
-    hasTimelineEntries: !timelineEmpty,
-    isWorking,
-    draftHeroDockRequested,
-    backgroundSubmissionPending,
-    hasWorktreeSetupCard: worktreeSetup !== null,
-  });
+  // Pult: the app around the view may keep a draft's composer where a thread's sits, with no hero.
+  const draftHeroShown = use(ShellComposerOptions).draftHero;
+  const isDraftHeroState =
+    draftHeroShown &&
+    resolveDraftHeroState({
+      isLocalDraftThread,
+      hasTimelineEntries: !timelineEmpty,
+      isWorking,
+      draftHeroDockRequested,
+      backgroundSubmissionPending,
+      hasWorktreeSetupCard: worktreeSetup !== null,
+    });
   const {
     transitionGroupRef: draftHeroTransitionGroupRef,
     composerAnchorRef: draftHeroComposerAnchorRef,
