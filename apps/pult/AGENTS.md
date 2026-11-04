@@ -3,7 +3,7 @@
 `apps/pult` is **Pult**'s shell: VS Code's workbench, vendored through `@codingame/monaco-vscode-api`, in a Vite page centred on threads, with upstream's thread view (`apps/web`) built in and connected to T3 Code servers, this repository's `apps/server` among them. The page runs no server. The repository's rules, its hazards and its push rule are the root `AGENTS.md`'s; this file is the shell's map. The Pult extension (the `pult-extension` repo) is retired, folded into this page (`pult/shell-absorbs-extension`).
 
 - Read xaxis `pult/rfc-0` (human-written, never edited by agents) before anything else, then `pult/rfc-2`, the current direction, and the design on `pult/own-shell`. The track's decisions are xaxis `pult/decisions`; its design principles `pult/taste`.
-- The shell's history started fresh on 2026-10-23 in its own repository, archived as `ashakirzianov/pult-shell`, and continued here under `apps/pult` from 2026-11-04 (`pult/decisions`, `one-repo`). The line before it, a web client and an Electron shell, is archived as `ashakirzianov/pult-app`; copy from it by hand when something there is wanted (the icon renderer, the desktop shell).
+- The shell's history started fresh on 2026-10-23 in its own repository, archived as `ashakirzianov-archive/pult-shell`, and continued here under `apps/pult` from 2026-11-04 (`pult/decisions`, `one-repo`). The line before it, a web client and an Electron shell, is archived as `ashakirzianov/pult-app`; copy from it by hand when something there is wanted (the icon renderer, the desktop shell).
 - Licence: MIT, upstream's text; it stays.
 
 ## Glossary

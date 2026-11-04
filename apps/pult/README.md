@@ -2,7 +2,7 @@
 
 Pult is a client for coding agents, centred on threads, with editing a convenience. Its shell is VS Code's workbench, vendored through [`@codingame/monaco-vscode-api`](https://github.com/CodinGame/monaco-vscode-api), in a page of its own, with upstream's thread view (`apps/web`) built in and connected to T3 Code servers, this repository's among them. The page runs no server of its own.
 
-The shell's history started on 2026-10-23 in a repository of its own, archived as [`pult-shell`](https://github.com/ashakirzianov/pult-shell), and continues here. The line before it, a web client and an Electron shell copied from T3 Code, is archived as [`pult-app`](https://github.com/ashakirzianov/pult-app).
+The shell's history started on 2026-10-23 in a repository of its own, archived as [`pult-shell`](https://github.com/ashakirzianov-archive/pult-shell), and continues here. The line before it, a web client and an Electron shell copied from T3 Code, is archived as [`pult-app`](https://github.com/ashakirzianov/pult-app).
 
 ## Development
 
