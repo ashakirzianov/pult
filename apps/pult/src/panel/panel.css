@@ -913,12 +913,6 @@
   font-size: 14px;
 }
 
-/* The count of warning windows, in the composer bar's warning colour while any warns. */
-.pult-shelf-limits-warning .pult-shelf-count {
-  background: var(--warning, var(--vscode-editorWarning-foreground));
-  color: var(--vscode-editor-background);
-}
-
 /* An account: a compact line, then a line per window over its bar. */
 .pult-limits-account {
   padding: 4px 8px 6px;

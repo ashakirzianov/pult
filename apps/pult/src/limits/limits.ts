@@ -1,24 +1,7 @@
 // What the Limits shelf shows of the provider accounts' usage windows (xaxis `pult/issues/provider-limits-page`):
-// which windows show, which warn, and what each of the shelf's modes leaves in.
+// which windows show, which warn, and which of them the shelf lists.
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 import { paceOf } from "@t3tools/shared/usageLimits";
-
-/** The shelf's modes, `pult.panel.usageLimits`, in the order the settings page and the palette's pick list them. */
-export const USAGE_LIMITS_MODES = [
-  {
-    mode: "warn",
-    label: "When warning",
-    description: "Only the limits past 95% or running out before their reset.",
-  },
-  { mode: "always", label: "Always", description: "Every limit with something spent." },
-  {
-    mode: "hidden",
-    label: "Hidden",
-    description: "No Limits shelf; Pult: Show Usage Limits still shows it.",
-  },
-] as const;
-
-export type UsageLimitsMode = (typeof USAGE_LIMITS_MODES)[number]["mode"];
 
 /** How much of a window is spent before it warns, whatever its pace. */
 const WARNING_USED_PERCENT = 95;
@@ -57,17 +40,15 @@ export interface LimitsShelf<Account extends AccountRef> {
 }
 
 /**
- * The shelf in `mode`, or null while it is gone: every window that shows
- * while `showAll` (its Show all, or Pult: Show Usage Limits) or `always`;
- * in `warn` the warning windows alone, with Show all while others would
- * show, gone while none warns; in `hidden` gone. An account shows while it
- * has a window to show; Show less returns from `showAll` to a mode that
- * shows less.
+ * The shelf, or null while it is gone, no window having anything spent:
+ * while any window warns, the warning windows alone, with Show all while
+ * others would show, and everything while `showAll` (its Show all, or Pult:
+ * Show Usage Limits), with Show less; while none warns, every window that
+ * shows. An account shows while it has a window to show.
  */
 export function limitsShelf<Account extends AccountRef>(
   accounts: ReadonlyArray<Account>,
   now: number,
-  mode: UsageLimitsMode,
   showAll: boolean,
 ): LimitsShelf<Account> | null {
   const all = accounts
@@ -78,17 +59,15 @@ export function limitsShelf<Account extends AccountRef>(
         .map((window) => ({ window, warning: warns(window, now) })),
     }))
     .filter((account) => account.windows.length > 0);
+  if (all.length === 0) return null;
   const shown = all.reduce((count, account) => count + account.windows.length, 0);
   const warnings = all.reduce(
     (count, account) => count + account.windows.filter((window) => window.warning).length,
     0,
   );
-  if (showAll || mode === "always") {
-    return all.length === 0
-      ? null
-      : { accounts: all, warnings, toggle: mode === "always" ? null : "less" };
-  }
-  if (mode === "hidden" || warnings === 0) return null;
+  // Nothing to tell apart: every window that shows is a warning, or none is.
+  if (warnings === 0 || warnings === shown) return { accounts: all, warnings, toggle: null };
+  if (showAll) return { accounts: all, warnings, toggle: "less" };
   return {
     accounts: all
       .map((account) => ({
@@ -97,6 +76,6 @@ export function limitsShelf<Account extends AccountRef>(
       }))
       .filter((account) => account.windows.length > 0),
     warnings,
-    toggle: shown > warnings ? "all" : null,
+    toggle: "all",
   };
 }

@@ -1,5 +1,5 @@
 import { getService } from "@codingame/monaco-vscode-api";
-import { Separator, toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
+import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { elapsedShare, formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -9,7 +9,6 @@ import {
   UsageProviderIcon,
   usageProvider,
 } from "../../view/usageProviders.tsx";
-import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { limitsShelf, type ShelfWindow } from "../limits/limits.ts";
 import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts";
 import { limitsShelfState, setLimitsExpanded, setLimitsShowAll } from "../limits/shelf.ts";
@@ -22,20 +21,18 @@ let revealed = 0;
 /**
  * The Limits shelf, the Pult tab's last (xaxis `pult/issues/provider-limits-page`):
  * the provider accounts' usage windows with something spent, under a
- * collapsible header with the count of warning windows, in the warning
- * colour while any warns; in `pult.panel.usageLimits`'s `warn` mode the
- * warning windows alone, with Show all, and gone while none warns
- * (`limitsShelf`). Refresh is the header's hover action, its tooltip when
- * each environment's limits were last checked and the notices, its
- * right-click the modes. The rows are no jump targets and do nothing on
+ * collapsible header with the count of warning windows; while any warns the
+ * warning windows alone, with Show all, else every window with something
+ * spent, and gone while none has (`limitsShelf`). Refresh is the header's
+ * hover action and its right-click, its tooltip when each environment's
+ * limits were last checked and the notices. The rows are no jump targets and do nothing on
  * click. `now` is the panel's minute clock, which the pace moves with.
  */
 export function LimitsShelf({ now }: { now: number }) {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
-  const mode = useSyncExternalStore(usageLimitsMode.subscribe, usageLimitsMode.get);
   const view = useSyncExternalStore(limitsShelfState.subscribe, limitsShelfState.get);
   const element = useRef<HTMLLIElement>(null);
-  const shelf = limitsShelf(limits.accounts, now, mode, view.showAll);
+  const shelf = limitsShelf(limits.accounts, now, view.showAll);
   useEffect(() => {
     if (shelf === null || view.reveals === revealed) return;
     revealed = view.reveals;
@@ -44,10 +41,7 @@ export function LimitsShelf({ now }: { now: number }) {
   if (shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
-    <li
-      ref={element}
-      className={`pult-shelf pult-shelf-limits${shelf.warnings > 0 ? " pult-shelf-limits-warning" : ""}`}
-    >
+    <li ref={element} className="pult-shelf pult-shelf-limits">
       <div className="pult-limits-header">
         <CollapsibleHeader
           label="Limits"
@@ -57,7 +51,7 @@ export function LimitsShelf({ now }: { now: number }) {
           title={headerTooltip(limits, now)}
           onContextMenu={(event) => {
             event.preventDefault();
-            void showModeMenu({ x: event.clientX, y: event.clientY });
+            void showMenu({ x: event.clientX, y: event.clientY });
           }}
         />
         <button
@@ -207,22 +201,12 @@ function ago(iso: string, now: number): string {
   return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
 }
 
-/** The header's right-click: the shelf's modes, the current one checked, then Refresh. */
-async function showModeMenu(anchor: { x: number; y: number }): Promise<void> {
+/** The header's right-click: Refresh. */
+async function showMenu(anchor: { x: number; y: number }): Promise<void> {
   const menus = await getService(IContextMenuService);
-  const current = usageLimitsMode.get();
   menus.showContextMenu({
     getAnchor: () => anchor,
     getActions: () => [
-      ...USAGE_LIMITS_MODES.map(({ mode, label }) =>
-        toAction({
-          id: `pult-shell.usageLimits.${mode}`,
-          label,
-          checked: mode === current,
-          run: () => setUsageLimitsMode(mode),
-        }),
-      ),
-      new Separator(),
       toAction({
         id: "pult-shell.refreshUsageLimits",
         label: "Refresh Usage Limits",

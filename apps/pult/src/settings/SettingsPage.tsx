@@ -5,7 +5,6 @@ import { useRef, useState, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
-import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { SETTLED_CHOICES, setSettledShelf, settledShelf } from "../panel/settings.ts";
 import { starStore } from "../stars/model.ts";
@@ -416,26 +415,15 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
 }
 
 /**
- * The left panel's shelves, a row each, one button per choice, the current
- * one pressed: when the Limits shelf shows the usage limits, When warning,
- * Always or Hidden (`pult.panel.usageLimits`, `src/limits/`), which the
- * palette's Pult: Usage Limits Shelf… and the shelf header's right-click set
- * too; and whether the Settled shelf shows (`src/panel/settings.ts`), which
- * the palette's Show Settled Shelf and Hide Settled Shelf set too.
+ * The left panel's shelves, one button per choice, the current one pressed:
+ * whether the Settled shelf shows (`src/panel/settings.ts`), which the
+ * palette's Show Settled Shelf and Hide Settled Shelf set too.
  */
 function PanelSection() {
-  const usageLimits = useSyncExternalStore(usageLimitsMode.subscribe, usageLimitsMode.get);
   const settled = useSyncExternalStore(settledShelf.subscribe, settledShelf.get);
   return (
     <section className="pult-settings-section">
       <h2>Panel</h2>
-      <SegmentedRow
-        label="Usage limits"
-        description="The providers' usage limits in the Limits shelf: by default only those past 95% or on a pace that runs out before the reset."
-        choices={USAGE_LIMITS_MODES.map(({ mode: choice, label }) => ({ value: choice, label }))}
-        current={usageLimits}
-        onChoose={(choice) => void setUsageLimitsMode(choice)}
-      />
       <SegmentedRow
         label="Settled threads"
         description="Hidden, the Pult tab shows no Settled shelf; Pult: Open Thread… still reaches settled threads."

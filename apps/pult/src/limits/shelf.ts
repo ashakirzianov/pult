@@ -6,8 +6,8 @@ const EXPANDED_KEY = "pult-shell.panel.limits-expanded";
 /**
  * The Limits shelf's own state, for its component and the palette's Pult:
  * Show Usage Limits: whether it is expanded, open until closed and kept in
- * localStorage; whether it shows everything whatever the mode (its Show all,
- * or the command), forgotten on reload; and a count of the command's asks
+ * localStorage; whether it shows everything, the windows that do not warn
+ * too (its Show all, or the command), forgotten on reload; and a count of the command's asks
  * to bring it into view.
  */
 interface ShelfState {
@@ -42,7 +42,7 @@ export function setLimitsExpanded(expanded: boolean): void {
   set(expanded ? { expanded } : { expanded, showAll: false });
 }
 
-/** Shows everything, or what the mode shows (Show all, Show less). */
+/** Shows everything, or the warning windows alone (Show all, Show less). */
 export function setLimitsShowAll(showAll: boolean): void {
   set({ showAll });
 }

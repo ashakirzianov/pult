@@ -70,9 +70,9 @@ NodeTest.describe("limitsShelf", () => {
   ];
 
   NodeTest.test(
-    "warn shows the warning windows alone, with Show all while others would show",
+    "while any window warns, shows the warning windows alone, with Show all while others would show",
     () => {
-      NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, "warn", false)), {
+      NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, false)), {
         accounts: [["claude", ["session!"]]],
         warnings: 1,
         toggle: "all",
@@ -80,53 +80,42 @@ NodeTest.describe("limitsShelf", () => {
     },
   );
 
-  NodeTest.test("warn with nothing warning is no shelf at all", () => {
-    NodeAssert.equal(limitsShelf([accounts[1]!, accounts[2]!], NOW, "warn", false), null);
+  NodeTest.test("Show all shows every window with something spent, with Show less", () => {
+    NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, true)), {
+      accounts: [
+        ["claude", ["session!", "weekly"]],
+        ["codex", ["weekly"]],
+      ],
+      warnings: 1,
+      toggle: "less",
+    });
   });
 
-  NodeTest.test("warn with every shown window warning offers no Show all", () => {
-    NodeAssert.equal(
-      limitsShelf(
-        [account("claude", window("session", 99), window("weekly", 0))],
-        NOW,
-        "warn",
-        false,
-      )?.toggle,
-      null,
-    );
-  });
-
-  NodeTest.test(
-    "always shows every window with something spent, and no zero window or account",
-    () => {
-      NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, "always", false)), {
-        accounts: [
-          ["claude", ["session!", "weekly"]],
-          ["codex", ["weekly"]],
-        ],
-        warnings: 1,
-        toggle: null,
-      });
-    },
-  );
-
-  NodeTest.test("always with nothing spent is no shelf", () => {
-    NodeAssert.equal(limitsShelf([accounts[2]!], NOW, "always", false), null);
-  });
-
-  NodeTest.test("hidden is no shelf, unless everything is asked for", () => {
-    NodeAssert.equal(limitsShelf(accounts, NOW, "hidden", false), null);
-    NodeAssert.equal(shape(limitsShelf(accounts, NOW, "hidden", true))?.toggle, "less");
+  NodeTest.test("with every shown window warning offers no Show all", () => {
+    const warning = [account("claude", window("session", 99), window("weekly", 0))];
+    NodeAssert.equal(limitsShelf(warning, NOW, false)?.toggle, null);
+    NodeAssert.equal(limitsShelf(warning, NOW, true)?.toggle, null);
   });
 
   NodeTest.test(
-    "Show all shows everything in warn, with Show less, even with nothing warning",
+    "while none warns, shows every window with something spent, and no zero window or account",
     () => {
-      NodeAssert.deepEqual(shape(limitsShelf([accounts[1]!], NOW, "warn", true)), {
-        accounts: [["codex", ["weekly"]]],
-        warnings: 0,
-        toggle: "less",
-      });
+      const quiet = [accounts[1]!, accounts[2]!, account("claude", window("weekly", 20, 0.5))];
+      for (const showAll of [false, true]) {
+        NodeAssert.deepEqual(shape(limitsShelf(quiet, NOW, showAll)), {
+          accounts: [
+            ["codex", ["weekly"]],
+            ["claude", ["weekly"]],
+          ],
+          warnings: 0,
+          toggle: null,
+        });
+      }
     },
   );
+
+  NodeTest.test("with nothing spent is no shelf, whatever is asked for", () => {
+    NodeAssert.equal(limitsShelf([accounts[2]!], NOW, false), null);
+    NodeAssert.equal(limitsShelf([accounts[2]!], NOW, true), null);
+  });
 });
