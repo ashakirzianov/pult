@@ -50,13 +50,21 @@ export function tintOf(name: string) {
   return TINTS.find((tint) => tint.name === name) ?? TINTS[0];
 }
 
-/** A Star's record: who it is. `name` is empty until the user names it, and the UI calls it "Star" meanwhile. */
+/**
+ * A Star's record: who it is. `name` is empty until the user names it, and
+ * the UI calls it "Star" meanwhile. `origin`, while it is set, is where its
+ * folder syncs (`sync.ts`); empty or absent, it does not.
+ */
 export interface StarRecord {
   readonly id: string;
   readonly name: string;
   readonly tint: string;
   readonly created: string;
+  readonly origin?: string;
 }
+
+/** The fields the page rewrites in the front matter. */
+export type RecordFields = Partial<Pick<StarRecord, "name" | "tint" | "origin">>;
 
 const KIND = "star";
 
@@ -123,11 +131,13 @@ export function parseRecord(text: string): StarRecord | undefined {
   if (fields === undefined) return undefined;
   const id = fields.get("id");
   if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
+  const origin = fields.get("origin")?.trim() ?? "";
   return {
     id,
     name: fields.get("name") ?? "",
     tint: fields.get("tint") || DEFAULT_TINT,
     created: fields.get("created") ?? "",
+    ...(origin === "" ? {} : { origin }),
   };
 }
 
@@ -136,10 +146,7 @@ export function parseRecord(text: string): StarRecord | undefined {
  * in place or added at the end, every other line and the body as they were.
  * A file without front matter is returned as it is.
  */
-export function withRecordFields(
-  text: string,
-  changes: Partial<Pick<StarRecord, "name" | "tint">>,
-): string {
+export function withRecordFields(text: string, changes: RecordFields): string {
   const matter = frontMatter(text);
   if (matter === undefined) return text;
   const pending = new Map(Object.entries(changes).filter(([, value]) => value !== undefined));

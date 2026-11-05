@@ -209,6 +209,15 @@ export const settleThread = (target: ThreadRef) => park(target);
  */
 export const settleQuietly = (target: ThreadRef) =>
   run(target, Operations.settleThread({ threadId: ThreadId.make(target.id) }));
+/** Runs one of upstream's operations on the environment's live session, as the thread commands run theirs: a Star's handoff starting its conversation (`src/stars/syncing.ts`). */
+export const runOperation = <A, E>(
+  environmentId: string,
+  effect: Effect.Effect<
+    A,
+    E,
+    EnvironmentSupervisor.EnvironmentSupervisor | SecureRandom.SecureRandom
+  >,
+) => run({ environmentId, id: "" }, effect);
 const snoozeThread = (target: ThreadRef, wake: string) => park(target, wake);
 export const unsettleThread = (target: ThreadRef) =>
   void act(target, "settlement", (command) =>

@@ -12,6 +12,8 @@ import { setStarFields, starStore } from "../stars/model.ts";
 import { TINTS, tintOf } from "../stars/record.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { type Star, starName } from "../stars/stars.ts";
+import { threadStore } from "../threads/store.ts";
+import { setStarOrigin, starHomeSync, starSyncStore, syncStar } from "../stars/syncing.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 
 function run(command: string, ...args: unknown[]): void {
@@ -275,7 +277,107 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
           </button>
         </div>
       </div>
+      <StarSyncRow star={star} several={several} />
     </>
+  );
+}
+
+/**
+ * The Star's Sync (`src/stars/syncing.ts`): its origin, a Git URL or a
+ * repository's path on the environment, written on Enter or leaving the
+ * field, empty to stop syncing; Sync Now while it is set; and a line per
+ * home of when it last synced, what failed, and what waits or was handed to
+ * the Star.
+ */
+function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
+  useSyncExternalStore(starSyncStore.subscribe, starSyncStore.get);
+  const origin = star.origin ?? "";
+  const [typed, setTyped] = useState(origin);
+  const [editing, setEditing] = useState(false);
+  // Escape leaves the field through its blur, which this tells to write nothing, as the name's does.
+  const cancelled = useRef(false);
+  const commit = () => {
+    setEditing(false);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    if (typed.trim() !== origin) void setStarOrigin(star.id, typed.trim());
+  };
+  const lines = star.homes.flatMap((home) => {
+    const state = starHomeSync(home);
+    const where =
+      star.homes.length > 1
+        ? `${threadStore.environment(home.environmentId)?.name ?? home.environmentId}: `
+        : "";
+    if (home.origin === undefined)
+      return state?.note == null && state?.failure == null
+        ? []
+        : [{ text: `${where}${state.failure ?? state.note}`, error: state.failure !== null }];
+    const last =
+      state?.lastSync == null
+        ? "Not synced yet."
+        : `Last synced ${new Date(state.lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`;
+    return [
+      { text: `${where}${state?.busy ?? last}`, error: false },
+      ...(state?.failure == null ? [] : [{ text: `${where}${state.failure}`, error: true }]),
+      ...(state?.note == null ? [] : [{ text: `${where}${state.note}`, error: false }]),
+    ];
+  });
+  return (
+    <div className="pult-settings-row">
+      <div className="pult-settings-row-text">
+        <label className="pult-settings-row-label" htmlFor={`pult-star-origin-${star.id}`}>
+          {several ? `Sync of ${starName(star)}` : "Sync"}
+        </label>
+        <div className="pult-settings-row-description">
+          A Git repository your Star's folder syncs with: Pult commits and pushes it after each
+          conversation, and pulls it on connecting and before your Star wakes. Empty, it does not
+          sync.
+        </div>
+        {lines.map((line) => (
+          <div
+            key={line.text}
+            className={line.error ? "pult-settings-row-error" : "pult-settings-row-description"}
+          >
+            {line.text}
+          </div>
+        ))}
+      </div>
+      <div className="pult-settings-row-actions">
+        <input
+          id={`pult-star-origin-${star.id}`}
+          className="pult-settings-input"
+          type="text"
+          placeholder="git@host:you/star.git"
+          spellCheck={false}
+          value={editing ? typed : origin}
+          onFocus={() => {
+            setTyped(origin);
+            setEditing(true);
+          }}
+          onChange={(event) => setTyped(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              cancelled.current = true;
+              setTyped(origin);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {origin === "" ? null : (
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => void syncStar(star.id)}
+          >
+            Sync Now
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

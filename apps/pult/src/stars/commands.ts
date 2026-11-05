@@ -21,6 +21,7 @@ import { threadStore } from "../threads/store.ts";
 import { canCreateStarOn, createStar, primaryHome, starById, starStore } from "./model.ts";
 import { RECORD_FILE } from "./record.ts";
 import { type Star, starName } from "./stars.ts";
+import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions and Open Star Folder are offered then. */
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
@@ -88,10 +89,12 @@ async function openStarFolder(star: Star): Promise<void> {
 /**
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
  * [environmentId]`, while a held environment has none, picked among them
- * while there are several), Edit Star Instructions
- * (`pult-shell.editStarInstructions [starId]`) and Open Star Folder
- * (`pult-shell.openStarFolder [starId]`), each on the page's Star, picked
- * while it holds several. Open Star is the selection's
+ * while there are several; while the page holds a Star that syncs, a second
+ * home of it, cloned from its origin), Edit Star Instructions
+ * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
+ * (`pult-shell.openStarFolder [starId]`) and Sync Star (`pult-shell.syncStar
+ * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
+ * several. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
  */
@@ -110,7 +113,9 @@ export function registerStarCommands(): void {
       }
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
-        if (typeof environmentId === "string") return createStar(environmentId);
+        // A Star that syncs gets a second home, cloned from its origin, rather than a new Star beside it.
+        const origin = starStore.get().find((star) => star.origin !== undefined)?.origin;
+        if (typeof environmentId === "string") return createStar(environmentId, origin);
         const candidates = connection.environments.filter((environment) =>
           canCreateStarOn(environment.environmentId),
         );
@@ -119,7 +124,7 @@ export function registerStarCommands(): void {
             "Every connected environment has a Star.",
           );
         const picked = await pickEnvironment(candidates, "Create a Star on an environment");
-        if (picked !== undefined) await createStar(picked.environmentId);
+        if (picked !== undefined) await createStar(picked.environmentId, origin);
       }
     },
   );
@@ -164,6 +169,28 @@ export function registerStarCommands(): void {
           "Open a Star's folder",
         );
         if (star !== undefined) await openStarFolder(star);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.syncStar",
+          title: { value: "Sync Star", original: "Sync Star" },
+          category,
+          f1: true,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown): Promise<void> {
+        const star = await pickStar(
+          accessor.get(IQuickInputService),
+          starId,
+          "Sync a Star with its origin",
+        );
+        if (star !== undefined) await syncStar(star.id);
       }
     },
   );

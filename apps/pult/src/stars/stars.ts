@@ -26,6 +26,8 @@ export interface StarHome {
   readonly projectId: string | null;
   readonly transcripts: ReadonlyArray<string>;
   readonly newestEnded?: string;
+  /** Where its folder syncs, by its own record; absent while it does not (`sync.ts`). */
+  readonly origin?: string;
 }
 
 /** What a Star reads of a thread of its projects. */
@@ -56,6 +58,8 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly name: string;
   readonly tint: string;
   readonly created: string;
+  /** Where it syncs, by its first home's record; absent while it does not. */
+  readonly origin?: string;
   readonly homes: ReadonlyArray<StarHome>;
   readonly current: Thread | null;
   readonly latest: Thread | null;
@@ -139,6 +143,7 @@ export function starsOf<Thread extends StarThread>(
       projectId: projectAt(projects, folder.environmentId, folder.root)?.id ?? null,
       transcripts: folder.transcripts,
       ...(folder.newestEnded === undefined ? {} : { newestEnded: folder.newestEnded }),
+      ...(folder.record.origin === undefined ? {} : { origin: folder.record.origin }),
     });
   }
   return [...byId.values()].map(({ record, homes }) => {
@@ -159,6 +164,7 @@ export function starsOf<Thread extends StarThread>(
       name: record.name,
       tint: record.tint,
       created: record.created,
+      ...(record.origin === undefined ? {} : { origin: record.origin }),
       homes,
       current,
       latest: roots[0] ?? null,

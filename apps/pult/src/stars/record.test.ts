@@ -40,6 +40,12 @@ NodeTest.describe("parseRecord", () => {
 });
 
 NodeTest.describe("withRecordFields", () => {
+  NodeTest.test("sets an origin, and an empty one reads as none", () => {
+    const set = withRecordFields(stockInstructions(record), { origin: "git@host:me/star.git" });
+    NodeAssert.equal(parseRecord(set)?.origin, "git@host:me/star.git");
+    NodeAssert.equal(parseRecord(withRecordFields(set, { origin: "" }))?.origin, undefined);
+  });
+
   NodeTest.test(
     "rewrites the fields in place and leaves every other line and the body as they were",
     () => {

@@ -16,6 +16,7 @@ import { readWholeProjection } from "./history.ts";
 import { forgetTranscriptEnd, rereadStars, starStore } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { asleepBy, type Wakefulness, wakefulness } from "./sleep.ts";
+import { afterStarTranscript } from "./syncing.ts";
 import { conversationsOf, type StarHome } from "./stars.ts";
 import {
   formatTranscript,
@@ -335,6 +336,8 @@ class StarConversations {
     const whole = !partial && sameInstant(transcriptHead(contents)?.ended, settledAt);
     if (present && !existing.truncated && existing.contents === contents) return whole;
     await server.writeFile({ cwd: home.root, relativePath, contents });
+    // Its conversation's commit and push, where the Star syncs.
+    afterStarTranscript(home, thread);
     refreshTranscript(home.environmentId, home.root, name);
     forgetTranscriptEnd(home.environmentId, home.root, name);
     await rereadStars(home.environmentId);

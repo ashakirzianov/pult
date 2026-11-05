@@ -15,12 +15,13 @@ import {
   parseRecord,
   RECORD_FILE,
   STAR_PROJECT_ICON,
+  type RecordFields,
   STAR_PROJECT_TITLE,
-  type StarRecord,
   STARS_DIRECTORY,
   stockInstructions,
   withRecordFields,
 } from "./record.ts";
+import { starGit } from "./git.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { isTranscriptName, transcriptHead, transcriptsFolder } from "./transcript.ts";
 import {
@@ -251,6 +252,15 @@ class StarsModel {
   }
 
   /** Whether the environment's Stars' folder was read, every folder in it, and holds no Star: a Star may be created on it by hand. */
+  /** Whether every ready environment's folders have been read, so each Star has all the homes the page can see. */
+  allRead(): boolean {
+    return connection.environments.every(
+      (environment) =>
+        environment.phase !== "ready" ||
+        this.readings.get(environment.environmentId)?.read !== "pending",
+    );
+  }
+
   canCreateOn(environmentId: string): boolean {
     const reading = this.readings.get(environmentId);
     return (
@@ -447,8 +457,12 @@ class StarsModel {
    * again on the next connect. Until its re-read lands no other creation
    * starts, and after a failure, a refusal or a lost race none by default
    * until an environment connects.
+   *
+   * With an `origin`, a Star the page holds syncs through, the folder is a
+   * clone of it instead, a second home of that Star (`syncing.ts`), cloned
+   * only where nothing is there yet, then made the project it is.
    */
-  async create(environmentId: string): Promise<void> {
+  async create(environmentId: string, origin?: string): Promise<void> {
     const reading = this.readings.get(environmentId);
     if (reading === undefined || this.creating) return;
     reading.attempted = true;
@@ -470,6 +484,22 @@ class StarsModel {
       };
       const project = projectAt(threadStore.get().projects, environmentId, root);
       const entries = await listed(server, home, `${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER}`);
+      if (origin !== undefined) {
+        if (entries !== null)
+          return (await recordAt(server, root)) === "star" ? undefined : refuse();
+        await starGit(environmentId).clone(origin, root);
+        const record = parseRecord((await readRecordFile(server, root))?.contents ?? "");
+        if (record === undefined)
+          throw new Error(`${origin} holds no Star yet: sync it from its first home.`);
+        const projectId = project?.id ?? (await this.createProject(environmentId, root));
+        this.made.add(key);
+        created = { environmentId, root, record, transcripts: [] };
+        await setStarIcon(environmentId, projectId);
+        notifications.prompt(Severity.Info, `Your Star is ready here too, synced with ${origin}.`, [
+          { label: "Open Star", run: () => void openStar(record.id) },
+        ]);
+        return;
+      }
       if (entries !== null) {
         const found = await recordAt(server, root);
         if (found === "star") return;
@@ -552,10 +582,7 @@ class StarsModel {
    * holds, a read-modify-write of `AGENTS.md`'s front matter alone, over the
    * version read where the server tells versions; a failure notifies.
    */
-  async setFields(
-    starId: string,
-    changes: Partial<Pick<StarRecord, "name" | "tint">>,
-  ): Promise<void> {
+  async setFields(starId: string, changes: RecordFields): Promise<void> {
     const star = this.stars.find((candidate) => candidate.id === starId);
     if (star === undefined) return;
     const notifications = await getService(INotificationService);
@@ -623,17 +650,19 @@ export function starById(starId: string): Star | undefined {
   return model.get().find((star) => star.id === starId);
 }
 
-export const createStar = (environmentId: string) => model.create(environmentId);
+/** Creates a Star on the environment, or with `origin` a second home of the Star syncing through it, cloned from it. */
+export const createStar = (environmentId: string, origin?: string) =>
+  model.create(environmentId, origin);
 /** Reads the environment's Stars' folders again: after the page wrote a transcript, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 /** Forgets when a transcript ended, before its rewrite is read. */
 export const forgetTranscriptEnd = (environmentId: string, root: string, name: string) =>
   transcriptEnds.delete(transcriptKey(environmentId, root, name));
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
-export const setStarFields = (
-  starId: string,
-  changes: Partial<Pick<StarRecord, "name" | "tint">>,
-) => model.setFields(starId, changes);
+/** Whether every ready environment's Stars' folders have been read (`syncing.ts` waits for it). */
+export const starFoldersRead = () => model.allRead();
+export const setStarFields = (starId: string, changes: RecordFields) =>
+  model.setFields(starId, changes);
 
 /** Whether the page holds the environment. */
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
