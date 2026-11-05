@@ -115,7 +115,8 @@ scheduled task dispatching. Background work counts exactly as settlement counts 
 marked awaited. Held queues and unmarked shells and monitors do not count: recovery holds those
 queues anyway, and most unmarked shells are dev servers and their watchdogs nobody waits on, so
 counting them would keep the server busy forever. `restingSince` lives in memory and starts again
-at boot.
+at boot; work that starts and ends between two reads still restarts it. A failed read or watch
+reads busy, and a stopped watch resyncs with backoff.
 
 A desktop app's server installs the app's updates itself when
 `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
