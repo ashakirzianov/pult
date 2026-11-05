@@ -30,7 +30,7 @@ interface PanelTab {
 }
 
 /**
- * The sidebar's view containers as the left panel's bottom row lists them:
+ * The sidebar's view containers as the left panel's tray lists them:
  * those with a view to show, the user's unpinned ones left out unless open,
  * in their order, each with its title, icon, whether it is open and its
  * number badge (Source Control's count). Any container counts, an
@@ -133,13 +133,15 @@ export async function panelTabStore() {
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
 /**
- * The left panel's tabs, in its bottom row: a button per sidebar tab, the
- * open one on the background the others take on hover, in place of VS
- * Code's activity bar, which the shell hides
+ * The left panel's tabs, at its tray's left end (`rows.tsx`): a button per
+ * sidebar tab, the open one on the background the others take on hover, in
+ * place of VS Code's activity bar, which the shell hides
  * (`workbench.activityBar.location`), since at the sidebar's top or bottom
- * it brings the workbench's title bar with it. In Pult's mode the Pult tab
- * has no button (`style.css`): every other tab's Close goes back to it.
- * Source Control's opens on every checkout's changes, its filter dropped.
+ * it brings the workbench's title bar with it. In Pult's mode the tray shows
+ * Source Control's alone, and only while its tab is not open (`style.css`):
+ * every tab's Close goes back to the Pult tab, and the Explorer shelf's rows
+ * lead to the Explorer tab. Source Control's opens on every checkout's
+ * changes, its filter dropped. VS Code's mode shows them all.
  */
 export function PanelTabs({ store }: { store: PanelTabStore }) {
   const tabs = useSyncExternalStore(store.subscribe, store.get);

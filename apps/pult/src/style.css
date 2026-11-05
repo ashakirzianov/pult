@@ -343,8 +343,13 @@ body.pult-dragging .pult-browser-host webview {
   display: none;
 }
 
-/* The Pult tab's button in the left panel's bottom row (src/panel/PanelTabs.tsx):
-   every other tab's Close goes back to it. */
-.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tab[data-container="pult.panel"] {
+/* Of the tabs' buttons in the left panel's tray (src/panel/PanelTabs.tsx), Source Control's alone,
+   while its tab is not open: every tab's Close goes back to the Pult tab, and the Explorer shelf's
+   rows lead to the Explorer tab. */
+.monaco-workbench:not(.pult-mode-vscode)
+  .pult-panel-tab[data-container]:is(
+    :not([data-container="workbench.view.scm"]),
+    .pult-panel-tab-active
+  ) {
   display: none;
 }
