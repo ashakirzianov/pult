@@ -32,6 +32,7 @@ import {
   projectAt,
   type Star,
   type StarFolder,
+  type StarHome,
   starsOf,
   wakeHome,
 } from "./stars.ts";
@@ -251,7 +252,6 @@ class StarsModel {
     return () => this.listeners.delete(listener);
   }
 
-  /** Whether the environment's Stars' folder was read, every folder in it, and holds no Star: a Star may be created on it by hand. */
   /** Whether every ready environment's folders have been read, so each Star has all the homes the page can see. */
   allRead(): boolean {
     return connection.environments.every(
@@ -261,6 +261,7 @@ class StarsModel {
     );
   }
 
+  /** Whether the environment's Stars' folder was read, every folder in it, and holds no Star: a Star may be created on it by hand. */
   canCreateOn(environmentId: string): boolean {
     const reading = this.readings.get(environmentId);
     return (
@@ -578,35 +579,40 @@ class StarsModel {
   }
 
   /**
-   * Writes the record's `changes` into every home of the Star the page
-   * holds, a read-modify-write of `AGENTS.md`'s front matter alone, over the
-   * version read where the server tells versions; a failure notifies.
+   * Writes the record's `changes` into `homes` of the Star, a
+   * read-modify-write of `AGENTS.md`'s front matter alone, over the version
+   * read where the server tells versions; a failure notifies. Whether every
+   * home took it. A Star that syncs takes them through its origin
+   * (`syncing.ts`, `setStarRecord`), not here.
    */
-  async setFields(starId: string, changes: RecordFields): Promise<void> {
-    const star = this.stars.find((candidate) => candidate.id === starId);
-    if (star === undefined) return;
+  async setFields(
+    starId: string,
+    changes: RecordFields,
+    homes: ReadonlyArray<StarHome>,
+  ): Promise<boolean> {
     const notifications = await getService(INotificationService);
-    await Promise.all(
-      star.homes
-        .filter((home) => connection.environment(home.environmentId) !== undefined)
-        .map(async (home) => {
-          try {
-            const server = environmentServer(home.environmentId);
-            const file = await readRecordFile(server, home.root);
-            if (file === undefined || parseRecord(file.contents)?.id !== starId) return;
-            await server.writeFile({
-              cwd: home.root,
-              relativePath: RECORD_FILE,
-              contents: withRecordFields(file.contents, changes),
-              ...(file.version === undefined ? {} : { expectedVersion: file.version }),
-            });
-          } catch (error) {
-            notifications.error(`Pult could not change your Star: ${errorMessage(error)}`);
-          } finally {
-            await this.read(home.environmentId);
-          }
-        }),
+    const written = await Promise.all(
+      homes.map(async (home) => {
+        try {
+          const server = environmentServer(home.environmentId);
+          const file = await readRecordFile(server, home.root);
+          if (file === undefined || parseRecord(file.contents)?.id !== starId) return false;
+          await server.writeFile({
+            cwd: home.root,
+            relativePath: RECORD_FILE,
+            contents: withRecordFields(file.contents, changes),
+            ...(file.version === undefined ? {} : { expectedVersion: file.version }),
+          });
+          return true;
+        } catch (error) {
+          notifications.error(`Pult could not change your Star: ${errorMessage(error)}`);
+          return false;
+        } finally {
+          await this.read(home.environmentId);
+        }
+      }),
     );
+    return written.every(Boolean);
   }
 }
 
@@ -661,8 +667,11 @@ export const forgetTranscriptEnd = (environmentId: string, root: string, name: s
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
 /** Whether every ready environment's Stars' folders have been read (`syncing.ts` waits for it). */
 export const starFoldersRead = () => model.allRead();
-export const setStarFields = (starId: string, changes: RecordFields) =>
-  model.setFields(starId, changes);
+export const setStarFields = (
+  starId: string,
+  changes: RecordFields,
+  homes: ReadonlyArray<StarHome>,
+) => model.setFields(starId, changes, homes);
 
 /** Whether the page holds the environment. */
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;

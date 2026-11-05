@@ -1,5 +1,5 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { connection } from "../connection/index.ts";
@@ -8,7 +8,6 @@ import { draftCreates, type PaneTarget, ThreadContent } from "../threads/pane.ts
 import { threadStore } from "../threads/store.ts";
 import { starById, starStore, type StarTarget, starTarget } from "./model.ts";
 import { starName } from "./stars.ts";
-import { beforeStarWakes } from "./syncing.ts";
 import "./stars.css";
 
 // With the view, whose markdown its transcripts render with.
@@ -57,11 +56,6 @@ export function StarContent({ starId }: { starId: string }) {
   // Where a sleeping Star wakes depends on which environments the page holds.
   useSyncExternalStore(subscribeToConnection, environmentsSnapshot);
   const target = star === undefined ? undefined : starTarget(star);
-  // Shown asleep, the Star is about to be written to: its folder pulls from its origin ahead of the send, which never waits on it.
-  const wakesOn = target?.kind === "draft" ? target.environmentId : undefined;
-  useEffect(() => {
-    if (wakesOn !== undefined) beforeStarWakes(starId, wakesOn);
-  }, [wakesOn, starId]);
   const [options] = useState(() => ({
     ...starComposerOptions(starId),
     timelineHeader: {

@@ -8,12 +8,18 @@ import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServe
 import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { SETTLED_CHOICES, setSettledShelf, settledShelf } from "../panel/settings.ts";
-import { setStarFields, starStore } from "../stars/model.ts";
+import { starStore } from "../stars/model.ts";
 import { TINTS, tintOf } from "../stars/record.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { type Star, starName } from "../stars/stars.ts";
 import { threadStore } from "../threads/store.ts";
-import { setStarOrigin, starHomeSync, starSyncStore, syncStar } from "../stars/syncing.ts";
+import {
+  setStarOrigin,
+  setStarRecord,
+  starHomeSync,
+  starSyncStore,
+  syncStar,
+} from "../stars/syncing.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 
 function run(command: string, ...args: unknown[]): void {
@@ -198,7 +204,7 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
       cancelled.current = false;
       return;
     }
-    if (name.trim() !== star.name) void setStarFields(star.id, { name: name.trim() });
+    if (name.trim() !== star.name) void setStarRecord(star.id, { name: name.trim() });
   };
   return (
     <>
@@ -247,7 +253,7 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
               aria-checked={tint.name === tintOf(star.tint).name}
               title={tint.name[0]?.toUpperCase() + tint.name.slice(1)}
               style={{ background: `hsl(${tint.hue} 80% 60%)` }}
-              onClick={() => void setStarFields(star.id, { tint: tint.name })}
+              onClick={() => void setStarRecord(star.id, { tint: tint.name })}
             />
           ))}
         </div>
