@@ -195,6 +195,12 @@ class PreviewPane extends SimpleEditorPane {
     };
   }
 
+  /** A New browser's placeholder, given the keyboard (opened active by the user's Open Browser, or its tab clicked), puts it in its URL field. */
+  override focus(): void {
+    super.focus();
+    if (this.mounted?.input.tabId === null) this.mounted.view.focusAddress();
+  }
+
   override layout(dimension: Dimension): void {
     super.layout(dimension);
     // A group moved without resizing: the webview follows its slot.

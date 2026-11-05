@@ -23,6 +23,8 @@ export interface MountedPreview {
   setVisible(visible: boolean): void;
   /** The session the pane shows now, a placeholder's tab promoted to it (`src/preview/pane.tsx`). */
   showSession(tabId: string): void;
+  /** Puts the keyboard in the URL field, once it renders: a New browser tab's first input. */
+  focusAddress(): void;
   /** Unmounts it; not from inside another React root's render. */
   dispose(): void;
 }
@@ -98,6 +100,18 @@ export function mountPreview(
     },
     showSession: (shown) => {
       if (shown !== presentation.tabId) update({ tabId: shown });
+    },
+    focusAddress: () => {
+      // The field renders with the pane's React root, which may not have committed yet.
+      const field = () => root.querySelector<HTMLInputElement>("[data-preview-url-input]");
+      if (field() !== null) return field()?.focus();
+      const observer = new MutationObserver(() => {
+        if (field() === null) return;
+        observer.disconnect();
+        field()?.focus();
+      });
+      observer.observe(root, { childList: true, subtree: true });
+      setTimeout(() => observer.disconnect(), 5_000);
     },
     dispose: () => {
       listeners.clear();
