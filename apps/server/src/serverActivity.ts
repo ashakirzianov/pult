@@ -1,9 +1,12 @@
 import type { OrchestrationV2DomainEvent, ServerActivitySnapshot } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "./orchestration-v2/EventSink.ts";
@@ -27,6 +30,12 @@ const affectsActivity = (event: OrchestrationV2DomainEvent) =>
   event.type === "provider-thread.updated" ||
   (event.type === "subagent.updated" && event.payload.origin === "provider_native");
 
+const watchRestartSchedule = Schedule.exponential("1 second").pipe(
+  Schedule.modifyDelay(({ duration }) =>
+    Effect.succeed(Duration.min(duration, Duration.minutes(1))),
+  ),
+);
+
 const make = Effect.gen(function* () {
   const eventSink = yield* EventSink.EventSinkV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -46,9 +55,10 @@ const make = Effect.gen(function* () {
     );
 
   // Read the sequence before the state, so every later change reaches the stream.
-  const afterSequence = yield* eventSink.latestSequence();
-  yield* record(yield* readBusy);
-  yield* forkParked(
+  const resync = eventSink
+    .latestSequence()
+    .pipe(Effect.tap(() => readBusy.pipe(Effect.flatMap(record))));
+  const watchFrom = (afterSequence: number) =>
     Stream.merge(
       eventSink
         .stream({ afterSequence })
@@ -58,14 +68,20 @@ const make = Effect.gen(function* () {
       // Every signal rereads everything, so a burst needs one read.
       Stream.buffer({ capacity: 1, strategy: "sliding" }),
       Stream.runForEach(() => readBusy.pipe(Effect.flatMap(record))),
-      // A failed watch sees no more changes, so it stays busy rather than at rest forever.
-      Effect.catchCause((cause) =>
-        Effect.logError("server-activity.watch-failed", { cause }).pipe(
-          Effect.andThen(record(true)),
-        ),
-      ),
+    );
+
+  // The first sync runs at construction, so changes written before activation reach the watch.
+  const bootSequence = yield* Ref.make(yield* Effect.option(resync));
+  const watch = Ref.getAndSet(bootSequence, Option.none()).pipe(
+    Effect.flatMap(Option.match({ onNone: () => resync, onSome: Effect.succeed })),
+    Effect.flatMap(watchFrom),
+    Effect.exit,
+    // A stopped watch sees no more changes: busy until a fresh one has synced.
+    Effect.flatMap((exit) =>
+      Effect.logError("server-activity.watch-stopped", { exit }).pipe(Effect.andThen(record(true))),
     ),
   );
+  yield* forkParked(watch.pipe(Effect.repeat(watchRestartSchedule)));
 
   return ServerActivity.of({
     current: Ref.get(restingSince).pipe(
