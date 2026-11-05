@@ -90,6 +90,8 @@ const makeHarness = Effect.fnUntraced(function* (initial: {
           Effect.andThen(deliver(runEvent(value === false ? "completed" : "running"))),
         ),
       ),
+    burst: (events: ReadonlyArray<OrchestrationV2StoredEvent>) =>
+      inOneSecond(Effect.forEach(events, deliver)),
     setDispatching: (value: boolean) =>
       inOneSecond(
         Ref.set(dispatching, value).pipe(Effect.andThen(Queue.offer(taskChanges, undefined))),
@@ -203,6 +205,71 @@ it.effect.each([
     yield* Effect.gen(function* () {
       yield* harness.signal(true, stored(event));
       assert.equal((yield* current).atRest, !rereads);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+// The store already reads the work as ended when the coalesced reread lands.
+it.effect.each([
+  {
+    label: "a run created",
+    event: { type: "run.created", payload: { status: "running" } },
+    restarts: true,
+  },
+  {
+    label: "a queued run",
+    event: { type: "run.updated", payload: { status: "queued" } },
+    restarts: true,
+  },
+  {
+    label: "a held queued run",
+    event: { type: "run.updated", payload: { status: "queued", queueHeld: true } },
+    restarts: false,
+  },
+  {
+    label: "a native subagent starting",
+    event: { type: "subagent.updated", payload: { origin: "provider_native", status: "running" } },
+    restarts: true,
+  },
+  {
+    label: "a blocking request",
+    event: {
+      type: "runtime-request.updated",
+      payload: { status: "pending", responseCapability: { type: "live" } },
+    },
+    restarts: true,
+  },
+  {
+    label: "a message-capable question",
+    event: {
+      type: "runtime-request.updated",
+      payload: { status: "pending", responseCapability: { type: "message" } },
+    },
+    restarts: false,
+  },
+  {
+    label: "an awaited background command",
+    event: {
+      type: "provider-thread.updated",
+      payload: { pendingBackgroundTasks: [{ taskId: "tests", kind: "command", awaited: true }] },
+    },
+    restarts: true,
+  },
+  {
+    label: "a dev server left running",
+    event: {
+      type: "provider-thread.updated",
+      payload: { pendingBackgroundTasks: [{ taskId: "dev", kind: "command" }] },
+    },
+    restarts: false,
+  },
+])("$label and its end within one read restarts the rest: $restarts", ({ event, restarts }) =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({ work: false });
+    yield* Effect.gen(function* () {
+      yield* TestClock.adjust("9 seconds");
+      yield* harness.burst([stored(event), runEvent("completed")]);
+      assert.deepEqual(yield* current, { atRest: true, restingSince: at(restarts ? 10 : 0) });
     }).pipe(Effect.provide(harness.layer));
   }),
 );

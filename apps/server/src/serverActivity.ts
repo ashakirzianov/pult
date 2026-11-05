@@ -1,4 +1,10 @@
-import type { OrchestrationV2DomainEvent, ServerActivitySnapshot } from "@t3tools/contracts";
+import type {
+  OrchestrationV2DomainEvent,
+  OrchestrationV2Run,
+  ServerActivitySnapshot,
+} from "@t3tools/contracts";
+import { isOrchestrationV2WorkActive } from "@t3tools/contracts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -30,6 +36,38 @@ const affectsActivity = (event: OrchestrationV2DomainEvent) =>
   event.type === "provider-thread.updated" ||
   (event.type === "subagent.updated" && event.payload.origin === "provider_native");
 
+const ACTIVE_RUN_STATUSES = new Set<OrchestrationV2Run["status"]>([
+  "preparing",
+  "starting",
+  "running",
+  "waiting",
+]);
+
+// The event's own subject is work `hasActiveWork` counts.
+const startsWork = (event: OrchestrationV2DomainEvent) => {
+  switch (event.type) {
+    case "run.created":
+    case "run.updated":
+      return (
+        ACTIVE_RUN_STATUSES.has(event.payload.status) ||
+        (event.payload.status === "queued" && event.payload.queueHeld !== true)
+      );
+    case "subagent.updated":
+      return (
+        event.payload.origin === "provider_native" &&
+        isOrchestrationV2WorkActive(event.payload.status)
+      );
+    case "runtime-request.updated":
+      return (
+        event.payload.status === "pending" && event.payload.responseCapability.type !== "message"
+      );
+    case "provider-thread.updated":
+      return backgroundWorkHoldsCompletion(event.payload.pendingBackgroundTasks ?? []);
+    default:
+      return false;
+  }
+};
+
 const watchRestartSchedule = Schedule.exponential("1 second").pipe(
   Schedule.modifyDelay(({ duration }) =>
     Effect.succeed(Duration.min(duration, Duration.minutes(1))),
@@ -60,9 +98,12 @@ const make = Effect.gen(function* () {
     .pipe(Effect.tap(() => readBusy.pipe(Effect.flatMap(record))));
   const watchFrom = (afterSequence: number) =>
     Stream.merge(
-      eventSink
-        .stream({ afterSequence })
-        .pipe(Stream.filter(({ event }) => affectsActivity(event))),
+      eventSink.stream({ afterSequence }).pipe(
+        Stream.filter(({ event }) => affectsActivity(event)),
+        // Before the coalesced reread, so work that starts and ends within one read still
+        // restarts the rest.
+        Stream.tap(({ event }) => (startsWork(event) ? record(true) : Effect.void)),
+      ),
       scheduledTasks.subscribeChanges(),
     ).pipe(
       // Every signal rereads everything, so a burst needs one read.
