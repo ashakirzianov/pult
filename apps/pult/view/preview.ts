@@ -20,7 +20,11 @@ import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { previewStateAtom, type ThreadPreviewState } from "~/previewStateStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { readEnvironmentSupportsServerBrowser } from "~/state/entities";
+import {
+  readEnvironmentServerConfigLoaded,
+  readEnvironmentSupportsServerBrowser,
+} from "~/state/entities";
+import { environmentServerConfigsAtom } from "~/state/server";
 import { previewEnvironment } from "~/state/preview";
 import { threadViewHost } from "./host.ts";
 import { syncPreviewSessions } from "./PreviewMount.tsx";
@@ -59,8 +63,12 @@ export function startPreviews(): void {
     upstream: { float: miniPlayer.open, revealSurface: panel.revealSurface },
   });
   // Upstream's reconcile with no session keeps every surface but the browsers'.
-  const dropBrowsers = (ref: ReturnType<typeof threadRef>) =>
+  // A thread whose only surfaces were browsers' would keep its panel open on an empty picker.
+  const dropBrowsers = (ref: ReturnType<typeof threadRef>) => {
     panel.reconcileBrowserSurfaces(ref, []);
+    const left = useRightPanelStore.getState().byThreadKey[scopedThreadKey(ref)];
+    if (left?.isOpen === true && left.surfaces.length === 0) panel.close(ref);
+  };
   usePreviewMiniPlayerStore.setState({ open: routes.float });
   useRightPanelStore.setState({
     openBrowser: routes.openBrowser,
@@ -153,9 +161,13 @@ function sessionInfo(
 }
 
 function threadSessions(environmentId: string, state: ThreadPreviewState): ThreadPreviewSessions {
+  const environment = EnvironmentId.make(environmentId);
   return {
+    // Before its server config arrives an environment's server browser is unknown, so nothing is loaded yet.
     loaded:
-      state.listLoaded || !readEnvironmentSupportsServerBrowser(EnvironmentId.make(environmentId)),
+      state.listLoaded ||
+      (readEnvironmentServerConfigLoaded(environment) &&
+        !readEnvironmentSupportsServerBrowser(environment)),
     sessions: Object.values(state.sessions).map((snapshot) => sessionInfo(state, snapshot)),
   };
 }
@@ -176,13 +188,17 @@ export function followPreviewSessions(
   listener: (sessions: ThreadPreviewSessions) => void,
 ): () => void {
   const stopSync = syncPreviewSessions(environmentId, threadId);
+  const emit = () => listener(previewSessions(environmentId, threadId));
   const stop = appAtomRegistry.subscribe(
     previewStateAtom(scopedThreadKey(threadRef(environmentId, threadId))),
-    (state) => listener(threadSessions(environmentId, state)),
+    emit,
     { immediate: true },
   );
+  // Whether the server has a browser at all is its config's, which may arrive later.
+  const stopConfigs = appAtomRegistry.subscribe(environmentServerConfigsAtom, emit);
   return () => {
     stop();
+    stopConfigs();
     stopSync();
   };
 }
