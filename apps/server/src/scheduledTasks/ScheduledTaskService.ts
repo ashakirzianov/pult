@@ -239,6 +239,10 @@ export class ScheduledTaskService extends Context.Service<
   {
     readonly list: () => Effect.Effect<ScheduledTaskListResult, ScheduledTaskError>;
     readonly subscribeList: () => Stream.Stream<ScheduledTaskListResult, ScheduledTaskError>;
+    /** Whether a task is dispatching a run, read without decoding any task. */
+    readonly hasRunningTask: () => Effect.Effect<boolean, ScheduledTaskError>;
+    /** A signal now and after every change, for readers that need less than the list. */
+    readonly subscribeChanges: () => Stream.Stream<void>;
     readonly upsert: (
       input: ScheduledTaskUpsertInput,
     ) => Effect.Effect<ScheduledTaskMutationResult, ScheduledTaskError>;
@@ -1187,16 +1191,25 @@ export const layer = Layer.effect(
         Effect.mapError((cause) => taskError("Could not list schedule tasks.", { cause })),
       );
 
-    const subscribeList: ScheduledTaskService["Service"]["subscribeList"] = () =>
+    const subscribeChanges: ScheduledTaskService["Service"]["subscribeChanges"] = () =>
       Stream.unwrap(
         Effect.gen(function* () {
-          // Subscribe before reading to buffer concurrent changes.
+          // Subscribe before the first signal, so a read it triggers misses no change.
           const subscription = yield* PubSub.subscribe(changesPubSub);
-          return Stream.concat(
-            Stream.fromEffect(list()),
-            Stream.fromSubscription(subscription).pipe(Stream.mapEffect(() => list())),
-          );
+          return Stream.concat(Stream.succeed(undefined), Stream.fromSubscription(subscription));
         }),
+      );
+
+    const subscribeList: ScheduledTaskService["Service"]["subscribeList"] = () =>
+      subscribeChanges().pipe(Stream.mapEffect(() => list()));
+
+    const hasRunningTask: ScheduledTaskService["Service"]["hasRunningTask"] = () =>
+      sql<{ readonly running: number }>`
+        SELECT EXISTS (SELECT 1 FROM scheduled_tasks WHERE last_run_status = 'running') AS running
+      `.pipe(
+        NodeSqliteClient.readOnly,
+        Effect.map((rows) => rows[0]?.running === 1),
+        Effect.mapError((cause) => taskError("Could not read schedule task state.", { cause })),
       );
 
     const upsert: ScheduledTaskService["Service"]["upsert"] = Effect.fn(
@@ -2415,6 +2428,8 @@ export const layer = Layer.effect(
     return ScheduledTaskService.of({
       list,
       subscribeList,
+      hasRunningTask,
+      subscribeChanges,
       upsert,
       setEnabled,
       delete: deleteTask,

@@ -396,9 +396,11 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         Effect.forkChild,
       );
       yield* Deferred.await(subscribed);
+      assert.isFalse(yield* service.hasRunningTask());
       const run = yield* service.runNow({ id: task.id }).pipe(Effect.forkChild);
       yield* Deferred.await(started);
       yield* Deferred.await(running);
+      assert.isTrue(yield* service.hasRunningTask());
       const refused = yield* service.runNow({ id: task.id }).pipe(Effect.flip);
       assert.equal(refused.message, "Schedule task is already running.");
       yield* service.deleteForThread(threadId);
@@ -406,6 +408,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(run);
       assert.lengthOf((yield* service.list()).tasks, 0);
+      assert.isFalse(yield* service.hasRunningTask());
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

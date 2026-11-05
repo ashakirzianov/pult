@@ -46,11 +46,11 @@ const makeHarness = Effect.fnUntraced(function* (initial: {
             ),
         }),
         Layer.mock(ScheduledTasks.ScheduledTaskService)({
-          list: () => Ref.get(tasks).pipe(Effect.map((list) => ({ tasks: list }))),
-          subscribeList: () =>
-            Stream.fromQueue(taskChanges).pipe(
-              Stream.mapEffect(() => Ref.get(tasks).pipe(Effect.map((list) => ({ tasks: list })))),
+          hasRunningTask: () =>
+            Ref.get(tasks).pipe(
+              Effect.map((list) => list.some((task) => task.lastRunStatus === "running")),
             ),
+          subscribeChanges: () => Stream.fromQueue(taskChanges),
         }),
       ),
     ),

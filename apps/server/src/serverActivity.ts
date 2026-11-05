@@ -33,12 +33,7 @@ const make = Effect.gen(function* () {
   const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
 
   // A failed read counts as busy, so a broken store never opens a maintenance window.
-  const readBusy = Effect.all([
-    projections.hasActiveWork(),
-    scheduledTasks
-      .list()
-      .pipe(Effect.map(({ tasks }) => tasks.some((task) => task.lastRunStatus === "running"))),
-  ]).pipe(
+  const readBusy = Effect.all([projections.hasActiveWork(), scheduledTasks.hasRunningTask()]).pipe(
     Effect.map(([work, dispatching]) => work || dispatching),
     Effect.catchCause((cause) =>
       Effect.logWarning("server-activity.read-failed", { cause }).pipe(Effect.as(true)),
@@ -58,7 +53,7 @@ const make = Effect.gen(function* () {
       eventSink
         .stream({ afterSequence })
         .pipe(Stream.filter(({ event }) => affectsActivity(event))),
-      scheduledTasks.subscribeList(),
+      scheduledTasks.subscribeChanges(),
     ).pipe(
       // Every signal rereads everything, so a burst needs one read.
       Stream.buffer({ capacity: 1, strategy: "sliding" }),
