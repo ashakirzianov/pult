@@ -46,7 +46,8 @@ export function registerConnectionCommands(): void {
           const input = parseConnectInput(pairingLink);
           if (input._tag !== "PairingLink")
             throw new Error("pult-shell.connect takes a complete pairing link.");
-          return connection.connect(input.target);
+          await connection.connect(input.target);
+          return;
         }
         return connect();
       }

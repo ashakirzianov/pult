@@ -14,8 +14,11 @@ import {
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcUnavailableError } from "@t3tools/client-runtime/rpc";
 import { ShellSnapshotLoader } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId } from "@t3tools/contracts";
-import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
+import { type EnvironmentId, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import {
+  type ResolvedRemotePairingTarget,
+  resolveRemotePairingTarget,
+} from "@t3tools/shared/remote";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -25,6 +28,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { desktopHost } from "../desktop/host.ts";
 import { platformLayer } from "./platform.ts";
 import { probe } from "./probe.ts";
 
@@ -81,6 +85,8 @@ const decodeSaved = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Arra
 const encodeSaved = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Saved)));
 /** The one environment a page saved before it held several, read once into the set. */
 const SINGLE_SAVED_KEY = "pult-shell.environment";
+/** In Pult.app, the environment id of the app's own server, which a start with the local server off does not reconnect. */
+const LOCAL_KEY = "pult-shell.localEnvironment";
 const decodeSingleSaved = Schema.decodeUnknownOption(Schema.fromJsonString(Saved));
 
 function registration(saved: Saved): BearerConnectionRegistration {
@@ -241,8 +247,16 @@ class ShellConnection {
           await secrets.delete(SINGLE_SAVED_KEY);
         }
       }
-      for (const each of saved) this.hold(each);
+      const offLocal =
+        desktopHost()?.getLocalEnvironmentEnabled() === false
+          ? await secrets.get(LOCAL_KEY)
+          : undefined;
+      for (const each of saved) if (each.profile.environmentId !== offLocal) this.hold(each);
+      if (offLocal !== undefined && saved.length !== this.held.size) await this.persist();
       await this.register();
+      await this.connectLocal().catch((error: unknown) =>
+        console.warn("[pult-shell] could not connect the desktop's own server:", error),
+      );
     } finally {
       this.restoring = false;
       this.changed();
@@ -250,12 +264,31 @@ class ShellConnection {
   }
 
   /**
+   * In Pult.app (`desktopHost`), connects the server the app supervises, with
+   * the bearer the app hands the page: no pairing link (`pult/decisions`,
+   * `local-server`). Nothing when the app runs no local server.
+   */
+  private async connectLocal(): Promise<void> {
+    const bridge = desktopHost();
+    if (bridge === undefined || !bridge.getLocalEnvironmentEnabled()) return;
+    const primary = bridge
+      .getLocalEnvironmentBootstraps()
+      .find((entry) => entry.id === PRIMARY_LOCAL_ENVIRONMENT_ID);
+    if (!primary?.httpBaseUrl) return;
+    const token = await bridge.getLocalEnvironmentBearerToken();
+    const environmentId = await this.connect(
+      resolveRemotePairingTarget({ host: primary.httpBaseUrl, pairingCode: token }),
+    );
+    await (await getService(ISecretStorageService)).set(LOCAL_KEY, environmentId);
+  }
+
+  /**
    * Probes the target from the page, whose origin the server sees, and only if
    * it answers saves it and connects it beside the environments the page
-   * holds; an environment held already takes the new bearer. Fails with the
-   * probe's `ProbeError`.
+   * holds; an environment held already takes the new bearer. Answers its
+   * environment id; fails with the probe's `ProbeError`.
    */
-  async connect(target: ResolvedRemotePairingTarget): Promise<void> {
+  async connect(target: ResolvedRemotePairingTarget): Promise<EnvironmentId> {
     const probed = await this.runtime.runPromise(probe({ target, origin: window.location.origin }));
     const saved = { profile: probed.profile, token: probed.credential.token };
     // A new bearer for the same environment needs a new registration, so the old one goes first.
@@ -266,6 +299,7 @@ class ShellConnection {
     this.hold(saved);
     await this.persist();
     await this.register();
+    return saved.profile.environmentId;
   }
 
   /** Closes the environment's connection and forgets it with its bearer; the others stay. */
