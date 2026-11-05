@@ -10,13 +10,30 @@
  * profile, Keychain item or scheme with T3 Code, an installed Pult or the
  * thin wrapper's "Pult (Dev)" (`pult-dev`).
  */
-import type { DesktopBrandOverride } from "../../../desktop/src/app/DesktopBrand.ts";
+import type {
+  DesktopBrandOverride,
+  DesktopIconSources,
+} from "../../../desktop/src/app/DesktopBrand.ts";
 import { APP_BASE_NAME, APP_BUNDLE_ID, APP_SCHEME } from "../../src/identity.ts";
 
 const DEV = "pult-host-dev";
 
+const icons = (variant: "prod" | "dev"): DesktopIconSources => ({
+  macPng: `apps/pult/assets/pult/${variant}/macos-1024.png`,
+  universalPng: `apps/pult/assets/pult/${variant}/universal-1024.png`,
+  windowsIco: `apps/pult/assets/pult/${variant}/windows.ico`,
+});
+
 const brand: DesktopBrandOverride = {
   baseName: { production: APP_BASE_NAME, development: `${APP_BASE_NAME} Host` },
+  // "Pult", not "Pult (Beta)"; development stays "Pult Host (Dev)".
+  productionStageLabel: false,
+  // Rendered by `vp run icons:export` (`assets/pult/README.md`); nightly builds are not Pult's.
+  icons: {
+    production: icons("prod"),
+    nightly: icons("prod"),
+    development: icons("dev"),
+  },
   scheme: { production: APP_SCHEME, development: DEV },
   userData: {
     production: { current: "pult", legacy: null },
