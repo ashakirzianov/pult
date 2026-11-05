@@ -180,6 +180,7 @@ interface BuildCliInput {
   readonly target: Option.Option<string>;
   readonly arch: Option.Option<typeof BuildArch.Type>;
   readonly buildVersion: Option.Option<string>;
+  readonly appVersion: Option.Option<string>;
   readonly outputDir: Option.Option<string>;
   readonly skipBuild: Option.Option<boolean>;
   readonly keepStage: Option.Option<boolean>;
@@ -942,6 +943,7 @@ interface ResolvedBuildOptions {
   readonly target: string;
   readonly arch: typeof BuildArch.Type;
   readonly version: string | undefined;
+  readonly appVersion: string | undefined;
   readonly outputDir: string;
   readonly skipBuild: boolean;
   readonly keepStage: boolean;
@@ -1660,6 +1662,7 @@ const BuildEnvConfig = Config.all({
   target: Config.String("T3CODE_DESKTOP_TARGET").pipe(Config.option),
   arch: Config.schema(BuildArch, "T3CODE_DESKTOP_ARCH").pipe(Config.option),
   version: Config.String("T3CODE_DESKTOP_VERSION").pipe(Config.option),
+  appVersion: Config.String("T3CODE_DESKTOP_APP_VERSION").pipe(Config.option),
   outputDir: Config.String("T3CODE_DESKTOP_OUTPUT_DIR").pipe(Config.option),
   skipBuild: Config.Boolean("T3CODE_DESKTOP_SKIP_BUILD").pipe(Config.withDefault(false)),
   keepStage: Config.Boolean("T3CODE_DESKTOP_KEEP_STAGE").pipe(Config.withDefault(false)),
@@ -1733,6 +1736,7 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     });
   }
   const version = mergeOptions(input.buildVersion, env.version, undefined);
+  const appVersion = mergeOptions(input.appVersion, env.appVersion, undefined);
   const releaseDir = resolveBooleanFlag(input.mockUpdates, env.mockUpdates)
     ? "release-mock"
     : "release";
@@ -1766,6 +1770,7 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     target,
     arch,
     version,
+    appVersion,
     outputDir,
     skipBuild,
     keepStage,
@@ -3660,7 +3665,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       }),
   });
 
-  const appVersion = options.version ?? serverPackageJson.version;
+  const bundleVersion = options.version ?? serverPackageJson.version;
+  // The packaged app (its bundle, update feed and artifact names) may carry a
+  // version line of its own; the compiled server, web and desktop bundles keep theirs.
+  const appVersion = options.appVersion ?? bundleVersion;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
@@ -3679,7 +3687,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
 
   if (!options.skipBuild) {
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
-    yield* buildDesktopBundlesUnlocked(repoRoot, appVersion, options.verbose);
+    yield* buildDesktopBundlesUnlocked(repoRoot, bundleVersion, options.verbose);
   }
 
   const requiredBuildInputs = [
@@ -4176,6 +4184,12 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
   buildVersion: Flag.String("build-version").pipe(
     Flag.withDescription(
       "Compiled bundle and desktop package version (env: T3CODE_DESKTOP_VERSION).",
+    ),
+    Flag.optional,
+  ),
+  appVersion: Flag.String("app-version").pipe(
+    Flag.withDescription(
+      "Packaged app version, its bundle, update feed and artifact names, when it differs from the compiled bundles' (env: T3CODE_DESKTOP_APP_VERSION).",
     ),
     Flag.optional,
   ),

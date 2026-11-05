@@ -1713,6 +1713,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             target: Option.none(),
             arch: Option.some("universal"),
             buildVersion: Option.none(),
+            appVersion: Option.none(),
             outputDir: Option.none(),
             skipBuild: Option.none(),
             keepStage: Option.none(),
@@ -1737,6 +1738,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         target: Option.none(),
         arch: Option.some("arm64"),
         buildVersion: Option.none(),
+        appVersion: Option.none(),
         outputDir: Option.some("release-test"),
         skipBuild: Option.some(false),
         keepStage: Option.some(false),
@@ -1766,6 +1768,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(resolved.signed, false);
       assert.equal(resolved.verbose, false);
       assert.equal(resolved.mockUpdates, false);
+    }),
+  );
+
+  it.effect("sets the packaged app's version apart from the compiled bundles'", () =>
+    Effect.gen(function* () {
+      const resolve = (appVersion: Option.Option<string>, env: Record<string, string>) =>
+        resolveBuildOptions({
+          platform: Option.some("mac"),
+          target: Option.none(),
+          arch: Option.some("arm64"),
+          buildVersion: Option.none(),
+          appVersion,
+          outputDir: Option.some("release-test"),
+          skipBuild: Option.none(),
+          keepStage: Option.none(),
+          signed: Option.none(),
+          verbose: Option.none(),
+          mockUpdates: Option.none(),
+          mockUpdateServerPort: Option.none(),
+          wslRuntime: Option.none(),
+        }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))));
+
+      const unset = yield* resolve(Option.none(), {});
+      assert.isUndefined(unset.appVersion);
+      assert.isUndefined(unset.version);
+
+      const flagged = yield* resolve(Option.some("0.0.1"), { T3CODE_DESKTOP_APP_VERSION: "9.9.9" });
+      assert.equal(flagged.appVersion, "0.0.1");
+      assert.isUndefined(flagged.version);
+
+      const fromEnv = yield* resolve(Option.none(), { T3CODE_DESKTOP_APP_VERSION: "0.0.2" });
+      assert.equal(fromEnv.appVersion, "0.0.2");
     }),
   );
 });
