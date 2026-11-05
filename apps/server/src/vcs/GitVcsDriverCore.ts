@@ -473,6 +473,12 @@ const GIT_FAILURE_REASON_PATTERNS: ReadonlyArray<readonly [RegExp, GitCommandFai
     /^[ \t]*![ \t]+\[rejected\][^\n]*\((?:non-fast-forward|fetch first)\)[\s\S]*^error: failed to push some refs/im,
     "push_rejected_non_fast_forward",
   ],
+  // Pult: a pull git refused, which no retry fixes; the files named are left out.
+  [/^fatal: Not possible to fast-forward/im, "pull_not_fast_forward"],
+  [
+    /^error: (?:Your local changes to the following files|The following untracked working tree files) would be overwritten by merge/im,
+    "pull_would_overwrite_changes",
+  ],
 ];
 
 // Reasons the user can act on get a sentence in place of the generic detail.
@@ -483,6 +489,10 @@ const GIT_FAILURE_REASON_DETAILS: Partial<Record<GitCommandFailureReason, string
     "The remote has commits this branch doesn't have. Pull or rebase, then push again.",
   config_locked:
     "Another Git process kept the repository's config locked. Wait for it to finish, then retry.",
+  pull_not_fast_forward:
+    "This branch and its upstream have diverged, so the pull cannot fast-forward. Merge or rebase, then push.",
+  pull_would_overwrite_changes:
+    "The pull would overwrite uncommitted changes. Commit or stash them, then pull again.",
 };
 
 function gitFailureDetail(reason: GitCommandFailureReason | null): string {
@@ -2965,7 +2975,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return yield* new GitCommandError({
         ...gitCommandContext({ operation: "GitVcsDriver.pullCurrentBranch.pull", cwd, args }),
         ...(reason === null ? {} : { reason }),
-        detail: fetchFailureDetail(result.stderr) ?? "git pull failed",
+        detail:
+          fetchFailureDetail(result.stderr) ??
+          (reason === null ? undefined : GIT_FAILURE_REASON_DETAILS[reason]) ??
+          "git pull failed",
         exitCode: result.exitCode,
         stdoutLength: result.stdout.length,
         stderrLength: result.stderr.length,

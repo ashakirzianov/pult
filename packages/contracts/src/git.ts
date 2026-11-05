@@ -381,6 +381,9 @@ export const GitCommandFailureReason = Schema.Literals([
   "host_key_unverified",
   "not_a_repository",
   "path_already_exists",
+  // Pult: a pull git refused, told apart from one that could not reach the remote.
+  "pull_not_fast_forward",
+  "pull_would_overwrite_changes",
   "push_rejected_by_remote",
   "push_rejected_non_fast_forward",
   "ref_not_found",

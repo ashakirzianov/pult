@@ -1043,8 +1043,25 @@ describe("pullCurrentBranch", () => {
       const error = yield* Effect.flip(driver.pullCurrentBranch(cwd));
 
       assert.include(error.detail, "could not update a local reference");
+      assert.equal(error.reason, undefined);
       assert.equal(yield* git(cwd, ["rev-parse", "HEAD"]), before);
       assert.isTrue(yield* fs.exists(`${cwd}/${lock}`));
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  // Pult: a pull git refuses names its reason, which a Star's sync hands to the Star.
+  it.effect("names the reason of a pull git refuses", () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const { cwd } = yield* cloneBehindRemote;
+      yield* writeTextFile(cwd, "remote.txt", "local\n");
+      const overwrite = yield* Effect.flip(driver.pullCurrentBranch(cwd));
+      assert.equal(overwrite.reason, "pull_would_overwrite_changes");
+
+      yield* git(cwd, ["add", "remote.txt"]);
+      yield* git(cwd, ["commit", "-m", "local commit"]);
+      const diverged = yield* Effect.flip(driver.pullCurrentBranch(cwd));
+      assert.equal(diverged.reason, "pull_not_fast_forward");
     }).pipe(Effect.provide(layerTest)),
   );
 
