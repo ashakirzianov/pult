@@ -238,26 +238,25 @@ export function PanelView() {
             No threads in {state.environments.map((environment) => environment.label).join(", ")}.
           </li>
         ) : null}
-        {working.length > 0 ? (
-          <Shelf name="working" label="Working" count={working.length}>
-            {working.map(card)}
-          </Shelf>
-        ) : null}
-        {snoozed.length > 0 ? (
-          <Shelf name="snoozed" label="Snoozed" count={snoozed.length}>
-            {snoozed.map(card)}
-          </Shelf>
-        ) : null}
-        {settled.length > 0 || state.settled.count > 0 ? (
-          <Shelf name="settled" label="Settled" count={state.settled.count}>
-            <SettledTail
-              threads={settled}
-              shelf={state.settled}
-              selection={selectedCard}
-              render={card}
-            />
-          </Shelf>
-        ) : null}
+        <Shelf name="working" label="Working" count={working.length} empty={working.length === 0}>
+          {working.map(card)}
+        </Shelf>
+        <Shelf name="snoozed" label="Snoozed" count={snoozed.length} empty={snoozed.length === 0}>
+          {snoozed.map(card)}
+        </Shelf>
+        <Shelf
+          name="settled"
+          label="Settled"
+          count={state.settled.count}
+          empty={settled.length === 0 && state.settled.count === 0}
+        >
+          <SettledTail
+            threads={settled}
+            shelf={state.settled}
+            selection={selectedCard}
+            render={card}
+          />
+        </Shelf>
         <LimitsShelf now={now} />
       </ul>
     </div>
@@ -324,17 +323,20 @@ function Shelf({
   name,
   label,
   count,
+  empty,
   children,
 }: {
   name: "working" | "snoozed" | "settled";
   label: string;
   count: number;
+  empty: boolean;
   children: React.ReactNode;
 }) {
   const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has(name);
   const element = useRef<HTMLLIElement>(null);
+  // Mounted while empty too, so a reveal asked of an empty shelf is answered now, not when a card lands.
   useReveal(name, element);
-  if (closed) return null;
+  if (closed || empty) return null;
   return (
     <li ref={element} className={`pult-shelf pult-shelf-${name}`}>
       <ShelfHeader shelf={name} label={label} count={count} />
