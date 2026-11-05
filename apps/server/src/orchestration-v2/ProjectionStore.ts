@@ -514,6 +514,11 @@ export interface ProjectionStoreV2Shape {
   >;
   /** Threads that are not deleted, archived ones included. */
   readonly countThreads: () => Effect.Effect<number, ProjectionStoreV2Error>;
+  /**
+   * Whether any agent work is in flight or about to start: an active run, a queued run that is not
+   * held, a provider-native subagent still working, or a pending request the run waits on.
+   */
+  readonly hasActiveWork: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   /** Every active thread, in shell order. */
   readonly listActiveShellIndex: () => Effect.Effect<
     ReadonlyArray<ActiveShellIndexEntry>,
@@ -7132,6 +7137,36 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return rows[0]?.count ?? 0;
     }, Effect.mapError(shellSnapshotReadError));
 
+    const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
+      const rows = yield* sql<{ readonly active: number }>`
+        SELECT (
+          EXISTS (
+            -- Spelled as the recovery index's predicate, so the read uses it.
+            SELECT 1 FROM orchestration_v2_projection_runs
+            WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+              AND (
+                status <> 'queued'
+                OR CASE WHEN json_valid(payload_json)
+                  THEN json_extract(payload_json, '$.queueHeld') IS NOT 1
+                  ELSE 1 END
+              )
+          )
+          OR EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_subagents
+            WHERE origin = 'provider_native' AND status IN ('pending', 'running', 'waiting')
+          )
+          OR EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_runtime_requests
+            WHERE status = 'pending'
+              AND CASE WHEN json_valid(payload_json)
+                THEN json_extract(payload_json, '$.responseCapability.type') IS NOT 'message'
+                ELSE 1 END
+          )
+        ) AS active
+      `;
+      return rows[0]?.active === 1;
+    }, Effect.mapError(shellSnapshotReadError));
+
     const listActiveShellIndex = Effect.fn("ProjectionStore.listActiveShellIndex")(function* () {
       const rows = yield* sql<{
         readonly thread_id: string;
@@ -7378,6 +7413,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getPullRequestSnapshot: readOnReader(getPullRequestSnapshot),
       listActiveSubagentThreadIds: readOnReader(listActiveSubagentThreadIds),
       countThreads: readOnReader(countThreads),
+      hasActiveWork: readOnReader(hasActiveWork),
       listActiveShellIndex: readOnReader(listActiveShellIndex),
       readShellSnapshot: readOnReader(readShellSnapshot),
       listOlderSettledThreads: readOnReader(listOlderSettledThreads),

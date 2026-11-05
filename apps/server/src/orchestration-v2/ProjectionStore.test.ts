@@ -715,6 +715,123 @@ it.effect("record reads filter notification sources without dropping matching me
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect(
+  "active work is a live or unheld queued run, a working native subagent, or a blocking request",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = yield* addRolledBackRecoveryCandidate("active-work");
+      assert.isFalse(yield* store.hasActiveWork());
+      const run = (yield* store.getThreadProjection(threadId)).runs[0]!;
+      const now = yield* DateTime.now;
+      let step = 0;
+      const apply = (event: Omit<Parameters<typeof store.apply>[0], "id">) =>
+        store.apply({ ...event, id: EventId.make(`event:active-work:${step++}`) } as never);
+
+      const runStatuses = [
+        ["preparing", true],
+        ["starting", true],
+        ["running", true],
+        ["waiting", true],
+        ["queued", true],
+        ["completed", false],
+        ["interrupted", false],
+        ["failed", false],
+        ["cancelled", false],
+        ["rolled_back", false],
+      ] as const;
+      for (const [status, active] of runStatuses) {
+        yield* apply({
+          type: "run.updated",
+          threadId,
+          occurredAt: now,
+          payload: { ...run, status },
+        });
+        assert.equal(yield* store.hasActiveWork(), active, status);
+      }
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "queued", queueHeld: true },
+      });
+      assert.isFalse(yield* store.hasActiveWork(), "held queue");
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "cancelled" },
+      });
+
+      const subagentId = NodeId.make("node:active-work:subagent");
+      for (const [origin, status, active] of [
+        ["provider_native", "pending", true],
+        ["provider_native", "running", true],
+        ["provider_native", "waiting", true],
+        ["provider_native", "completed", false],
+        ["app_owned", "running", false],
+      ] as const) {
+        yield* apply({
+          type: "subagent.updated",
+          threadId,
+          nodeId: subagentId,
+          driver,
+          providerInstanceId,
+          occurredAt: now,
+          payload: {
+            id: subagentId,
+            threadId,
+            runId: null,
+            parentNodeId: NodeId.make("node:active-work:parent"),
+            origin,
+            createdBy: "agent",
+            driver,
+            providerInstanceId,
+            providerThreadId: null,
+            childThreadId: null,
+            nativeTaskRef: { driver, nativeId: "active-work", strength: "strong" },
+            prompt: "Do the work",
+            title: "Workflow member",
+            model: null,
+            status,
+            result: null,
+            startedAt: now,
+            completedAt: status === "completed" ? now : null,
+            updatedAt: now,
+          },
+        });
+        assert.equal(yield* store.hasActiveWork(), active, `${origin} ${status}`);
+      }
+
+      const requestNode = NodeId.make("node:active-work:request");
+      for (const [responseCapability, status, active] of [
+        [{ type: "live", providerSessionId: ProviderSessionId.make("session") }, "pending", true],
+        [{ type: "not_resumable", reason: "lost" }, "pending", true],
+        [{ type: "message" }, "pending", false],
+        [{ type: "live", providerSessionId: ProviderSessionId.make("session") }, "resolved", false],
+      ] as const) {
+        yield* apply({
+          type: "runtime-request.updated",
+          threadId,
+          nodeId: requestNode,
+          occurredAt: now,
+          payload: {
+            id: RuntimeRequestId.make("request:active-work"),
+            nodeId: requestNode,
+            providerTurnId: null,
+            nativeRequestRef: null,
+            kind: "user_input",
+            status,
+            responseCapability,
+            createdAt: now,
+            resolvedAt: status === "pending" ? null : now,
+          },
+        });
+        assert.equal(yield* store.hasActiveWork(), active, `${responseCapability.type} ${status}`);
+      }
+    }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("SQL queue readiness skips held runs without bypassing active work", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
