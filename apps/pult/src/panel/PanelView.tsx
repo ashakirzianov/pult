@@ -33,7 +33,7 @@ import {
   threadsWithUnsentMessages,
 } from "./drafts.ts";
 import { ExplorerShelf } from "./ExplorerShelf.tsx";
-import { READY_EXPANDED_KEY, selectionSnapshot, showingSettled } from "./jump.ts";
+import { selectionSnapshot, showingSettled } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { LimitsShelf } from "./LimitsShelf.tsx";
 import {
@@ -117,8 +117,7 @@ function subagentsByRoot(
 /**
  * The Pult tab's view, under the sidebar's title row: every held
  * environment's threads as cards, in the store's order, which is upstream's:
- * pinned and active under Ready, a collapsible header expanded until
- * collapsed, left out while it holds nothing, then the Working, Snoozed and
+ * pinned and active under Ready, then the Working, Snoozed and
  * Settled shelves, each open until closed, when its icon goes to the tray
  * (`TrayShelves.tsx`), and left out while it holds nothing. While the page
  * holds several environments, each card names its
@@ -172,7 +171,6 @@ export function PanelView() {
       selected={isSelectedDraft(candidate)}
     />
   );
-  const selectedDraftCard = draftCards.find(isSelectedDraft);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   // A Star's card stands for its conversation: selected with the Star, or with one of its conversation's subagents.
@@ -223,21 +221,24 @@ export function PanelView() {
               Connect to Environment
             </button>
           </li>
-        ) : listed.length > 0 || draftCards.length > 0 ? (
-          <ReadyShelf
-            threads={listed}
-            selection={selectedCard}
-            render={card}
-            lead={draftCards.map(draftCard)}
-            selectedLead={selectedDraftCard === undefined ? null : draftCard(selectedDraftCard)}
-          >
-            {listed.map(card)}
-          </ReadyShelf>
-        ) : state.threads.length === 0 ? (
-          <li className="pult-panel-empty">
-            No threads in {state.environments.map((environment) => environment.label).join(", ")}.
-          </li>
-        ) : null}
+        ) : (
+          <>
+            <Shelf
+              name="ready"
+              label="Ready"
+              empty={listed.length === 0 && draftCards.length === 0}
+            >
+              {draftCards.map(draftCard)}
+              {listed.map(card)}
+            </Shelf>
+            {state.threads.length === 0 && draftCards.length === 0 ? (
+              <li className="pult-panel-empty">
+                No threads in{" "}
+                {state.environments.map((environment) => environment.label).join(", ")}.
+              </li>
+            ) : null}
+          </>
+        )}
         <Shelf name="working" label="Working" count={working.length} empty={working.length === 0}>
           {working.map(card)}
         </Shelf>
@@ -264,56 +265,9 @@ export function PanelView() {
 }
 
 /**
- * Ready under its collapsible header, with no count: its `lead` (the draft
- * cards) and threads (`children`) while expanded, and while collapsed the
- * selected card alone, the lead's (`selectedLead`) or one of the threads, as
- * upstream's shelves keep the open thread's row. Whether it is expanded
- * persists in localStorage, as upstream keeps its own; expanded until
- * collapsed. Ready does not close, so a selected card always has a place.
- * The shelf after it sits at the panel's bottom while the cards leave room
- * (`panel.css`).
- */
-function ReadyShelf({
-  threads,
-  selection,
-  render,
-  lead,
-  selectedLead,
-  children,
-}: {
-  threads: ReadonlyArray<ShellThread>;
-  selection: string | undefined;
-  render: (thread: ShellThread) => React.ReactNode;
-  lead: React.ReactNode;
-  selectedLead: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  const [expanded, setExpanded] = useExpanded(READY_EXPANDED_KEY, true);
-  const selected = expanded ? undefined : threads.find((thread) => keyOf(thread) === selection);
-  return (
-    <li className="pult-shelf pult-shelf-ready">
-      <CollapsibleHeader
-        label="Ready"
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-      />
-      {expanded ? (
-        <ul className="pult-shelf-cards">
-          {lead}
-          {children}
-        </ul>
-      ) : selectedLead !== null || selected !== undefined ? (
-        <ul className="pult-shelf-cards">
-          {selected !== undefined ? render(selected) : selectedLead}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
-/**
- * Working, Snoozed or Settled under its header with its count (`count`,
- * Settled's every settled thread, where it holds more than it lists), its
+ * Ready, Working, Snoozed or Settled under its header with its count
+ * (`count`, none for Ready, Settled's every settled thread, where it holds
+ * more than it lists), Ready's draft cards first among its
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
  * in the tray (`TrayShelves.tsx`), which is highlighted while the shelf
  * holds the selected card. Closed or not, it persists in localStorage
@@ -326,9 +280,9 @@ function Shelf({
   empty,
   children,
 }: {
-  name: "working" | "snoozed" | "settled";
+  name: "ready" | "working" | "snoozed" | "settled";
   label: string;
-  count: number;
+  count?: number;
   empty: boolean;
   children: React.ReactNode;
 }) {

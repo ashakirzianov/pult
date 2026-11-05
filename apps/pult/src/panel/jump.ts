@@ -22,7 +22,6 @@ import {
   showExplorerFile,
 } from "../threads/selection.ts";
 import { isSubagent, scopedKey, threadStore } from "../threads/store.ts";
-import { storedExpanded } from "./collapsible.tsx";
 import { isStarDraft, projectDrafts } from "./drafts.ts";
 import { exploredEnvironment } from "./explorer.ts";
 import {
@@ -66,9 +65,6 @@ export function explorerHighlight(): string | undefined {
   return activeFile?.toString() ?? (explored !== undefined ? environmentKey(explored) : undefined);
 }
 
-/** Where Ready keeps whether it is expanded (`useExpanded`); the other shelves close instead (`shelves.tsx`). */
-export const READY_EXPANDED_KEY = "pult-shell.panel.ready-expanded";
-
 let settledCount = SETTLED_TAIL_INITIAL_COUNT;
 
 /** Tells the jumps how many settled threads the settled shelf's tail shows, back to its first page when it unmounts. */
@@ -87,7 +83,6 @@ function currentTargets(): JumpTarget<URI>[] {
     drafts: draftCards(projectDrafts.get(), selectedDraft(), new Set(environmentIds), isStarDraft),
     threads,
     selection: selectedCardKey(),
-    readyExpanded: storedExpanded(READY_EXPANDED_KEY, true),
     closed: closedShelves.get(),
     settledCount,
   });

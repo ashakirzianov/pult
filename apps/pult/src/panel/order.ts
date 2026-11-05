@@ -3,10 +3,16 @@ import { scopedKey, type ShelfName, type ShellThread } from "../threads/store.ts
 
 /**
  * The Pult tab's shelves that close, in the panel's order, which the tray
- * lists their icons in while they are closed (`TrayShelves.tsx`). Ready
- * does not close; it collapses.
+ * lists their icons in while they are closed (`TrayShelves.tsx`).
  */
-export const CLOSABLE_SHELVES = ["explorer", "working", "snoozed", "settled", "limits"] as const;
+export const CLOSABLE_SHELVES = [
+  "explorer",
+  "ready",
+  "working",
+  "snoozed",
+  "settled",
+  "limits",
+] as const;
 
 export type ClosableShelf = (typeof CLOSABLE_SHELVES)[number];
 
@@ -75,17 +81,6 @@ export function explorerEntries<File extends FileRef>(
   ];
 }
 
-/** What a collapsible list, Ready, shows: everything while `expanded`, else the selected item alone, if it is one of them. */
-function shown<Item>(
-  items: ReadonlyArray<Item>,
-  expanded: boolean,
-  isSelected: (item: Item) => boolean,
-): ReadonlyArray<Item> {
-  if (expanded) return items;
-  const selected = items.find(isSelected);
-  return selected === undefined ? [] : [selected];
-}
-
 /**
  * Ready's draft cards: the drafts of held environments with something in
  * them, newest first, and the `selected` one even while empty, first; none
@@ -143,8 +138,6 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly threads: ReadonlyArray<Thread>;
   /** The key of the selected card: a thread's, its root's for a subagent, or a draft's. */
   readonly selection: string | undefined;
-  /** Whether Ready is expanded. */
-  readonly readyExpanded: boolean;
   /** The shelves closed, whose rows none is reached. */
   readonly closed: ReadonlySet<ClosableShelf>;
   /** How many settled threads the settled shelf's tail shows. */
@@ -157,7 +150,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * rows: the Stars' cards first, then the Explorer shelf's open files, its
  * environments' rows left out, then the cards, Ready's drafts and threads,
  * and the Working, Snoozed and Settled shelves'; a closed shelf reaches
- * none, a collapsed Ready its selected row alone. The Limits shelf's
+ * none. The Limits shelf's
  * rows, last, are none: they select nothing.
  */
 export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
@@ -184,7 +177,6 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     key: keyOf(thread),
     thread,
   });
-  const isSelected = (target: JumpTarget<File, Thread>) => target.key === panel.selection;
   const ready: JumpTarget<File, Thread>[] = [
     ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
       kind: "draft",
@@ -195,7 +187,7 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
   ];
   return [
     ...files,
-    ...shown(ready, panel.readyExpanded, isSelected),
+    ...(open("ready") ? ready : []),
     ...(open("working") ? on("working").map(threadTarget) : []),
     ...(open("snoozed") ? on("snoozed").map(threadTarget) : []),
     ...(open("settled")

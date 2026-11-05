@@ -31,6 +31,7 @@ const draft = (projectId: string, environmentId = "env") => ({
 
 const ALL_CLOSED: ReadonlySet<ClosableShelf> = new Set([
   "explorer",
+  "ready",
   "working",
   "snoozed",
   "settled",
@@ -47,7 +48,6 @@ function panel(
     drafts: [],
     threads: [],
     selection: undefined,
-    readyExpanded: true,
     closed: new Set<ClosableShelf>(),
     settledCount: 10,
     ...overrides,
@@ -97,35 +97,13 @@ NodeTest.describe("jumpTargets", () => {
           stars: ["one"],
           files: [file("env", "/a.ts")],
           threads: [thread("active", "active")],
-          readyExpanded: false,
           closed: ALL_CLOSED,
           selection: "env/active",
         }),
       );
-      NodeAssert.deepEqual(keys(targets), ["star:one", "env/active"]);
+      NodeAssert.deepEqual(keys(targets), ["star:one"]);
     },
   );
-
-  NodeTest.test("reaches a collapsed Ready's selected row alone", () => {
-    const threads = [thread("one", "active"), thread("two", "active")];
-    NodeAssert.deepEqual(
-      keys(
-        jumpTargets(
-          panel({
-            threads,
-            drafts: [draft("project")],
-            readyExpanded: false,
-            selection: "env/two",
-          }),
-        ),
-      ),
-      ["env/two"],
-    );
-    NodeAssert.deepEqual(
-      keys(jumpTargets(panel({ threads, readyExpanded: false, selection: "draft:env/project" }))),
-      [],
-    );
-  });
 
   NodeTest.test("reaches no row of a closed shelf, not even the selected one", () => {
     const threads = [
@@ -136,8 +114,8 @@ NodeTest.describe("jumpTargets", () => {
     ];
     const files = [file("env", "/a.ts")];
     NodeAssert.deepEqual(
-      keys(jumpTargets(panel({ files, threads, closed: ALL_CLOSED, selection: "env/old" }))),
-      ["env/active"],
+      keys(jumpTargets(panel({ files, threads, closed: ALL_CLOSED, selection: "env/active" }))),
+      [],
     );
     NodeAssert.deepEqual(
       keys(

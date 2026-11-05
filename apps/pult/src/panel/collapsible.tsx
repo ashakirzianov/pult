@@ -2,9 +2,8 @@ import { useState } from "react";
 
 /**
  * A collapsible header after upstream's: the label and its count when one is
- * given, a status when one is given, and the chevron at the far end. Ready's
- * and a card's subagents'; the other shelves close instead (`ShelfHeader`,
- * `shelves.tsx`).
+ * given, a status when one is given, and the chevron at the far end: a
+ * card's subagents'; the shelves close instead (`ShelfHeader`, `shelves.tsx`).
  */
 export function CollapsibleHeader({
   label,
@@ -46,7 +45,7 @@ export function useExpanded(key: string, initial = false): [boolean, (expanded: 
 }
 
 /** A collapsible's state as `useExpanded` keeps it, for code outside its component: the jumps (`jump.ts`). */
-export function storedExpanded(key: string, initial = false): boolean {
+function storedExpanded(key: string, initial = false): boolean {
   const stored = localStorage.getItem(key);
   return stored === null ? initial : stored === "true";
 }

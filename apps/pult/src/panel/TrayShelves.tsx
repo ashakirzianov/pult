@@ -2,16 +2,18 @@ import { useSyncExternalStore } from "react";
 
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
-import { onDidSelectThread, openExplorerFiles } from "../threads/selection.ts";
+import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
-import { CLOSABLE_SHELVES, type ClosableShelf, keyOf } from "./order.ts";
+import { isStarDraft, projectDrafts } from "./drafts.ts";
+import { CLOSABLE_SHELVES, type ClosableShelf, draftCards, draftKey, keyOf } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
 import { closedShelves, openShelf } from "./shelves.tsx";
 
 const ICONS: Record<ClosableShelf, { readonly label: string; readonly icon: string }> = {
   explorer: { label: "Explorer", icon: "files" },
+  ready: { label: "Ready", icon: "inbox" },
   working: { label: "Working", icon: "pulse" },
   snoozed: { label: "Snoozed", icon: "bell-slash" },
   settled: { label: "Settled", icon: "check" },
@@ -48,9 +50,16 @@ export function TrayShelves() {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
+  const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
   if (closed.size === 0) return null;
   // Read on the selection's change, which re-renders the tray.
   const selectedCard = selectedCardKey();
+  const drafts = draftCards(
+    remembered,
+    selectedDraft(),
+    new Set(state.environments.map((environment) => environment.id)),
+    isStarDraft,
+  );
   const on = (shelf: ShelfName) => state.threads.filter((thread) => thread.shelf === shelf);
   const holdsSelected = (shelf: ShelfName) =>
     on(shelf).some((thread) => keyOf(thread) === selectedCard);
@@ -64,6 +73,19 @@ export function TrayShelves() {
           selected: selection === "explorer",
           title: label,
         };
+      case "ready": {
+        // Its cards: the drafts', then the pinned and active threads'.
+        const threads = [...on("pinned"), ...on("active")];
+        const count = drafts.length + threads.length;
+        return {
+          badge: count > 0 ? count : undefined,
+          empty: count === 0,
+          selected:
+            threads.some((thread) => keyOf(thread) === selectedCard) ||
+            drafts.some((draft) => draftKey(draft) === selectedCard),
+          title: label,
+        };
+      }
       case "working":
       case "snoozed": {
         const count = on(shelf).length;
