@@ -36,7 +36,6 @@ import { gateEditorMenus } from "./editorMenus.ts";
 import { registerPultFiles } from "./files/index.ts";
 import { registerLimits } from "./limits/index.ts";
 import { startPanelRows } from "./panel/rows.tsx";
-import { registerPanelSettings, startPanelSettings } from "./panel/settings.ts";
 import { registerPanel } from "./panel/view.tsx";
 import { registerColorSchemeCommand } from "./settings/colorScheme.ts";
 import { registerSettingsPane } from "./settings/pane.tsx";
@@ -86,7 +85,6 @@ registerSettingsPane();
 registerPreviewTabs();
 registerColorSchemeCommand();
 registerMode();
-registerPanelSettings();
 registerStarSettings();
 registerStarCommands();
 gateEditorMenus();
@@ -137,8 +135,8 @@ const options: IWorkbenchConstructionOptions = {
   developmentOptions: { logLevel: 2 },
 };
 
-// Read as soon as the configuration service is up, so a hidden Settled shelf never shows while the workbench starts.
-const panelSettings = Promise.all([startPanelSettings(), startStarSettings()]);
+// Read as soon as the configuration service is up, so a hidden Star never shows while the workbench starts.
+const starSettings = startStarSettings();
 
 await initialize(workbenchServices(), container, options, {
   userHome: Uri.file("/"),
@@ -146,7 +144,7 @@ await initialize(workbenchServices(), container, options, {
 
 await syncColorScheme();
 await startMode();
-await panelSettings;
+await starSettings;
 await startStatusBar();
 await startComposerStrip();
 await startPanelRows();

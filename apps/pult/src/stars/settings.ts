@@ -15,18 +15,35 @@ import {
 import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { Registry } from "@codingame/monaco-vscode-api/vscode/vs/platform/registry/common/platform";
 
-import { settingStore } from "../panel/settings.ts";
 import { writeUserValue } from "../settings/userSetting.ts";
 
 /**
  * Show Star, `pult.star.enabled`, in the user's settings under Pult beside
- * `pult.panel.settled`: on by default; off hides the Star's card and creates
+ * `pult.mode` (`src/mode.ts`): on by default; off hides the Star's card and creates
  * no Star, deleting nothing, the way out of the Star.
  */
 const ENABLED = "pult.star.enabled";
 
 /** While the Star is hidden, for the palette's Show Star and Hide Star, each offered in the other state. */
 const StarHiddenContext = new RawContextKey<boolean>("pult.starHidden", false);
+
+/** The setting's value as the panel reads it, synchronously, and a listener called when it changes; on until `startStarSettings` reads the user's. */
+function settingStore(initial: boolean) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set(next: boolean): void {
+      if (next === value) return;
+      value = next;
+      for (const listener of listeners) listener();
+    },
+  };
+}
 
 /** Whether the Star shows, read synchronously by the panel, its jumps and the creation (`model.ts`). */
 export const starEnabled = settingStore(true);

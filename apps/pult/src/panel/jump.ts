@@ -34,7 +34,6 @@ import {
   SETTLED_TAIL_INITIAL_COUNT,
   starKey,
 } from "./order.ts";
-import { settledShelf } from "./settings.ts";
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft's (`draftKey`), a Star's (`starKey`), `explorer` for the Explorer workspace, or nothing. */
 export function selectionSnapshot(): string | undefined {
@@ -104,7 +103,6 @@ function currentTargets(): JumpTarget<URI>[] {
       settled: storedExpanded(EXPANDED_KEYS.settled),
     },
     settledCount,
-    settledShown: settledShelf.get() === "shown",
   });
 }
 
@@ -192,7 +190,6 @@ function followJumpKeys(): void {
   threadStore.subscribe(refreshHints);
   onDidSelectThread(refreshHints);
   openExplorerFiles.subscribe(refreshHints);
-  settledShelf.subscribe(refreshHints);
   starStore.subscribe(refreshHints);
   starEnabled.subscribe(refreshHints);
 }

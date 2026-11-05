@@ -6,7 +6,6 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
-import { SETTLED_CHOICES, setSettledShelf, settledShelf } from "../panel/settings.ts";
 import { starStore } from "../stars/model.ts";
 import { TINTS, tintOf } from "../stars/record.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
@@ -43,7 +42,6 @@ export function SettingsPage({
       <EnvironmentsSection />
       <StarSection />
       <AppearanceSection colorScheme={colorScheme} />
-      <PanelSection />
       <ModeSection mode={mode} />
       <VSCodeSection />
     </div>
@@ -409,27 +407,6 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
         choices={COLOR_SCHEMES.map(({ scheme, label }) => ({ value: scheme, label }))}
         current={current}
         onChoose={(scheme) => void setColorScheme(scheme)}
-      />
-    </section>
-  );
-}
-
-/**
- * The left panel's shelves, one button per choice, the current one pressed:
- * whether the Settled shelf shows (`src/panel/settings.ts`), which the
- * palette's Show Settled Shelf and Hide Settled Shelf set too.
- */
-function PanelSection() {
-  const settled = useSyncExternalStore(settledShelf.subscribe, settledShelf.get);
-  return (
-    <section className="pult-settings-section">
-      <h2>Panel</h2>
-      <SegmentedRow
-        label="Settled threads"
-        description="Hidden, the Pult tab shows no Settled shelf; Pult: Open Thread… still reaches settled threads."
-        choices={SETTLED_CHOICES}
-        current={settled}
-        onChoose={(choice) => void setSettledShelf(choice)}
       />
     </section>
   );

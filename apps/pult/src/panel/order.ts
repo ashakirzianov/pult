@@ -134,8 +134,6 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly expanded: Readonly<Record<"ready" | Exclude<ShelfName, "pinned" | "active">, boolean>>;
   /** How many settled threads the settled shelf's tail shows. */
   readonly settledCount: number;
-  /** Whether the Settled shelf shows at all (`pult.panel.settled`); hidden, none of its rows is reached, not even the selected one. */
-  readonly settledShown: boolean;
 }
 
 /**
@@ -144,7 +142,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * rows: the Stars' cards first, then the Explorer shelf's open files, its
  * environments' rows left out, then the cards, Ready's drafts and threads,
  * and the Working, Snoozed and Settled shelves'; a collapsed list reaches
- * its selected row alone, a hidden Settled shelf none. The Limits shelf's
+ * its selected row alone. The Limits shelf's
  * rows, last, are none: they select nothing.
  */
 export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
@@ -188,12 +186,10 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     ...shown(ready, panel.expanded.ready, isSelected),
     ...shown(on("working").map(threadTarget), panel.expanded.working, isSelected),
     ...shown(on("snoozed").map(threadTarget), panel.expanded.snoozed, isSelected),
-    ...(panel.settledShown
-      ? shown(
-          settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
-          panel.expanded.settled,
-          isSelected,
-        )
-      : []),
+    ...shown(
+      settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
+      panel.expanded.settled,
+      isSelected,
+    ),
   ];
 }

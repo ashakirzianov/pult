@@ -45,7 +45,6 @@ import {
   settledTail,
   starKey,
 } from "./order.ts";
-import { settledShelf } from "./settings.ts";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -120,7 +119,7 @@ function subagentsByRoot(
  * pinned and active under Ready, open until closed and left out while it
  * holds nothing, then the Working, Snoozed
  * and Settled shelves, collapsed until opened, each under a collapsible
- * header, Settled left out while `pult.panel.settled` hides it (`settings.ts`). While the page holds several environments, each card names its
+ * header. While the page holds several environments, each card names its
  * own. The selected card expands with its details and its subagents; a
  * subagent has no card, so while one is selected its root's card is the
  * expanded one. The Stars' cards come first, under no header, while Show
@@ -144,8 +143,6 @@ export function PanelView() {
   const working = state.threads.filter((thread) => thread.shelf === "working");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
-  // Hidden, the shelf is not mounted, so its tail asks the model for no older settled pages.
-  const settledShown = useSyncExternalStore(settledShelf.subscribe, settledShelf.get) === "shown";
   const activities = threadActivities(state.threads);
   const subagents = subagentsByRoot(state.threads, activities);
   const environments = new Map(
@@ -264,7 +261,7 @@ export function PanelView() {
             {snoozed.map(card)}
           </Shelf>
         ) : null}
-        {settledShown && (settled.length > 0 || state.settled.count > 0) ? (
+        {settled.length > 0 || state.settled.count > 0 ? (
           <Shelf
             name="settled"
             label="Settled"
