@@ -3,7 +3,12 @@ import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri
 import { useRef, useSyncExternalStore } from "react";
 
 import { toHostPath } from "../files/paths.ts";
-import { explorerSelected, onDidSelectThread, openExplorerFiles } from "../threads/selection.ts";
+import {
+  closeExplorerFile,
+  explorerSelected,
+  onDidSelectThread,
+  openExplorerFiles,
+} from "../threads/selection.ts";
 import type { ShellEnvironment } from "../threads/store.ts";
 import { exploredEnvironment, exploreEnvironment } from "./explorer.ts";
 import { explorerHighlight } from "./jump.ts";
@@ -20,7 +25,8 @@ function run(command: string, ...args: unknown[]): void {
  * under no thread, under its header with no count, open until closed, when
  * its icon goes to the tray (`TrayShelves.tsx`). A row per held environment, selecting the workspace with the Explorer tab at
  * its folder above its projects (`pult-shell.exploreEnvironment`), its open files under it,
- * each selecting the workspace at its tab; files of no held environment
+ * each selecting the workspace at its tab and closing it with the Close its
+ * hover shows (`closeExplorerFile`); files of no held environment
  * last (`explorerEntries`). While the workspace is selected, its active file's row is
  * highlighted, or with none listed the environment's explored last. The
  * files' rows are among the jumps (`jump.ts`). The header and the
@@ -67,7 +73,10 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
       {entries.length > 0 ? (
         <ul className="pult-explorer-entries">
           {entries.map((entry) => (
-            <li key={entry.key}>
+            <li
+              key={entry.key}
+              className={entry.kind === "file" ? "pult-explorer-file" : undefined}
+            >
               {entry.kind === "environment" ? (
                 <EntryButton
                   icon="root-folder"
@@ -93,6 +102,17 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
                   onClick={() => run("pult-shell.selectExplorer", entry.key)}
                 />
               )}
+              {entry.kind === "file" ? (
+                <button
+                  type="button"
+                  className="pult-shelf-action pult-explorer-file-close"
+                  title="Close"
+                  aria-label={`Close ${baseName(entry.file)}`}
+                  onClick={() => void closeExplorerFile(entry.file)}
+                >
+                  <i className="codicon codicon-close" aria-hidden />
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>

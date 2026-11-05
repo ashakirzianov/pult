@@ -87,6 +87,8 @@ function isStar(selection: Selection | undefined): selection is StarSelection {
 const STORAGE_KEY = "pult.shell.selectedThread";
 /** The Explorer workspace's open files, as last seen while it was selected: the Explorer shelf lists them. */
 const EXPLORER_FILES_KEY = "pult.shell.explorerFiles";
+/** The files closed from the Explorer shelf while another selection showed, whose tabs close when the Explorer workspace is next selected. */
+const EXPLORER_CLOSING_KEY = "pult.shell.explorerFilesClosing";
 /** What the shell stored while Settings was a selection of its own (until 2026-10-28), cleared at startup. */
 const RETIRED_BEFORE_SETTINGS_KEY = "pult.shell.beforeSettings";
 const RETIRED_SETTINGS_WORKING_SET = "pult.settings";
@@ -195,6 +197,44 @@ function recordExplorerFiles(editors: IEditorService, storage: IStorageService):
       StorageTarget.MACHINE,
     );
   for (const listener of explorerFilesListeners) listener();
+}
+
+/**
+ * Closes the Explorer workspace's open file `resource`, the Explorer shelf's
+ * row's Close: while the workspace is selected, its tabs, through the
+ * workbench's own Save, Don't Save or Cancel for a modified one; otherwise
+ * the file leaves the shelf at once and its tabs close when the workspace is
+ * next selected (`switchTo`), kept in storage until then. A switch away has
+ * closed the modified tabs, so none waits on a question.
+ */
+export function closeExplorerFile(resource: URI): Promise<void> {
+  return enqueue(async () => {
+    const editors = await getService(IEditorService);
+    if (isExplorer(selected)) return editors.closeEditors(editors.findEditors(resource));
+    const storage = await getService(IStorageService);
+    const key = resource.toString();
+    const closing: unknown = JSON.parse(
+      storage.get(EXPLORER_CLOSING_KEY, StorageScope.WORKSPACE) ?? "[]",
+    );
+    storage.store(
+      EXPLORER_CLOSING_KEY,
+      JSON.stringify([...(Array.isArray(closing) ? closing : []), key]),
+      StorageScope.WORKSPACE,
+      StorageTarget.MACHINE,
+    );
+    const files = explorerFiles.files.filter((file) => file.toString() !== key);
+    explorerFiles = {
+      files,
+      active: explorerFiles.active?.toString() === key ? undefined : explorerFiles.active,
+    };
+    storage.store(
+      EXPLORER_FILES_KEY,
+      JSON.stringify(files.map(String)),
+      StorageScope.WORKSPACE,
+      StorageTarget.MACHINE,
+    );
+    for (const listener of explorerFilesListeners) listener();
+  });
 }
 
 /**
@@ -412,6 +452,7 @@ async function switchTo(next: Selection): Promise<void> {
     selected = next;
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
     await showLeadTab(next);
+    if (isExplorer(next)) await closeClosedExplorerFiles();
   } finally {
     endSwitch();
   }
@@ -458,6 +499,21 @@ async function switchTo(next: Selection): Promise<void> {
       await first.openEditor(tab, { pinned: true, index: 0 });
     }
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
+  }
+
+  /** The tabs of the files the Explorer shelf closed while another selection showed (`closeExplorerFile`). */
+  async function closeClosedExplorerFiles(): Promise<void> {
+    const closing: unknown = JSON.parse(
+      storage.get(EXPLORER_CLOSING_KEY, StorageScope.WORKSPACE) ?? "[]",
+    );
+    if (!Array.isArray(closing) || closing.length === 0) return;
+    const editors = await getService(IEditorService);
+    await editors.closeEditors(
+      closing
+        .filter((file) => typeof file === "string")
+        .flatMap((file) => editors.findEditors(URI.parse(file))),
+    );
+    storage.remove(EXPLORER_CLOSING_KEY, StorageScope.WORKSPACE);
   }
 
   async function closeLeadTabs(stale: (editor: LeadTab) => boolean): Promise<void> {

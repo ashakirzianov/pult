@@ -715,6 +715,27 @@
   cursor: pointer;
 }
 
+/* An open file's row: Close at its end on hover or keyboard focus, the row's text leaving it room. */
+.pult-explorer-file {
+  position: relative;
+}
+
+.pult-explorer-file > .pult-explorer-entry {
+  padding-right: 28px;
+}
+
+.pult-explorer-file-close {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 20px;
+}
+
+.pult-explorer-file:hover .pult-shelf-action,
+.pult-explorer-file:focus-within .pult-shelf-action {
+  opacity: 1;
+}
+
 .pult-explorer-entry-nested {
   padding-left: 26px;
 }
