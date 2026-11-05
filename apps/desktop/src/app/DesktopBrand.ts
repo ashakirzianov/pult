@@ -1,0 +1,90 @@
+/**
+ * The names and defaults a desktop build ships under, T3 Code's by default.
+ * `T3CODE_DESKTOP_BRAND` names a module exporting a `DesktopBrandOverride`
+ * (`scripts/lib/desktop-brand.ts`), baked in as `__T3CODE_DESKTOP_BRAND__`.
+ */
+
+interface PerMode<T> {
+  readonly production: T;
+  readonly development: T;
+}
+
+export interface DesktopBrand {
+  /** The app's name before its stage label: "T3 Code" in "T3 Code (Beta)". */
+  readonly baseName: PerMode<string>;
+  /** The renderer's privileged scheme, its origin `<scheme>://app`, and the OS URL handler's. */
+  readonly scheme: PerMode<string>;
+  /** `userData` under the OS app-data directory, and a legacy profile to adopt (`null`: none). */
+  readonly userData: PerMode<{ readonly current: string; readonly legacy: string | null }>;
+  readonly appUserModelId: PerMode<string>;
+  readonly linuxDesktopEntryName: PerMode<string>;
+  /** Profiles whose v1 local storage the app imports once. */
+  readonly legacyLocalStorageProfiles: ReadonlyArray<string>;
+  /** The packaged renderer's assets, relative to the app's root; `null` is the server's web client. */
+  readonly rendererAssetsDir: string | null;
+  /** The renderer needs `'unsafe-eval'` in its script sources. */
+  readonly rendererAllowsEval: boolean;
+  /** `T3CODE_TELEMETRY_ENABLED` for the supervised server when the environment sets none; `null` leaves the server's default. */
+  readonly serverTelemetryDefault: boolean | null;
+  /** The package's bundle id (`appId`) and its name; `null` keeps `apps/desktop/package.json`'s. */
+  readonly appId: string;
+  readonly productName: string | null;
+  /** The packaged `package.json`'s name, Electron's default app name, which names its Keychain item. */
+  readonly packageName: string;
+}
+
+export type DesktopBrandOverride = Partial<DesktopBrand>;
+
+export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
+  baseName: { production: "T3 Code", development: "T3 Code" },
+  scheme: { production: "t3code", development: "t3code-dev" },
+  userData: {
+    production: { current: "t3code-v2", legacy: "T3 Code (Alpha)" },
+    development: { current: "t3code-dev", legacy: "T3 Code (Dev)" },
+  },
+  appUserModelId: { production: "com.t3tools.t3code", development: "com.t3tools.t3code.dev" },
+  linuxDesktopEntryName: {
+    production: "com.t3tools.T3Code.desktop",
+    development: "com.t3tools.T3Code.Development.desktop",
+  },
+  legacyLocalStorageProfiles: ["T3 Code (Alpha)", "t3code"],
+  rendererAssetsDir: null,
+  rendererAllowsEval: false,
+  serverTelemetryDefault: null,
+  appId: "com.t3tools.t3code",
+  productName: null,
+  packageName: "t3code",
+};
+
+export const brandFor = <T>(value: PerMode<T>, isDevelopment: boolean): T =>
+  isDevelopment ? value.development : value.production;
+
+declare const __T3CODE_DESKTOP_BRAND__: DesktopBrandOverride | null | undefined;
+
+export const desktopBrand: DesktopBrand = {
+  ...T3CODE_DESKTOP_BRAND,
+  ...(typeof __T3CODE_DESKTOP_BRAND__ === "object" ? __T3CODE_DESKTOP_BRAND__ : null),
+};
+
+/**
+ * What a brand changes in the environment the supervised server inherits:
+ * its telemetry default, and the brand's renderer origins among the origins a
+ * development server allows, since the server names only T3 Code's.
+ */
+export function brandServerEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+  brand: DesktopBrand = desktopBrand,
+): Record<string, string> {
+  const patch: Record<string, string> = {};
+  if (brand.serverTelemetryDefault !== null && env.T3CODE_TELEMETRY_ENABLED === undefined)
+    patch.T3CODE_TELEMETRY_ENABLED = String(brand.serverTelemetryDefault);
+  const t3codeSchemes: ReadonlyArray<string> = Object.values(T3CODE_DESKTOP_BRAND.scheme);
+  const origins = [brand.scheme.production, brand.scheme.development]
+    .filter((scheme) => !t3codeSchemes.includes(scheme))
+    .map((scheme) => `${scheme}://app`);
+  if (origins.length > 0)
+    patch.T3CODE_DEV_ALLOWED_ORIGINS = [env.T3CODE_DEV_ALLOWED_ORIGINS, ...origins]
+      .filter((entry) => entry !== undefined && entry.trim() !== "")
+      .join(",");
+  return patch;
+}

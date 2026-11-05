@@ -2,6 +2,8 @@ import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { brandFor, desktopBrand } from "./DesktopBrand.ts";
+
 import {
   DEFAULT_LINUX_PASSWORD_STORE,
   normalizeLinuxPasswordStorePreference,
@@ -31,7 +33,7 @@ export interface EarlyLinuxElectronOptions {
 }
 
 export const resolveLinuxDesktopEntryName = (isDevelopment: boolean): string =>
-  isDevelopment ? "com.t3tools.T3Code.Development.desktop" : "com.t3tools.T3Code.desktop";
+  brandFor(desktopBrand.linuxDesktopEntryName, isDevelopment);
 
 const trimNonEmpty = (value: string | undefined): string | null => {
   const trimmed = value?.trim();

@@ -61,8 +61,12 @@ import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { loadDesktopBrand } from "./lib/desktop-brand.ts";
+
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
-const DESKTOP_APP_ID = "com.t3tools.t3code";
+// T3 Code's unless `T3CODE_DESKTOP_BRAND` names another brand (apps/desktop/src/app/DesktopBrand.ts).
+const desktopBrand = await loadDesktopBrand();
+const DESKTOP_APP_ID = desktopBrand.appId;
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -2749,6 +2753,7 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
+  if (desktopBrand.productName !== null) return desktopBrand.productName;
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "T3 Code (Nightly)"
     : (desktopPackageJson.productName ?? "T3 Code");
@@ -2774,7 +2779,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: `${desktopBrand.productName?.replaceAll(" ", "-") ?? "T3-Code"}-\${version}-\${arch}.\${ext}`,
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
@@ -2847,8 +2852,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: desktopBrand.baseName.production,
+          schemes: [desktopBrand.scheme.production, desktopBrand.scheme.development],
         },
         {
           name: "Web site URL",
@@ -2905,8 +2910,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       maintainer: "T3 Tools <hello@t3.codes>",
       protocols: [
         {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
+          name: desktopBrand.baseName.production,
+          schemes: [desktopBrand.scheme.production, desktopBrand.scheme.development],
         },
       ],
       desktop: {
@@ -3761,6 +3766,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   if (options.platform !== "win") {
     yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
   }
+  // A brand's renderer is built by its own package, before this script.
+  if (desktopBrand.rendererAssetsDir !== null) {
+    const rendererDir = path.join(repoRoot, desktopBrand.rendererAssetsDir);
+    if (!(yield* fs.exists(path.join(rendererDir, "index.html"))))
+      return yield* Effect.die(new Error(`The brand's renderer is not built: ${rendererDir}`));
+    yield* fs.copy(rendererDir, path.join(stageAppDir, desktopBrand.rendererAssetsDir));
+  }
   yield* stageResourceMonitor({
     repoRoot,
     stageResourcesDir,
@@ -3859,7 +3871,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       ? path.join(stageAppDir, WINDOWS_SERVER_RESOURCE_SOURCE_DIR, WINDOWS_SERVER_ASAR_RESOURCE)
       : undefined;
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    name: desktopBrand.packageName,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,

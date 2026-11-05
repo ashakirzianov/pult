@@ -12,9 +12,11 @@ import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import { desktopBrand } from "../app/DesktopBrand.ts";
+
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code";
-const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
+const DESKTOP_PRODUCTION_SCHEME = desktopBrand.scheme.production;
+const DESKTOP_DEVELOPMENT_SCHEME = desktopBrand.scheme.development;
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
@@ -74,6 +76,7 @@ function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInpu
     "'self'",
     "'unsafe-inline'",
     "'wasm-unsafe-eval'",
+    ...(desktopBrand.rendererAllowsEval ? ["'unsafe-eval'"] : []),
     ...(clerkOrigin ? [clerkOrigin] : []),
     "https://challenges.cloudflare.com",
   ];

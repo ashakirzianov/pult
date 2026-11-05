@@ -1,4 +1,7 @@
 import * as MacPermissions from "./permissions/MacPermissions.ts";
+import { brandServerEnvironment, desktopBrand } from "./app/DesktopBrand.ts";
+// The supervised server inherits this environment.
+Object.assign(process.env, brandServerEnvironment(process.env));
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code !== "EPIPE") throw err;
@@ -88,6 +91,10 @@ if (process.argv.includes("--version")) {
   }
   Electron.app.exit(0);
 }
+
+// Safe storage names its Keychain item after the app's name on the first tick; unnamed, a development run shares "Electron Safe Storage".
+if (process.env.VITE_DEV_SERVER_URL?.trim())
+  Electron.app.setName(`${desktopBrand.baseName.development} Dev`);
 
 const layerDesktopEnvironment = Layer.unwrap(
   Effect.gen(function* () {
