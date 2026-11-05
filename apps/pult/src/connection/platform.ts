@@ -2,6 +2,7 @@ import { TokenStore } from "@t3tools/client-runtime/authorization";
 import {
   ConnectionBlockedError,
   type ConnectionCredential,
+  ConnectionTransientError,
   type ConnectionProfile,
   Connectivity,
   CredentialStore,
@@ -23,6 +24,8 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
+
+import { desktopHost } from "../desktop/host.ts";
 
 const unsupported = (detail: string) =>
   Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail }));
@@ -103,7 +106,21 @@ const layerCapabilities = Layer.mergeAll(
   Layer.succeed(ClientCapabilities.ClientPresentation, {
     metadata: { label: "Pult", deviceType: "desktop" },
   }),
-  Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, { bearerToken: Effect.succeedNone }),
+  // The bearer of the app's own server, the primary environment in Pult.app (`connection.ts`), read from the app at each connect.
+  Layer.succeed(ClientCapabilities.PrimaryEnvironmentAuth, {
+    bearerToken: Effect.suspend(() => {
+      const bridge = desktopHost();
+      if (bridge === undefined) return Effect.succeedNone;
+      return Effect.tryPromise({
+        try: () => bridge.getLocalEnvironmentBearerToken(),
+        catch: (cause) =>
+          new ConnectionTransientError({
+            reason: "remote-unavailable",
+            detail: `Could not read the local server's credential: ${String(cause)}`,
+          }),
+      }).pipe(Effect.map(Option.some));
+    }),
+  }),
   Layer.succeed(ClientCapabilities.CloudSession, {
     identity: Effect.succeedNone,
     clerkToken: unsupported(NO_CONNECT),
@@ -134,8 +151,9 @@ const layerCapabilities = Layer.mergeAll(
  * WebSocket, one per environment, which the runtime dials anew on each reconnect, the browser's
  * network events, the page coming back to the foreground as the wakeup, and
  * the environments the shell connects as its platform registrations, the way
- * a desktop-local backend is registered. T3 Connect (an empty relay URL
- * disables the relay client), SSH and a primary local environment are off.
+ * a desktop-local backend is registered, the app's own server in Pult.app as
+ * the primary. T3 Connect (an empty relay URL disables the relay client) and
+ * SSH are off.
  */
 export function platformLayer(
   registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,

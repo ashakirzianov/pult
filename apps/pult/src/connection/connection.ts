@@ -10,6 +10,8 @@ import {
   EnvironmentSupervisor,
   type PlatformConnectionRegistration,
   presentConnectionState,
+  PrimaryConnectionRegistration,
+  PrimaryConnectionTarget,
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcUnavailableError } from "@t3tools/client-runtime/rpc";
@@ -89,8 +91,27 @@ const SINGLE_SAVED_KEY = "pult-shell.environment";
 const LOCAL_KEY = "pult-shell.localEnvironment";
 const decodeSingleSaved = Schema.decodeUnknownOption(Schema.fromJsonString(Saved));
 
-function registration(saved: Saved): BearerConnectionRegistration {
+/**
+ * The runtime's registration of a held environment. In Pult.app the app's own
+ * server is the runtime's primary environment, as upstream's desktop page
+ * registers it, its bearer read from the app at each connect
+ * (`PrimaryEnvironmentAuth`, `platform.ts`): the view keys what belongs to
+ * this machine on it, the native preview webviews among them
+ * (`pult/decisions`, `primary-environment`). Every other environment is a
+ * bearer registration.
+ */
+function registration(saved: Saved, primary: boolean): PlatformConnectionRegistration {
   const { profile, token } = saved;
+  if (primary) {
+    return new PrimaryConnectionRegistration({
+      target: new PrimaryConnectionTarget({
+        environmentId: profile.environmentId,
+        label: profile.label,
+        httpBaseUrl: profile.httpBaseUrl,
+        wsBaseUrl: profile.wsBaseUrl,
+      }),
+    });
+  }
   return new BearerConnectionRegistration({
     target: new BearerConnectionTarget({
       environmentId: profile.environmentId,
@@ -104,8 +125,8 @@ function registration(saved: Saved): BearerConnectionRegistration {
 
 /** An environment the page holds: its bearer, its registration, its state as the registry last published it, and what stops following that state. */
 interface Held {
-  readonly saved: Saved;
-  readonly registration: BearerConnectionRegistration;
+  saved: Saved;
+  registration: PlatformConnectionRegistration;
   state: ShellEnvironment | null;
   stop: () => void;
 }
@@ -125,6 +146,8 @@ class ShellConnection {
   );
   /** By environment id, in the order they were connected. */
   private readonly held = new Map<EnvironmentId, Held>();
+  /** In Pult.app with its local server on, the environment id of the app's own server, held as the primary environment. */
+  private local: EnvironmentId | undefined;
   /** Until `restore` settles, the page may yet connect to the environments saved before the reload. */
   private restoring = true;
   private list: ReadonlyArray<ShellEnvironment> = [];
@@ -247,12 +270,17 @@ class ShellConnection {
           await secrets.delete(SINGLE_SAVED_KEY);
         }
       }
-      const offLocal =
-        desktopHost()?.getLocalEnvironmentEnabled() === false
-          ? await secrets.get(LOCAL_KEY)
-          : undefined;
-      for (const each of saved) if (each.profile.environmentId !== offLocal) this.hold(each);
-      if (offLocal !== undefined && saved.length !== this.held.size) await this.persist();
+      const bridge = desktopHost();
+      const local = bridge === undefined ? undefined : await secrets.get(LOCAL_KEY);
+      const localOn = bridge?.getLocalEnvironmentEnabled() === true;
+      // On, the app's own server is restored as the primary; off, it is not reconnected.
+      const savedLocal = saved.find((each) => each.profile.environmentId === local);
+      if (localOn) this.local = savedLocal?.profile.environmentId;
+      for (const each of saved) {
+        if (!localOn && each.profile.environmentId === local) continue;
+        this.hold(each);
+      }
+      if (!localOn && local !== undefined && saved.length !== this.held.size) await this.persist();
       await this.register();
       await this.connectLocal().catch((error: unknown) =>
         console.warn("[pult-shell] could not connect the desktop's own server:", error),
@@ -276,8 +304,10 @@ class ShellConnection {
       .find((entry) => entry.id === PRIMARY_LOCAL_ENVIRONMENT_ID);
     if (!primary?.httpBaseUrl) return;
     const token = await bridge.getLocalEnvironmentBearerToken();
+    const target = resolveRemotePairingTarget({ host: primary.httpBaseUrl, pairingCode: token });
     const environmentId = await this.connect(
-      resolveRemotePairingTarget({ host: primary.httpBaseUrl, pairingCode: token }),
+      primary.wsBaseUrl ? { ...target, wsBaseUrl: primary.wsBaseUrl } : target,
+      { local: true },
     );
     await (await getService(ISecretStorageService)).set(LOCAL_KEY, environmentId);
   }
@@ -285,21 +315,43 @@ class ShellConnection {
   /**
    * Probes the target from the page, whose origin the server sees, and only if
    * it answers saves it and connects it beside the environments the page
-   * holds; an environment held already takes the new bearer. Answers its
+   * holds; an environment held already takes the new bearer. `local` marks the
+   * app's own server, which is held as the primary environment. Answers its
    * environment id; fails with the probe's `ProbeError`.
    */
-  async connect(target: ResolvedRemotePairingTarget): Promise<EnvironmentId> {
+  async connect(
+    target: ResolvedRemotePairingTarget,
+    options?: { readonly local?: boolean },
+  ): Promise<EnvironmentId> {
     const probed = await this.runtime.runPromise(probe({ target, origin: window.location.origin }));
     const saved = { profile: probed.profile, token: probed.credential.token };
+    const environmentId = saved.profile.environmentId;
+    if (options?.local === true && this.local !== environmentId) {
+      // A previous local server still held, whose id the app's server no longer serves, is a bearer environment now.
+      const previous = this.local === undefined ? undefined : this.held.get(this.local);
+      this.local = environmentId;
+      if (previous !== undefined) previous.registration = registration(previous.saved, false);
+    }
+    const held = this.held.get(environmentId);
+    if (
+      held !== undefined &&
+      samePrimary(held.registration, registration(saved, this.isLocal(saved)))
+    ) {
+      // The primary's registration carries no bearer, so the same server at the same address keeps its socket.
+      held.saved = saved;
+      await this.persist();
+      await this.register();
+      return environmentId;
+    }
     // A new bearer for the same environment needs a new registration, so the old one goes first.
-    if (this.held.has(saved.profile.environmentId)) {
-      this.release(saved.profile.environmentId);
+    if (held !== undefined) {
+      this.release(environmentId);
       await this.register();
     }
     this.hold(saved);
     await this.persist();
     await this.register();
-    return saved.profile.environmentId;
+    return environmentId;
   }
 
   /** Closes the environment's connection and forgets it with its bearer; the others stay. */
@@ -322,6 +374,10 @@ class ShellConnection {
     );
   }
 
+  private isLocal(saved: Saved): boolean {
+    return this.local !== undefined && saved.profile.environmentId === this.local;
+  }
+
   private heldOf(environmentId: string): Held | undefined {
     const wanted = environmentId.toLowerCase();
     for (const [id, held] of this.held) if (id.toLowerCase() === wanted) return held;
@@ -331,7 +387,12 @@ class ShellConnection {
   /** Holds the environment, following its state as the registry publishes it; registered by the next `register`. */
   private hold(saved: Saved): void {
     const environmentId = saved.profile.environmentId;
-    const held: Held = { saved, registration: registration(saved), state: null, stop: () => {} };
+    const held: Held = {
+      saved,
+      registration: registration(saved, this.isLocal(saved)),
+      state: null,
+      stop: () => {},
+    };
     this.held.set(environmentId, held);
     const fiber = this.runtime.runFork(
       followEnvironment(environmentId, (next) => {
@@ -367,6 +428,22 @@ class ShellConnection {
     this.list = [...this.held.values()].map((held) => held.state ?? pending(held.saved));
     for (const listener of this.listeners) listener();
   }
+}
+
+/** Whether both are the primary registration of one environment at one address, which a new bearer leaves as it is. */
+function samePrimary(
+  held: PlatformConnectionRegistration,
+  next: PlatformConnectionRegistration,
+): boolean {
+  if (held._tag !== "PrimaryConnectionRegistration") return false;
+  if (next._tag !== "PrimaryConnectionRegistration") return false;
+  const [a, b] = [held.target, next.target];
+  return (
+    a.environmentId === b.environmentId &&
+    a.label === b.label &&
+    a.httpBaseUrl === b.httpBaseUrl &&
+    a.wsBaseUrl === b.wsBaseUrl
+  );
 }
 
 /** A held environment the registry has not published yet. */
@@ -410,14 +487,16 @@ function present(
   entry: ConnectionCatalogEntry,
   state: SupervisorConnectionState,
 ): ShellEnvironment {
-  const profile = Option.getOrUndefined(
-    Option.filter(entry.profile, Schema.is(BearerConnectionProfile)),
-  );
+  // The primary's target carries its address; a bearer environment's profile does.
+  const address =
+    entry.target._tag === "PrimaryConnectionTarget"
+      ? entry.target
+      : Option.getOrUndefined(Option.filter(entry.profile, Schema.is(BearerConnectionProfile)));
   const base = {
     environmentId: entry.target.environmentId,
     label: entry.target.label,
-    httpBaseUrl: profile?.httpBaseUrl ?? "",
-    wsBaseUrl: profile?.wsBaseUrl ?? "",
+    httpBaseUrl: address?.httpBaseUrl ?? "",
+    wsBaseUrl: address?.wsBaseUrl ?? "",
   };
   const connection = presentConnectionState(state);
   // An unsupported server blocks the supervisor; the registry then switches
