@@ -44,7 +44,7 @@ NodeTest.test("an update found is downloaded once, then answered", () => {
       state({ status: "downloaded", availableVersion: "0.0.2", downloadedVersion: "0.0.2" }),
       true,
     ),
-    answer("info", "Pult 0.0.2 downloaded. Restart to Update installs it."),
+    answer("info", "Pult 0.0.2 downloaded; it installs when Pult rests."),
   );
 });
 
@@ -59,7 +59,7 @@ NodeTest.test("a check or a download running, whoever started it, is waited for"
 NodeTest.test("a download already waiting is answered without another", () => {
   NodeAssert.deepEqual(
     nextUpdateStep(state({ status: "downloaded", downloadedVersion: "0.0.2" }), false),
-    answer("info", "Pult 0.0.2 downloaded. Restart to Update installs it."),
+    answer("info", "Pult 0.0.2 downloaded; it installs when Pult rests."),
   );
 });
 

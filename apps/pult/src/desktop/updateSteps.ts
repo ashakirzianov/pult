@@ -28,11 +28,10 @@ export function updateRunning(state: DesktopUpdateState): boolean {
 export function nextUpdateStep(state: DesktopUpdateState, downloadTried: boolean): UpdateStep {
   const downloaded = installableVersion(state);
   if (downloaded !== null) {
-    // Unit F of `pult/issues/release-feed` installs at rest: then "Pult <version> downloaded; it installs when Pult rests."
     return {
       kind: "answer",
       severity: "info",
-      message: `Pult ${downloaded} downloaded. Restart to Update installs it.`,
+      message: `Pult ${downloaded} downloaded; it installs when Pult rests.`,
     };
   }
   if (!state.enabled || state.status === "disabled") {
