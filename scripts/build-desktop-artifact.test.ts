@@ -37,6 +37,7 @@ import {
   MissingMacPasskeyProvisioningProfileError,
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
+  renderMacBaseEntitlements,
   renderMacPasskeyEntitlements,
   resolveMacWebAuthnEntitlements,
   resolveMacPasskeySigningConfiguration,
@@ -1431,6 +1432,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       T3CODE_CLERK_PASSKEY_RP_DOMAINS:
         " Clerk.Example.com,example.clerk.accounts.dev,clerk.example.com ",
     });
+    assert.isDefined(configuration);
     const entitlements = renderMacPasskeyEntitlements(configuration, {
       touchIdKeychainAccessGroup: undefined,
       browserPasskeys: false,
@@ -1516,6 +1518,53 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       /<key>com\.apple\.developer\.web-browser\.public-key-credential<\/key>\s*<true\/>/u,
     );
   });
+
+  it.effect(
+    "signs a macOS build without passkey entitlements when no passkey variable is set",
+    () =>
+      Effect.gen(function* () {
+        assert.isUndefined(resolveMacPasskeySigningConfiguration({}));
+        // The publishable key configures more than passkeys, so it does not opt in alone.
+        assert.isUndefined(
+          resolveMacPasskeySigningConfiguration({
+            T3CODE_CLERK_PUBLISHABLE_KEY: `pk_test_${btoa("example.clerk.accounts.dev$")}`,
+            T3CODE_APPLE_TEAM_ID: " ",
+            T3CODE_MACOS_PROVISIONING_PROFILE: "",
+          }),
+        );
+
+        const entitlements = renderMacBaseEntitlements();
+        assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
+        assert.include(
+          entitlements,
+          "<key>com.apple.security.cs.allow-unsigned-executable-memory</key>",
+        );
+        assert.include(entitlements, "<key>com.apple.security.cs.disable-library-validation</key>");
+        assert.match(entitlements, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
+        assert.match(
+          entitlements,
+          /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u,
+        );
+        assert.notInclude(entitlements, "com.apple.application-identifier");
+        assert.notInclude(entitlements, "com.apple.developer.associated-domains");
+        assert.notInclude(entitlements, "keychain-access-groups");
+
+        const build = (provisioningProfilePath: string | undefined) =>
+          createBuildConfig("mac", "dmg", "1.2.3", true, false, undefined, {
+            entitlementsPath: "/stage/entitlements.mac.plist",
+            provisioningProfilePath,
+          }).pipe(Effect.map((config) => config.mac as Record<string, unknown>));
+        const withoutPasskeys = yield* build(undefined);
+        const withPasskeys = yield* build("/tmp/t3code.provisionprofile");
+
+        assert.equal(withoutPasskeys.entitlements, "/stage/entitlements.mac.plist");
+        assert.notProperty(withoutPasskeys, "provisioningProfile");
+        assert.notProperty(withoutPasskeys, "hardenedRuntime");
+        assert.notProperty(withoutPasskeys, "identity");
+        assert.equal(withPasskeys.entitlements, "/stage/entitlements.mac.plist");
+        assert.equal(withPasskeys.provisioningProfile, "/tmp/t3code.provisionprofile");
+      }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
 
   it("rejects incomplete macOS passkey signing configuration", () => {
     const captureError = (env: Readonly<Record<string, string | undefined>>) => {

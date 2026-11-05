@@ -1243,9 +1243,25 @@ function normalizePasskeyRpDomain(value: string): string {
   return parsed.hostname;
 }
 
+const MAC_PASSKEY_SIGNING_VARIABLES = [
+  "T3CODE_APPLE_TEAM_ID",
+  "T3CODE_MACOS_PROVISIONING_PROFILE",
+  "T3CODE_CLERK_PASSKEY_RP_DOMAINS",
+] as const;
+
+/**
+ * Undefined when none of the passkey signing variables is set: the build is then
+ * signed without passkey entitlements, for builds without an Associated Domains
+ * provisioning profile. The Clerk publishable key alone does not opt in, since
+ * builds use it for more than passkeys.
+ */
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
-): MacPasskeySigningConfiguration {
+): MacPasskeySigningConfiguration | undefined {
+  if (MAC_PASSKEY_SIGNING_VARIABLES.every((name) => !env[name]?.trim())) {
+    return undefined;
+  }
+
   const teamId = env.T3CODE_APPLE_TEAM_ID?.trim().toUpperCase() ?? "";
   if (!APPLE_TEAM_ID_PATTERN.test(teamId)) {
     throw new InvalidAppleTeamIdError({ teamId });
@@ -1361,10 +1377,7 @@ export function renderMacPasskeyEntitlements(
     <true/>`
     : "";
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
+  return renderMacEntitlementsPlist(`
     <key>com.apple.application-identifier</key>
     <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
     <key>com.apple.developer.team-identifier</key>
@@ -1372,7 +1385,19 @@ export function renderMacPasskeyEntitlements(
     <key>com.apple.developer.associated-domains</key>
     <array>
 ${associatedDomains}
-    </array>${keychainAccessGroups}${browserPasskeys}
+    </array>${keychainAccessGroups}${browserPasskeys}`);
+}
+
+/** The hardened runtime's entitlements of a signed build without passkeys. */
+export function renderMacBaseEntitlements(): string {
+  return renderMacEntitlementsPlist("");
+}
+
+function renderMacEntitlementsPlist(passkeyEntitlements: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>${passkeyEntitlements}
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
@@ -2758,10 +2783,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   signed: boolean,
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
-  macPasskeySigning:
+  macSigning:
     | {
         readonly entitlementsPath: string;
-        readonly provisioningProfilePath: string;
+        readonly provisioningProfilePath: string | undefined;
       }
     | undefined,
   wslRuntimeBundled = false,
@@ -2859,11 +2884,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ...(signed
         ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") }
         : { identity: "-", hardenedRuntime: false }),
-      ...(macPasskeySigning
-        ? {
-            entitlements: macPasskeySigning.entitlementsPath,
-            provisioningProfile: macPasskeySigning.provisioningProfilePath,
-          }
+      ...(macSigning ? { entitlements: macSigning.entitlementsPath } : {}),
+      ...(macSigning?.provisioningProfilePath
+        ? { provisioningProfile: macSigning.provisioningProfilePath }
         : {}),
     };
   }
@@ -3821,9 +3844,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         ),
       }
     : undefined;
-  const macEntitlementsPath = macPasskeySigning
-    ? path.join(stageAppDir, "entitlements.mac.plist")
-    : undefined;
+  const macEntitlementsPath =
+    options.platform === "mac" && options.signed
+      ? path.join(stageAppDir, "entitlements.mac.plist")
+      : undefined;
   let macWebAuthn: MacWebAuthnEntitlements | undefined;
   if (macPasskeySigning && macEntitlementsPath) {
     if (!(yield* fs.exists(macPasskeySigning.provisioningProfilePath))) {
@@ -3842,6 +3866,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       macEntitlementsPath,
       renderMacPasskeyEntitlements(macPasskeySigning, macWebAuthn),
     );
+  } else if (macEntitlementsPath) {
+    yield* Effect.log(
+      "[desktop-artifact] No passkey signing configuration; signing without passkey entitlements.",
+    );
+    yield* fs.writeFileString(macEntitlementsPath, renderMacBaseEntitlements());
   }
 
   const stageDependencies =
@@ -3884,10 +3913,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
-      macPasskeySigning && macEntitlementsPath
+      macEntitlementsPath
         ? {
             entitlementsPath: macEntitlementsPath,
-            provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
+            provisioningProfilePath: macPasskeySigning?.provisioningProfilePath,
           }
         : undefined,
       bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime }),

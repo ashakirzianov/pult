@@ -109,6 +109,8 @@ T3CODE_CLERK_PASSKEY_RP_DOMAINS=example.clerk.accounts.dev,clerk.example.com
 ```
 
 Without the override, the build derives the RP domain from the Clerk publishable key.
+With none of the three set, a signed build is signed under the hardened runtime without passkey
+entitlements or a provisioning profile, and in-app browser passkeys are off.
 After changing Associated Domains, bump the build version before rebuilding. macOS can otherwise
 reuse stale Shared Web Credentials metadata for the same app/version pair.
 
