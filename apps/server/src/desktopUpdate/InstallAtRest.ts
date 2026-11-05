@@ -3,8 +3,10 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
+import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerActivity from "../serverActivity.ts";
 import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
@@ -20,11 +22,21 @@ const HOST_IDLE_REQUIRED = Duration.minutes(15);
 const refusal = Effect.gen(function* () {
   const activity = yield* ServerActivity.ServerActivity;
   const power = yield* HostPowerMonitor.HostPowerMonitor;
-  const [{ restingSince }, snapshot, now] = yield* Effect.all([
+  const receiver = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
+  const [{ restingSince }, snapshot, now, { latest }] = yield* Effect.all([
     activity.current,
     power.snapshot,
     DateTime.now,
+    Effect.scoped(receiver.desktopUpdates),
   ]);
+  // Its install restarted the server for nothing; Restart to Update retries it, not the worker.
+  const update = Option.getOrUndefined(latest)?.state;
+  if (
+    update?.installFailedVersion !== undefined &&
+    update.installFailedVersion === update.downloadedVersion
+  ) {
+    return `the last install of ${update.installFailedVersion} failed`;
+  }
   if (
     restingSince === null ||
     DateTime.toEpochMillis(now) - DateTime.toEpochMillis(restingSince) <

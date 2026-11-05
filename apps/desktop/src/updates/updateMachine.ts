@@ -209,6 +209,7 @@ export function reduceDesktopUpdateStateOnInstallFailure(
     message,
     errorContext: "install",
     canRetry: true,
+    ...(state.downloadedVersion === null ? {} : { installFailedVersion: state.downloadedVersion }),
   };
 }
 

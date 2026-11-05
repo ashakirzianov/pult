@@ -87,6 +87,29 @@ describe("updateMachine", () => {
     expect(failedInstall.status).toBe("downloaded");
     expect(failedInstall.errorContext).toBe("install");
     expect(failedInstall.canRetry).toBe(true);
+    expect(failedInstall.installFailedVersion).toBe("1.1.0");
+  });
+
+  it("remembers a failed install past the next check", () => {
+    const failedInstall = reduceDesktopUpdateStateOnInstallFailure(
+      reduceDesktopUpdateStateOnDownloadComplete(
+        {
+          ...createInitialDesktopUpdateState("1.0.0", runtimeInfo, "latest"),
+          enabled: true,
+          status: "downloading",
+          availableVersion: "1.1.0",
+        },
+        "1.1.0",
+      ),
+      "Code signature did not match",
+    );
+    const checked = reduceDesktopUpdateStateOnNoUpdate(
+      reduceDesktopUpdateStateOnCheckStart(failedInstall, "2026-11-05T00:00:00.000Z"),
+      "2026-11-05T00:00:01.000Z",
+    );
+
+    expect(checked.errorContext).toBeNull();
+    expect(checked.installFailedVersion).toBe("1.1.0");
   });
 
   it("clears stale available state when no update is available", () => {

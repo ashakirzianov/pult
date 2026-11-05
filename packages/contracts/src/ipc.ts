@@ -282,6 +282,11 @@ export interface DesktopUpdateState {
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
   notAppliedVersion?: string;
+  /**
+   * The download whose last install failed here and was recovered, until the app restarts; a
+   * check clears `errorContext` within minutes, this stays. Upstream's own UI does not read it.
+   */
+  installFailedVersion?: string;
   /** Off only because a managed policy rules out this channel; switching channels turns it on. */
   channelBlockedByPolicy?: true;
 }
@@ -327,6 +332,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
   canRetry: Schema.Boolean,
   notAppliedVersion: Schema.optionalKey(Schema.String),
+  installFailedVersion: Schema.optionalKey(Schema.String),
 });
 
 export const DesktopCliCommandStateSchema = Schema.Struct({

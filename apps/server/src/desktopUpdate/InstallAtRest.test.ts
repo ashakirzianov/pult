@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   ServerSelfUpdateError,
+  type DesktopUpdateState,
   type HostPowerSnapshot,
   type ServerActivitySnapshot,
   type ServerSelfUpdateResult,
@@ -9,11 +10,13 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
+import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as ServerActivity from "../serverActivity.ts";
 import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
 import * as InstallAtRest from "./InstallAtRest.ts";
@@ -39,6 +42,26 @@ const restingSince = (epochMillis: number): ServerActivitySnapshot => ({
 });
 const busy: ServerActivitySnapshot = { atRest: false, restingSince: null };
 
+const downloaded = (overrides: Partial<DesktopUpdateState> = {}): DesktopUpdateState => ({
+  enabled: true,
+  status: "downloaded",
+  channel: "latest",
+  currentVersion: "0.0.1",
+  hostArch: "arm64",
+  appArch: "arm64",
+  runningUnderArm64Translation: false,
+  availableVersion: "0.0.2",
+  downloadedVersion: "0.0.2",
+  releaseNotes: [],
+  omittedReleaseCount: 0,
+  downloadPercent: 100,
+  checkedAt: null,
+  message: null,
+  errorContext: null,
+  canRetry: true,
+  ...overrides,
+});
+
 const prepared: ServerSelfUpdateResult = {
   targetVersion: "0.0.2",
   method: "desktop-app",
@@ -50,6 +73,8 @@ interface Harness {
   readonly available?: boolean;
   readonly activity?: ServerActivitySnapshot;
   readonly power?: HostPowerSnapshot;
+  /** The desktop's update state, as its latest report carries it. */
+  readonly update?: DesktopUpdateState;
   /** What a run answers; it may change the activity or the host on the way. */
   readonly run?: (state: {
     readonly activity: Ref.Ref<ServerActivitySnapshot>;
@@ -62,6 +87,7 @@ const start = Effect.fn(function* (options: Harness = {}) {
   const calls: string[] = [];
   const activity = yield* Ref.make(options.activity ?? restingSince(0));
   const power = yield* Ref.make(options.power ?? idleHost(20 * 60));
+  const update = yield* Ref.make(options.update ?? downloaded());
   const run = options.run ?? (() => Effect.succeed(prepared));
   yield* Layer.build(
     InstallAtRest.layer.pipe(
@@ -79,6 +105,18 @@ const start = Effect.fn(function* (options: Harness = {}) {
               streamChanges: Stream.empty,
             }),
           ),
+          DesktopTelemetryReceiver.layerTest({
+            desktopUpdates: Ref.get(update).pipe(
+              Effect.map((state) => ({
+                latest: Option.some({
+                  version: 1 as const,
+                  type: "desktopUpdateStatus" as const,
+                  state,
+                }),
+                changes: Stream.empty,
+              })),
+            ),
+          }),
           Layer.succeed(
             DesktopAppUpdate.DesktopAppUpdate,
             DesktopAppUpdate.DesktopAppUpdate.of({
@@ -101,7 +139,7 @@ const start = Effect.fn(function* (options: Harness = {}) {
       ),
     ),
   );
-  return { calls, activity, power };
+  return { calls, activity, power, update };
 });
 
 describe("InstallAtRest", () => {
@@ -184,6 +222,27 @@ describe("InstallAtRest", () => {
       yield* Ref.set(power, idleHost(20 * 60));
       yield* TestClock.adjust(30 * MINUTE);
       expect(calls).toEqual(["run", "run", "commit token-1"]);
+    }),
+  );
+
+  it.effect("leaves a download whose last install failed to Restart to Update", () =>
+    Effect.gen(function* () {
+      const { calls, update } = yield* start({
+        update: downloaded({ installFailedVersion: "0.0.2", errorContext: null }),
+      });
+      yield* TestClock.adjust(60 * MINUTE);
+      expect(calls).toEqual([]);
+      // A newer release replaces the download, and the worker installs that.
+      yield* Ref.set(
+        update,
+        downloaded({
+          installFailedVersion: "0.0.2",
+          availableVersion: "0.0.3",
+          downloadedVersion: "0.0.3",
+        }),
+      );
+      yield* TestClock.adjust(30 * MINUTE);
+      expect(calls).toEqual(["run", "commit token-1"]);
     }),
   );
 
