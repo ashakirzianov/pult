@@ -681,9 +681,10 @@ export const BranchToolbar = memo(function BranchToolbar({
     availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
   // Started threads get no handler but still show which machine they run on,
   // matching the strip visibility ChatView computes from the same inputs.
+  // Pult: an offered picker shows on the primary environment too, so Pult.app's own server keeps its draft's picker.
   const showEnvironmentIndicator = shouldShowEnvironmentIndicator({
     activeEnvironment: activeEnvironmentOption,
-    canPickEnvironment: hasMultipleEnvironments,
+    canPickEnvironment: hasMultipleEnvironments || showEnvironmentPicker,
   });
   const [attachStrip, labelsOverflow] = useLabelsOverflow();
 

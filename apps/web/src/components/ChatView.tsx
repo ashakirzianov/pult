@@ -1197,9 +1197,12 @@ export default function ChatView(props: ChatViewProps) {
     logicalProjectEnvironments.find(
       (environment) => environment.environmentId === activeThread?.environmentId,
     ) ?? null;
+  const composerControlsSlot = use(ComposerControlsSlot);
   const showComposerEnvironmentIndicator = shouldShowEnvironmentIndicator({
     activeEnvironment: activeEnvironmentOption,
-    canPickEnvironment: hasMultipleEnvironments,
+    // Pult: a draft's picker (`canChangeEnvironment`) shows on the primary environment too, Pult.app's own server.
+    canPickEnvironment:
+      hasMultipleEnvironments || (composerControlsSlot !== null && draftId !== null),
   });
 
   const { handlePreparedPullRequestThreadStable, openPullRequestDialogStable } =
@@ -1251,7 +1254,6 @@ export default function ChatView(props: ChatViewProps) {
   // rule out a started thread: one whose machine is offline never loads its
   // messages, so it would otherwise be offered a machine picker that does nothing.
   // Pult: with a slot for the composer's controls, a draft's environment is a picker even with one to pick.
-  const composerControlsSlot = use(ComposerControlsSlot);
   const canChangeEnvironment =
     (hasMultipleEnvironments || composerControlsSlot !== null) &&
     !envLocked &&
