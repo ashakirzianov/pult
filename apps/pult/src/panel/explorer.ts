@@ -128,21 +128,19 @@ let provisional: { dispose(): void } | undefined;
 /**
  * The Explorer shelf's tray icon: the shelf opened, and the Explorer tab at
  * every environment's folder with it; the shelf closed again if the sidebar
- * switches from the tab before a file opens from it, so a look at the
- * folders leaves the panel as it was.
+ * switches from the tab while the Explorer workspace has no open file, so a
+ * look at the folders leaves the panel as it was.
  */
 export async function openExplorerShelf(): Promise<void> {
   provisional?.dispose();
   openShelf("explorer");
   await exploreEnvironment(undefined);
   const panes = await getService(IPaneCompositePartService);
-  const before = new Set(openExplorerFiles.get().files.map(String));
-  const opened = () => openExplorerFiles.get().files.some((file) => !before.has(String(file)));
   const listener = panes.onDidPaneCompositeOpen(() => {
     if (panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === EXPLORER_ID)
       return;
     wait.dispose();
-    if (!opened()) closeShelf("explorer");
+    if (openExplorerFiles.get().files.length === 0) closeShelf("explorer");
   });
   const wait = {
     dispose() {
