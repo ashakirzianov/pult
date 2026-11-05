@@ -28,6 +28,11 @@ on:
         required: false
         default: true
         type: boolean
+      runner:
+        description: The macOS arm64 runner label, when macos-latest has no capacity
+        required: false
+        default: macos-latest
+        type: string
 
 permissions:
   contents: read
@@ -39,7 +44,7 @@ concurrency:
 jobs:
   build:
     name: Build Pult.app (macOS arm64)
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 90
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
