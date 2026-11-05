@@ -169,8 +169,7 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
    the space a hidden chevron's wrapper leaves. */
 .pult-composer-bar > [data-chat-composer-slot-item],
 .pult-composer-bar [data-chat-composer-controls="left"],
-.pult-composer-bar [data-resting-block],
-.pult-composer-bar [data-chat-composer-actions="right"] {
+.pult-composer-bar [data-resting-block] {
   gap: var(--pult-bar-gap);
 }
 
@@ -190,7 +189,7 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
    in its src/style.css), one size, their icons 14px, one radius; send and
    stop the same size, send on the colour the others show on hover. */
 .pult-composer-bar [data-chat-composer-slot-item="meter"] button,
-.pult-composer-bar [data-chat-composer-actions="right"] button {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] button {
   width: var(--pult-bar-button-size);
   height: var(--pult-bar-button-size);
   margin: 0;
@@ -201,18 +200,18 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   box-shadow: none;
 }
 
-.pult-composer-bar [data-chat-composer-actions="right"] button svg {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] button svg {
   width: 14px;
   height: 14px;
 }
 
-.pult-composer-bar [data-chat-composer-actions="right"] button[type="submit"] {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] button[type="submit"] {
   background: var(--accent);
   color: var(--foreground);
   scale: none;
 }
 
-.pult-composer-bar [data-chat-composer-actions="right"] button[type="submit"]:disabled {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] button[type="submit"]:disabled {
   color: var(--muted-foreground);
 }
 
@@ -269,7 +268,7 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 /* The bar's icons in the workbench's icon colour, as the shell's codicons
    beside them: upstream's draw theirs muted. */
 .pult-composer-bar > [data-chat-composer-slot-item="access"] button svg,
-.pult-composer-bar [data-chat-composer-actions="right"] button:not([type="submit"]) svg {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] button:not([type="submit"]) svg {
   color: var(--vscode-icon-foreground);
 }
 
@@ -493,16 +492,16 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   border-radius: 8px;
 }
 
-.pult-thread-view [data-chat-composer-actions="right"] .rounded-full,
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full,
 .pult-thread-view [data-chat-composer-mobile-pending-actions="true"] .rounded-full {
   border-radius: 8px;
 }
 
-.pult-thread-view [data-chat-composer-actions="right"] .rounded-full.rounded-r-none {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full.rounded-r-none {
   border-radius: 8px 0 0 8px;
 }
 
-.pult-thread-view [data-chat-composer-actions="right"] .rounded-full.rounded-l-none {
+.pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full.rounded-l-none {
   border-radius: 0 8px 8px 0;
 }
 
