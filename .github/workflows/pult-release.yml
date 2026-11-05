@@ -262,7 +262,8 @@ jobs:
           name: pult-release
           path: release
 
-      # gh reads --notes-from-tag from the local repository, so the tag is fetched first.
+      # gh reads --notes-from-tag from the local repository, so the tag is fetched first, and
+      # it refuses --notes-from-tag beside -R: it finds the repository from the origin remote.
       - name: Create the release
         shell: bash
         env:
@@ -274,6 +275,6 @@ jobs:
           git init -q .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
           git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
-          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag \
+          gh release create "$TAG" --verify-tag \
             --title "Pult $VERSION" --notes-from-tag --latest \
             release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
