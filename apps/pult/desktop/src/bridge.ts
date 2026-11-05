@@ -33,6 +33,7 @@ export function exposePultDesktop(version: string): void {
         return () => ipcRenderer.off(Channel.windowFullScreen, handler);
       },
     },
+    keepRendering: (keep) => invoke(Channel.windowKeepRendering, keep ? "on" : "off"),
   };
   contextBridge.exposeInMainWorld("pultDesktop", pultDesktop);
 }

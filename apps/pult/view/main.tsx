@@ -128,7 +128,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
-  startBrowserHost();
+  startBrowserHost(host.keepRendering);
   return {
     mount: mountThreadView,
     mountDraft: mountDraftView,

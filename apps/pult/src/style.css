@@ -66,6 +66,30 @@ body.pult-dragging .pult-browser-host webview {
   pointer-events: none !important;
 }
 
+/* While the desktop captures a hidden browser (view/browserHost.tsx), which upstream paints
+   behind the workbench, wholly covered: the window draws only for damage it can see, and a
+   covered browser's frames are none, so its screenshot waits for an unrelated repaint, which
+   a still page never makes. A pixel at a thousandth's opacity, on top, changing 30 times a
+   second, is that damage; nobody sees it, and it runs only for a capture's seconds. */
+@keyframes pult-capture-damage {
+  to {
+    opacity: 0.002;
+  }
+}
+.pult-browser-host.pult-capturing::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  background: black;
+  opacity: 0.001;
+  z-index: 2147483647;
+  pointer-events: none;
+  animation: pult-capture-damage 1s steps(30) infinite alternate;
+}
+
 .pult-thread-empty {
   padding: 2rem;
   opacity: 0.7;

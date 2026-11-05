@@ -30,6 +30,13 @@ export interface PultDesktop {
     layout(): Promise<number>;
     onFullScreenChange(listener: (fullScreen: boolean) => void): () => void;
   };
+  /**
+   * Pult.app's alone, which hosts the preview browsers (`view/browserHost.tsx`):
+   * keeps the window compositing while hidden, as long as the page holds it,
+   * so a capture of a browser the page paints behind the workbench finishes
+   * with the window occluded too. The thin wrapper does not answer it.
+   */
+  keepRendering(keep: boolean): Promise<void>;
 }
 
 declare global {

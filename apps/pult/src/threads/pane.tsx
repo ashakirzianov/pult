@@ -124,6 +124,8 @@ export function threadView() {
       // The view's System theme is the workbench theme's light or dark.
       colorScheme: scheme.current,
       onDidChangeColorScheme: scheme.onDidChange,
+      // Pult.app's main keeps a hidden window compositing while an agent's capture of a browser runs.
+      keepRendering: window.pultDesktop?.keepRendering,
     });
     return loaded;
   })().catch((error: unknown) => {

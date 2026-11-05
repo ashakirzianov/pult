@@ -94,6 +94,12 @@ export interface ThreadViewHost {
   readonly colorScheme: () => "light" | "dark";
   /** Calls `listener` when `colorScheme` changes; returns its removal. */
   readonly onDidChangeColorScheme: (listener: () => void) => () => void;
+  /**
+   * Keeps the window compositing while hidden, or lets it throttle again
+   * (`window.pultDesktop.keepRendering`), for the browser host's captures
+   * (`browserHost.tsx`); absent outside Pult.app.
+   */
+  readonly keepRendering: ((keep: boolean) => Promise<void>) | undefined;
 }
 
 /**
