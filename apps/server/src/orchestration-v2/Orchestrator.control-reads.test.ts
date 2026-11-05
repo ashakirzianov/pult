@@ -1460,6 +1460,34 @@ it.effect("replays a thread.create receipt without changing the thread", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("archiving cleans up the thread's terminals and previews", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const threadId = ThreadId.make("thread:archive-cleanup");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-archive-cleanup"),
+      threadId,
+      projectId: ProjectId.make("project:archive-cleanup"),
+      title: "Archive cleanup",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const archive = CommandId.make("archive-cleanup");
+    yield* orchestrator.dispatch({ type: "thread.archive", commandId: archive, threadId });
+    const cleanups = yield* outbox
+      .listByCommandId(archive)
+      .pipe(Effect.map((effects) => effects.map((effect) => effect.request.type).toSorted()));
+    assert.deepEqual(cleanups, ["preview.cleanup", "terminal.cleanup"]);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("explicit settle clears snooze atomically and stays idempotent after re-snoozing", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
