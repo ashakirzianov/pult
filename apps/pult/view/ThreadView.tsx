@@ -55,7 +55,10 @@ export function isPromotion(
   if (draftId === null) return false;
   const store = useComposerDraftStore.getState();
   const session = store.getDraftSession(draftId);
+  const redirect = store.getPromotedDraftRedirect(draftId);
   return (
+    // Finalized, the draft is gone from the store but for the redirect its route follows.
+    (redirect?.environmentId === environmentId && redirect.threadId === threadId) ||
     session?.threadId === threadId ||
     session?.promotedTo?.threadId === threadId ||
     store.getDraftIdByRef(

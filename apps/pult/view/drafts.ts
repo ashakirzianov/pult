@@ -22,12 +22,14 @@ const DRAFT_KEY_PREFIX = "pult-shell.draft:";
 export const draftKey = (environmentId: string, projectId: string) =>
   `${DRAFT_KEY_PREFIX}${environmentId}/${projectId}`;
 
-/** The project's remembered draft while the composer store still holds it. */
+/** The project's remembered draft while the composer store still holds it, unsent: a sent one is its thread's, as upstream's new-thread handler reads it. */
 export function heldDraft(environmentId: string, projectId: string): DraftId | null {
   const draftId = localStorage.getItem(draftKey(environmentId, projectId)) as DraftId | null;
   const session =
     draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId);
-  return session !== null && session.projectId === projectId ? draftId : null;
+  return session !== null && session.projectId === projectId && session.promotedTo == null
+    ? draftId
+    : null;
 }
 
 /** A project's unsent draft, as its card shows it. */

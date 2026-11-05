@@ -14,6 +14,9 @@ import {
   setTheme,
 } from "~/hooks/useTheme";
 import { setServerRuntimeOffPrimary } from "~/browser/previewRuntime";
+import { subscribeDraftThreadPromotion } from "~/composerDraftStore";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { environmentThreadShells } from "~/state/threads";
 import { startBrowserHost } from "./browserHost.tsx";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import {
@@ -118,6 +121,12 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
   startPreviews();
+  // Drafts promote as their server threads arrive, as upstream's app starts it: a draft's route follows the redirect its finalization leaves, which is how a pane's draft becomes its thread.
+  subscribeDraftThreadPromotion({
+    registry: appAtomRegistry,
+    threadShellAtom: environmentThreadShells.quietThreadShellAtom,
+    threadRefsAtom: environmentThreadShells.threadRefsAtom,
+  });
   // A user's browser tab opens in the server's runtime wherever the server has one, so the agent can drive it.
   setServerRuntimeOffPrimary(true);
   setSystemColorSchemeSource({
