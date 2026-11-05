@@ -169,6 +169,11 @@ class ShellConnection {
     return this.list;
   }
 
+  /** In Pult.app with its local server on, the app's own server as its connection stands. */
+  get localEnvironment(): ShellEnvironment | undefined {
+    return this.local === undefined ? undefined : this.environment(this.local);
+  }
+
   /** The held environment `environmentId` names, in any case, as a `pult:` authority may. */
   environment(environmentId: string): ShellEnvironment | undefined {
     const wanted = environmentId.toLowerCase();

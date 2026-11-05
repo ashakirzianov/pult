@@ -19,6 +19,7 @@ export { ConnectedContext } from "./contextKey.ts";
 export function startConnection(): void {
   registerConnectionCommands();
   void bindConnectedContext();
+  bindLocalAttribute();
   connection.restore().catch(async (error: unknown) => {
     console.error("[pult-shell] reconnect failed", error);
     const cause = error instanceof Error ? error.message : String(error);
@@ -26,4 +27,20 @@ export function startConnection(): void {
       `Pult could not reconnect to the saved environments. ${cause}`,
     );
   });
+}
+
+/**
+ * `data-pult-local` on `<html>`: the app's own server's connection,
+ * `connected` once it is ready, else its phase; absent without a local server.
+ * The release workflow's smoke test (`desktop/scripts/smoke.ts`) waits on it.
+ */
+function bindLocalAttribute(): void {
+  const update = () => {
+    const phase = connection.localEnvironment?.phase;
+    const root = document.documentElement;
+    if (phase === undefined) delete root.dataset.pultLocal;
+    else root.dataset.pultLocal = phase === "ready" ? "connected" : phase;
+  };
+  update();
+  connection.onDidChange(update);
 }
