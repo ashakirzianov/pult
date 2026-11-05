@@ -77,7 +77,11 @@ import { revealInFileExplorerLabel } from "./fileExplorerLabel";
 import { shouldShowPreviewEmptyState } from "./previewEmptyStateLogic";
 import { Badge } from "~/components/ui/badge";
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
-import { alternatePreviewRuntime, useRendersServerTabNatively } from "~/browser/previewRuntime";
+import {
+  alternatePreviewRuntime,
+  opensServerTabByPolicy,
+  useRendersServerTabNatively,
+} from "~/browser/previewRuntime";
 import { ServerBrowserSurface, type ServerBrowserHandle } from "~/browser/ServerBrowserSurface";
 import { cn } from "~/lib/utils";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
@@ -308,7 +312,10 @@ export function PreviewView({
   const handleOpenServerUrl = async (next: string) => {
     try {
       const resolved =
-        isServerTab || !previewBridge
+        isServerTab ||
+        !previewBridge ||
+        // Pult's hook point: with no session yet, one Pult's policy opens in the server's runtime.
+        (snapshot === null && opensServerTabByPolicy(threadRef.environmentId))
           ? normalizePreviewUrl(next)
           : resolveDiscoveredServerUrl(threadRef.environmentId, next);
       if (await navigateToResolvedUrl(resolved)) {

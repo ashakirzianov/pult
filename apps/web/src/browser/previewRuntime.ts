@@ -35,6 +35,15 @@ export function previewRuntimeFor(environmentId: EnvironmentId): PreviewRuntime 
   return "server";
 }
 
+/**
+ * Pult's hook point, not upstream's: a session opened now goes to the server's
+ * runtime under `serverRuntimeOffPrimary`, so a local server's URL stays the
+ * server's own `localhost` (as `openDiscoveredPort`'s). Unset, false.
+ */
+export function opensServerTabByPolicy(environmentId: EnvironmentId): boolean {
+  return serverRuntimeOffPrimary && previewRuntimeFor(environmentId) === "server";
+}
+
 export function alternatePreviewRuntime(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,
