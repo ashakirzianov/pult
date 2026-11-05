@@ -486,11 +486,18 @@ export async function startPreviewTabs(): Promise<void> {
  * While a drag runs in the page (a tab dragged to another group or a split),
  * the hosted webviews let the pointer through (`pult-dragging`,
  * `src/style.css`): a guest page under the pointer would take the drag's
- * events, and the editor group under it would show no drop zone.
+ * events, and the editor group under it would show no drop zone. Marked on
+ * the drag's first `drag` event, which only a drag that started fires (a
+ * `dragstart` a handler cancels, the workbench's select boxes or upstream's
+ * sidebar, starts none), and cleared at its end, its drop, or the next press
+ * of the pointer, should neither arrive.
  */
 function passDragsOverWebviews(): void {
-  const dragging = (on: boolean) => () => document.body.classList.toggle("pult-dragging", on);
-  document.addEventListener("dragstart", dragging(true), true);
-  document.addEventListener("dragend", dragging(false), true);
-  document.addEventListener("drop", dragging(false), true);
+  const dragging = (on: boolean) => () => {
+    if (document.body.classList.contains("pult-dragging") !== on)
+      document.body.classList.toggle("pult-dragging", on);
+  };
+  document.addEventListener("drag", dragging(true), true);
+  for (const end of ["dragend", "drop", "pointerdown"])
+    document.addEventListener(end, dragging(false), true);
 }
