@@ -1131,6 +1131,8 @@ export const make = Effect.gen(function* () {
       hasPrimaryRemote: details.hasOriginRemote,
       isDefaultRef: details.isDefaultBranch,
       refName: details.branch,
+      // Pult: a Star's sync keys its handoff by it (`apps/pult/src/stars/syncing.ts`).
+      ...(details.headSha === undefined ? {} : { headSha: details.headSha }),
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
       workingTree: details.workingTree,
       ...(details.branchChanges ? { branchChanges: details.branchChanges } : {}),

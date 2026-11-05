@@ -2277,6 +2277,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const statusStdout = statusResult.stdout;
 
     let refName: string | null = null;
+    let headSha: string | undefined;
     let upstreamRef: string | null = null;
     let aheadCount = 0;
     let behindCount = 0;
@@ -2288,6 +2289,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const statusRecords = statusStdout.split("\0");
     for (let index = 0; index < statusRecords.length; index++) {
       const line = statusRecords[index]!;
+      // Pult: the commit HEAD is at, "(initial)" before the first commit.
+      if (line.startsWith("# branch.oid ")) {
+        const value = line.slice("# branch.oid ".length).trim();
+        headSha = /^[0-9a-f]{40,64}$/i.test(value) ? value : undefined;
+        continue;
+      }
       if (line.startsWith("# branch.head ")) {
         const value = line.slice("# branch.head ".length).trim();
         refName = value.startsWith("(") ? null : value;
@@ -2379,6 +2386,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       hasOriginRemote: hasPrimaryRemote,
       isDefaultBranch,
       branch: refName,
+      ...(headSha === undefined ? {} : { headSha }),
       upstreamRef,
       hasWorkingTreeChanges,
       workingTree: {

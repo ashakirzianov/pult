@@ -241,6 +241,8 @@ const VcsStatusLocalShape = {
   hasPrimaryRemote: Schema.Boolean,
   isDefaultRef: Schema.Boolean,
   refName: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  /** Pult: the commit HEAD is at; absent before the first commit, or from a server that does not tell it. */
+  headSha: Schema.optional(TrimmedNonEmptyStringSchema),
   hasWorkingTreeChanges: Schema.Boolean,
   workingTree: Schema.Struct({
     // Absolute worktree root on the environment that every files[].path is
