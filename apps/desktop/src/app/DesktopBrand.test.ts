@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { brandServerEnvironment, desktopBrand, T3CODE_DESKTOP_BRAND } from "./DesktopBrand.ts";
+import {
+  brandDisabledFeatures,
+  brandServerEnvironment,
+  desktopBrand,
+  T3CODE_DESKTOP_BRAND,
+} from "./DesktopBrand.ts";
 
 describe("DesktopBrand", () => {
   it("is T3 Code's when the build names no brand", () => {
@@ -9,6 +14,18 @@ describe("DesktopBrand", () => {
 
   it("leaves the server's environment alone under T3 Code's brand", () => {
     expect(brandServerEnvironment({ T3CODE_DEV_ALLOWED_ORIGINS: "http://a" })).toEqual({});
+  });
+
+  it("disables no Chromium feature under T3 Code's brand", () => {
+    expect(brandDisabledFeatures(null)).toBeNull();
+    expect(brandDisabledFeatures("Foo")).toBeNull();
+  });
+
+  it("adds a brand's disabled features to those already disabled", () => {
+    const brand = { ...T3CODE_DESKTOP_BRAND, intensiveWakeUpThrottling: false };
+    expect(brandDisabledFeatures(null, brand)).toBe("IntensiveWakeUpThrottling");
+    expect(brandDisabledFeatures("Foo,Bar", brand)).toBe("Foo,Bar,IntensiveWakeUpThrottling");
+    expect(brandDisabledFeatures("IntensiveWakeUpThrottling", brand)).toBeNull();
   });
 
   it("adds another brand's renderer origins and its telemetry default", () => {

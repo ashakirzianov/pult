@@ -1,5 +1,5 @@
 import * as MacPermissions from "./permissions/MacPermissions.ts";
-import { brandServerEnvironment, desktopBrand } from "./app/DesktopBrand.ts";
+import { brandDisabledFeatures, brandServerEnvironment, desktopBrand } from "./app/DesktopBrand.ts";
 // The supervised server inherits this environment.
 Object.assign(process.env, brandServerEnvironment(process.env));
 for (const stream of [process.stdout, process.stderr]) {
@@ -95,6 +95,15 @@ if (process.argv.includes("--version")) {
 // Safe storage names its Keychain item after the app's name on the first tick; unnamed, a development run shares "Electron Safe Storage".
 if (process.env.VITE_DEV_SERVER_URL?.trim())
   Electron.app.setName(`${desktopBrand.baseName.development} Dev`);
+
+// Pult: a brand's Chromium features off, before Chromium reads them (Pult's hidden page must still attach an agent's browser).
+const disabledFeatures = brandDisabledFeatures(
+  Electron.app.commandLine.hasSwitch("disable-features")
+    ? Electron.app.commandLine.getSwitchValue("disable-features")
+    : null,
+);
+if (disabledFeatures !== null)
+  Electron.app.commandLine.appendSwitch("disable-features", disabledFeatures);
 
 const layerDesktopEnvironment = Layer.unwrap(
   Effect.gen(function* () {

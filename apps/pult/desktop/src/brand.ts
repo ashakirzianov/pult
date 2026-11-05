@@ -58,6 +58,10 @@ const brand: DesktopBrandOverride = {
   rendererAllowsEval: true,
   // No analytics from the supervised server unless the environment asks for them.
   serverTelemetryDefault: false,
+  // The page hosts the agents' browsers (`view/browserHost.tsx`), and the server waits ten seconds
+  // for it to attach an agent's new tab: a page hidden five minutes, its timers woken once a
+  // minute, missed it and left the tab headless (`pult/decisions`, `hidden-page-timers`).
+  intensiveWakeUpThrottling: false,
   appId: APP_BUNDLE_ID,
   productName: APP_BASE_NAME,
   packageName: "pult",

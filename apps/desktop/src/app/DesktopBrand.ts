@@ -39,6 +39,13 @@ export interface DesktopBrand {
   readonly rendererAllowsEval: boolean;
   /** `T3CODE_TELEMETRY_ENABLED` for the supervised server when the environment sets none; `null` leaves the server's default. */
   readonly serverTelemetryDefault: boolean | null;
+  /**
+   * Chromium's intensive wake-up throttling of a page hidden five minutes,
+   * its chained timers woken once a minute. Off, they wake once a second, as
+   * a hidden page's always do: a page hosting the agents' browsers must
+   * attach an agent's new tab within the server's ten seconds while hidden.
+   */
+  readonly intensiveWakeUpThrottling: boolean;
   /** The package's bundle id (`appId`) and its name; `null` keeps `apps/desktop/package.json`'s. */
   readonly appId: string;
   readonly productName: string | null;
@@ -82,6 +89,7 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   rendererAssetsDir: null,
   rendererAllowsEval: false,
   serverTelemetryDefault: null,
+  intensiveWakeUpThrottling: true,
   appId: "com.t3tools.t3code",
   productName: null,
   packageName: "t3code",
@@ -96,6 +104,21 @@ export const desktopBrand: DesktopBrand = {
   ...T3CODE_DESKTOP_BRAND,
   ...(typeof __T3CODE_DESKTOP_BRAND__ === "object" ? __T3CODE_DESKTOP_BRAND__ : null),
 };
+
+/**
+ * The `--disable-features` value a brand needs, `current` (the switch's value
+ * so far, Chromium keeping only the last one) with the brand's features
+ * added; null when the brand adds none.
+ */
+export function brandDisabledFeatures(
+  current: string | null,
+  brand: DesktopBrand = desktopBrand,
+): string | null {
+  if (brand.intensiveWakeUpThrottling) return null;
+  const features = (current ?? "").split(",").filter((feature) => feature.trim() !== "");
+  if (features.includes("IntensiveWakeUpThrottling")) return null;
+  return [...features, "IntensiveWakeUpThrottling"].join(",");
+}
 
 /**
  * What a brand changes in the environment the supervised server inherits:
