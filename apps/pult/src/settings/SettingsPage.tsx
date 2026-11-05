@@ -4,6 +4,7 @@ import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { useRef, useState, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
+import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { setUsageLimitsMode, USAGE_LIMITS_MODES, usageLimitsMode } from "../limits/index.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { SETTLED_CHOICES, setSettledShelf, settledShelf } from "../panel/settings.ts";
@@ -113,7 +114,32 @@ function EnvironmentsSection() {
       >
         Connect to Environment
       </button>
+      <LocalServerRow />
     </section>
+  );
+}
+
+const LOCAL_SERVER_CHOICES = [
+  { value: "on", label: "On" },
+  { value: "off", label: "Off" },
+] as const;
+
+/**
+ * In Pult.app, its local server (`src/desktop/localServer.ts`), as the app
+ * started; a change asks, then relaunches the app. The palette's Turn On and
+ * Turn Off Local Server are the same.
+ */
+function LocalServerRow() {
+  const enabled = localServerEnabled();
+  if (enabled === undefined) return null;
+  return (
+    <SegmentedRow
+      label="Local server"
+      description="On, Pult runs a server on this computer and connects to it; off, Pult is a client of other environments alone. Changing it restarts Pult."
+      choices={LOCAL_SERVER_CHOICES}
+      current={enabled ? "on" : "off"}
+      onChoose={(choice) => void setLocalServerEnabled(choice === "on")}
+    />
   );
 }
 
