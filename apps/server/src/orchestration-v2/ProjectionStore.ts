@@ -516,7 +516,8 @@ export interface ProjectionStoreV2Shape {
   readonly countThreads: () => Effect.Effect<number, ProjectionStoreV2Error>;
   /**
    * Whether any agent work is in flight or about to start: an active run, a queued run that is not
-   * held, a provider-native subagent still working, or a pending request the run waits on.
+   * held, a provider-native subagent still working, a pending request the run waits on, or
+   * background work that holds its thread's completion (`backgroundWorkHoldsCompletion`).
    */
   readonly hasActiveWork: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   /** Every active thread, in shell order. */
@@ -7139,6 +7140,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
       const rows = yield* sql<{ readonly active: number }>`
+        WITH pending_background AS MATERIALIZED (
+          -- Recovery's prefilter: most rosters are empty, so few rows reach json_each.
+          SELECT payload_json FROM orchestration_v2_projection_provider_threads
+          WHERE CASE WHEN json_valid(payload_json)
+            THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
+            ELSE 0 END
+        )
         SELECT (
           EXISTS (
             -- Spelled as the recovery index's predicate, so the read uses it.
@@ -7161,6 +7169,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               AND CASE WHEN json_valid(payload_json)
                 THEN json_extract(payload_json, '$.responseCapability.type') IS NOT 'message'
                 ELSE 1 END
+          )
+          -- backgroundWorkHoldsCompletion: awaited work, or any kind but a command or monitor,
+          -- since an unknown kind decodes as a background task.
+          OR EXISTS (
+            SELECT 1
+            FROM pending_background,
+              json_each(pending_background.payload_json, '$.pendingBackgroundTasks') AS task
+            WHERE json_extract(task.value, '$.awaited') IS 1
+              OR IFNULL(json_extract(task.value, '$.kind'), '') NOT IN ('command', 'monitor')
           )
         ) AS active
       `;

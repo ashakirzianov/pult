@@ -829,6 +829,57 @@ it.effect(
         });
         assert.equal(yield* store.hasActiveWork(), active, `${responseCapability.type} ${status}`);
       }
+
+      const providerThreadId = ProviderThreadId.make("provider-thread:active-work");
+      const roster = (
+        pendingBackgroundTasks: OrchestrationV2ProviderThread["pendingBackgroundTasks"],
+      ) =>
+        apply({
+          type: "provider-thread.updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: providerThreadId,
+            driver,
+            providerInstanceId,
+            providerSessionId: null,
+            appThreadId: threadId,
+            ownerNodeId: null,
+            nativeThreadRef: null,
+            nativeConversationHeadRef: null,
+            status: "idle",
+            firstRunOrdinal: 1,
+            lastRunOrdinal: 1,
+            handoffIds: [],
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            pendingBackgroundTasks,
+          },
+        });
+      for (const [task, active] of [
+        [{ taskId: "dev-server", kind: "command" }, false],
+        [{ taskId: "watchdog", kind: "monitor" }, false],
+        [{ taskId: "tests", kind: "command", awaited: true }, true],
+        [{ taskId: "watch-ci", kind: "monitor", awaited: true }, true],
+        [{ taskId: "review", kind: "subagent" }, true],
+        [{ taskId: "job", kind: "background_task" }, true],
+      ] as const) {
+        yield* roster([task]);
+        assert.equal(yield* store.hasActiveWork(), active, JSON.stringify(task));
+      }
+      yield* roster([]);
+      assert.isFalse(yield* store.hasActiveWork(), "empty roster");
+
+      // A kind this build does not know decodes as a background task, so it holds too.
+      yield* roster([{ taskId: "dev-server", kind: "command" }]);
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`
+        UPDATE orchestration_v2_projection_provider_threads
+        SET payload_json = json_set(payload_json, '$.pendingBackgroundTasks[0].kind', 'future_kind')
+        WHERE provider_thread_id = ${providerThreadId}
+      `;
+      assert.isTrue(yield* store.hasActiveWork(), "unknown kind");
     }).pipe(Effect.provide(layerTest)),
 );
 

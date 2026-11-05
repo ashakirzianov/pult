@@ -24,6 +24,7 @@ const affectsActivity = (event: OrchestrationV2DomainEvent) =>
   event.type === "run.created" ||
   event.type === "run.updated" ||
   event.type === "runtime-request.updated" ||
+  event.type === "provider-thread.updated" ||
   (event.type === "subagent.updated" && event.payload.origin === "provider_native");
 
 const make = Effect.gen(function* () {

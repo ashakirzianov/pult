@@ -109,10 +109,13 @@ activation so they cannot start runs that reconciliation would then cancel.
 
 [`ServerActivity`](../../apps/server/src/serverActivity.ts) (`server.getActivity`) says when a
 restart would cut no work anyone waits on: no run active or queued to start, no native subagent
-working, no request a run waits on, and no scheduled task dispatching. Held queues and background
-work outside a run do not count: recovery holds those queues anyway, and most such shells are dev
-servers nobody waits on, so counting them would keep the server busy forever. `restingSince` lives
-in memory and starts again at boot.
+working, no request a run waits on, no background work that holds its thread's completion, and no
+scheduled task dispatching. Background work counts exactly as settlement counts it
+(`backgroundWorkHoldsCompletion`): a background subagent or task, or a shell or monitor the agent
+marked awaited. Held queues and unmarked shells and monitors do not count: recovery holds those
+queues anyway, and most unmarked shells are dev servers and their watchdogs nobody waits on, so
+counting them would keep the server busy forever. `restingSince` lives in memory and starts again
+at boot.
 
 A desktop app's server installs the app's updates itself when
 `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
