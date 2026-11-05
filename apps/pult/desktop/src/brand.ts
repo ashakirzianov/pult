@@ -65,6 +65,9 @@ const brand: DesktopBrandOverride = {
   appId: APP_BUNDLE_ID,
   productName: APP_BASE_NAME,
   packageName: "pult",
+  // Pult.app's version is its own line, its server and bundles upstream's
+  // (`pult/decisions`, `release-stream`): About reads "Version 0.0.1 (T3 Code 0.1.7, <commit>)".
+  bundleVersionName: "T3 Code",
 };
 
 export default brand;
