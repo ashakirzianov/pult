@@ -1823,28 +1823,37 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
   });
 
-  // Pult: `vcs.setRemote`, the remote named added or its URL replaced, fetched on request.
+  // Pult: `vcs.setRemote`, the remote named added, its URL replaced or the remote
+  // removed, then fetched on request; a failed fetch puts the remote back as it was.
   const setRemote: GitVcsDriver.GitVcsDriver["Service"]["setRemote"] = Effect.fn("setRemote")(
     function* (input) {
+      const { cwd } = input;
       const remoteName = input.remoteName ?? "origin";
       const current = yield* executeGit(
         "GitVcsDriver.setRemote.getUrl",
-        input.cwd,
+        cwd,
         ["remote", "get-url", "--", remoteName],
         { allowNonZeroExit: true },
       );
       const previousUrl = current.exitCode === 0 ? current.stdout.trim() : null;
-      if (previousUrl !== input.url) {
-        yield* executeGitWithStableDiagnostics(
-          "GitVcsDriver.setRemote.write",
-          input.cwd,
-          previousUrl === null
-            ? ["remote", "add", "--", remoteName, input.url]
-            : ["remote", "set-url", "--", remoteName, input.url],
-          { writesSharedConfig: true, fallbackErrorDetail: "git remote failed" },
-        ).pipe(retryWhileConfigLocked);
-      }
-      if (input.fetch === true) yield* fetchRemote({ cwd: input.cwd, remoteName });
+      const write = (from: string | null, to: string | null) =>
+        from === to
+          ? Effect.void
+          : executeGitWithStableDiagnostics(
+              "GitVcsDriver.setRemote.write",
+              cwd,
+              to === null
+                ? ["remote", "remove", "--", remoteName]
+                : from === null
+                  ? ["remote", "add", "--", remoteName, to]
+                  : ["remote", "set-url", "--", remoteName, to],
+              { writesSharedConfig: true, fallbackErrorDetail: "git remote failed" },
+            ).pipe(retryWhileConfigLocked, Effect.asVoid);
+      yield* write(previousUrl, input.url);
+      if (input.fetch === true && input.url !== null)
+        yield* fetchRemote({ cwd, remoteName }).pipe(
+          Effect.tapError(() => write(input.url, previousUrl).pipe(Effect.ignore)),
+        );
       return { remoteName, previousUrl };
     },
   );

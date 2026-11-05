@@ -349,44 +349,64 @@ it.effect.each(["origin", "github"] as const)(
 );
 
 // Pult: `vcs.setRemote`.
-it.effect("sets a remote: adds it, replaces its URL, and fetches it on request", () =>
-  Effect.gen(function* () {
-    const driver = yield* GitVcsDriver.GitVcsDriver;
-    const cwd = yield* makeTmpDir();
-    const first = yield* makeTmpDir("git-vcs-driver-remote-");
-    const second = yield* makeTmpDir("git-vcs-driver-remote-");
-    const { initialBranch } = yield* initRepoWithCommit(cwd);
-    yield* git(first, ["init", "--bare"]);
-    yield* git(second, ["init", "--bare"]);
-    yield* git(cwd, ["push", second, `HEAD:refs/heads/${initialBranch}`]);
+it.effect(
+  "sets a remote: adds, replaces and removes it, fetches it on request, and restores it when the fetch fails",
+  () =>
+    Effect.gen(function* () {
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const cwd = yield* makeTmpDir();
+      const first = yield* makeTmpDir("git-vcs-driver-remote-");
+      const second = yield* makeTmpDir("git-vcs-driver-remote-");
+      const { initialBranch } = yield* initRepoWithCommit(cwd);
+      yield* git(first, ["init", "--bare"]);
+      yield* git(second, ["init", "--bare"]);
+      yield* git(cwd, ["push", second, `HEAD:refs/heads/${initialBranch}`]);
 
-    assert.deepEqual(yield* driver.setRemote({ cwd, url: first }), {
-      remoteName: "origin",
-      previousUrl: null,
-    });
-    assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), first);
-    assert.deepEqual(yield* driver.setRemote({ cwd, url: first }), {
-      remoteName: "origin",
-      previousUrl: first,
-    });
+      assert.deepEqual(yield* driver.setRemote({ cwd, url: first }), {
+        remoteName: "origin",
+        previousUrl: null,
+      });
+      assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), first);
+      assert.deepEqual(yield* driver.setRemote({ cwd, url: first }), {
+        remoteName: "origin",
+        previousUrl: first,
+      });
 
-    assert.deepEqual(yield* driver.setRemote({ cwd, url: second, fetch: true }), {
-      remoteName: "origin",
-      previousUrl: first,
-    });
-    assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), second);
-    assert.equal(
-      yield* git(cwd, ["rev-parse", `refs/remotes/origin/${initialBranch}`]),
-      yield* git(cwd, ["rev-parse", "HEAD"]),
-    );
+      assert.deepEqual(yield* driver.setRemote({ cwd, url: second, fetch: true }), {
+        remoteName: "origin",
+        previousUrl: first,
+      });
+      assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), second);
+      assert.equal(
+        yield* git(cwd, ["rev-parse", `refs/remotes/origin/${initialBranch}`]),
+        yield* git(cwd, ["rev-parse", "HEAD"]),
+      );
 
-    assert.deepEqual(yield* driver.setRemote({ cwd, url: first, remoteName: "backup" }), {
-      remoteName: "backup",
-      previousUrl: null,
-    });
-    assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), second);
-    assert.equal(yield* git(cwd, ["remote", "get-url", "backup"]), first);
-  }).pipe(Effect.provide(layerTest)),
+      assert.deepEqual(yield* driver.setRemote({ cwd, url: first, remoteName: "backup" }), {
+        remoteName: "backup",
+        previousUrl: null,
+      });
+      assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), second);
+      assert.equal(yield* git(cwd, ["remote", "get-url", "backup"]), first);
+
+      // A failed fetch puts the remote back: its URL, or no remote where there was none.
+      const missing = `${first}-missing`;
+      yield* Effect.flip(driver.setRemote({ cwd, url: missing, fetch: true }));
+      assert.equal(yield* git(cwd, ["remote", "get-url", "origin"]), second);
+      yield* Effect.flip(driver.setRemote({ cwd, url: missing, remoteName: "spare", fetch: true }));
+      assert.notInclude((yield* git(cwd, ["remote"])).split("\n"), "spare");
+
+      assert.deepEqual(yield* driver.setRemote({ cwd, url: null, remoteName: "backup" }), {
+        remoteName: "backup",
+        previousUrl: first,
+      });
+      assert.notInclude((yield* git(cwd, ["remote"])).split("\n"), "backup");
+      // The status tells the commit HEAD is at.
+      assert.equal(
+        (yield* driver.statusDetailsLocal(cwd)).headSha,
+        yield* git(cwd, ["rev-parse", "HEAD"]),
+      );
+    }).pipe(Effect.provide(layerTest)),
 );
 
 it.effect.each([
