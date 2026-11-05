@@ -22,7 +22,7 @@ const refreshAction = toAction({
 /**
  * The Limits shelf, the Pult tab's last (xaxis `pult/issues/provider-limits-page`):
  * the provider accounts' usage windows with something spent, under its
- * header with the count of warning windows, open until closed, when its icon
+ * header with the count of warning windows while any warns, open until closed, when its icon
  * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows
  * alone, with Show all, else every window with something spent, and gone
  * while none has (`limitsShelf`). Refresh is the header's hover action and in
@@ -44,7 +44,7 @@ export function LimitsShelf({ now }: { now: number }) {
       <ShelfHeader
         shelf="limits"
         label="Limits"
-        count={shelf.warnings}
+        count={shelf.warnings > 0 ? shelf.warnings : undefined}
         title={headerTooltip(limits, now)}
         menu={[refreshAction]}
         onClose={() => {
