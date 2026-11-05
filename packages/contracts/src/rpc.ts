@@ -333,6 +333,7 @@ import {
   ServerPrepareTriageInput,
   ServerPrepareTriageResult,
   OtlpEndpointCheckResult,
+  ServerActivitySnapshot,
   ServerConfig,
   ServerProviderUpdateError,
   ServerProviderUpdateInput,
@@ -521,6 +522,7 @@ export const WS_METHODS = {
 
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
+  serverGetActivity: "server.getActivity",
   serverGetNpmRelease: "server.getNpmRelease",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
@@ -660,6 +662,12 @@ const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   payload: Schema.Struct({}),
   success: ServerConfig,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+const WsServerGetActivityRpc = Rpc.make(WS_METHODS.serverGetActivity, {
+  payload: Schema.Struct({}),
+  success: ServerActivitySnapshot,
+  error: EnvironmentAuthorizationError,
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -2052,6 +2060,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
+  WsServerGetActivityRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,

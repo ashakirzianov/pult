@@ -232,6 +232,7 @@ import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
+import * as ServerActivity from "./serverActivity.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
@@ -1386,6 +1387,7 @@ export const layerWsRpc = (
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const scratchThreadPromotion = yield* ScratchThreadPromotion.ScratchThreadPromotion;
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
+      const serverActivity = yield* ServerActivity.ServerActivity;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -1950,6 +1952,7 @@ export const layerWsRpc = (
           threadFindProgressive: true,
           secretProviderSettings: true,
           secretReferences: true,
+          serverActivity: true,
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
             onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -2336,6 +2339,7 @@ export const layerWsRpc = (
             workspaceSnapshotsOnDemand: false,
             deferNetworkDiscovery: false,
           }),
+        [WS_METHODS.serverGetActivity]: (_input) => serverActivity.current,
         [WS_METHODS.serverSearchAcpRegistry]: (input) =>
           acpRegistryCatalog
             .search(input)
