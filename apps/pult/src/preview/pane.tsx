@@ -120,7 +120,7 @@ export function isPreviewTab(
  * state. Hidden (its tab inactive, its group or the editor part hidden), the
  * mount parks its webview offscreen; a tab of another type in the group
  * clears the input, which unmounts it. A placeholder promoted to its session
- * keeps its mount, which already shows the session.
+ * keeps its mount, told to show the session.
  */
 class PreviewPane extends SimpleEditorPane {
   static readonly ID = PANE_ID;
@@ -152,6 +152,7 @@ class PreviewPane extends SimpleEditorPane {
       current.input.threadId === input.threadId
     ) {
       current.input = input;
+      current.view.showSession(input.tabId);
     } else {
       this.release();
       try {

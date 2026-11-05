@@ -98,14 +98,14 @@ NodeTest.test("a device floats as upstream's, and the shell hears nothing of it"
 });
 
 NodeTest.test(
-  "the user's ways in open the session's tab active, in the placeholder's place",
+  "the user's ways in open the session's tab active, never in the placeholder's place",
   () => {
     const { routes, take } = setup();
     routes.openBrowser(thread, "a");
     routes.openBrowser(thread, null);
     NodeAssert.deepEqual(take(), [
-      opened("a", { activate: true, replacePlaceholder: true }),
-      opened(null, { activate: true, replacePlaceholder: false }),
+      opened("a", { activate: true }),
+      opened(null, { activate: true }),
     ]);
   },
 );

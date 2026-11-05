@@ -57,10 +57,7 @@ export function previewRoutes<Ref extends ThreadRef, Source extends FloatSource>
   const revealed = new Map<string, string>();
 
   const openBrowser = (ref: Ref, tabId: string | null) =>
-    deps.host().openPreview(ref.environmentId, ref.threadId, tabId, {
-      activate: true,
-      replacePlaceholder: tabId !== null,
-    });
+    deps.host().openPreview(ref.environmentId, ref.threadId, tabId, { activate: true });
 
   return {
     /** The mini-player's `open`: a browser source opens its tab, a device floats as upstream's. */
@@ -86,8 +83,10 @@ export function previewRoutes<Ref extends ThreadRef, Source extends FloatSource>
     },
     /**
      * The right panel's `openBrowser`, the user's ways in (a link, a popup, a
-     * moved tab, New): the session's tab, active, in place of the thread's
-     * placeholder as upstream's replaces its `browser:new`; a null tab id the
+     * moved tab, a local server, a file): the session's tab, active, opened
+     * beside the thread's New placeholder, never in its place: only the
+     * placeholder's own pane promotes it (`PreviewMount.tsx`), since a session
+     * opened elsewhere is not the one its pane shows. A null tab id is the
      * placeholder itself.
      */
     openBrowser,

@@ -21,6 +21,8 @@ export interface MountedPreview {
   layout(): void;
   /** Whether the pane shows: a hidden one parks its webview offscreen and stops its stream's input. */
   setVisible(visible: boolean): void;
+  /** The session the pane shows now, a placeholder's tab promoted to it (`src/preview/pane.tsx`). */
+  showSession(tabId: string): void;
   /** Unmounts it; not from inside another React root's render. */
   dispose(): void;
 }
@@ -43,8 +45,9 @@ export interface PreviewMountOptions {
  * session not opened yet: upstream's empty state, whose URL field and local
  * servers open one; the pane then shows that session, and the shell is told
  * through `openPreview` with `replacePlaceholder`, so the placeholder's tab
- * becomes the session's. Without the preview scope on the environment, or
- * the server browser and the desktop both missing, upstream's notice.
+ * becomes the session's: the only open that promotes a placeholder. Without
+ * the preview scope on the environment, or the server browser and the
+ * desktop both missing, upstream's notice.
  */
 export function mountPreview(
   element: HTMLElement,
@@ -92,6 +95,9 @@ export function mountPreview(
     layout: () => update({ layoutVersion: presentation.layoutVersion + 1 }),
     setVisible: (visible) => {
       if (visible !== presentation.visible) update({ visible });
+    },
+    showSession: (shown) => {
+      if (shown !== presentation.tabId) update({ tabId: shown });
     },
     dispose: () => {
       listeners.clear();

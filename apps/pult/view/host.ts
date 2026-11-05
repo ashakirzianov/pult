@@ -50,11 +50,12 @@ export interface ThreadViewHost {
    * a session whose tab is open does nothing. A null `tabId` is a
    * placeholder for a session not opened yet, a New browser tab: the
    * thread's open placeholder, if any, is shown rather than a second opened.
-   * `replacePlaceholder`: the session was opened from the thread's
-   * placeholder or in its stead (upstream's `openBrowser`, which replaces its
-   * `browser:new`): the thread's placeholder tab, if one is open, becomes this
-   * session's in place, its group and position kept, rather than a second
-   * tab opening; with none, as without it. Never called for a device.
+   * `replacePlaceholder`: the placeholder's own pane opened the session (its
+   * URL field or a local server), and the pane shows it already: the
+   * thread's placeholder tab, if still open, becomes this session's in place,
+   * its group, position and mount kept, rather than a second tab opening;
+   * with none, as without it. Every other way in (upstream's `openBrowser`:
+   * a link, a popup, a moved tab) opens its own tab. Never called for a device.
    */
   readonly openPreview: (
     environmentId: string,
