@@ -61,6 +61,11 @@ body,
   overflow: hidden;
 }
 
+/* While a tab is dragged, the hosted webviews (view/browserHost.tsx) let the pointer through to the editor group's drop zones. */
+body.pult-dragging .pult-browser-host webview {
+  pointer-events: none !important;
+}
+
 .pult-thread-empty {
   padding: 2rem;
   opacity: 0.7;

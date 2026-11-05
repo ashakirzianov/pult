@@ -160,9 +160,19 @@ function openPreview(
       lead,
       groups.activeGroup,
     );
+    // After the thread's last browser in the group, so they keep the order they opened in.
+    const last = Math.max(
+      -1,
+      ...tabs
+        .filter((tab) => tab.group === group)
+        .map(({ editor }) => group.getIndexOfEditor(editor)),
+    );
+    const index = last < 0 ? {} : { index: last + 1 };
     await group.openEditor(
       input,
-      options.activate ? shown : { pinned: true, inactive: true, preserveFocus: true },
+      options.activate
+        ? { ...shown, ...index }
+        : { pinned: true, inactive: true, preserveFocus: true, ...index },
     );
   });
 }
@@ -469,4 +479,18 @@ export async function startPreviewTabs(): Promise<void> {
     selectionChanged();
   });
   selectionChanged();
+  passDragsOverWebviews();
+}
+
+/**
+ * While a drag runs in the page (a tab dragged to another group or a split),
+ * the hosted webviews let the pointer through (`pult-dragging`,
+ * `src/style.css`): a guest page under the pointer would take the drag's
+ * events, and the editor group under it would show no drop zone.
+ */
+function passDragsOverWebviews(): void {
+  const dragging = (on: boolean) => () => document.body.classList.toggle("pult-dragging", on);
+  document.addEventListener("dragstart", dragging(true), true);
+  document.addEventListener("dragend", dragging(false), true);
+  document.addEventListener("drop", dragging(false), true);
 }
