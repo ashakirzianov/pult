@@ -30,6 +30,7 @@ import { installDebugHandle } from "./debug.ts";
 import { registerLocalServerCommands, startLocalServerContext } from "./desktop/localServer.ts";
 import { desktopHost } from "./desktop/host.ts";
 import { startMenuActions } from "./desktop/menuActions.ts";
+import { registerUpdateCommands, startUpdateContext } from "./desktop/updates.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerMode, startMode } from "./mode.ts";
 import { gateEditorMenus } from "./editorMenus.ts";
@@ -96,6 +97,7 @@ registerParkCommands();
 registerChanges();
 registerPanel();
 registerLocalServerCommands();
+registerUpdateCommands();
 
 // The workbench owns the whole page, the desktop's traffic lights over its top row; its parts are the layout (xaxis `pult/own-shell`).
 if (window.pultDesktop) installDesktopTitleBar(window.pultDesktop);
@@ -151,6 +153,7 @@ await startPanelRows();
 await restoreThreadSelection();
 await startPreviewTabs();
 await startLocalServerContext();
+await startUpdateContext();
 startMenuActions();
 
 console.info("[pult-shell] workbench up");
