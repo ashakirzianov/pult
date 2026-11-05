@@ -34,6 +34,7 @@ import {
   SETTLED_TAIL_INITIAL_COUNT,
   starKey,
 } from "./order.ts";
+import { closedShelves } from "./shelves.tsx";
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft's (`draftKey`), a Star's (`starKey`), `explorer` for the Explorer workspace, or nothing. */
 export function selectionSnapshot(): string | undefined {
@@ -47,7 +48,7 @@ export function selectionSnapshot(): string | undefined {
 }
 
 /** The key of the card the selection expands: the selected thread's own, or for a subagent its root's; a draft's. */
-function selectedCardKey(): string | undefined {
+export function selectedCardKey(): string | undefined {
   const selection = selectedThread();
   const thread = selection && threadStore.thread(selection.environmentId, selection.threadId);
   if (thread !== undefined && isSubagent(thread))
@@ -65,14 +66,8 @@ export function explorerHighlight(): string | undefined {
   return activeFile?.toString() ?? (explored !== undefined ? environmentKey(explored) : undefined);
 }
 
-/** Where each shelf keeps whether it is expanded (`useExpanded`). */
-export const EXPANDED_KEYS = {
-  explorer: "pult-shell.panel.explorer-expanded",
-  ready: "pult-shell.panel.ready-expanded",
-  working: "pult-shell.panel.working-expanded",
-  snoozed: "pult-shell.panel.snoozed-expanded",
-  settled: "pult-shell.panel.settled-expanded",
-} as const;
+/** Where Ready keeps whether it is expanded (`useExpanded`); the other shelves close instead (`shelves.tsx`). */
+export const READY_EXPANDED_KEY = "pult-shell.panel.ready-expanded";
 
 let settledCount = SETTLED_TAIL_INITIAL_COUNT;
 
@@ -88,20 +83,12 @@ function currentTargets(): JumpTarget<URI>[] {
   return jumpTargets({
     stars: starEnabled.get() ? starStore.get().map((star) => star.id) : [],
     environmentIds,
-    explorer: {
-      files: openExplorerFiles.get().files,
-      highlighted: explorerHighlight(),
-      expanded: storedExpanded(EXPANDED_KEYS.explorer, true),
-    },
+    files: openExplorerFiles.get().files,
     drafts: draftCards(projectDrafts.get(), selectedDraft(), new Set(environmentIds), isStarDraft),
     threads,
     selection: selectedCardKey(),
-    expanded: {
-      ready: storedExpanded(EXPANDED_KEYS.ready, true),
-      working: storedExpanded(EXPANDED_KEYS.working),
-      snoozed: storedExpanded(EXPANDED_KEYS.snoozed),
-      settled: storedExpanded(EXPANDED_KEYS.settled),
-    },
+    readyExpanded: storedExpanded(READY_EXPANDED_KEY, true),
+    closed: closedShelves.get(),
     settledCount,
   });
 }
@@ -190,6 +177,7 @@ function followJumpKeys(): void {
   threadStore.subscribe(refreshHints);
   onDidSelectThread(refreshHints);
   openExplorerFiles.subscribe(refreshHints);
+  closedShelves.subscribe(refreshHints);
   starStore.subscribe(refreshHints);
   starEnabled.subscribe(refreshHints);
 }

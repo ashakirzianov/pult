@@ -1,8 +1,6 @@
-import { getService } from "@codingame/monaco-vscode-api";
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
-import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { elapsedShare, formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 
 import {
   hasUsageProviderIcon,
@@ -11,87 +9,86 @@ import {
 } from "../../view/usageProviders.tsx";
 import { limitsShelf, type ShelfWindow } from "../limits/limits.ts";
 import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts";
-import { limitsShelfState, setLimitsExpanded, setLimitsShowAll } from "../limits/shelf.ts";
-import { CollapsibleHeader } from "./collapsible.tsx";
+import { limitsShowAll, setLimitsShowAll } from "../limits/shelf.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
+import { closedShelves, closeShelf, ShelfHeader, useReveal } from "./shelves.tsx";
 
-/** The reveals of the shelf already brought into view, so a remount does not scroll to it again. */
-let revealed = 0;
+const refreshAction = toAction({
+  id: "pult-shell.refreshUsageLimits",
+  label: "Refresh Usage Limits",
+  run: () => refreshLimits(),
+});
 
 /**
  * The Limits shelf, the Pult tab's last (xaxis `pult/issues/provider-limits-page`):
- * the provider accounts' usage windows with something spent, under a
- * collapsible header with the count of warning windows; while any warns the
- * warning windows alone, with Show all, else every window with something
- * spent, and gone while none has (`limitsShelf`). Refresh is the header's
- * hover action and its right-click, its tooltip when each environment's
- * limits were last checked and the notices. The rows are no jump targets and do nothing on
+ * the provider accounts' usage windows with something spent, under its
+ * header with the count of warning windows, open until closed, when its icon
+ * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows
+ * alone, with Show all, else every window with something spent, and gone
+ * while none has (`limitsShelf`). Refresh is the header's hover action and in
+ * its right-click, its tooltip when each environment's limits were last
+ * checked and the notices. The rows are no jump targets and do nothing on
  * click. `now` is the panel's minute clock, which the pace moves with.
  */
 export function LimitsShelf({ now }: { now: number }) {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
-  const view = useSyncExternalStore(limitsShelfState.subscribe, limitsShelfState.get);
+  const showAll = useSyncExternalStore(limitsShowAll.subscribe, limitsShowAll.get);
+  const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has("limits");
   const element = useRef<HTMLLIElement>(null);
-  const shelf = limitsShelf(limits.accounts, now, view.showAll);
-  useEffect(() => {
-    if (shelf === null || view.reveals === revealed) return;
-    revealed = view.reveals;
-    element.current?.scrollIntoView({ block: "nearest" });
-  });
-  if (shelf === null) return null;
+  useReveal("limits", element);
+  const shelf = limitsShelf(limits.accounts, now, showAll);
+  if (closed || shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
     <li ref={element} className="pult-shelf pult-shelf-limits">
-      <div className="pult-limits-header">
-        <CollapsibleHeader
-          label="Limits"
-          count={shelf.warnings}
-          expanded={view.expanded}
-          onToggle={() => setLimitsExpanded(!view.expanded)}
-          title={headerTooltip(limits, now)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            void showMenu({ x: event.clientX, y: event.clientY });
-          }}
-        />
-        <button
-          type="button"
-          className="pult-limits-refresh"
-          title="Refresh Usage Limits"
-          aria-label="Refresh usage limits"
-          disabled={limits.refreshing}
-          onClick={() => void refreshLimits()}
-        >
-          <i
-            className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`}
-            aria-hidden
-          />
-        </button>
-      </div>
-      {view.expanded ? (
-        <ul className="pult-shelf-cards pult-limits">
-          {shelf.accounts.map(({ account, windows }) => (
-            <AccountRows
-              key={account.key}
-              account={account}
-              windows={windows}
-              several={several}
-              now={now}
+      <ShelfHeader
+        shelf="limits"
+        label="Limits"
+        count={shelf.warnings}
+        title={headerTooltip(limits, now)}
+        menu={[refreshAction]}
+        onClose={() => {
+          setLimitsShowAll(false);
+          closeShelf("limits");
+        }}
+        actions={
+          <button
+            type="button"
+            className="pult-shelf-action pult-limits-refresh"
+            title="Refresh Usage Limits"
+            aria-label="Refresh usage limits"
+            disabled={limits.refreshing}
+            onClick={() => void refreshLimits()}
+          >
+            <i
+              className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`}
+              aria-hidden
             />
-          ))}
-          {shelf.toggle === null ? null : (
-            <li className="pult-shelf-more">
-              <button
-                type="button"
-                className="pult-panel-button"
-                onClick={() => setLimitsShowAll(shelf.toggle === "all")}
-              >
-                {shelf.toggle === "all" ? "Show all" : "Show less"}
-              </button>
-            </li>
-          )}
-        </ul>
-      ) : null}
+          </button>
+        }
+      />
+      <ul className="pult-shelf-cards pult-limits">
+        {shelf.accounts.map(({ account, windows }) => (
+          <AccountRows
+            key={account.key}
+            account={account}
+            windows={windows}
+            several={several}
+            now={now}
+          />
+        ))}
+        {shelf.toggle === null ? null : (
+          <li className="pult-shelf-more">
+            <button
+              type="button"
+              className="pult-panel-button"
+              onClick={() => setLimitsShowAll(shelf.toggle === "all")}
+            >
+              {shelf.toggle === "all" ? "Show all" : "Show less"}
+            </button>
+          </li>
+        )}
+      </ul>
     </li>
   );
 }
@@ -199,19 +196,4 @@ function ago(iso: string, now: number): string {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
-}
-
-/** The header's right-click: Refresh. */
-async function showMenu(anchor: { x: number; y: number }): Promise<void> {
-  const menus = await getService(IContextMenuService);
-  menus.showContextMenu({
-    getAnchor: () => anchor,
-    getActions: () => [
-      toAction({
-        id: "pult-shell.refreshUsageLimits",
-        label: "Refresh Usage Limits",
-        run: () => refreshLimits(),
-      }),
-    ],
-  });
 }

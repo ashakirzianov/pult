@@ -38,7 +38,7 @@ import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
 
 /**
- * The tabs' order in the panel's bottom row: Pult first, then the stock
+ * The tabs' order in the panel's tray, in VS Code's mode: Pult first, then the stock
  * explorer at its own 0. Projects (`pult/projects-tab`) goes after the
  * explorer, below Search's 1; Search and Extensions are unpinned by default
  * (`src/services.ts`).
@@ -49,10 +49,10 @@ const THREADS_ORDER = -1;
  * The left panel: the sidebar part, VS Code's own, between two rows of the
  * shell's (`rows.tsx`): the Pult tab's header, in that tab's title (the
  * desktop's traffic lights, Collapse Panel, Pult's logo and New Thread),
- * every other tab's own title the panel's top row; and below, the tabs,
- * switching the sidebar between view containers in place of VS Code's
- * activity bar (`PanelTabs.tsx`), and the gear, which opens the Pult
- * settings page. The Pult tab is the shell's own
+ * every other tab's own title the panel's top row; and below, the tray, the
+ * tabs switching the sidebar between view containers in place of VS Code's
+ * activity bar (`PanelTabs.tsx`), the closed shelves' icons
+ * (`TrayShelves.tsx`), and the gear, which opens the Pult settings page. The Pult tab is the shell's own
  * container, with one React view (the Explorer card and the thread cards)
  * and Pult's mark as its icon; the Explorer tab is VS Code's, rooted by
  * `explorer.ts`, its filter a card above the tree (`filterCard.tsx`). Every

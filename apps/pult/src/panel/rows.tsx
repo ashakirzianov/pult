@@ -22,8 +22,9 @@ import { createRoot } from "react-dom/client";
 import logoUrl from "../../assets/pult/logo-color.svg";
 import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
+import { TrayShelves } from "./TrayShelves.tsx";
 
-/** The bottom row's height, the sidebar's title's. */
+/** The tray's height, the sidebar's title's. */
 const ROW_HEIGHT = 35;
 /** On the sidebar part while the header stands in its title, the Pult tab's. */
 const HEADER_IN_TITLE = "pult-header-in-title";
@@ -34,7 +35,7 @@ interface LayoutGrid {
   readonly sideBarPartView: IView;
 }
 
-/** The bottom row as a view of the workbench's grid: a fixed height, any width, so the sidebar's column keeps its own. */
+/** The tray as a view of the workbench's grid: a fixed height, any width, so the sidebar's column keeps its own. */
 function rowView(className: string): IView {
   const element = document.createElement("div");
   element.className = className;
@@ -88,12 +89,20 @@ function PanelHeader() {
   );
 }
 
-/** The left panel's bottom row: the tabs, and rightmost the gear, which opens the Pult settings page. */
-function PanelFooter({ store }: { store: PanelTabStore }) {
+/**
+ * The left panel's bottom row, the tray: every icon in it is something not
+ * showing, which a click shows. The tabs at its left end (`PanelTabs.tsx`;
+ * in Pult's mode Source Control's alone, while its tab is not open), the
+ * closed shelves' icons beside the gear (`TrayShelves.tsx`), so the tabs
+ * coming and going move none of them, and rightmost the gear, which opens
+ * the Pult settings page.
+ */
+function Tray({ store }: { store: PanelTabStore }) {
   return (
     <>
       <PanelTabs store={store} />
       <span className="pult-panel-row-spacer" />
+      <TrayShelves />
       <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>
   );
@@ -105,8 +114,8 @@ function PanelFooter({ store }: { store: PanelTabStore }) {
  * open the header (`PanelHeader`) stands in it, in place of the tab's name
  * and buttons; any other tab's own title shows, leaving the traffic lights
  * their room (`panel.css`). Its right-click menu goes in Pult's mode, since
- * in the desktop the title drags the window. Below the part, the tabs with
- * the gear (`PanelFooter`, `PanelTabs.tsx`), a view added to the layout's
+ * in the desktop the title drags the window. Below the part, the tray
+ * (`Tray`), a view added to the layout's
  * grid with the grid's own `addView` and shown with the part, so a
  * collapsed panel leaves no column behind. While the panel is collapsed,
  * Expand Panel sits at the window's top-left over the room the top-left
@@ -146,9 +155,9 @@ export async function startPanelRows(): Promise<void> {
     { capture: true },
   );
 
-  const footer = rowView("pult-panel-footer");
-  workbenchGrid.addView(footer, ROW_HEIGHT, sideBarPartView, Direction.Down);
-  createRoot(footer.element).render(<PanelFooter store={await panelTabStore()} />);
+  const tray = rowView("pult-panel-tray");
+  workbenchGrid.addView(tray, ROW_HEIGHT, sideBarPartView, Direction.Down);
+  createRoot(tray.element).render(<Tray store={await panelTabStore()} />);
 
   const expand = document.createElement("div");
   expand.className = "pult-panel-expand";
@@ -166,7 +175,7 @@ export async function startPanelRows(): Promise<void> {
       HEADER_IN_TITLE,
       panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === PANEL_ID,
     );
-    workbenchGrid.setViewVisible(footer, layout.isVisible(Parts.SIDEBAR_PART));
+    workbenchGrid.setViewVisible(tray, layout.isVisible(Parts.SIDEBAR_PART));
   };
   const expandToWidth = keepPanelWidth(layout, storage, sideBarPartView);
   layout.onDidChangePartVisibility((event) => {
@@ -183,10 +192,10 @@ export async function startPanelRows(): Promise<void> {
 }
 
 /**
- * The panel's width while it is collapsed. The bottom row puts the sidebar
+ * The panel's width while it is collapsed. The tray puts the sidebar
  * part in a column of the grid, so the layout saves a collapsed part's
  * cached size along that column, its height, as its width, and a panel
- * collapsed at start loses its width to the row's `addView`. The last width
+ * collapsed at start loses its width to the tray's `addView`. The last width
  * the panel showed at is kept here, saved in the layout's place while
  * collapsed, and applied by the returned function on expanding; a saved
  * width over half the window, the layout's own mistake, gives way to the

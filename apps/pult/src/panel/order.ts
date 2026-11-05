@@ -1,6 +1,15 @@
 import type { ProjectDraft } from "../../view/drafts.ts";
 import { scopedKey, type ShelfName, type ShellThread } from "../threads/store.ts";
 
+/**
+ * The Pult tab's shelves that close, in the panel's order, which the tray
+ * lists their icons in while they are closed (`TrayShelves.tsx`). Ready
+ * does not close; it collapses.
+ */
+export const CLOSABLE_SHELVES = ["explorer", "working", "snoozed", "settled", "limits"] as const;
+
+export type ClosableShelf = (typeof CLOSABLE_SHELVES)[number];
+
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */
 export const SETTLED_TAIL_INITIAL_COUNT = 10;
 export const SETTLED_TAIL_PAGE_COUNT = 25;
@@ -59,8 +68,8 @@ export function explorerEntries<File extends FileRef>(
   ];
 }
 
-/** What a collapsible list shows: everything while `expanded`, else the selected item alone, if it is one of them. */
-export function shown<Item>(
+/** What a collapsible list, Ready, shows: everything while `expanded`, else the selected item alone, if it is one of them. */
+function shown<Item>(
   items: ReadonlyArray<Item>,
   expanded: boolean,
   isSelected: (item: Item) => boolean,
@@ -119,19 +128,18 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   /** The Stars' cards, first, by their Stars' ids; none while Show Star is off. */
   readonly stars: ReadonlyArray<string>;
   readonly environmentIds: ReadonlyArray<string>;
-  readonly explorer: {
-    readonly files: ReadonlyArray<File>;
-    /** The key of the row the Explorer shelf highlights, which it shows while collapsed. */
-    readonly highlighted: string | undefined;
-    readonly expanded: boolean;
-  };
+  /** The Explorer shelf's open files. */
+  readonly files: ReadonlyArray<File>;
   /** Ready's draft cards (`draftCards`). */
   readonly drafts: ReadonlyArray<ProjectDraft>;
   /** The store's threads, in its order. */
   readonly threads: ReadonlyArray<Thread>;
   /** The key of the selected card: a thread's, its root's for a subagent, or a draft's. */
   readonly selection: string | undefined;
-  readonly expanded: Readonly<Record<"ready" | Exclude<ShelfName, "pinned" | "active">, boolean>>;
+  /** Whether Ready is expanded. */
+  readonly readyExpanded: boolean;
+  /** The shelves closed, whose rows none is reached. */
+  readonly closed: ReadonlySet<ClosableShelf>;
   /** How many settled threads the settled shelf's tail shows. */
   readonly settledCount: number;
 }
@@ -141,27 +149,24 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
  * rows: the Stars' cards first, then the Explorer shelf's open files, its
  * environments' rows left out, then the cards, Ready's drafts and threads,
- * and the Working, Snoozed and Settled shelves'; a collapsed list reaches
- * its selected row alone. The Limits shelf's
+ * and the Working, Snoozed and Settled shelves'; a closed shelf reaches
+ * none, a collapsed Ready its selected row alone. The Limits shelf's
  * rows, last, are none: they select nothing.
  */
 export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
   panel: PanelRows<File, Thread>,
 ): JumpTarget<File, Thread>[] {
-  const isHighlighted = (entry: ExplorerEntry<File>) => entry.key === panel.explorer.highlighted;
   const stars = panel.stars.map((starId): JumpTarget<File, Thread> => ({
     kind: "star",
     key: starKey(starId),
     starId,
   }));
+  const open = (shelf: ClosableShelf) => !panel.closed.has(shelf);
   const files = [
     ...stars,
-    ...shown(
-      explorerEntries(panel.environmentIds, panel.explorer.files),
-      panel.explorer.expanded,
-      isHighlighted,
-    ).flatMap((entry): JumpTarget<File, Thread>[] =>
-      entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : [],
+    ...(open("explorer") ? explorerEntries(panel.environmentIds, panel.files) : []).flatMap(
+      (entry): JumpTarget<File, Thread>[] =>
+        entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : [],
     ),
   ];
   if (panel.environmentIds.length === 0) return files;
@@ -183,13 +188,11 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
   ];
   return [
     ...files,
-    ...shown(ready, panel.expanded.ready, isSelected),
-    ...shown(on("working").map(threadTarget), panel.expanded.working, isSelected),
-    ...shown(on("snoozed").map(threadTarget), panel.expanded.snoozed, isSelected),
-    ...shown(
-      settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
-      panel.expanded.settled,
-      isSelected,
-    ),
+    ...shown(ready, panel.readyExpanded, isSelected),
+    ...(open("working") ? on("working").map(threadTarget) : []),
+    ...(open("snoozed") ? on("snoozed").map(threadTarget) : []),
+    ...(open("settled")
+      ? settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget)
+      : []),
   ];
 }

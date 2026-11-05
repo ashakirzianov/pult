@@ -2,9 +2,9 @@ import { useState } from "react";
 
 /**
  * A collapsible header after upstream's: the label and its count when one is
- * given, a status when one is given, and the chevron at the far end. A
- * shelf's and a card's subagents'. `title` is its tooltip and
- * `onContextMenu` its right-click, the Limits shelf's.
+ * given, a status when one is given, and the chevron at the far end. Ready's
+ * and a card's subagents'; the other shelves close instead (`ShelfHeader`,
+ * `shelves.tsx`).
  */
 export function CollapsibleHeader({
   label,
@@ -12,26 +12,15 @@ export function CollapsibleHeader({
   expanded,
   onToggle,
   status = null,
-  title,
-  onContextMenu,
 }: {
   label: string;
   count?: number;
   expanded: boolean;
   onToggle: () => void;
   status?: React.ReactNode;
-  title?: string;
-  onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   return (
-    <button
-      type="button"
-      className="pult-shelf-header"
-      aria-expanded={expanded}
-      title={title}
-      onClick={onToggle}
-      onContextMenu={onContextMenu}
-    >
+    <button type="button" className="pult-shelf-header" aria-expanded={expanded} onClick={onToggle}>
       <span className="pult-shelf-label">{label}</span>
       {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
       <span className="pult-shelf-spacer" aria-hidden />

@@ -343,7 +343,8 @@
   font-size: 14px;
 }
 
-/* A shelf (Explorer, Ready, Working, Snoozed, Settled, Limits): upstream's collapsible header, label, rule and chevron, then its rows. */
+/* A shelf (Explorer, Ready, Working, Snoozed, Settled, Limits): its header, label, count and Close
+   (Ready's upstream's collapsible one, its chevron in Close's place), then its rows. */
 .pult-shelf {
   margin-top: 6px;
 }
@@ -352,11 +353,12 @@
   margin-top: 0;
 }
 
-/* The first shelf after Ready, or after Explorer while there is no Ready
-   (Working, Snoozed or Settled), takes the room Ready leaves, as upstream's
-   lower shelves sit at its sidebar's bottom; the rest follow it. */
-.pult-panel-cards > .pult-shelf-ready + .pult-shelf,
-.pult-panel-cards > .pult-shelf-explorer + .pult-shelf:not(.pult-shelf-ready) {
+/* The first shelf below Ready (Working, Snoozed, Settled or Limits) takes the room Ready
+   leaves, as upstream's lower shelves sit at its sidebar's bottom; the rest follow it. */
+.pult-panel-cards
+  > :is(.pult-shelf-working, .pult-shelf-snoozed, .pult-shelf-settled, .pult-shelf-limits):not(
+    :is(.pult-shelf-working, .pult-shelf-snoozed, .pult-shelf-settled, .pult-shelf-limits) ~ *
+  ) {
   margin-top: auto;
   padding-top: 6px;
 }
@@ -382,6 +384,49 @@
 
 .pult-shelf-header:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* A closable shelf's header does nothing on a click; its actions and Close show on hover or keyboard focus. */
+.pult-shelf-header-closable {
+  cursor: default;
+}
+
+.pult-shelf-header-closable:hover {
+  background: none;
+}
+
+.pult-shelf-action {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.pult-shelf-header:hover .pult-shelf-action,
+.pult-shelf-header:focus-within .pult-shelf-action {
+  visibility: visible;
+}
+
+.pult-shelf-action:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-foreground);
+}
+
+.pult-shelf-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-shelf-header .pult-shelf-action .codicon {
+  font-size: 14px;
 }
 
 /* The workbench rings every focused button in its parts; in the panel, only keyboard focus shows. */
@@ -426,12 +471,13 @@
   font-size: 12px;
 }
 
-/* A shelf's chevron in a box as wide as the header's New Thread button, at the same right edge, so the two line up. */
+/* A shelf's Close, or Ready's chevron, in a box as wide as the header's New Thread button, at the same right edge, so the two line up. */
 .pult-shelf > .pult-shelf-header {
   padding-right: 0;
 }
 
-.pult-shelf > .pult-shelf-header > .codicon:last-child {
+.pult-shelf > .pult-shelf-header > .codicon:last-child,
+.pult-shelf-close {
   width: 26px;
   text-align: center;
 }
@@ -672,8 +718,8 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* The left panel's bottom row (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
-.pult-panel-footer {
+/* The left panel's bottom row, the tray (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
+.pult-panel-tray {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -684,7 +730,7 @@
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
 }
 
-.pult-panel-footer *,
+.pult-panel-tray *,
 .pult-panel-header *,
 .pult-panel-expand * {
   box-sizing: border-box;
@@ -805,6 +851,15 @@
   text-transform: uppercase;
 }
 
+/* The closed shelves' icons (src/panel/TrayShelves.tsx), beside the gear; dimmed while the shelf holds nothing. */
+.pult-tray-shelves {
+  margin-right: 2px;
+}
+
+.pult-tray-shelf-empty {
+  opacity: 0.5;
+}
+
 .pult-panel-tab-badge {
   position: absolute;
   top: -4px;
@@ -866,51 +921,14 @@
   transform: none;
 }
 
-/* The Limits shelf (LimitsShelf.tsx): its header with Refresh on hover, before the chevron. */
-.pult-limits-header {
-  position: relative;
-}
-
-/* Its chevron lined up with the other shelves' (`.pult-shelf > .pult-shelf-header`). */
-.pult-limits-header > .pult-shelf-header {
-  padding-right: 0;
-}
-
-.pult-limits-header > .pult-shelf-header > .codicon:last-child {
-  width: 26px;
-  text-align: center;
-}
-
+/* The Limits shelf (LimitsShelf.tsx): Refresh on its header's hover, before Close, and while it refreshes. */
 .pult-limits-refresh {
-  position: absolute;
-  top: 4px;
-  right: 28px;
-  display: none;
-  align-items: center;
-  justify-content: center;
   width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
 }
 
-.pult-limits-header:hover .pult-limits-refresh,
-.pult-limits-header:focus-within .pult-limits-refresh,
 .pult-limits-refresh:disabled {
-  display: inline-flex;
-}
-
-.pult-limits-refresh:hover {
-  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
-  color: var(--vscode-foreground);
-}
-
-.pult-limits-refresh .codicon {
-  font-size: 14px;
+  visibility: visible;
+  cursor: default;
 }
 
 /* An account: a compact line, then a line per window over its bar. */
