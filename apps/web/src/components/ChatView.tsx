@@ -1198,12 +1198,6 @@ export default function ChatView(props: ChatViewProps) {
       (environment) => environment.environmentId === activeThread?.environmentId,
     ) ?? null;
   const composerControlsSlot = use(ComposerControlsSlot);
-  const showComposerEnvironmentIndicator = shouldShowEnvironmentIndicator({
-    activeEnvironment: activeEnvironmentOption,
-    // Pult: a draft's picker (`canChangeEnvironment`) shows on the primary environment too, Pult.app's own server.
-    canPickEnvironment:
-      hasMultipleEnvironments || (composerControlsSlot !== null && draftId !== null),
-  });
 
   const { handlePreparedPullRequestThreadStable, openPullRequestDialogStable } =
     usePullRequestDraftThread({
@@ -1259,6 +1253,11 @@ export default function ChatView(props: ChatViewProps) {
     !envLocked &&
     draftId !== null &&
     !draftThread?.promotedTo;
+  const showComposerEnvironmentIndicator = shouldShowEnvironmentIndicator({
+    activeEnvironment: activeEnvironmentOption,
+    // Pult: a draft's picker (`canChangeEnvironment`) shows on the primary environment too, Pult.app's own server.
+    canPickEnvironment: hasMultipleEnvironments || canChangeEnvironment,
+  });
 
   const loadBalancingSettings = useClientSettings((settings) => ({
     loadBalancingEnabled: settings.loadBalancingEnabled,
