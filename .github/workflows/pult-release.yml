@@ -29,10 +29,16 @@ on:
         default: true
         type: boolean
       runner:
-        description: The macOS arm64 runner label, when macos-latest has no capacity
+        description: The macOS runner label, when macos-latest has no capacity (an Intel one, e.g. macos-15-intel, for arch x64)
         required: false
         default: macos-latest
         type: string
+      arch:
+        description: The app's arch; x64 only for a dry run on an Intel runner, since releases are arm64
+        required: false
+        default: arm64
+        type: choice
+        options: [arm64, x64]
 
 permissions:
   contents: read
@@ -43,7 +49,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Pult.app (macOS arm64)
+    name: Build Pult.app (macOS ${{ inputs.arch || 'arm64' }})
     runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 90
     outputs:
@@ -61,12 +67,13 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_PUBLISH: ${{ inputs.publish }}
           INPUT_SIGNED: ${{ inputs.signed }}
+          INPUT_ARCH: ${{ inputs.arch }}
         run: |
           set -euo pipefail
           if [[ "$EVENT" == push ]]; then
-            tag="$GITHUB_REF_NAME" publish=true signed=true
+            tag="$GITHUB_REF_NAME" publish=true signed=true arch=arm64
           else
-            tag="pult-v${INPUT_VERSION#pult-v}" publish="$INPUT_PUBLISH" signed="$INPUT_SIGNED"
+            tag="pult-v${INPUT_VERSION#pult-v}" publish="$INPUT_PUBLISH" signed="$INPUT_SIGNED" arch="${INPUT_ARCH:-arm64}"
           fi
           version="${tag#pult-v}"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -77,6 +84,10 @@ jobs:
             echo "::error::An unsigned build never publishes; dispatch with signed or without publish." >&2
             exit 1
           fi
+          if [[ "$publish" == true && "$arch" != arm64 ]]; then
+            echo "::error::Releases are arm64 only; an x64 build is a dry run." >&2
+            exit 1
+          fi
           # Publishing builds the tag; a dry run builds the dispatched commit.
           ref="$GITHUB_SHA"
           if [[ "$publish" == true ]]; then ref="refs/tags/$tag"; fi
@@ -85,9 +96,10 @@ jobs:
             echo "version=$version"
             echo "publish=$publish"
             echo "signed=$signed"
+            echo "arch=$arch"
             echo "ref=$ref"
           } >> "$GITHUB_OUTPUT"
-          echo "Pult $version from $ref (signed: $signed, publish: $publish)."
+          echo "Pult $version $arch from $ref (signed: $signed, publish: $publish)."
 
       - name: Check the signing secrets
         if: steps.resolve.outputs.signed == 'true'
@@ -143,6 +155,7 @@ jobs:
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           SIGNED: ${{ steps.resolve.outputs.signed }}
+          ARCH: ${{ steps.resolve.outputs.arch }}
           CSC_LINK: ${{ steps.resolve.outputs.signed == 'true' && secrets.CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ steps.resolve.outputs.signed == 'true' && secrets.CSC_KEY_PASSWORD || '' }}
           APPLE_API_KEY: ${{ steps.resolve.outputs.signed == 'true' && secrets.APPLE_API_KEY || '' }}
@@ -151,7 +164,7 @@ jobs:
         run: |
           set -euo pipefail
           unset ELECTRON_RUN_AS_NODE
-          args=(--platform mac --target dmg --arch arm64 --app-version "$VERSION" --feed --verbose)
+          args=(--platform mac --target dmg --arch "$ARCH" --app-version "$VERSION" --feed --verbose)
           if [[ "$SIGNED" == true ]]; then
             # electron-builder's notarization takes the App Store Connect key as a path to its .p8.
             key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
@@ -167,17 +180,18 @@ jobs:
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           SIGNED: ${{ steps.resolve.outputs.signed }}
+          ARCH: ${{ steps.resolve.outputs.arch }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$*" >&2; exit 1; }
-          for asset in "Pult-$VERSION-arm64.dmg" "Pult-$VERSION-arm64.zip" \
-            "Pult-$VERSION-arm64.dmg.blockmap" "Pult-$VERSION-arm64.zip.blockmap" latest-mac.yml; do
+          for asset in "Pult-$VERSION-$ARCH.dmg" "Pult-$VERSION-$ARCH.zip" \
+            "Pult-$VERSION-$ARCH.dmg.blockmap" "Pult-$VERSION-$ARCH.zip.blockmap" latest-mac.yml; do
             [[ -f "release/$asset" ]] || fail "release/$asset is missing."
           done
           grep -qx "version: $VERSION" release/latest-mac.yml || fail "latest-mac.yml is not version $VERSION."
 
           mount="$RUNNER_TEMP/pult-check-dmg"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "release/Pult-$VERSION-arm64.dmg" >/dev/null
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "release/Pult-$VERSION-$ARCH.dmg" >/dev/null
           trap 'hdiutil detach "$mount" -force >/dev/null || true' EXIT
           app="$mount/Pult.app"
           [[ -d "$app" ]] || fail "The dmg holds no Pult.app."
@@ -205,9 +219,10 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
+          ARCH: ${{ steps.resolve.outputs.arch }}
         run: |
           unset ELECTRON_RUN_AS_NODE
-          node apps/pult/desktop/scripts/smoke.ts --dmg "release/Pult-$VERSION-arm64.dmg" \
+          node apps/pult/desktop/scripts/smoke.ts --dmg "release/Pult-$VERSION-$ARCH.dmg" \
             --artifacts-dir "$RUNNER_TEMP/pult-smoke"
 
       - name: Upload the smoke test's output
