@@ -115,6 +115,7 @@ let selected: Selection | undefined;
 let switching = false;
 let queue = Promise.resolve();
 const listeners = new Set<() => void>();
+const switchEndListeners = new Set<() => void>();
 
 /** The selected thread; undefined while a draft is selected. */
 export function selectedThread(): ThreadSelection | undefined {
@@ -224,6 +225,21 @@ export function showExplorerFile(resource: URI): Promise<void> {
 /** True while a switch swaps the editor part, whose editor events are transient then. */
 export function isSwitchingThread(): boolean {
   return switching;
+}
+
+/**
+ * Called whenever a switch stops swapping the editor part, completed or
+ * cancelled (a modified file's Cancel), before a completed one's
+ * `onDidSelectThread`: what waited out the switch looks again.
+ */
+export function onDidEndSwitch(listener: () => void): () => void {
+  switchEndListeners.add(listener);
+  return () => switchEndListeners.delete(listener);
+}
+
+function endSwitch(): void {
+  switching = false;
+  for (const listener of switchEndListeners) listener();
 }
 
 /** Called after every completed selection, the startup one included. */
@@ -360,7 +376,7 @@ function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<
         StorageTarget.MACHINE,
       );
     } finally {
-      switching = false;
+      endSwitch();
     }
     for (const listener of listeners) listener();
   });
@@ -397,7 +413,7 @@ async function switchTo(next: Selection): Promise<void> {
     storage.store(STORAGE_KEY, JSON.stringify(next), StorageScope.WORKSPACE, StorageTarget.MACHINE);
     await showLeadTab(next);
   } finally {
-    switching = false;
+    endSwitch();
   }
   for (const listener of listeners) listener();
   // The selection is stored at once, the editor part's state only when the workbench saves its state (at intervals, and at

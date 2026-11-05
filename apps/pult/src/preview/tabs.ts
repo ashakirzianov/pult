@@ -28,6 +28,7 @@ import { isLeadTab, setPreviewTabs, threadView } from "../threads/pane.tsx";
 import { ThreadSelectedContext } from "../threads/park.ts";
 import {
   isSwitchingThread,
+  onDidEndSwitch,
   onDidSelectThread,
   selectedStar,
   selectionTarget,
@@ -508,10 +509,9 @@ export async function startPreviewTabs(): Promise<void> {
     );
   });
   editors.onDidEditorsChange(() => void refreshFollows());
-  const selectionChanged = () => {
-    void refreshFollows();
-    void enqueue(closeForeignTabs);
-    // A reveal remembered while the thread was switched to, or away from and back, opens now, not on its list's next change.
+  // A reveal remembered while the thread was switched to, or away from and back, or during a
+  // switch the user cancelled, opens now, not on its list's next change.
+  const openTargetRemembered = () => {
     const target = targetThread();
     if (target !== undefined)
       void currentSessions(target.environmentId, target.threadId).then(({ loaded, sessions }) => {
@@ -523,7 +523,13 @@ export async function startPreviewTabs(): Promise<void> {
           );
       });
   };
+  const selectionChanged = () => {
+    void refreshFollows();
+    void enqueue(closeForeignTabs);
+    openTargetRemembered();
+  };
   onDidSelectThread(selectionChanged);
+  onDidEndSwitch(openTargetRemembered);
   // A selected Star's conversation is the selection's thread, and it changes as the Stars do.
   let starTarget = targetThread();
   starStore.subscribe(() => {
