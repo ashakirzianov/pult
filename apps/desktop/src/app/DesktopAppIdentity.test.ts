@@ -206,4 +206,29 @@ describe("DesktopAppIdentity", () => {
       { calls, environment },
     );
   });
+
+  it.effect(
+    "keeps About's version the commit under T3 Code's brand when the bundles' differs",
+    () => {
+      const calls: ElectronAppCalls = {
+        setAboutPanelOptions: [],
+        setDockIcon: [],
+        setName: [],
+      };
+
+      return withIdentity(
+        Effect.gen(function* () {
+          const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+          yield* identity.configure;
+
+          assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
+          assert.equal(calls.setAboutPanelOptions[0]?.version, "abcdef123456");
+        }),
+        {
+          calls,
+          packageJson: '{"t3codeCommitHash":"abcdef1234567890","t3codeBundleVersion":"0.1.7"}',
+        },
+      );
+    },
+  );
 });

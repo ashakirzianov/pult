@@ -51,6 +51,12 @@ export interface DesktopBrand {
   readonly productName: string | null;
   /** The packaged `package.json`'s name, Electron's default app name, which names its Keychain item. */
   readonly packageName: string;
+  /**
+   * What the About panel calls the compiled bundles' version when the packaged
+   * app carries a version of its own (the artifact script's `--app-version`):
+   * "T3 Code" in "Version 0.0.1 (T3 Code 0.1.7, <commit>)". `null` shows the commit alone.
+   */
+  readonly bundleVersionName: string | null;
 }
 
 export type DesktopBrandOverride = Partial<DesktopBrand>;
@@ -93,6 +99,7 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   appId: "com.t3tools.t3code",
   productName: null,
   packageName: "t3code",
+  bundleVersionName: null,
 };
 
 export const brandFor = <T>(value: PerMode<T>, isDevelopment: boolean): T =>
@@ -118,6 +125,25 @@ export function brandDisabledFeatures(
   const features = (current ?? "").split(",").filter((feature) => feature.trim() !== "");
   if (features.includes("IntensiveWakeUpThrottling")) return null;
   return [...features, "IntensiveWakeUpThrottling"].join(",");
+}
+
+/**
+ * The About panel's version, shown after the app's own: the build's commit,
+ * led by the compiled bundles' version, under the brand's name for it, when
+ * the app's version differs from theirs.
+ */
+export function brandAboutVersion(
+  input: {
+    readonly appVersion: string;
+    readonly bundleVersion: string | null;
+    readonly commitHash: string;
+  },
+  brand: DesktopBrand = desktopBrand,
+): string {
+  const { appVersion, bundleVersion, commitHash } = input;
+  if (brand.bundleVersionName === null || bundleVersion === null || bundleVersion === appVersion)
+    return commitHash;
+  return `${brand.bundleVersionName} ${bundleVersion}, ${commitHash}`;
 }
 
 /**

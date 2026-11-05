@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  brandAboutVersion,
   brandDisabledFeatures,
   brandServerEnvironment,
   desktopBrand,
@@ -41,5 +42,37 @@ describe("DesktopBrand", () => {
     expect(brandServerEnvironment({ T3CODE_TELEMETRY_ENABLED: "true" }, brand)).toEqual({
       T3CODE_DEV_ALLOWED_ORIGINS: "pult://app,pult-dev://app",
     });
+  });
+
+  it("shows the commit alone in About under T3 Code's brand", () => {
+    expect(
+      brandAboutVersion({
+        appVersion: "0.0.1",
+        bundleVersion: "0.1.7",
+        commitHash: "abcdef123456",
+      }),
+    ).toBe("abcdef123456");
+  });
+
+  it("leads About's commit with the bundles' version when the app carries its own", () => {
+    const brand = { ...T3CODE_DESKTOP_BRAND, bundleVersionName: "T3 Code" };
+    expect(
+      brandAboutVersion(
+        { appVersion: "0.0.1", bundleVersion: "0.1.7", commitHash: "abcdef123456" },
+        brand,
+      ),
+    ).toBe("T3 Code 0.1.7, abcdef123456");
+    expect(
+      brandAboutVersion(
+        { appVersion: "0.1.7", bundleVersion: "0.1.7", commitHash: "abcdef123456" },
+        brand,
+      ),
+    ).toBe("abcdef123456");
+    expect(
+      brandAboutVersion(
+        { appVersion: "0.0.1", bundleVersion: null, commitHash: "abcdef123456" },
+        brand,
+      ),
+    ).toBe("abcdef123456");
   });
 });

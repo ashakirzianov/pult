@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
+import { brandAboutVersion } from "./DesktopBrand.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 
@@ -17,6 +18,8 @@ const COMMIT_HASH_DISPLAY_LENGTH = 12;
 
 const AppPackageMetadata = Schema.Struct({
   t3codeCommitHash: Schema.optional(Schema.String),
+  /** The compiled bundles' version, which `version`, the app's, may differ from. */
+  t3codeBundleVersion: Schema.optional(Schema.String),
 });
 const decodeAppPackageMetadata = Schema.decodeEffect(Schema.fromJsonString(AppPackageMetadata));
 
@@ -47,20 +50,30 @@ export const make = Effect.gen(function* () {
   const userDataContext = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
   const commitHashCache = yield* Ref.make<Option.Option<Option.Option<string>>>(Option.none());
 
-  const resolveEmbeddedCommitHash = Effect.gen(function* () {
-    const packageJsonPath = environment.path.join(environment.appRoot, "package.json");
-    const raw = yield* fileSystem.readFileString(packageJsonPath).pipe(Effect.option);
-    return yield* Option.match(raw, {
-      onNone: () => Effect.succeed(Option.none<string>()),
-      onSome: (value) =>
-        decodeAppPackageMetadata(value).pipe(
-          Effect.map((parsed) =>
-            Option.fromNullishOr(parsed.t3codeCommitHash).pipe(Option.flatMap(normalizeCommitHash)),
-          ),
-          Effect.orElseSucceed(() => Option.none<string>()),
-        ),
-    });
-  });
+  const embeddedMetadata = yield* Effect.cached(
+    Effect.gen(function* () {
+      const packageJsonPath = environment.path.join(environment.appRoot, "package.json");
+      const raw = yield* fileSystem.readFileString(packageJsonPath).pipe(Effect.option);
+      return yield* Option.match(raw, {
+        onNone: () => Effect.succeed(Option.none<typeof AppPackageMetadata.Type>()),
+        onSome: (value) => decodeAppPackageMetadata(value).pipe(Effect.option),
+      });
+    }),
+  );
+
+  const resolveEmbeddedCommitHash = embeddedMetadata.pipe(
+    Effect.map(
+      Option.flatMap((parsed) =>
+        Option.fromNullishOr(parsed.t3codeCommitHash).pipe(Option.flatMap(normalizeCommitHash)),
+      ),
+    ),
+  );
+
+  const resolveBundleVersion = environment.isPackaged
+    ? embeddedMetadata.pipe(
+        Effect.map(Option.flatMap((parsed) => Option.fromNullishOr(parsed.t3codeBundleVersion))),
+      )
+    : Effect.succeed(Option.none<string>());
 
   const resolveAboutCommitHash = Effect.gen(function* () {
     const cached = yield* Ref.get(commitHashCache);
@@ -91,12 +104,17 @@ export const make = Effect.gen(function* () {
 
   const configure = Effect.gen(function* () {
     const commitHash = yield* resolveAboutCommitHash;
+    const bundleVersion = yield* resolveBundleVersion;
     // Electron strips spaces but keeps parentheses in its User-Agent token, breaking Turnstile in preview sessions.
     yield* electronApp.setName(environment.displayName.replaceAll(/[()]/g, ""));
     yield* electronApp.setAboutPanelOptions({
       applicationName: environment.displayName,
       applicationVersion: environment.appVersion,
-      version: Option.getOrElse(commitHash, () => "unknown"),
+      version: brandAboutVersion({
+        appVersion: environment.appVersion,
+        bundleVersion: Option.getOrNull(bundleVersion),
+        commitHash: Option.getOrElse(commitHash, () => "unknown"),
+      }),
     });
 
     if (environment.platform === "win32") {
