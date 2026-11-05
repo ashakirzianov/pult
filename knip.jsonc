@@ -110,6 +110,7 @@
         "view/panelLayoutControls.tsx!",
         "view/stubs/*.ts!",
         "src/**/*.test.ts",
+        "view/**/*.test.ts",
         "scripts/drive.ts",
       ],
       "ignoreIssues": {

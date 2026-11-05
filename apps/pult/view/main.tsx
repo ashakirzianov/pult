@@ -15,6 +15,14 @@ import {
 } from "~/hooks/useTheme";
 import { startBrowserHost } from "./browserHost.tsx";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
+import {
+  closePreviewSession,
+  followPreviewSessions,
+  previewSessions,
+  startPreviews,
+  type ThreadPreviewSessions,
+} from "./preview.ts";
+import { type MountedPreview, mountPreview } from "./PreviewMount.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
 import {
   isPromotion,
@@ -29,6 +37,8 @@ import {
 export type { ThreadViewHost, TurnCheckpoints } from "./host.ts";
 export type { ShellConnectionServices } from "./connectionRuntime.ts";
 export type { MountedView, MountOptions, ViewTarget } from "./ThreadView.tsx";
+export type { PreviewOwner, PreviewSessionInfo, ThreadPreviewSessions } from "./preview.ts";
+export type { MountedPreview } from "./PreviewMount.tsx";
 
 export interface ThreadViewMounts {
   /** The thread's turns and composer, on its environment. */
@@ -63,6 +73,31 @@ export interface ThreadViewMounts {
     environmentId: string,
     threadId: string,
   ): boolean;
+  /**
+   * Upstream's preview pane for the thread's session `tabId`, or with a null
+   * `tabId` a placeholder for a new one (`PreviewMount.tsx`), for the shell's
+   * preview tab; the host's `openPreview` names what to mount.
+   */
+  mountPreview(
+    element: HTMLElement,
+    environmentId: string,
+    threadId: string,
+    tabId: string | null,
+  ): MountedPreview;
+  /** The thread's live preview sessions, with their owners and labels, as the view knows them now. */
+  previewSessions(environmentId: string, threadId: string): ThreadPreviewSessions;
+  /**
+   * The same, at once and on each change until the returned stop, the
+   * thread's list kept in step with its server meanwhile: a tab's label and
+   * icon, and Open Browser's pick.
+   */
+  followPreviewSessions(
+    environmentId: string,
+    threadId: string,
+    listener: (sessions: ThreadPreviewSessions) => void,
+  ): () => void;
+  /** Ends a session on its server (Close Browser Session, a user's tab closed); whether it ended. */
+  closePreviewSession(environmentId: string, threadId: string, tabId: string): Promise<boolean>;
 }
 
 /**
@@ -72,12 +107,15 @@ export interface ThreadViewMounts {
  * appearance preference, kept in localStorage, is set back to System, since
  * the shell offers no page to change it and a stale Light or Dark there
  * would paint the view's text in one scheme on the workbench's other. Its
- * files open in the shell (`rightPanel.ts`). In Pult.app it hosts the
- * preview sessions' webviews page-wide (`browserHost.tsx`).
+ * files open in the shell (`rightPanel.ts`), and so do the preview browsers
+ * an agent reveals or the user opens (`preview.ts`). In Pult.app it hosts the
+ * preview sessions' webviews page-wide (`browserHost.tsx`). The shell starts
+ * it at boot in Pult.app, so an agent's browser attaches with no pane open.
  */
 export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
+  startPreviews();
   setSystemColorSchemeSource({
     isDark: () => host.colorScheme() === "dark",
     onChange: host.onDidChangeColorScheme,
@@ -97,5 +135,9 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
         environmentId,
         threadId,
       ),
+    mountPreview,
+    previewSessions,
+    followPreviewSessions,
+    closePreviewSession,
   };
 }

@@ -12,7 +12,8 @@ import type { ShellConnectionServices } from "./connectionRuntime.ts";
  * absolute host path, with a line to reveal, which the shell looks up across
  * the environment's checkouts when the thread's lacks it; the thread's changes, with a file's path when one was named and a
  * turn's checkpoints when the view named a turn; and
- * what the view knows of its lineage's activity. Each names its
+ * what the view knows of its lineage's activity; and the preview browsers
+ * the view would float or show in its panel, as tabs (`preview.ts`). Each names its
  * environment, as a pane mounts the view on one (`ThreadViewMounts`). It
  * also hands the colour scheme the view takes as the system's. The shell's
  * side is its `src/threads/pane.tsx`.
@@ -38,6 +39,39 @@ export interface ThreadViewHost {
     threadId: string,
     path: string | null,
     turn: TurnCheckpoints | null,
+  ) => void;
+  /**
+   * A preview session's tab (`pult/decisions`, `preview-tabs`), mounting
+   * `ThreadViewMounts.mountPreview`: opened if the thread has none for the
+   * session, in the background unless `activate`; an open one activated when
+   * `activate`, else left as it is. So an agent's reveal is `activate: false`
+   * (a tab appears, focus stays), its forced reveal (the agent's explicit
+   * open) and every user's way in `activate: true`, and an unforced reveal of
+   * a session whose tab is open does nothing. A null `tabId` is a
+   * placeholder for a session not opened yet, a New browser tab: the
+   * thread's open placeholder, if any, is shown rather than a second opened.
+   * `replacePlaceholder`: the session was opened from the thread's
+   * placeholder or in its stead (upstream's `openBrowser`, which replaces its
+   * `browser:new`): the thread's placeholder tab, if one is open, becomes this
+   * session's in place, its group and position kept, rather than a second
+   * tab opening; with none, as without it. Never called for a device.
+   */
+  readonly openPreview: (
+    environmentId: string,
+    threadId: string,
+    tabId: string | null,
+    options: { readonly activate: boolean; readonly replacePlaceholder?: boolean },
+  ) => void;
+  /**
+   * Every live preview session of the thread, on each change of them once
+   * the thread's list has loaded: the thread's tabs for any other session
+   * close, without asking, since their sessions ended; a session never gets
+   * a tab from this.
+   */
+  readonly closeStalePreviews: (
+    environmentId: string,
+    threadId: string,
+    liveTabIds: ReadonlyArray<string>,
   ) => void;
   /**
    * Whether threads of the mounted thread's lineage are working, as its

@@ -95,6 +95,11 @@ export function threadView() {
       // The changes view (`src/changes/`): the Source Control view over the thread's project, with a turn's group when the view named one.
       openChanges: (environmentId, threadId, path, turn) =>
         run("pult-shell.showChanges", environmentId, threadId, path, turn),
+      // The preview tabs are the shell's next step (`pult/issues/preview-panes-as-tabs`); until then nothing shows.
+      openPreview: (environmentId, threadId, tabId, options) =>
+        console.info("[pult-shell] openPreview", environmentId, threadId, tabId, options),
+      closeStalePreviews: (environmentId, threadId, liveTabIds) =>
+        console.info("[pult-shell] closeStalePreviews", environmentId, threadId, liveTabIds),
       // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
       reportActivity: (activity) => threadStore.reportActivity(activity),
       // The view's System theme is the workbench theme's light or dark.

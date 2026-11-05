@@ -9,7 +9,7 @@
     "build": "effect-tsgo tsrs -b && vp build",
     "preview": "vp preview",
     "typecheck": "effect-tsgo tsrs -b",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test \"src/**/*.test.ts\" \"view/**/*.test.ts\"",
     "desktop:dev": "pnpm --filter pult-desktop dev",
     "desktop:host": "node desktop/scripts/host-dev.ts",
     "desktop:package": "node desktop/scripts/package.ts"
