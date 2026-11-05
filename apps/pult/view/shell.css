@@ -76,9 +76,12 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   height: 100%;
 }
 
-/* The workbench outlines every focused editable; the composer draws its own. */
+/* The workbench outlines every focused editable, and every element a click
+   or a script focuses (tabindex -1, the view's conversation region among
+   them); the composer draws its own, and the view outlines no other. */
 .monaco-workbench .pult-thread-view [contenteditable="true"]:focus,
-.monaco-workbench .pult-thread-view textarea[data-citation-comment-input]:focus {
+.monaco-workbench .pult-thread-view textarea[data-citation-comment-input]:focus,
+.monaco-workbench .pult-thread-view [tabindex="-1"]:focus {
   outline: none;
 }
 
