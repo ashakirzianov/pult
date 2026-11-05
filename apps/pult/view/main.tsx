@@ -13,6 +13,7 @@ import {
   setSystemColorSchemeSource,
   setTheme,
 } from "~/hooks/useTheme";
+import { setServerRuntimeOffPrimary } from "~/browser/previewRuntime";
 import { startBrowserHost } from "./browserHost.tsx";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import {
@@ -22,7 +23,7 @@ import {
   startPreviews,
   type ThreadPreviewSessions,
 } from "./preview.ts";
-import { type MountedPreview, mountPreview } from "./PreviewMount.tsx";
+import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./PreviewMount.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
 import {
   isPromotion,
@@ -38,7 +39,7 @@ export type { ThreadViewHost, TurnCheckpoints } from "./host.ts";
 export type { ShellConnectionServices } from "./connectionRuntime.ts";
 export type { MountedView, MountOptions, ViewTarget } from "./ThreadView.tsx";
 export type { PreviewOwner, PreviewSessionInfo, ThreadPreviewSessions } from "./preview.ts";
-export type { MountedPreview } from "./PreviewMount.tsx";
+export type { MountedPreview, PreviewMountOptions } from "./PreviewMount.tsx";
 
 export interface ThreadViewMounts {
   /** The thread's turns and composer, on its environment. */
@@ -83,6 +84,7 @@ export interface ThreadViewMounts {
     environmentId: string,
     threadId: string,
     tabId: string | null,
+    options?: PreviewMountOptions,
   ): MountedPreview;
   /** The thread's live preview sessions, with their owners and labels, as the view knows them now. */
   previewSessions(environmentId: string, threadId: string): ThreadPreviewSessions;
@@ -116,6 +118,8 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
   routeRightPanel();
   startPreviews();
+  // A user's browser tab opens in the server's runtime wherever the server has one, so the agent can drive it.
+  setServerRuntimeOffPrimary(true);
   setSystemColorSchemeSource({
     isDark: () => host.colorScheme() === "dark",
     onChange: host.onDidChangeColorScheme,

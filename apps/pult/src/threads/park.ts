@@ -353,8 +353,8 @@ const CONTEXT_KEYS = {
   unpin: new RawContextKey<boolean>("pult.selectedThreadCanUnpin", false),
 } satisfies Record<keyof ParkActions, RawContextKey<boolean>>;
 
-/** Whether a thread the store knows is selected, for Copy Thread Link. */
-const ThreadSelectedContext = new RawContextKey<boolean>("pult.selectedThreadKnown", false);
+/** Whether a thread the store knows is selected, or the selected Star's conversation is one: Copy Thread Link, and the preview tabs' Open Browser (`src/preview/`). */
+export const ThreadSelectedContext = new RawContextKey<boolean>("pult.selectedThreadKnown", false);
 
 /**
  * The palette's thread commands, on the selected thread, each offered while

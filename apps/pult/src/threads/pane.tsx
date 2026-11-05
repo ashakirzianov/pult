@@ -17,7 +17,12 @@ import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { MountedView, MountOptions, ThreadViewMounts } from "../../view/main.tsx";
+import type {
+  MountedView,
+  MountOptions,
+  ThreadViewHost,
+  ThreadViewMounts,
+} from "../../view/main.tsx";
 
 import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
@@ -62,6 +67,19 @@ export function onDidPromoteDraft(listener: PromotionListener): () => void {
   return () => promotionListeners.delete(listener);
 }
 
+/** Where the view's preview browsers go: the shell's preview tabs (`src/preview/tabs.ts`), which hand them over at boot. */
+let previewTabs: Pick<ThreadViewHost, "openPreview" | "closeStalePreviews"> = {
+  openPreview: () => {},
+  closeStalePreviews: () => {},
+};
+
+/** Sets where the view's preview browsers go, before the view starts. */
+export function setPreviewTabs(
+  tabs: Pick<ThreadViewHost, "openPreview" | "closeStalePreviews">,
+): void {
+  previewTabs = tabs;
+}
+
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
@@ -73,7 +91,8 @@ function run(command: string, ...args: unknown[]): void {
  * per environment, each pane mounting its target's environment.
  * A thread it navigates to is selected in the shell, and so is a draft of a
  * new thread, as its project's draft; a file it would show in its right
- * panel opens as a tab (`files.ts`), and its diff is the changes view
+ * panel opens as a tab (`files.ts`), and so does a preview browser
+ * (`src/preview/`), and its diff is the changes view
  * (`src/changes/`), the Source Control view. A view that fails to load fails with a
  * message the pane shows, and the next pane tries again.
  */
@@ -95,11 +114,11 @@ export function threadView() {
       // The changes view (`src/changes/`): the Source Control view over the thread's project, with a turn's group when the view named one.
       openChanges: (environmentId, threadId, path, turn) =>
         run("pult-shell.showChanges", environmentId, threadId, path, turn),
-      // The preview tabs are the shell's next step (`pult/issues/preview-panes-as-tabs`); until then nothing shows.
+      // The preview browsers are the shell's tabs (`src/preview/`).
       openPreview: (environmentId, threadId, tabId, options) =>
-        console.info("[pult-shell] openPreview", environmentId, threadId, tabId, options),
+        previewTabs.openPreview(environmentId, threadId, tabId, options),
       closeStalePreviews: (environmentId, threadId, liveTabIds) =>
-        console.info("[pult-shell] closeStalePreviews", environmentId, threadId, liveTabIds),
+        previewTabs.closeStalePreviews(environmentId, threadId, liveTabIds),
       // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
       reportActivity: (activity) => threadStore.reportActivity(activity),
       // The view's System theme is the workbench theme's light or dark.

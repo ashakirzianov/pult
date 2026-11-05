@@ -31,6 +31,12 @@ interface Presentation {
   readonly layoutVersion: number;
 }
 
+/** What the shell adds to a mounted preview pane. */
+export interface PreviewMountOptions {
+  /** "Close browser session" in the pane's more menu, for the session the pane shows. */
+  readonly onEndSession?: (tabId: string) => void;
+}
+
 /**
  * Renders the session `tabId` of the thread into `element` until disposed,
  * visible until told otherwise. With a null `tabId` it is a placeholder for a
@@ -45,6 +51,7 @@ export function mountPreview(
   environmentId: string,
   threadId: string,
   tabId: string | null,
+  options: PreviewMountOptions = {},
 ): MountedPreview {
   let presentation: Presentation = { tabId, visible: true, layoutVersion: 0 };
   const listeners = new Set<() => void>();
@@ -76,6 +83,7 @@ export function mountPreview(
           presentation={() => presentation}
           subscribe={subscribe}
           onPlaceholderOpened={onPlaceholderOpened}
+          {...(options.onEndSession === undefined ? {} : { onEndSession: options.onEndSession })}
         />
       </AppAtomRegistryProvider>
     </StrictMode>,
@@ -99,6 +107,7 @@ function Pane(props: {
   readonly presentation: () => Presentation;
   readonly subscribe: (listener: () => void) => () => void;
   readonly onPlaceholderOpened: (tabId: string) => void;
+  readonly onEndSession?: (tabId: string) => void;
 }) {
   const { tabId, visible, layoutVersion } = useSyncExternalStore(
     props.subscribe,
@@ -128,6 +137,9 @@ function Pane(props: {
         visible={visible}
         layoutVersion={layoutVersion}
         floatable={false}
+        {...(tabId !== null && props.onEndSession !== undefined
+          ? { onEndSession: () => props.onEndSession?.(tabId) }
+          : {})}
         {...(tabId === null ? { onPlaceholderOpened: props.onPlaceholderOpened } : {})}
       />
     </PreviewPanelShell>
