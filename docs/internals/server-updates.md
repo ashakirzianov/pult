@@ -113,3 +113,12 @@ working, no request a run waits on, and no scheduled task dispatching. Held queu
 work outside a run do not count: recovery holds those queues anyway, and most such shells are dev
 servers nobody waits on, so counting them would keep the server busy forever. `restingSince` lives
 in memory and starts again at boot.
+
+A desktop app's server installs the app's updates itself when
+`T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
+([`InstallAtRest`](../../apps/server/src/desktopUpdate/InstallAtRest.ts)), which the desktop sets
+for its supervised server under a brand that asks (`serverInstallUpdatesAtRest`). Every 30 minutes,
+once the server has rested 15 minutes and the desktop's power telemetry has seen no input on the
+host for 15, it runs the ordinary desktop update and commits it; missing or stale telemetry counts
+as input. The download can take minutes, so both are checked again before the commit. A prepared
+update left uncommitted expires on the desktop and stays downloaded for the next tick.
