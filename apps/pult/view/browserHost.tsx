@@ -52,27 +52,37 @@ export function startBrowserHost(keepRendering: ThreadViewHost["keepRendering"])
  * holds off its background throttling), and to draw a frame, which it does
  * only for damage it can see, and the browser, wholly covered, makes none
  * (`pult-capturing`, a pixel nobody sees changing, `src/style.css`). Both
- * last as long as a capture, seconds; the first call, with none on, drops a
- * hold a reloaded page left.
+ * last as long as a capture: a snapshot's seconds, or an upstream recording's
+ * whole length, which repaints at its frame rate anyway; the first call, with
+ * none on, drops a hold a reloaded page left. While held, the hold is sent
+ * again whenever the capturing tabs change, since upstream turns throttling
+ * back on when its own last frame capture (a recording, picture-in-picture)
+ * ends, unaware of Pult's.
  */
 function followCaptures(
   element: HTMLElement,
   keepRendering: ThreadViewHost["keepRendering"],
 ): void {
-  const capturing = () =>
-    Object.values(useBrowserSurfaceStore.getState().activityByTabId).some((count) => count > 0);
+  const capturingTabs = () =>
+    Object.entries(useBrowserSurfaceStore.getState().activityByTabId)
+      .filter(([, count]) => count > 0)
+      .map(([tabId]) => tabId)
+      .toSorted()
+      .join(" ");
   const apply = (on: boolean) => {
     element.classList.toggle("pult-capturing", on);
     void keepRendering?.(on).catch((error: unknown) => {
       console.warn("Pult could not keep the window rendering for a browser's capture.", error);
     });
   };
-  let held = capturing();
-  apply(held);
+  let held = capturingTabs();
+  apply(held !== "");
   useBrowserSurfaceStore.subscribe(() => {
-    const next = capturing();
+    const next = capturingTabs();
     if (next === held) return;
+    // Off to off is no change; any other change sends the hold again (main's on is idempotent).
+    const wasOn = held !== "";
     held = next;
-    apply(next);
+    if (wasOn || next !== "") apply(next !== "");
   });
 }
