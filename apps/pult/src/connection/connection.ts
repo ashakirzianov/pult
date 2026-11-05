@@ -333,14 +333,20 @@ class ShellConnection {
       if (previous !== undefined) previous.registration = registration(previous.saved, false);
     }
     const held = this.held.get(environmentId);
+    const next = registration(saved, this.isLocal(saved));
     if (
       held !== undefined &&
-      samePrimary(held.registration, registration(saved, this.isLocal(saved)))
+      held.registration._tag === "PrimaryConnectionRegistration" &&
+      next._tag === "PrimaryConnectionRegistration"
     ) {
-      // The primary's registration carries no bearer, so the same server at the same address keeps its socket.
+      // The primary's registration carries no bearer: the same server keeps its socket, and at a new address it is swapped in place, so the primary never goes away meanwhile.
+      const unchanged = samePrimary(held.registration, next);
       held.saved = saved;
+      held.registration = next;
       await this.persist();
       await this.register();
+      // A restore registers it before the app's server answers, so its first attempt may be backing off while the probe just succeeded.
+      if (unchanged && held.state?.phase !== "ready") await this.retryNow(environmentId);
       return environmentId;
     }
     // A new bearer for the same environment needs a new registration, so the old one goes first.
