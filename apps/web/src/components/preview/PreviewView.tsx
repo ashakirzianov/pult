@@ -104,6 +104,19 @@ interface Props {
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
   ) => void;
+  /**
+   * Pult's hook point, not upstream's: bumped when the view moved without
+   * resizing (Pult's shell, a workbench tab moved between editor groups), so a
+   * natively hosted tab's slot re-presents at its new place.
+   */
+  layoutVersion?: string | number;
+  /**
+   * Pult's hook point, not upstream's: the view is a placeholder for a session
+   * not opened yet (Pult's shell, a New browser tab), so a null `tabId` shows
+   * the empty state rather than the thread's active tab, and the session the
+   * empty state opens is named here, which the tab then becomes.
+   */
+  onPlaceholderOpened?: (tabId: string) => void;
 }
 
 function previewProfileName(
@@ -145,6 +158,8 @@ export function PreviewView({
   configuredUrls,
   visible,
   onSendAnnotation,
+  layoutVersion,
+  onPlaceholderOpened,
 }: Props) {
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [pickActive, setPickActive] = useState(false);
@@ -173,7 +188,10 @@ export function PreviewView({
 
   usePreviewSession(threadRef);
 
-  const tabId = requestedTabId ?? previewState.activeTabId;
+  const tabId =
+    onPlaceholderOpened === undefined
+      ? (requestedTabId ?? previewState.activeTabId)
+      : (requestedTabId ?? null);
   const runtimeTabId = tabId
     ? previewRuntimeTabId(threadRef, previewState.serverEpoch, tabId)
     : null;
@@ -241,6 +259,7 @@ export function PreviewView({
       return true;
     }
     const result = await openPreviewSession({ openPreview: open, threadRef, url: resolvedUrl });
+    if (result._tag === "Success") onPlaceholderOpened?.(result.value.tabId);
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       if (error instanceof BrowserSettingsReadError) {
@@ -996,6 +1015,7 @@ export function PreviewView({
               key={runtimeTabId}
               tabId={runtimeTabId}
               visible={visible && !isUnreachable}
+              {...(layoutVersion === undefined ? {} : { layoutVersion })}
               className="absolute inset-0 h-full w-full"
             />
           ) : (
