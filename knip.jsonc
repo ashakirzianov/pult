@@ -124,8 +124,8 @@
       "ignoreDependencies": ["@codingame/monaco-vscode-.*"],
     },
     "apps/pult/desktop": {
-      // scripts/build.ts bundles main and the preload by path.
-      "entry": ["src/main.ts!", "src/preload.ts!", "scripts/*.ts"],
+      // scripts/build.ts bundles main and the preload by path; upstream's desktop build loads the brand by path.
+      "entry": ["src/main.ts!", "src/preload.ts!", "src/brand.ts!", "scripts/*.ts"],
     },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.

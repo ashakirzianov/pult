@@ -11,6 +11,8 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
+// Pult: `window.pultDesktop` beside `window.desktopBridge`.
+import "../../pult/desktop/src/upstreamPreload.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",

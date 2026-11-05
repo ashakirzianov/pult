@@ -5,5 +5,15 @@
     "types": ["node", "electron"],
     "lib": ["ESNext", "DOM", "esnext.disposable"]
   },
-  "include": ["src", "vite.config.ts", "../../scripts/lib"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "../../scripts/lib",
+    "../pult/desktop/src/upstream*.ts",
+    "../pult/desktop/src/bridge.ts",
+    "../pult/desktop/src/ipc.ts",
+    "../pult/desktop/src/secretStore.ts",
+    "../pult/desktop/src/files.ts",
+    "../pult/src/desktop/api.ts"
+  ]
 }

@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Pult's wrapper runs no Effect runtime; upstream's desktop typechecks this file too.
 import * as NodeFS from "node:fs";
 
 /** Reads a JSON file of main's under `userData`; `undefined` when it does not exist yet. */

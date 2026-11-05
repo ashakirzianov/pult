@@ -7,6 +7,8 @@ export const Channel = {
   windowTitleBarLayout: "pult-desktop:window.titleBarLayout",
   /** Main to the page, on every change: the window entered (`true`) or left full screen. */
   windowFullScreen: "pult-desktop:window.fullScreen",
+  /** Synchronous, for upstream's preload (`upstreamPreload.ts`): the app's version. */
+  version: "pult-desktop:version",
 } as const;
 
 /**

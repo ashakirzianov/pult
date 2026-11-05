@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off - Pult's wrapper runs no Effect runtime; upstream's desktop typechecks this file too.
 import * as NodeFS from "node:fs";
 
 import { safeStorage } from "electron";
