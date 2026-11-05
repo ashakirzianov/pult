@@ -117,6 +117,11 @@ interface Props {
    * empty state opens is named here, which the tab then becomes.
    */
   onPlaceholderOpened?: (tabId: string) => void;
+  /**
+   * Pult's hook point, not upstream's: false hides "Float preview over chat",
+   * since Pult's shell shows a browser as a workbench tab and has no mini-player.
+   */
+  floatable?: boolean;
 }
 
 function previewProfileName(
@@ -160,6 +165,7 @@ export function PreviewView({
   onSendAnnotation,
   layoutVersion,
   onPlaceholderOpened,
+  floatable = true,
 }: Props) {
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [pickActive, setPickActive] = useState(false);
@@ -911,7 +917,7 @@ export function PreviewView({
         captureDisabled={!desktopOverlay || isUnreachable}
         recording={recordingRuntimeTabId !== null}
         onPictureInPicture={
-          tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
+          floatable && tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
         }
         pictureInPicture={miniPlayerTabId === tabId}
         pictureInPictureDisabled={

@@ -127,6 +127,7 @@ function Pane(props: {
         tabId={tabId}
         visible={visible}
         layoutVersion={layoutVersion}
+        floatable={false}
         {...(tabId === null ? { onPlaceholderOpened: props.onPlaceholderOpened } : {})}
       />
     </PreviewPanelShell>
