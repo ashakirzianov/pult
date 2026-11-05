@@ -444,6 +444,14 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   color: color-mix(in oklab, var(--color-foreground) 80%, transparent);
 }
 
+/* Collapsed to icons (upstream's `data-compact`), a picker's label takes no
+   room, and its gap after the icon goes with it. */
+.pult-composer-bar
+  [data-slot="composer-context-strip"][data-compact]
+  :is(button, span[data-composer-context-control]) {
+  gap: 0;
+}
+
 .pult-composer-bar [data-slot="composer-context-strip"] button:hover {
   color: var(--color-foreground);
 }
