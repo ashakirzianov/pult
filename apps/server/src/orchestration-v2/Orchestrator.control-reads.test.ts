@@ -1537,6 +1537,55 @@ it.effect("explicit settle clears snooze atomically and stays idempotent after r
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("settling cleans up the thread's previews and unsettling restores none", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const threadId = ThreadId.make("thread:settle-cleanup");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-settle-cleanup"),
+      threadId,
+      projectId: ProjectId.make("project:settle-cleanup"),
+      title: "Settle cleanup",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const cleanupsOf = (commandId: CommandId) =>
+      outbox
+        .listByCommandId(commandId)
+        .pipe(Effect.map((effects) => effects.map((effect) => effect.request.type)));
+
+    const autoSettle = CommandId.make("auto-settle-cleanup");
+    yield* orchestrator.dispatch({
+      type: "thread.auto-settle",
+      commandId: autoSettle,
+      threadId,
+      snapshotAt: (yield* projections.getThread(threadId)).updatedAt,
+    });
+    assert.deepEqual(yield* cleanupsOf(autoSettle), ["preview.cleanup"]);
+
+    const unsettle = CommandId.make("unsettle-cleanup");
+    yield* orchestrator.dispatch({
+      type: "thread.unsettle",
+      commandId: unsettle,
+      threadId,
+      reason: "user",
+    });
+    assert.deepEqual(yield* cleanupsOf(unsettle), []);
+
+    const settle = CommandId.make("settle-cleanup");
+    yield* orchestrator.dispatch({ type: "thread.settle", commandId: settle, threadId });
+    assert.deepEqual(yield* cleanupsOf(settle), ["preview.cleanup"]);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("dispatch records the command outcome and its duration", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;

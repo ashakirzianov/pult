@@ -4275,6 +4275,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         } satisfies PendingOrchestrationEffectV2,
       ]);
     }
+    // A settled thread's browsers are leftovers like its provider sessions; unsettling restores none.
+    if (command.type === "thread.settle") {
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        {
+          id: `effect:${command.commandId}:preview.cleanup`,
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: { type: "preview.cleanup" },
+        } satisfies PendingOrchestrationEffectV2,
+      ]);
+    }
   });
 
   const dispatchProviderSessionDetach = Effect.fn("orchestrationV2.dispatch.providerSessionDetach")(
