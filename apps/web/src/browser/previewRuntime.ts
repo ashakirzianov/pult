@@ -10,9 +10,23 @@ import {
   useEnvironmentSupportsServerBrowser,
 } from "~/state/entities";
 
+/**
+ * Pult's hook point, not upstream's: Pult's shell opens a browser tab in the
+ * server's runtime on every environment whose server has a browser, the
+ * primary's or not, so the agent can drive the tab the user opened. Unset,
+ * upstream's rule: off the primary, a desktop app opens desktop tabs.
+ */
+let serverRuntimeOffPrimary = false;
+
+/** Pult's hook point, not upstream's: see `serverRuntimeOffPrimary`. */
+export function setServerRuntimeOffPrimary(enabled: boolean): void {
+  serverRuntimeOffPrimary = enabled;
+}
+
 export function previewRuntimeFor(environmentId: EnvironmentId): PreviewRuntime | undefined {
   if (!readEnvironmentSupportsServerBrowser(environmentId)) return undefined;
   if (
+    !serverRuntimeOffPrimary &&
     isPreviewSupportedInRuntime() &&
     environmentId !== appAtomRegistry.get(primaryEnvironmentIdAtom)
   ) {
