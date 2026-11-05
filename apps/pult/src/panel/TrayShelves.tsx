@@ -4,7 +4,7 @@ import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
 import { onDidSelectThread, openExplorerFiles } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
-import { showThreads } from "./explorer.ts";
+import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { CLOSABLE_SHELVES, type ClosableShelf, keyOf } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
@@ -33,7 +33,8 @@ const threadsSnapshot = () => threadStore.get();
 /**
  * The closed shelves' icons in the tray, beside the gear, in the panel's
  * order (`CLOSABLE_SHELVES`); a click opens the shelf on the Pult tab and
- * brings it into view. Each carries its shelf's count as a badge in the
+ * brings it into view, the Explorer shelf's the Explorer tab with it,
+ * provisionally (`openExplorerShelf`). Each carries its shelf's count as a badge in the
  * accent colour, as Source Control's tab does, but Settled, whose count is in
  * its tooltip, and Limits, whose badge is the count of warning windows, none
  * while nothing warns; dimmed with no badge while the shelf holds nothing;
@@ -103,7 +104,11 @@ export function TrayShelves() {
             title={title}
             aria-label={`Open the ${ICONS[shelf].label} shelf`}
             className={`pult-panel-tab${selected ? " pult-panel-tab-active" : ""}${empty ? " pult-tray-shelf-empty" : ""}`}
-            onClick={() => void showThreads().then(() => openShelf(shelf))}
+            onClick={() =>
+              void (shelf === "explorer"
+                ? openExplorerShelf()
+                : showThreads().then(() => openShelf(shelf)))
+            }
           >
             <i className={`codicon codicon-${ICONS[shelf].icon}`} aria-hidden />
             {badge === undefined ? null : <span className="pult-panel-tab-badge">{badge}</span>}

@@ -44,11 +44,13 @@ import {
   type DraftSelection,
   explorerSelected,
   onDidSelectThread,
+  openExplorerFiles,
   selectionTarget,
   selectExplorer,
   type ThreadSelection,
 } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
+import { closeShelf, openShelf } from "./shelves.tsx";
 
 /** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
 export const PANEL_ID = "pult.panel";
@@ -118,6 +120,37 @@ export async function exploreEnvironment(environmentId: string | undefined): Pro
   setExplored(environmentId);
   // The selection re-roots the folders.
   await selectExplorer(true);
+}
+
+/** The wait for the Explorer tab to give way after the Explorer shelf's tray icon opened it (`openExplorerShelf`). */
+let provisional: { dispose(): void } | undefined;
+
+/**
+ * The Explorer shelf's tray icon: the shelf opened, and the Explorer tab at
+ * every environment's folder with it; the shelf closed again if the sidebar
+ * switches from the tab before a file opens from it, so a look at the
+ * folders leaves the panel as it was.
+ */
+export async function openExplorerShelf(): Promise<void> {
+  provisional?.dispose();
+  openShelf("explorer");
+  await exploreEnvironment(undefined);
+  const panes = await getService(IPaneCompositePartService);
+  const before = new Set(openExplorerFiles.get().files.map(String));
+  const opened = () => openExplorerFiles.get().files.some((file) => !before.has(String(file)));
+  const listener = panes.onDidPaneCompositeOpen(() => {
+    if (panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === EXPLORER_ID)
+      return;
+    wait.dispose();
+    if (!opened()) closeShelf("explorer");
+  });
+  const wait = {
+    dispose() {
+      listener.dispose();
+      if (provisional === wait) provisional = undefined;
+    },
+  };
+  provisional = wait;
 }
 
 /** The Pult tab, the threads' and the Explorer shelf's. */
