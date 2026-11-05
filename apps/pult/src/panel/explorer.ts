@@ -112,9 +112,9 @@ function narrowedEnvironment(): string | undefined {
 
 /**
  * The Explorer workspace with the Explorer tab at `environmentId`'s folder, or
- * at every environment's without one: the Explorer shelf's environment entries.
+ * at every environment's without one: the Explorer shelf's header and environment entries.
  */
-async function exploreEnvironment(environmentId: string | undefined): Promise<void> {
+export async function exploreEnvironment(environmentId: string | undefined): Promise<void> {
   setExplored(environmentId);
   // The selection re-roots the folders.
   await selectExplorer(true);

@@ -3,7 +3,13 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import type { ShelfName } from "../threads/store.ts";
-import { type ClosableShelf, draftCards, jumpTargets, type PanelRows } from "./order.ts";
+import {
+  type ClosableShelf,
+  draftCards,
+  explorerEntries,
+  jumpTargets,
+  type PanelRows,
+} from "./order.ts";
 
 const file = (environmentId: string, path: string) => ({
   scheme: "pult",
@@ -197,6 +203,39 @@ NodeTest.describe("draftCards", () => {
     NodeAssert.deepEqual(
       cards.map((each) => each.projectId),
       ["full"],
+    );
+  });
+});
+
+NodeTest.describe("explorerEntries", () => {
+  NodeTest.test(
+    "lists each environment's row with its files nested under it while several are held",
+    () => {
+      const entries = explorerEntries(
+        ["env", "other"],
+        [file("other", "/b.ts"), file("gone", "/c.ts"), file("env", "/a.ts")],
+      );
+      NodeAssert.deepEqual(
+        entries.map((entry) => (entry.kind === "file" ? [entry.key, entry.nested] : [entry.key])),
+        [
+          ["environment:env"],
+          ["pult://env/a.ts", true],
+          ["environment:other"],
+          ["pult://other/b.ts", true],
+          ["pult://gone/c.ts", false],
+        ],
+      );
+    },
+  );
+
+  NodeTest.test("has no environment row while one is held, its files not nested", () => {
+    const entries = explorerEntries(["env"], [file("gone", "/c.ts"), file("env", "/a.ts")]);
+    NodeAssert.deepEqual(
+      entries.map((entry) => (entry.kind === "file" ? [entry.key, entry.nested] : [entry.key])),
+      [
+        ["pult://env/a.ts", false],
+        ["pult://gone/c.ts", false],
+      ],
     );
   });
 });

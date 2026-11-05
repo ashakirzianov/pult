@@ -66,7 +66,9 @@ export function useReveal(shelf: ClosableShelf, element: RefObject<HTMLElement |
  * A closable shelf's header: its label, its count when one is given, its
  * `actions` and Close, shown on hover or keyboard focus; its right-click its
  * `menu`, then Close Shelf. `title` is its tooltip. Closing runs `onClose`,
- * which closes the shelf by default.
+ * which closes the shelf by default. With `onOpen`, the label is a button
+ * running it, `openTitle` its tooltip, highlighted while `selected`: the
+ * Explorer shelf's, opening the Explorer tab.
  */
 export function ShelfHeader({
   shelf,
@@ -76,6 +78,9 @@ export function ShelfHeader({
   actions = null,
   menu = [],
   onClose = () => closeShelf(shelf),
+  onOpen,
+  openTitle,
+  selected = false,
 }: {
   shelf: ClosableShelf;
   label: string;
@@ -84,10 +89,19 @@ export function ShelfHeader({
   actions?: React.ReactNode;
   menu?: ReadonlyArray<IAction>;
   onClose?: () => void;
+  onOpen?: () => void;
+  openTitle?: string;
+  selected?: boolean;
 }) {
+  const heading = (
+    <>
+      <span className="pult-shelf-label">{label}</span>
+      {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
+    </>
+  );
   return (
     <div
-      className="pult-shelf-header pult-shelf-header-closable"
+      className={`pult-shelf-header pult-shelf-header-closable${selected ? " pult-shelf-header-selected" : ""}`}
       title={title}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -98,9 +112,22 @@ export function ShelfHeader({
         ]);
       }}
     >
-      <span className="pult-shelf-label">{label}</span>
-      {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
-      <span className="pult-shelf-spacer" aria-hidden />
+      {onOpen === undefined ? (
+        <>
+          {heading}
+          <span className="pult-shelf-spacer" aria-hidden />
+        </>
+      ) : (
+        <button
+          type="button"
+          className="pult-shelf-open"
+          title={openTitle}
+          aria-current={selected || undefined}
+          onClick={onOpen}
+        >
+          {heading}
+        </button>
+      )}
       {actions}
       <button
         type="button"

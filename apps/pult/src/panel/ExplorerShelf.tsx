@@ -5,7 +5,7 @@ import { useRef, useSyncExternalStore } from "react";
 import { toHostPath } from "../files/paths.ts";
 import { explorerSelected, onDidSelectThread, openExplorerFiles } from "../threads/selection.ts";
 import type { ShellEnvironment } from "../threads/store.ts";
-import { exploredEnvironment } from "./explorer.ts";
+import { exploredEnvironment, exploreEnvironment } from "./explorer.ts";
 import { explorerHighlight } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { explorerEntries } from "./order.ts";
@@ -23,8 +23,11 @@ function run(command: string, ...args: unknown[]): void {
  * each selecting the workspace at its tab; files of no held environment
  * last (`explorerEntries`). While the workspace is selected, its active file's row is
  * highlighted, or with none listed the environment's explored last. The
- * files' rows are among the jumps (`jump.ts`). The environments' rows are the
- * way to the Explorer tab, which has no button in the tray in Pult's mode.
+ * files' rows are among the jumps (`jump.ts`). The header and the
+ * environments' rows are the way to the Explorer tab, which has no button in
+ * the tray in Pult's mode: the header opens it at every environment's folder,
+ * and is highlighted while the workspace is selected and no row is. With one
+ * environment held, that environment has no row (`explorerEntries`).
  */
 export function ExplorerShelf({ environments }: { environments: ReadonlyArray<ShellEnvironment> }) {
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
@@ -43,7 +46,18 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
   );
   return (
     <li ref={element} className="pult-shelf pult-shelf-explorer">
-      <ShelfHeader shelf="explorer" label="Explorer" />
+      <ShelfHeader
+        shelf="explorer"
+        label="Explorer"
+        onOpen={() => void exploreEnvironment(undefined)}
+        openTitle={
+          environments.length > 1 ? "Explore every environment's projects" : "Explore projects"
+        }
+        selected={
+          explorerSelected() &&
+          (highlighted === undefined || !entries.some((entry) => entry.key === highlighted))
+        }
+      />
       {entries.length > 0 ? (
         <ul className="pult-explorer-entries">
           {entries.map((entry) => (

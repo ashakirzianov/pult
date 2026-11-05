@@ -395,6 +395,37 @@
   background: none;
 }
 
+/* The Explorer shelf's label, opening the Explorer tab: the header's room up to its actions, hovered and selected as a row. */
+.pult-shelf-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-shelf-header-closable:has(.pult-shelf-open:hover) {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-shelf-header-selected,
+.pult-shelf-header-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+
+.pult-shelf-open:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
 .pult-shelf-action {
   display: inline-flex;
   flex: none;
