@@ -1,6 +1,7 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import * as ServerActivity from "../serverActivity.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
@@ -385,6 +386,11 @@ export const layerProduction = Layer.mergeAll(
         layerThreadManagementProvided,
         layerOrchestratorProvided,
       ),
+    ),
+  ),
+  ServerActivity.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(layerEventSink, ProjectionStore.layer, layerScheduledTaskProvided),
     ),
   ),
   layerProviderContinuationWorkerProvided,

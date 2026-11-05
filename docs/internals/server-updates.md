@@ -104,3 +104,12 @@ listener ignores reconciliation's cancellations. A cancelled child whose restart
 continuation is still pending in the outbox is not a result yet; the continuation's run
 settles it, or the handler settles it when it declines to continue. Schedulers wait for
 activation so they cannot start runs that reconciliation would then cancel.
+
+## Maintenance windows
+
+[`ServerActivity`](../../apps/server/src/serverActivity.ts) (`server.getActivity`) says when a
+restart would cut no work anyone waits on: no run active or queued to start, no native subagent
+working, no request a run waits on, and no scheduled task dispatching. Held queues and background
+work outside a run do not count: recovery holds those queues anyway, and most such shells are dev
+servers nobody waits on, so counting them would keep the server busy forever. `restingSince` lives
+in memory and starts again at boot.

@@ -607,6 +607,17 @@ export const ServerEventLoopStall = Schema.Struct({
 });
 export type ServerEventLoopStall = typeof ServerEventLoopStall.Type;
 
+/**
+ * At rest: no agent work is running or queued to start, no run waits on the user, and no
+ * scheduled task is dispatching. A client can use it as a maintenance window.
+ */
+export const ServerActivitySnapshot = Schema.Struct({
+  atRest: Schema.Boolean,
+  /** When the server last came to rest, or when it started if it started at rest; null while busy. */
+  restingSince: Schema.NullOr(Schema.DateTimeUtc),
+});
+export type ServerActivitySnapshot = typeof ServerActivitySnapshot.Type;
+
 export const ServerConfig = Schema.Struct({
   environment: ExecutionEnvironmentDescriptor,
   auth: ServerAuthDescriptor,
