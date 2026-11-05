@@ -18,6 +18,13 @@ import { APP_BASE_NAME, APP_BUNDLE_ID, APP_SCHEME } from "../../src/identity.ts"
 
 const DEV = "pult-host-dev";
 
+/**
+ * Pult.app's update feed, the GitHub releases a `pnpm desktop:package --feed`
+ * build names (`scripts/package.ts`); never upstream's, whose next update would
+ * replace Pult with T3 Code (`pult/decisions`, `update-feed`).
+ */
+export const UPDATE_FEED_REPOSITORY = "ashakirzianov/pult";
+
 const icons = (variant: "prod" | "dev"): DesktopIconSources => ({
   macPng: `apps/pult/assets/pult/${variant}/macos-1024.png`,
   universalPng: `apps/pult/assets/pult/${variant}/universal-1024.png`,
