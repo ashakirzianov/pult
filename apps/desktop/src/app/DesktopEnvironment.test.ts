@@ -4,6 +4,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { T3CODE_DESKTOP_BRAND } from "./DesktopBrand.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 
@@ -72,4 +73,19 @@ describe("DesktopEnvironment", () => {
       assert.equal(production.stateDir, "/Users/alice/.t3/userdata");
     }),
   );
+
+  it("drops the production stage label when the brand asks", () => {
+    const brand = { ...T3CODE_DESKTOP_BRAND, productionStageLabel: false };
+    const name = (isDevelopment: boolean, appVersion = "0.0.22") =>
+      DesktopEnvironment.resolveDesktopAppBranding({ isDevelopment, appVersion }, brand)
+        .displayName;
+    assert.equal(name(false), "T3 Code");
+    assert.equal(name(false, "0.0.43-nightly.20260929.2428"), "T3 Code");
+    assert.equal(name(true), "T3 Code (Dev)");
+    assert.equal(
+      DesktopEnvironment.resolveDesktopAppBranding({ isDevelopment: false, appVersion: "0.0.22" })
+        .displayName,
+      "T3 Code (Beta)",
+    );
+  });
 });

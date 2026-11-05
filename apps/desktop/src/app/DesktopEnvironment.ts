@@ -17,7 +17,7 @@ import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
-import { brandFor, desktopBrand } from "./DesktopBrand.ts";
+import { brandFor, type DesktopBrand, desktopBrand } from "./DesktopBrand.ts";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;
@@ -97,16 +97,20 @@ function resolveDesktopAppStageLabel(input: {
   return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Beta";
 }
 
-export function resolveDesktopAppBranding(input: {
-  readonly isDevelopment: boolean;
-  readonly appVersion: string;
-}): DesktopAppBranding {
+export function resolveDesktopAppBranding(
+  input: {
+    readonly isDevelopment: boolean;
+    readonly appVersion: string;
+  },
+  brand: DesktopBrand = desktopBrand,
+): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
-  const baseName = brandFor(desktopBrand.baseName, input.isDevelopment);
+  const baseName = brandFor(brand.baseName, input.isDevelopment);
+  const labelled = input.isDevelopment || brand.productionStageLabel;
   return {
     baseName,
     stageLabel,
-    displayName: `${baseName} (${stageLabel})`,
+    displayName: labelled ? `${baseName} (${stageLabel})` : baseName,
   };
 }
 

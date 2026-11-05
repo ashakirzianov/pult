@@ -9,9 +9,22 @@ interface PerMode<T> {
   readonly development: T;
 }
 
+/** An icon's sources, relative to the repository's root. */
+export interface DesktopIconSources {
+  /** macOS's 1024 px PNG, its margin drawn in. */
+  readonly macPng: string;
+  /** The 1024 px PNG for Linux and Windows' window. */
+  readonly universalPng: string;
+  readonly windowsIco: string;
+}
+
 export interface DesktopBrand {
   /** The app's name before its stage label: "T3 Code" in "T3 Code (Beta)". */
   readonly baseName: PerMode<string>;
+  /** The production app's name carries its stage label ("Beta", "Nightly"); development's always does. */
+  readonly productionStageLabel: boolean;
+  /** The packaged app's icons (a nightly build takes `nightly`), and a source-tree run's dock and window icon. */
+  readonly icons: PerMode<DesktopIconSources> & { readonly nightly: DesktopIconSources };
   /** The renderer's privileged scheme, its origin `<scheme>://app`, and the OS URL handler's. */
   readonly scheme: PerMode<string>;
   /** `userData` under the OS app-data directory, and a legacy profile to adopt (`null`: none). */
@@ -37,6 +50,24 @@ export type DesktopBrandOverride = Partial<DesktopBrand>;
 
 export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   baseName: { production: "T3 Code", development: "T3 Code" },
+  productionStageLabel: true,
+  icons: {
+    production: {
+      macPng: "assets/prod/black-macos-1024.png",
+      universalPng: "assets/prod/black-universal-1024.png",
+      windowsIco: "assets/prod/t3-black-windows.ico",
+    },
+    nightly: {
+      macPng: "assets/nightly/nightly-macos-1024.png",
+      universalPng: "assets/nightly/nightly-universal-1024.png",
+      windowsIco: "assets/nightly/nightly-windows.ico",
+    },
+    development: {
+      macPng: "assets/dev/blueprint-macos-1024.png",
+      universalPng: "assets/dev/blueprint-universal-1024.png",
+      windowsIco: "assets/dev/blueprint-windows.ico",
+    },
+  },
   scheme: { production: "t3code", development: "t3code-dev" },
   userData: {
     production: { current: "t3code-v2", legacy: "T3 Code (Alpha)" },
