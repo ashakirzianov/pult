@@ -35,7 +35,13 @@ import {
   type ThreadSelection,
 } from "../threads/selection.ts";
 import { isPreviewTab, PreviewInput, registerPreviewPane } from "./pane.tsx";
-import { closingEndsSession, type PreviewOwner, placementGroup, staleTabs } from "./rules.ts";
+import {
+  closingEndsSession,
+  liveReveals,
+  type PreviewOwner,
+  placementGroup,
+  staleTabs,
+} from "./rules.ts";
 import { currentSessions, followSessions, loadedSessions, threadKey } from "./sessions.ts";
 
 const OWNER_LABELS: Record<PreviewOwner, string> = {
@@ -53,6 +59,8 @@ const openedAt = new Map<string, number>();
 const closingByShell = new WeakSet<PreviewInput>();
 /** Sessions revealed while their thread was not the selection's, opened in the background when it is next. */
 const pending = new Map<string, Set<string>>();
+/** Sessions whose close the page asked for and has not heard back of, whose tabs the stale lists leave alone. */
+const closing = new Set<string>();
 /** Per thread, the look again at tabs a just-opened guard kept. */
 const rechecks = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -69,6 +77,13 @@ function enqueue(run: () => Promise<void>): Promise<void> {
 function targetThread(): ThreadSelection | undefined {
   const target = selectionTarget();
   return target !== undefined && "threadId" in target ? target : undefined;
+}
+
+/** Remembers a reveal of a session of a thread not the selection's, for when it is next (`openRemembered`). */
+function remember(environmentId: string, threadId: string, tabId: string | null): void {
+  if (tabId === null) return;
+  const key = threadKey(environmentId, threadId);
+  pending.set(key, new Set(pending.get(key)).add(tabId));
 }
 
 function isTarget(environmentId: string, threadId: string): boolean {
@@ -108,8 +123,9 @@ async function closeTabs(
  * `replacePlaceholder` the thread's open placeholder becomes the session's
  * tab in place. A new tab goes to the group of the thread's latest preview
  * tab, else the thread tab's (`placementGroup`), pinned. Only for the
- * selection's thread (the selected one, or the selected Star's conversation):
- * a session another thread's agent reveals is remembered and opens in the
+ * selection's thread (the selected one, or the selected Star's conversation),
+ * looked at again after each wait: a session another thread's agent reveals,
+ * or one revealed while a switch runs, is remembered and opens in the
  * background when that thread is next selected, if still live, so a tab never
  * shows under another selection. `focus` moves the keyboard to the tab, for
  * the user's own ways in; the view's opens leave it where it is.
@@ -125,12 +141,9 @@ function openPreview(
   },
 ): Promise<void> {
   return enqueue(async () => {
-    if (!isTarget(environmentId, threadId)) {
-      const key = threadKey(environmentId, threadId);
-      if (tabId !== null) pending.set(key, new Set(pending.get(key)).add(tabId));
-      return;
-    }
+    if (!isTarget(environmentId, threadId)) return remember(environmentId, threadId, tabId);
     const groups = await getService(IEditorGroupsService);
+    if (!isTarget(environmentId, threadId)) return remember(environmentId, threadId, tabId);
     const thread = { environmentId, threadId };
     const tabs = previewTabs(groups, thread);
     const shown = { pinned: true, preserveFocus: options.focus !== true };
@@ -181,7 +194,11 @@ function openPreview(
  * The host's `closeStalePreviews`, and the shell's own on each loaded list of
  * a thread it follows: the thread's tabs whose session ended close, without
  * asking, but a tab the page just opened, which waits a moment for the list
- * to catch up (`staleTabs`), looked at again then. Placeholders stay.
+ * to catch up, looked at again then, and one whose session's close is in
+ * flight; nothing while the view's list of the thread has not loaded, as
+ * upstream's reconcile may call before an environment's config is in
+ * (`staleTabs`). Placeholders stay. The thread's remembered reveals keep only
+ * the live sessions.
  */
 function closeStalePreviews(
   environmentId: string,
@@ -189,6 +206,14 @@ function closeStalePreviews(
   liveTabIds: ReadonlyArray<string>,
 ): Promise<void> {
   return enqueue(async () => {
+    const { loaded } = (await threadView()).previewSessions(environmentId, threadId);
+    const key = threadKey(environmentId, threadId);
+    const remembered = pending.get(key);
+    if (loaded && remembered !== undefined) {
+      const live = liveReveals(remembered, liveTabIds);
+      if (live.size === 0) pending.delete(key);
+      else pending.set(key, new Set(live));
+    }
     if (isSwitchingThread()) return;
     const groups = await getService(IEditorGroupsService);
     const now = Date.now();
@@ -198,12 +223,13 @@ function closeStalePreviews(
       open: tabs.flatMap(({ editor }) => (editor.tabId === null ? [] : [editor.tabId])),
       live: liveTabIds,
       openedAt: (tabId) => openedAt.get(tabKey(environmentId, threadId, tabId)),
+      closing: (tabId) => closing.has(tabKey(environmentId, threadId, tabId)),
+      loaded,
       now,
     });
     await closeTabs(
       tabs.filter(({ editor }) => editor.tabId !== null && close.includes(editor.tabId)),
     );
-    const key = threadKey(environmentId, threadId);
     clearTimeout(rechecks.get(key));
     rechecks.delete(key);
     if (recheckAt === undefined) return;
@@ -224,21 +250,32 @@ function closeStalePreviews(
   });
 }
 
-/** Ends a session (Close Browser Session, the pane's more menu), its tab closing with it; a refusal is told. */
+/**
+ * Ends a session (Close Browser Session, the pane's more menu), its tab
+ * closing with it once the server ends it; until then the stale lists, which
+ * already lack the session (upstream drops it from the view at once), leave
+ * the tab alone, so a refusal, told, leaves the session with its tab.
+ */
 async function endSession(environmentId: string, threadId: string, tabId: string): Promise<void> {
-  const ended = await (await threadView()).closePreviewSession(environmentId, threadId, tabId);
-  if (!ended) {
-    (await getService(INotificationService)).warn("The browser session did not close.");
-    return;
+  const key = tabKey(environmentId, threadId, tabId);
+  closing.add(key);
+  try {
+    const ended = await (await threadView()).closePreviewSession(environmentId, threadId, tabId);
+    if (!ended) {
+      (await getService(INotificationService)).warn("The browser session did not close.");
+      return;
+    }
+    await enqueue(async () => {
+      const groups = await getService(IEditorGroupsService);
+      await closeTabs(
+        previewTabs(groups, { environmentId, threadId }).filter(
+          ({ editor }) => editor.tabId === tabId,
+        ),
+      );
+    });
+  } finally {
+    closing.delete(key);
   }
-  await enqueue(async () => {
-    const groups = await getService(IEditorGroupsService);
-    await closeTabs(
-      previewTabs(groups, { environmentId, threadId }).filter(
-        ({ editor }) => editor.tabId === tabId,
-      ),
-    );
-  });
 }
 
 /** A tab the user closed: its session ends when the user's or no one's, an agent's lives on (`closingEndsSession`). */
@@ -247,8 +284,10 @@ async function closedByUser(editor: PreviewInput): Promise<void> {
   if (tabId === null) return;
   const { sessions } = await currentSessions(editor.environmentId, editor.threadId);
   const owner = sessions.find((session) => session.tabId === tabId)?.owner;
-  if (closingEndsSession(owner))
-    await (await threadView()).closePreviewSession(editor.environmentId, editor.threadId, tabId);
+  if (!closingEndsSession(owner)) return;
+  const view = await threadView();
+  if (!(await view.closePreviewSession(editor.environmentId, editor.threadId, tabId)))
+    (await getService(INotificationService)).warn("The browser session did not close.");
 }
 
 /** The threads the shell follows the sessions of: those with preview tabs, and the selection's. */
@@ -258,13 +297,21 @@ function onSessions(environmentId: string, threadId: string, list: ThreadPreview
   if (!list.loaded) return;
   const live = list.sessions.map((session) => session.tabId);
   void closeStalePreviews(environmentId, threadId, live);
+  openRemembered(environmentId, threadId, live);
+}
+
+/** The thread's remembered reveals of the sessions in `live`, opened in the background while it is the selection's. */
+function openRemembered(
+  environmentId: string,
+  threadId: string,
+  live: ReadonlyArray<string>,
+): void {
   const key = threadKey(environmentId, threadId);
   const waiting = pending.get(key);
   if (waiting === undefined || !isTarget(environmentId, threadId)) return;
   pending.delete(key);
-  for (const tabId of waiting) {
-    if (live.includes(tabId)) void openPreview(environmentId, threadId, tabId, { activate: false });
-  }
+  for (const tabId of liveReveals(waiting, live))
+    void openPreview(environmentId, threadId, tabId, { activate: false });
 }
 
 async function refreshFollows(): Promise<void> {
@@ -464,6 +511,17 @@ export async function startPreviewTabs(): Promise<void> {
   const selectionChanged = () => {
     void refreshFollows();
     void enqueue(closeForeignTabs);
+    // A reveal remembered while the thread was switched to, or away from and back, opens now, not on its list's next change.
+    const target = targetThread();
+    if (target !== undefined)
+      void currentSessions(target.environmentId, target.threadId).then(({ loaded, sessions }) => {
+        if (loaded)
+          openRemembered(
+            target.environmentId,
+            target.threadId,
+            sessions.map((session) => session.tabId),
+          );
+      });
   };
   onDidSelectThread(selectionChanged);
   // A selected Star's conversation is the selection's thread, and it changes as the Stars do.

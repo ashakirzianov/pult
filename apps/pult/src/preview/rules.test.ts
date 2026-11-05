@@ -2,7 +2,13 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
-import { closingEndsSession, JUST_OPENED_MS, placementGroup, staleTabs } from "./rules.ts";
+import {
+  closingEndsSession,
+  JUST_OPENED_MS,
+  liveReveals,
+  placementGroup,
+  staleTabs,
+} from "./rules.ts";
 
 NodeTest.test(
   "closing an agent's tab keeps its session; a user's or unclaimed one's ends it",
@@ -48,5 +54,32 @@ NodeTest.test("a tab the page just opened waits out a list that lacks it, then c
 
 NodeTest.test("a just-opened tab whose session is live is kept with no recheck", () => {
   const result = staleTabs({ open: ["new"], live: ["new"], openedAt: () => 0, now: 1 });
+  NodeAssert.deepEqual(result, { close: [], recheckAt: undefined });
+});
+
+NodeTest.test("a tab whose session's close is in flight is not stale, with no recheck", () => {
+  const result = staleTabs({
+    open: ["ending", "gone"],
+    live: [],
+    openedAt: () => undefined,
+    closing: (tabId) => tabId === "ending",
+    now: 100_000,
+  });
+  NodeAssert.deepEqual(result, { close: ["gone"], recheckAt: undefined });
+});
+
+NodeTest.test("remembered reveals keep only the sessions still live", () => {
+  NodeAssert.deepEqual(liveReveals(new Set(["a", "b"]), ["b", "c"]), new Set(["b"]));
+  NodeAssert.deepEqual(liveReveals(new Set(["a"]), []), new Set());
+});
+
+NodeTest.test("a list not loaded yet closes nothing", () => {
+  const result = staleTabs({
+    open: ["restored"],
+    live: [],
+    openedAt: () => undefined,
+    loaded: false,
+    now: 100_000,
+  });
   NodeAssert.deepEqual(result, { close: [], recheckAt: undefined });
 });

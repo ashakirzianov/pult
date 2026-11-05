@@ -43,20 +43,29 @@ export const JUST_OPENED_MS = 10_000;
 /**
  * The open tabs, by session, to close for the thread's live sessions `live`:
  * every one whose session is not live, but a tab the page opened less than
- * `JUST_OPENED_MS` before `now`, which waits; `recheckAt` is when the first
- * waiting one stops waiting, for the caller to look again then.
+ * `JUST_OPENED_MS` before `now`, which waits, and one whose session's close
+ * the page has asked for and not heard back of (`closing`): the view drops
+ * the session at once, and the tab closes with it once the server ends it,
+ * or stays if the server refuses. A list not `loaded` yet (its thread's
+ * first list not in, or its server's config, which says whether it has a
+ * browser at all) lacks sessions that live, and closes nothing. `recheckAt`
+ * is when the first waiting one stops waiting, for the caller to look again
+ * then.
  */
 export function staleTabs(input: {
   readonly open: ReadonlyArray<string>;
   readonly live: ReadonlyArray<string>;
   readonly openedAt: (tabId: string) => number | undefined;
+  readonly closing?: (tabId: string) => boolean;
+  readonly loaded?: boolean;
   readonly now: number;
 }): { readonly close: ReadonlyArray<string>; readonly recheckAt: number | undefined } {
+  if (input.loaded === false) return { close: [], recheckAt: undefined };
   const live = new Set(input.live);
   const close: string[] = [];
   let recheckAt: number | undefined;
   for (const tabId of input.open) {
-    if (live.has(tabId)) continue;
+    if (live.has(tabId) || input.closing?.(tabId) === true) continue;
     const openedAt = input.openedAt(tabId);
     const until = openedAt === undefined ? undefined : openedAt + JUST_OPENED_MS;
     if (until !== undefined && until > input.now) {
@@ -66,4 +75,16 @@ export function staleTabs(input: {
     close.push(tabId);
   }
   return { close, recheckAt };
+}
+
+/**
+ * The sessions revealed while their thread was not the selection's, still to
+ * open when it is next, less those no longer live: a list of the thread's
+ * live sessions `live`, loaded, drops the rest.
+ */
+export function liveReveals(
+  remembered: ReadonlySet<string>,
+  live: ReadonlyArray<string>,
+): ReadonlySet<string> {
+  return new Set(live.filter((tabId) => remembered.has(tabId)));
 }
