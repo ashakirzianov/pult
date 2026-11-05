@@ -1,0 +1,259 @@
+name: Pult release
+
+# Pult's own release (xaxis pult/issues/release-feed), beside upstream's
+# disabled workflows. An annotated tag `pult-v<x.y.z>` on main builds Pult.app
+# for macOS arm64, signed with the Developer ID and notarized, with the update
+# feed naming this repository; checks the feed, the version and the signature;
+# launches the app from its dmg (apps/pult/desktop/scripts/smoke.ts); and only
+# then publishes the GitHub Release the installed app updates from. A dispatch
+# builds the dispatched commit as a dry run, or, with `publish`, the existing
+# tag for its version.
+
+on:
+  push:
+    tags: ["pult-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pult's version, x.y.z (or its tag, pult-vx.y.z)"
+        required: true
+        type: string
+      publish:
+        description: Publish a GitHub Release from the existing tag pult-v<version>
+        required: false
+        default: false
+        type: boolean
+      signed:
+        description: Sign with the Developer ID and notarize (needs the five secrets)
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pult-release-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Pult.app (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      # A tag run is always signed and publishes; an unsigned build never
+      # publishes, since Squirrel.Mac refuses an update signed by another identity.
+      - name: Resolve the version
+        id: resolve
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_SIGNED: ${{ inputs.signed }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == push ]]; then
+            tag="$GITHUB_REF_NAME" publish=true signed=true
+          else
+            tag="pult-v${INPUT_VERSION#pult-v}" publish="$INPUT_PUBLISH" signed="$INPUT_SIGNED"
+          fi
+          version="${tag#pult-v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$tag is not pult-v<major>.<minor>.<patch>." >&2
+            exit 1
+          fi
+          if [[ "$publish" == true && "$signed" != true ]]; then
+            echo "::error::An unsigned build never publishes; dispatch with signed or without publish." >&2
+            exit 1
+          fi
+          # Publishing builds the tag; a dry run builds the dispatched commit.
+          ref="$GITHUB_SHA"
+          if [[ "$publish" == true ]]; then ref="refs/tags/$tag"; fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "publish=$publish"
+            echo "signed=$signed"
+            echo "ref=$ref"
+          } >> "$GITHUB_OUTPUT"
+          echo "Pult $version from $ref (signed: $signed, publish: $publish)."
+
+      - name: Check the signing secrets
+        if: steps.resolve.outputs.signed == 'true'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing=()
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::A signed build needs the repository secrets ${missing[*]}. Set them, or dispatch with signed off for a dry run." >&2
+            exit 1
+          fi
+
+      # Upstream's checkout, without actions/checkout: its credential cleanup
+      # fails on the orphaned gitlinks in the vendored .repos tree.
+      - name: Checkout
+        shell: bash
+        env:
+          REF: ${{ steps.resolve.outputs.ref }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          PUBLISH: ${{ steps.resolve.outputs.publish }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          if [[ "$PUBLISH" == true ]]; then
+            git fetch --no-tags --depth=1 origin "+$REF:$REF"
+            # The release's notes are the tag's annotation.
+            if [[ "$(git cat-file -t "$REF")" != tag ]]; then
+              echo "::error::$TAG is a lightweight tag; cut an annotated one (git tag -a)." >&2
+              exit 1
+            fi
+          else
+            git fetch --no-tags --depth=1 origin "$REF"
+          fi
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout -q --detach FETCH_HEAD
+          git log -1 --format='Building %H (%s)'
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Build Pult.app
+        shell: bash
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SIGNED: ${{ steps.resolve.outputs.signed }}
+          CSC_LINK: ${{ steps.resolve.outputs.signed == 'true' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ steps.resolve.outputs.signed == 'true' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ steps.resolve.outputs.signed == 'true' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ steps.resolve.outputs.signed == 'true' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ steps.resolve.outputs.signed == 'true' && secrets.APPLE_API_ISSUER || '' }}
+        run: |
+          set -euo pipefail
+          unset ELECTRON_RUN_AS_NODE
+          args=(--platform mac --target dmg --arch arm64 --app-version "$VERSION" --feed --verbose)
+          if [[ "$SIGNED" == true ]]; then
+            # electron-builder's notarization takes the App Store Connect key as a path to its .p8.
+            key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s' "$APPLE_API_KEY" > "$key_path"
+            export APPLE_API_KEY="$key_path"
+            args+=(--signed)
+          fi
+          node apps/pult/desktop/scripts/package.ts "${args[@]}"
+          ls -l release
+
+      - name: Check the bundle
+        shell: bash
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SIGNED: ${{ steps.resolve.outputs.signed }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          for asset in "Pult-$VERSION-arm64.dmg" "Pult-$VERSION-arm64.zip" \
+            "Pult-$VERSION-arm64.dmg.blockmap" "Pult-$VERSION-arm64.zip.blockmap" latest-mac.yml; do
+            [[ -f "release/$asset" ]] || fail "release/$asset is missing."
+          done
+          grep -qx "version: $VERSION" release/latest-mac.yml || fail "latest-mac.yml is not version $VERSION."
+
+          mount="$RUNNER_TEMP/pult-check-dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "release/Pult-$VERSION-arm64.dmg" >/dev/null
+          trap 'hdiutil detach "$mount" -force >/dev/null || true' EXIT
+          app="$mount/Pult.app"
+          [[ -d "$app" ]] || fail "The dmg holds no Pult.app."
+
+          # The feed must name this fork, never upstream (pult/decisions, `update-feed`).
+          feed="$app/Contents/Resources/app-update.yml"
+          [[ -f "$feed" ]] || fail "Pult.app has no app-update.yml."
+          cat "$feed"
+          grep -qx "owner: ashakirzianov" "$feed" || fail "app-update.yml does not name owner ashakirzianov."
+          grep -qx "repo: pult" "$feed" || fail "app-update.yml does not name repo pult."
+
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          [[ "$bundle_version" == "$VERSION" ]] || fail "Pult.app is version $bundle_version, not $VERSION."
+
+          if [[ "$SIGNED" == true ]]; then
+            codesign --verify --deep --strict --verbose=2 "$app"
+            spctl -a -t exec -vv "$app"
+            xcrun stapler validate "$app"
+          else
+            echo "Unsigned dry run: signature, Gatekeeper and stapling not checked."
+          fi
+          echo "Pult.app $VERSION names the feed ashakirzianov/pult."
+
+      - name: Smoke test
+        shell: bash
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          unset ELECTRON_RUN_AS_NODE
+          node apps/pult/desktop/scripts/smoke.ts --dmg "release/Pult-$VERSION-arm64.dmg" \
+            --artifacts-dir "$RUNNER_TEMP/pult-smoke"
+
+      - name: Upload the smoke test's output
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pult-smoke
+          path: ${{ runner.temp }}/pult-smoke
+          if-no-files-found: ignore
+
+      - name: Upload the release assets
+        if: steps.resolve.outputs.publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pult-release
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  release:
+    name: Publish the GitHub Release
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: pult-release
+          path: release
+
+      # gh reads --notes-from-tag from the local repository, so the tag is fetched first.
+      - name: Create the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Pult $VERSION" --notes-from-tag --latest \
+            release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml
