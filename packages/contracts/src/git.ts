@@ -202,6 +202,28 @@ export const VcsInitInput = Schema.Struct({
 });
 export type VcsInitInput = typeof VcsInitInput.Type;
 
+/**
+ * Points a remote of a repository at `url`: added where the repository has no
+ * remote by that name, its URL replaced where it has one, as `git remote add`
+ * or `git remote set-url` would. With `fetch`, the remote is fetched after,
+ * as `git remote add -f` would.
+ */
+export const VcsSetRemoteInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  url: TrimmedNonEmptyStringSchema,
+  /** Defaults to `origin`. */
+  remoteName: Schema.optional(TrimmedNonEmptyStringSchema),
+  fetch: Schema.optional(Schema.Boolean),
+});
+export type VcsSetRemoteInput = typeof VcsSetRemoteInput.Type;
+
+export const VcsSetRemoteResult = Schema.Struct({
+  remoteName: TrimmedNonEmptyStringSchema,
+  /** The remote's URL before, null where it was added. */
+  previousUrl: Schema.NullOr(Schema.String),
+});
+export type VcsSetRemoteResult = typeof VcsSetRemoteResult.Type;
+
 const VcsStatusChangeRequest = Schema.Struct({
   number: PositiveInt,
   title: TrimmedNonEmptyStringSchema,

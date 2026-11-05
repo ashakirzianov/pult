@@ -31,6 +31,8 @@ import {
   type VcsListRefsResult,
   type VcsPullResult,
   type VcsRemoveWorktreeInput,
+  type VcsSetRemoteInput,
+  type VcsSetRemoteResult,
   type VcsStatusInput,
   type VcsStatusResult,
   type WorktreeSubmodules,
@@ -382,6 +384,10 @@ export class GitVcsDriver extends Context.Service<
       input: GitRefreshCheckedOutBranchInput,
     ) => Effect.Effect<GitRefreshCheckedOutBranchResult, GitCommandError>;
     readonly ensureRemote: (input: GitEnsureRemoteInput) => Effect.Effect<string, GitCommandError>;
+    /** Pult: adds the remote or replaces its URL, then fetches it on request (`vcs.setRemote`). */
+    readonly setRemote: (
+      input: VcsSetRemoteInput,
+    ) => Effect.Effect<VcsSetRemoteResult, GitCommandError>;
     readonly resolvePrimaryRemoteName: (cwd: string) => Effect.Effect<string, GitCommandError>;
     readonly resolveDefaultBranchName: (
       cwd: string,

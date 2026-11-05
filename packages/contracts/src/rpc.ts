@@ -132,6 +132,8 @@ import {
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
   VcsInitInput,
+  VcsSetRemoteInput,
+  VcsSetRemoteResult,
   VcsListRefsInput,
   VcsListRefsResult,
   GitManagerServiceError,
@@ -477,6 +479,8 @@ export const WS_METHODS = {
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
+  // Pult: points a repository's remote at a URL (xaxis `pult/issues/star-sync`).
+  vcsSetRemote: "vcs.setRemote",
 
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
@@ -1582,6 +1586,12 @@ const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
   error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsSetRemoteRpc = Rpc.make(WS_METHODS.vcsSetRemote, {
+  payload: VcsSetRemoteInput,
+  success: VcsSetRemoteResult,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
 const WsReviewGetBranchCommitsRpc = Rpc.make(WS_METHODS.reviewGetBranchCommits, {
   payload: ReviewBranchCommitsInput,
   success: ReviewBranchCommitsResult,
@@ -2197,6 +2207,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
   WsVcsInitRpc,
+  WsVcsSetRemoteRpc,
   WsReviewGetBranchCommitsRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,

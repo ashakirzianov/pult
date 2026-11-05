@@ -7,6 +7,8 @@ import {
   GitManagerError,
   GitCommandError,
   type VcsSwitchRefInput,
+  type VcsSetRemoteInput,
+  type VcsSetRemoteResult,
   type VcsSwitchRefResult,
   type VcsCreateRefInput,
   type VcsCreateRefResult,
@@ -125,6 +127,9 @@ export class GitWorkflowService extends Context.Service<
     readonly switchRef: (
       input: VcsSwitchRefInput,
     ) => Effect.Effect<VcsSwitchRefResult, GitCommandError>;
+    readonly setRemote: (
+      input: VcsSetRemoteInput,
+    ) => Effect.Effect<VcsSetRemoteResult, GitCommandError>;
     readonly renameBranch: (input: {
       readonly exactName?: boolean;
       readonly cwd: string;
@@ -485,6 +490,11 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((handle) =>
           withCheckoutLease(handle.repository.rootPath, Effect.scoped(git.switchRef(input))),
         ),
+      );
+    }),
+    setRemote: Effect.fn("GitWorkflowService.setRemote")(function (input) {
+      return ensureGitCommand("GitWorkflowService.setRemote", input.cwd).pipe(
+        Effect.andThen(git.setRemote(input)),
       );
     }),
     renameBranch: Effect.fn("GitWorkflowService.renameBranch")(function (input) {

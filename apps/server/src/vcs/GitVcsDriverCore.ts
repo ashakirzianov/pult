@@ -1823,6 +1823,32 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
   });
 
+  // Pult: `vcs.setRemote`, the remote named added or its URL replaced, fetched on request.
+  const setRemote: GitVcsDriver.GitVcsDriver["Service"]["setRemote"] = Effect.fn("setRemote")(
+    function* (input) {
+      const remoteName = input.remoteName ?? "origin";
+      const current = yield* executeGit(
+        "GitVcsDriver.setRemote.getUrl",
+        input.cwd,
+        ["remote", "get-url", "--", remoteName],
+        { allowNonZeroExit: true },
+      );
+      const previousUrl = current.exitCode === 0 ? current.stdout.trim() : null;
+      if (previousUrl !== input.url) {
+        yield* executeGitWithStableDiagnostics(
+          "GitVcsDriver.setRemote.write",
+          input.cwd,
+          previousUrl === null
+            ? ["remote", "add", "--", remoteName, input.url]
+            : ["remote", "set-url", "--", remoteName, input.url],
+          { writesSharedConfig: true, fallbackErrorDetail: "git remote failed" },
+        ).pipe(retryWhileConfigLocked);
+      }
+      if (input.fetch === true) yield* fetchRemote({ cwd: input.cwd, remoteName });
+      return { remoteName, previousUrl };
+    },
+  );
+
   const resolveComparisonBaseRef = Effect.fn("resolveComparisonBaseRef")(function* (
     cwd: string,
     baseRef: string,
@@ -5098,6 +5124,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }),
     ensureRemote: Effect.fnUntraced(function* (input) {
       return yield* withListRefsInvalidation(input.cwd, ensureRemote(input));
+    }),
+    setRemote: Effect.fnUntraced(function* (input) {
+      return yield* withListRefsInvalidation(input.cwd, setRemote(input));
     }),
     resolvePrimaryRemoteName,
     resolveDefaultBranchName,
