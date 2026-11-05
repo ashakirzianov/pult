@@ -407,12 +407,13 @@
   background: none;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  visibility: hidden;
+  /* Transparent, not hidden, so the buttons stay in the tab order and `:focus-within` can show them. */
+  opacity: 0;
 }
 
 .pult-shelf-header:hover .pult-shelf-action,
 .pult-shelf-header:focus-within .pult-shelf-action {
-  visibility: visible;
+  opacity: 1;
 }
 
 .pult-shelf-action:hover {
@@ -927,7 +928,7 @@
 }
 
 .pult-limits-refresh:disabled {
-  visibility: visible;
+  opacity: 1;
   cursor: default;
 }
 
