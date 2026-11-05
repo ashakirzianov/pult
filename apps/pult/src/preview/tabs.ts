@@ -259,6 +259,8 @@ function closeStalePreviews(
  */
 async function endSession(environmentId: string, threadId: string, tabId: string): Promise<void> {
   const key = tabKey(environmentId, threadId, tabId);
+  // A second close of the same session waits on nothing of its own: the first's outcome is the tab's.
+  if (closing.has(key)) return;
   closing.add(key);
   try {
     const ended = await (await threadView()).closePreviewSession(environmentId, threadId, tabId);
