@@ -531,7 +531,12 @@ export async function startPreviewTabs(): Promise<void> {
     openTargetRemembered();
   };
   onDidSelectThread(selectionChanged);
-  onDidEndSwitch(openTargetRemembered);
+  // A cancelled switch leaves the selection as it was; what waited out the switch looks again.
+  onDidEndSwitch(() => {
+    void refreshFollows();
+    void enqueue(closeForeignTabs);
+    openTargetRemembered();
+  });
   // A selected Star's conversation is the selection's thread, and it changes as the Stars do.
   let starTarget = targetThread();
   starStore.subscribe(() => {
