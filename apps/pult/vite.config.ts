@@ -18,11 +18,12 @@ function threadViewStubs(): Plugin {
       NodePath.join(import.meta.dirname, ours),
     ]),
   );
+  const ours = new Set(replacements.values());
   return {
     name: "pult:thread-view-stubs",
     enforce: "pre",
     async resolveId(source, importer, options) {
-      if (importer === undefined || replacements.has(importer)) return null;
+      if (importer === undefined || ours.has(importer)) return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       return (resolved === null ? undefined : replacements.get(resolved.id)) ?? null;
     },

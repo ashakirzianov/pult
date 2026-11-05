@@ -3,7 +3,7 @@
 // The page's build resolves every import of a key to its value
 // (`../vite.config.ts`); `apps/web` keeps the upstream module, so the code that
 // imports it still typechecks, and the replacement states which upstream module
-// it stands in for. A stub is how the thread view reaches what the app around it
+// it stands in for; a replacement's own import of that module is upstream's. A stub is how the thread view reaches what the app around it
 // would provide; a hook point in `apps/web` is the exception, made when neither
 // a stub nor a file of ours can do it.
 export const STUBS: Readonly<Record<string, string>> = {
@@ -18,5 +18,5 @@ export const STUBS: Readonly<Record<string, string>> = {
   "../web/src/components/settings/providerDriverMeta.ts": "view/stubs/providerDriverMeta.ts",
   // Client settings with the context window meter always on: Pult has no
   // settings page to turn it on.
-  "../web/src/clientPersistenceStorage.ts": "view/stubs/clientPersistenceStorage.ts",
+  "../web/src/localApi.ts": "view/stubs/localApi.ts",
 };
