@@ -458,10 +458,11 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 }
 
 /* With its settings and buttons in the bar, the composer is its message
-   alone: its emptied footer goes, and the message is one line as tall as
-   the resting composer (3rem). The
-   message's line is the editor's: leading-relaxed on the prompt's size. */
-.pult-thread-view [data-chat-composer-footer="true"]:not(:has(*)) {
+   alone: its emptied footer goes (left holding at most the actions' empty
+   wrapper), and the message is one line as tall as the resting composer
+   (3rem). The message's line is the editor's: leading-relaxed on the
+   prompt's size. */
+.pult-thread-view [data-chat-composer-footer="true"]:not(:has(> :not(:empty))) {
   display: none;
 }
 
