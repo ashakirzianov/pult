@@ -40,6 +40,16 @@ export interface DesktopBrand {
   /** `T3CODE_TELEMETRY_ENABLED` for the supervised server when the environment sets none; `null` leaves the server's default. */
   readonly serverTelemetryDefault: boolean | null;
   /**
+   * The supervised server installs the app's updates itself while it and the
+   * host rest (`T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST`, unless the environment sets it).
+   */
+  readonly serverInstallUpdatesAtRest: boolean;
+  /**
+   * electron-updater's `autoInstallOnAppQuit`: a quit installs a downloaded update. On macOS it
+   * hands each download to Squirrel.Mac at once, which applies it when the app exits.
+   */
+  readonly autoInstallOnAppQuit: boolean;
+  /**
    * Chromium's intensive wake-up throttling of a page hidden five minutes,
    * its chained timers woken once a minute. Off, they wake once a second, as
    * a hidden page's always do: a page hosting the agents' browsers must
@@ -95,6 +105,8 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   rendererAssetsDir: null,
   rendererAllowsEval: false,
   serverTelemetryDefault: null,
+  serverInstallUpdatesAtRest: false,
+  autoInstallOnAppQuit: false,
   intensiveWakeUpThrottling: true,
   appId: "com.t3tools.t3code",
   productName: null,
@@ -148,8 +160,9 @@ export function brandAboutVersion(
 
 /**
  * What a brand changes in the environment the supervised server inherits:
- * its telemetry default, and the brand's renderer origins among the origins a
- * development server allows, since the server names only T3 Code's.
+ * its telemetry default, whether it installs updates at rest, and the brand's
+ * renderer origins among the origins a development server allows, since the
+ * server names only T3 Code's.
  */
 export function brandServerEnvironment(
   env: Readonly<Record<string, string | undefined>>,
@@ -158,6 +171,8 @@ export function brandServerEnvironment(
   const patch: Record<string, string> = {};
   if (brand.serverTelemetryDefault !== null && env.T3CODE_TELEMETRY_ENABLED === undefined)
     patch.T3CODE_TELEMETRY_ENABLED = String(brand.serverTelemetryDefault);
+  if (brand.serverInstallUpdatesAtRest && env.T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST === undefined)
+    patch.T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST = "true";
   const t3codeSchemes: ReadonlyArray<string> = Object.values(T3CODE_DESKTOP_BRAND.scheme);
   const origins = [brand.scheme.production, brand.scheme.development]
     .filter((scheme) => !t3codeSchemes.includes(scheme))

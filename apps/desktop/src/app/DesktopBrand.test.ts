@@ -44,6 +44,16 @@ describe("DesktopBrand", () => {
     });
   });
 
+  it("turns on installing at rest for a brand that asks, unless the environment says", () => {
+    const brand = { ...T3CODE_DESKTOP_BRAND, serverInstallUpdatesAtRest: true };
+    expect(brandServerEnvironment({}, brand)).toEqual({
+      T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST: "true",
+    });
+    expect(
+      brandServerEnvironment({ T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST: "false" }, brand),
+    ).toEqual({});
+  });
+
   it("shows the commit alone in About under T3 Code's brand", () => {
     expect(
       brandAboutVersion({
