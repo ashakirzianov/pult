@@ -13,6 +13,7 @@ import {
   setSystemColorSchemeSource,
   setTheme,
 } from "~/hooks/useTheme";
+import { startBrowserHost } from "./browserHost.tsx";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import { routeRightPanel } from "./rightPanel.ts";
 import {
@@ -71,7 +72,8 @@ export interface ThreadViewMounts {
  * appearance preference, kept in localStorage, is set back to System, since
  * the shell offers no page to change it and a stale Light or Dark there
  * would paint the view's text in one scheme on the workbench's other. Its
- * files open in the shell (`rightPanel.ts`).
+ * files open in the shell (`rightPanel.ts`). In Pult.app it hosts the
+ * preview sessions' webviews page-wide (`browserHost.tsx`).
  */
 export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
@@ -84,6 +86,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
+  startBrowserHost();
   return {
     mount: mountThreadView,
     mountDraft: mountDraftView,
