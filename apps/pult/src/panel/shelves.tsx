@@ -135,7 +135,7 @@ export function ShelfHeader({
       {actions}
       <button
         type="button"
-        className="pult-shelf-action pult-shelf-close"
+        className="pult-shelf-action"
         title="Close Shelf"
         aria-label={`Close the ${label} shelf`}
         onClick={onClose}
