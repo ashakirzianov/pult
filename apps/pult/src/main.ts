@@ -28,6 +28,7 @@ import { registerChanges } from "./changes/view.ts";
 import { startConnection } from "./connection/index.ts";
 import { installDebugHandle } from "./debug.ts";
 import { registerLocalServerCommands, startLocalServerContext } from "./desktop/localServer.ts";
+import { desktopHost } from "./desktop/host.ts";
 import { startMenuActions } from "./desktop/menuActions.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerMode, startMode } from "./mode.ts";
@@ -45,7 +46,7 @@ import { startStarSync } from "./stars/syncing.ts";
 import { startStars } from "./stars/model.ts";
 import { registerStarSettings, startStarSettings } from "./stars/settings.ts";
 import { startThreadModel } from "./threads/model.ts";
-import { registerThreadPane } from "./threads/pane.tsx";
+import { registerThreadPane, threadView } from "./threads/pane.tsx";
 import { registerParkCommands } from "./threads/park.ts";
 import { registerSelectThreadCommand, restoreThreadSelection } from "./threads/selection.ts";
 import { desktopSecrets, localStorageSecrets } from "./secrets.ts";
@@ -152,4 +153,12 @@ await startLocalServerContext();
 startMenuActions();
 
 console.info("[pult-shell] workbench up");
+// In Pult.app the view hosts the preview browsers' webviews page-wide, which an
+// agent's browser waits for before going headless: started now, not with the
+// first thread pane, which a page on Settings or the Explorer has none of.
+if (desktopHost()?.preview !== undefined) {
+  void threadView().catch((error: unknown) =>
+    console.error("[pult-shell] the thread view did not start", error),
+  );
+}
 installDebugHandle();

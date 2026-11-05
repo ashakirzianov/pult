@@ -11,8 +11,11 @@ import { createRoot } from "react-dom/client";
 import { ElectronBrowserHost, startElectronBrowserHost } from "~/browser/ElectronBrowserHost";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
+let started = false;
+
 /**
- * Once, with the view: the host in a React root of its own on the page's
+ * Once, with the view (again is nothing: the shell retries a view that
+ * failed to start): the host in a React root of its own on the page's
  * body, outside every pane, as upstream keeps it outside its router, since
  * moving a webview in the DOM destroys its guest; and the desktop bridge's
  * page-lifetime listeners (the annotation theme, the agent's pointer, links
@@ -20,10 +23,12 @@ import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
  * is Pult.app: a browser tab and the thin wrapper start nothing.
  */
 export function startBrowserHost(): void {
-  if (window.desktopBridge?.preview === undefined) return;
+  if (started || window.desktopBridge?.preview === undefined) return;
+  started = true;
   startElectronBrowserHost();
   const element = document.createElement("div");
-  element.className = "pult-browser-host";
+  // Outside every view's root, so the view's variables come with a class of their own (`shell.css`).
+  element.className = "pult-browser-host pult-view-theme";
   document.body.append(element);
   createRoot(element).render(
     <StrictMode>

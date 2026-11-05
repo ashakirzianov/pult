@@ -19,11 +19,21 @@ body,
    whole page in its base layer, box-sizing: border-box on every element and
    pseudo-element among it, which the workbench never asked for: an icon
    label's icon is a 16px pseudo-element plus padding. This unlayered rule of
-   no specificity gives the workbench outside the view the browser's default
-   back, and loses to every rule of the workbench's own. */
-:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *)),
-:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::before,
-:where(.monaco-workbench :not(.pult-thread-view, .pult-thread-view *))::after {
+   no specificity gives the workbench outside the view's roots
+   (`pult-thread-view`, and `pult-view-theme` for a preview tab's) the
+   browser's default back, and loses to every rule of the workbench's own. */
+:where(
+  .monaco-workbench
+    :not(.pult-thread-view, .pult-thread-view *, .pult-view-theme, .pult-view-theme *)
+),
+:where(
+  .monaco-workbench
+    :not(.pult-thread-view, .pult-thread-view *, .pult-view-theme, .pult-view-theme *)
+)::before,
+:where(
+  .monaco-workbench
+    :not(.pult-thread-view, .pult-thread-view *, .pult-view-theme, .pult-view-theme *)
+)::after {
   box-sizing: content-box;
 }
 
