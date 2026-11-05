@@ -27,7 +27,8 @@ function run(command: string, ...args: unknown[]): void {
  * environments' rows are the way to the Explorer tab, which has no button in
  * the tray in Pult's mode: the header opens it at every environment's folder,
  * and is highlighted while the workspace is selected and no row is. With one
- * environment held, that environment has no row (`explorerEntries`).
+ * environment held, the header is that environment's row, its name and
+ * icon, its files nested under it (`explorerEntries`).
  */
 export function ExplorerShelf({ environments }: { environments: ReadonlyArray<ShellEnvironment> }) {
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
@@ -40,6 +41,8 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
   // Read on a change of the selection, the files or the environment explored, each of which re-renders the shelf.
   const highlighted = explorerHighlight();
   const names = new Map(environments.map((environment) => [environment.id, environment.name]));
+  // The one environment held, which the header names in place of its row.
+  const only = environments.length === 1 ? environments[0] : undefined;
   const entries = explorerEntries(
     environments.map((environment) => environment.id),
     files,
@@ -48,10 +51,13 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
     <li ref={element} className="pult-shelf pult-shelf-explorer">
       <ShelfHeader
         shelf="explorer"
-        label="Explorer"
+        label={only === undefined ? "Explorer" : only.name}
+        icon={only === undefined ? undefined : "root-folder"}
         onOpen={() => void exploreEnvironment(undefined)}
         openTitle={
-          environments.length > 1 ? "Explore every environment's projects" : "Explore projects"
+          only === undefined
+            ? "Explore every environment's projects"
+            : `Explore ${only.name}'s projects`
         }
         selected={
           explorerSelected() &&

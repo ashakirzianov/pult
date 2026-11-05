@@ -45,7 +45,7 @@ export type ExplorerEntry<File extends FileRef> =
 /**
  * The Explorer shelf's rows: each environment's, its open files under it,
  * then the files of no held environment. With one environment held it has no
- * row, the shelf's header standing for it, and its files are not nested.
+ * row, the shelf's header standing for it, its files still nested under it.
  */
 export function explorerEntries<File extends FileRef>(
   environmentIds: ReadonlyArray<string>,
@@ -67,7 +67,7 @@ export function explorerEntries<File extends FileRef>(
         : []),
       ...files
         .filter((file) => ofEnvironment(file, environmentId))
-        .map((file) => fileEntry(file, several)),
+        .map((file) => fileEntry(file, true)),
     ]),
     ...files
       .filter((file) => !environmentIds.some((environmentId) => ofEnvironment(file, environmentId)))

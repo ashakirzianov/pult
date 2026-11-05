@@ -412,6 +412,13 @@
   cursor: pointer;
 }
 
+/* A single environment's icon, its label where the environment row's is, over the nested files' (`.pult-explorer-entry-nested`). */
+.pult-shelf-open > .codicon {
+  flex: none;
+  margin-right: -3px;
+  font-size: 13px;
+}
+
 .pult-shelf-header-closable:has(.pult-shelf-open:hover) {
   background: var(--vscode-list-hoverBackground);
 }

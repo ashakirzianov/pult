@@ -66,7 +66,7 @@ export function useReveal(shelf: ClosableShelf, element: RefObject<HTMLElement |
  * A closable shelf's header: its label, its count when one is given, its
  * `actions` and Close, shown on hover or keyboard focus; its right-click its
  * `menu`, then Close Shelf. `title` is its tooltip. Closing runs `onClose`,
- * which closes the shelf by default. With `onOpen`, the label is a button
+ * which closes the shelf by default. `icon`, a codicon, leads the label. With `onOpen`, the label is a button
  * running it, `openTitle` its tooltip, highlighted while `selected`: the
  * Explorer shelf's, opening the Explorer tab.
  */
@@ -78,6 +78,7 @@ export function ShelfHeader({
   actions = null,
   menu = [],
   onClose = () => closeShelf(shelf),
+  icon,
   onOpen,
   openTitle,
   selected = false,
@@ -89,12 +90,15 @@ export function ShelfHeader({
   actions?: React.ReactNode;
   menu?: ReadonlyArray<IAction>;
   onClose?: () => void;
+  /** A codicon before the label. */
+  icon?: string;
   onOpen?: () => void;
   openTitle?: string;
   selected?: boolean;
 }) {
   const heading = (
     <>
+      {icon !== undefined ? <i className={`codicon codicon-${icon}`} aria-hidden /> : null}
       <span className="pult-shelf-label">{label}</span>
       {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
     </>

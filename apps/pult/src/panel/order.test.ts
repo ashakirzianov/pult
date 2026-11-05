@@ -228,12 +228,12 @@ NodeTest.describe("explorerEntries", () => {
     },
   );
 
-  NodeTest.test("has no environment row while one is held, its files not nested", () => {
+  NodeTest.test("has no environment row while one is held, its files still nested", () => {
     const entries = explorerEntries(["env"], [file("gone", "/c.ts"), file("env", "/a.ts")]);
     NodeAssert.deepEqual(
       entries.map((entry) => (entry.kind === "file" ? [entry.key, entry.nested] : [entry.key])),
       [
-        ["pult://env/a.ts", false],
+        ["pult://env/a.ts", true],
         ["pult://gone/c.ts", false],
       ],
     );
