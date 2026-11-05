@@ -10,7 +10,9 @@
     "preview": "vp preview",
     "typecheck": "effect-tsgo tsrs -b",
     "test": "node --test \"src/**/*.test.ts\"",
-    "desktop:dev": "pnpm --filter pult-desktop dev"
+    "desktop:dev": "pnpm --filter pult-desktop dev",
+    "desktop:host": "node desktop/scripts/host-dev.ts",
+    "desktop:package": "node desktop/scripts/package.ts"
   },
   "dependencies": {
     "@codingame/monaco-vscode-accessibility-service-override": "37.6.1",
