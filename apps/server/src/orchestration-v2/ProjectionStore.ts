@@ -515,9 +515,9 @@ export interface ProjectionStoreV2Shape {
   /** Threads that are not deleted, archived ones included. */
   readonly countThreads: () => Effect.Effect<number, ProjectionStoreV2Error>;
   /**
-   * Whether any agent work is in flight or about to start: an active run, a queued run that is not
-   * held, a provider-native subagent still working, a pending request the run waits on, or
-   * background work that holds its thread's completion (`backgroundWorkHoldsCompletion`).
+   * Whether a thread not deleted has an active or unheld queued run, a working native subagent, a
+   * request a run waits on, or a roster task `backgroundWorkHoldsCompletion` holds, on any of its
+   * provider threads; unlike settlement, no turn items or pull-request watches.
    */
   readonly hasActiveWork: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   /** Every active thread, in shell order. */
@@ -7139,18 +7139,25 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     }, Effect.mapError(shellSnapshotReadError));
 
     const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
+      // Deletion cancels runs and requests but leaves rosters and native subagents, and recovery
+      // skips deleted threads, so their rows would hold the server busy for good.
+      const liveThread = (row: Statement.Fragment) => sql`EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_threads AS thread
+        WHERE thread.thread_id = ${row}.thread_id AND thread.deleted_at IS NULL
+      )`;
       const rows = yield* sql<{ readonly active: number }>`
         WITH pending_background AS MATERIALIZED (
           -- Recovery's prefilter: most rosters are empty, so few rows reach json_each.
-          SELECT payload_json FROM orchestration_v2_projection_provider_threads
+          SELECT payload_json FROM orchestration_v2_projection_provider_threads AS roster
           WHERE CASE WHEN json_valid(payload_json)
             THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
             ELSE 0 END
+            AND ${liveThread(sql`roster`)}
         )
         SELECT (
           EXISTS (
             -- Spelled as the recovery index's predicate, so the read uses it.
-            SELECT 1 FROM orchestration_v2_projection_runs
+            SELECT 1 FROM orchestration_v2_projection_runs AS run
             WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
               AND (
                 status <> 'queued'
@@ -7158,17 +7165,20 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   THEN json_extract(payload_json, '$.queueHeld') IS NOT 1
                   ELSE 1 END
               )
+              AND ${liveThread(sql`run`)}
           )
           OR EXISTS (
-            SELECT 1 FROM orchestration_v2_projection_subagents
+            SELECT 1 FROM orchestration_v2_projection_subagents AS subagent
             WHERE origin = 'provider_native' AND status IN ('pending', 'running', 'waiting')
+              AND ${liveThread(sql`subagent`)}
           )
           OR EXISTS (
-            SELECT 1 FROM orchestration_v2_projection_runtime_requests
+            SELECT 1 FROM orchestration_v2_projection_runtime_requests AS request
             WHERE status = 'pending'
               AND CASE WHEN json_valid(payload_json)
                 THEN json_extract(payload_json, '$.responseCapability.type') IS NOT 'message'
                 ELSE 1 END
+              AND ${liveThread(sql`request`)}
           )
           -- backgroundWorkHoldsCompletion: awaited work, or any kind but a command or monitor,
           -- since an unknown kind decodes as a background task.

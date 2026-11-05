@@ -10,6 +10,8 @@ import {
   MessageId,
   type ModelSelection,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2RuntimeRequest,
+  type OrchestrationV2Subagent,
   type OrchestrationV2TurnItem,
   type OrchestrationV2ThreadHistoryPage,
   type OrchestrationV2ThreadShellSnapshot,
@@ -764,14 +766,11 @@ it.effect(
       });
 
       const subagentId = NodeId.make("node:active-work:subagent");
-      for (const [origin, status, active] of [
-        ["provider_native", "pending", true],
-        ["provider_native", "running", true],
-        ["provider_native", "waiting", true],
-        ["provider_native", "completed", false],
-        ["app_owned", "running", false],
-      ] as const) {
-        yield* apply({
+      const subagent = (
+        origin: OrchestrationV2Subagent["origin"],
+        status: OrchestrationV2Subagent["status"],
+      ) =>
+        apply({
           type: "subagent.updated",
           threadId,
           nodeId: subagentId,
@@ -800,17 +799,27 @@ it.effect(
             updatedAt: now,
           },
         });
+      for (const [origin, status, active] of [
+        ["provider_native", "pending", true],
+        ["provider_native", "running", true],
+        ["provider_native", "waiting", true],
+        ["provider_native", "completed", false],
+        ["app_owned", "running", false],
+      ] as const) {
+        yield* subagent(origin, status);
         assert.equal(yield* store.hasActiveWork(), active, `${origin} ${status}`);
       }
 
       const requestNode = NodeId.make("node:active-work:request");
-      for (const [responseCapability, status, active] of [
-        [{ type: "live", providerSessionId: ProviderSessionId.make("session") }, "pending", true],
-        [{ type: "not_resumable", reason: "lost" }, "pending", true],
-        [{ type: "message" }, "pending", false],
-        [{ type: "live", providerSessionId: ProviderSessionId.make("session") }, "resolved", false],
-      ] as const) {
-        yield* apply({
+      const liveRequest = {
+        type: "live" as const,
+        providerSessionId: ProviderSessionId.make("session"),
+      };
+      const request = (
+        responseCapability: OrchestrationV2RuntimeRequest["responseCapability"],
+        status: OrchestrationV2RuntimeRequest["status"],
+      ) =>
+        apply({
           type: "runtime-request.updated",
           threadId,
           nodeId: requestNode,
@@ -827,6 +836,13 @@ it.effect(
             resolvedAt: status === "pending" ? null : now,
           },
         });
+      for (const [responseCapability, status, active] of [
+        [liveRequest, "pending", true],
+        [{ type: "not_resumable", reason: "lost" }, "pending", true],
+        [{ type: "message" }, "pending", false],
+        [liveRequest, "resolved", false],
+      ] as const) {
+        yield* request(responseCapability, status);
         assert.equal(yield* store.hasActiveWork(), active, `${responseCapability.type} ${status}`);
       }
 
@@ -880,6 +896,19 @@ it.effect(
         WHERE provider_thread_id = ${providerThreadId}
       `;
       assert.isTrue(yield* store.hasActiveWork(), "unknown kind");
+
+      // Deletion leaves rosters, native subagents and rows behind, which recovery skips too.
+      yield* apply({ type: "run.updated", threadId, occurredAt: now, payload: run });
+      yield* subagent("provider_native", "running");
+      yield* request(liveRequest, "pending");
+      const { thread } = yield* store.getThreadProjection(threadId);
+      yield* apply({
+        type: "thread.deleted",
+        threadId,
+        occurredAt: now,
+        payload: { ...thread, deletedAt: now },
+      });
+      assert.isFalse(yield* store.hasActiveWork(), "deleted thread");
     }).pipe(Effect.provide(layerTest)),
 );
 

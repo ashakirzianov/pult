@@ -28,8 +28,10 @@ export class ServerActivity extends Context.Service<
   }
 >()("t3/serverActivity") {}
 
-// The events that can start or end agent work; streaming items cannot.
+// The events that can start or end agent work; streaming items cannot. A deletion ends the
+// rosters and native subagents it leaves behind.
 const affectsActivity = (event: OrchestrationV2DomainEvent) =>
+  event.type === "thread.deleted" ||
   event.type === "run.created" ||
   event.type === "run.updated" ||
   event.type === "runtime-request.updated" ||

@@ -108,13 +108,17 @@ activation so they cannot start runs that reconciliation would then cancel.
 ## Maintenance windows
 
 [`ServerActivity`](../../apps/server/src/serverActivity.ts) (`server.getActivity`) says when a
-restart would cut no work anyone waits on: no run active or queued to start, no native subagent
-working, no request a run waits on, no background work that holds its thread's completion, and no
-scheduled task dispatching. Background work counts exactly as settlement counts it
-(`backgroundWorkHoldsCompletion`): a background subagent or task, or a shell or monitor the agent
-marked awaited. Held queues and unmarked shells and monitors do not count: recovery holds those
-queues anyway, and most unmarked shells are dev servers and their watchdogs nobody waits on, so
-counting them would keep the server busy forever. `restingSince` lives in memory and starts again
+restart would cut no work anyone waits on: on a thread not deleted, no run active or queued to
+start, no native subagent working, no request a run waits on, and no background work that holds
+completion; and no scheduled task dispatching. Background work is a task on any of the thread's
+provider rosters that `backgroundWorkHoldsCompletion` says holds completion: a background subagent
+or task, or a shell or monitor the agent marked awaited. That is not settlement's count, which reads
+only the active provider thread's roster and adds running turn items and pull-request watches;
+neither counts here, and a watch would hold the server busy for days. Held queues and unmarked
+shells and monitors do not count either: recovery holds those queues anyway, and most unmarked
+shells are dev servers and their watchdogs nobody waits on, so counting them would keep the server
+busy forever. Nor do deleted threads, whose rosters and native subagents deletion leaves behind and
+recovery skips. `restingSince` lives in memory and starts again
 at boot; work that starts and ends between two reads still restarts it. A failed read or watch
 reads busy, and a stopped watch resyncs with backoff.
 
