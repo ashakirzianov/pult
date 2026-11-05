@@ -122,6 +122,12 @@ interface Props {
    * since Pult's shell shows a browser as a workbench tab and has no mini-player.
    */
   floatable?: boolean;
+  /**
+   * Pult's hook point, not upstream's: "Close browser session" in the more
+   * menu, ending the tab's session, since closing an agent's tab in Pult's
+   * shell only dismisses it.
+   */
+  onEndSession?: () => void;
 }
 
 function previewProfileName(
@@ -166,6 +172,7 @@ export function PreviewView({
   layoutVersion,
   onPlaceholderOpened,
   floatable = true,
+  onEndSession,
 }: Props) {
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [pickActive, setPickActive] = useState(false);
@@ -950,6 +957,7 @@ export function PreviewView({
               {...(moveTarget
                 ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
                 : {})}
+              {...(onEndSession && tabId ? { endSession: onEndSession } : {})}
               profileName={activeProfileName}
               zoomFactor={
                 serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)

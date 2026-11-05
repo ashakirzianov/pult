@@ -49,6 +49,11 @@ interface Props {
   nativePictureInPicture: boolean;
   profileName: string | undefined;
   move?: { readonly label: string; readonly onMove: () => void };
+  /**
+   * Pult's hook point, not upstream's: ends the tab's session, which Pult's
+   * shell offers here since closing an agent's tab only dismisses it.
+   */
+  endSession?: () => void;
 }
 
 const MenuTriggerButton = () => (
@@ -76,6 +81,7 @@ export function PreviewMoreMenu({
   nativePictureInPicture,
   profileName,
   move,
+  endSession,
 }: Props) {
   const zoomLabel = `${Math.round(zoomFactor * 100)}%`;
   const disabled = !enabled;
@@ -99,6 +105,7 @@ export function PreviewMoreMenu({
           </MenuItem>
         ) : null}
         {move ? <MenuItem onClick={move.onMove}>{move.label}</MenuItem> : null}
+        {endSession ? <MenuItem onClick={endSession}>Close browser session</MenuItem> : null}
         <MenuItem onClick={onToggleDeviceToolbar} disabled={disabled}>
           {deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
         </MenuItem>
