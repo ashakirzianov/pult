@@ -500,6 +500,80 @@ describe("DesktopUpdates", () => {
     }),
   );
 
+  it.effect("an install asks Squirrel.Mac again rather than wait on a download it refused", () => {
+    const harness = makeHarness();
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.setAutoInstallOnAppQuit(true);
+        harness.emit("update-downloaded", { version: "1.2.4" });
+        yield* flushCallbacks;
+
+        const result = yield* updates.install;
+        assert.isTrue(result.accepted);
+        assert.deepEqual(harness.autoInstallOnAppQuitAtInstall, [false]);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("restarts the backends when the app has not quit a minute after an install", () => {
+    const harness = makeHarness();
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const desktopState = yield* DesktopState.DesktopState;
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-downloaded", { version: "1.2.4" });
+        yield* flushCallbacks;
+
+        assert.isTrue((yield* updates.install).accepted);
+        yield* TestClock.adjust(Duration.seconds(59));
+        assert.isTrue(yield* updates.isInstallActive);
+        assert.deepEqual(harness.installSteps, ["quitAndInstall"]);
+
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.isFalse(yield* updates.isInstallActive);
+        assert.isFalse(yield* Ref.get(desktopState.quitting));
+        assert.deepEqual(harness.installSteps, ["quitAndInstall", "startBackend"]);
+        const state = yield* updates.getState;
+        assert.equal(state.errorContext, "install");
+        assert.equal(state.downloadedVersion, "1.2.4");
+        assert.equal(harness.updateRestartMarkers.size, 0);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("an earlier install's timer leaves a later install alone", () => {
+    const harness = makeHarness();
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        harness.emit("update-downloaded", { version: "1.2.4" });
+        // Past the startup check, so no check holds the second install.
+        yield* TestClock.adjust(Duration.seconds(15));
+        harness.emit("update-not-available");
+        yield* flushCallbacks;
+
+        assert.isTrue((yield* updates.install).accepted);
+        const { changes } = yield* updates.subscribe;
+        const recovered = yield* Stream.runHead(changes).pipe(Effect.forkChild);
+        yield* flushCallbacks;
+        // Squirrel.Mac refuses the bundle after quitAndInstall has returned.
+        harness.emit("error", new Error("Code signature did not match"));
+        assert.equal(Option.getOrThrow(yield* Fiber.join(recovered)).errorContext, "install");
+
+        yield* TestClock.adjust(Duration.seconds(30));
+        assert.isTrue((yield* updates.install).accepted);
+        yield* TestClock.adjust(Duration.seconds(30));
+        assert.isTrue(yield* updates.isInstallActive, "the failed install's timer");
+        yield* TestClock.adjust(Duration.seconds(30));
+        assert.isFalse(yield* updates.isInstallActive, "the later install's own timer");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
   it.effect("keeps windows and restarts backends when quitAndInstall fails", () => {
     const harness = makeHarness({
       quitAndInstall: Effect.fail(

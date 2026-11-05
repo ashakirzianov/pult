@@ -58,6 +58,8 @@ const CHANNEL_CHANGE_RETRIES = 30;
 const AUTO_UPDATE_STARTUP_DELAY = "15 seconds";
 const AUTO_UPDATE_POLL_INTERVAL = "4 minutes";
 const PREPARED_INSTALL_CHECK_WAIT = Duration.seconds(90);
+// Squirrel.Mac can wait forever for a bundle it already refused, the backends stopped.
+const INSTALL_QUIT_TIMEOUT = Duration.seconds(60);
 
 type UpdateAction = "check" | "download" | "install" | "install-recovery" | "channel";
 
@@ -384,6 +386,8 @@ export const make = Effect.gen(function* () {
   const updaterConfiguredRef = yield* Ref.make(false);
   const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
   const notAppliedVersionRef = yield* Ref.make(Option.none<string>());
+  const installAttemptRef = yield* Ref.make(0);
+  const layerScope = yield* Effect.scope;
   // The release a track switch's database check cleared. A build crosses to another track only
   // through such a switch, and never below that release: version order alone cannot tell whether
   // a Stable knows a Nightly's migrations.
@@ -711,8 +715,14 @@ export const make = Effect.gen(function* () {
       })),
     );
 
+  // An install turns quit-installs off so Squirrel.Mac is asked again; a failed one turns them back.
+  const restoreAutoInstallOnAppQuit = electronUpdater.setAutoInstallOnAppQuit(
+    desktopBrand.autoInstallOnAppQuit,
+  );
+
   const resetInstallAction = Effect.all(
     [
+      restoreAutoInstallOnAppQuit,
       finishUpdateAction("install"),
       Ref.set(desktopState.quitting, false),
       Ref.set(installRunningBackendsRef, []),
@@ -732,6 +742,7 @@ export const make = Effect.gen(function* () {
     );
     if (!ownsRecovery) return;
 
+    yield* restoreAutoInstallOnAppQuit;
     yield* Ref.set(desktopState.quitting, false);
     yield* removeUpdateRestartMarker;
     yield* removeInstallRecord;
@@ -806,6 +817,7 @@ export const make = Effect.gen(function* () {
 
         yield* Ref.set(desktopState.quitting, true);
         yield* Ref.set(installRunningBackendsRef, []);
+        const attempt = yield* Ref.updateAndGet(installAttemptRef, (count) => count + 1);
 
         return yield* Effect.gen(function* () {
           yield* writeUpdateRestartMarker;
@@ -823,10 +835,29 @@ export const make = Effect.gen(function* () {
             (instance) => instance.stop({ timeout: Duration.seconds(5) }),
             { concurrency: "unbounded" },
           );
+          // With quit-installs on, MacUpdater's quitAndInstall only waits for a bundle it handed
+          // Squirrel.Mac at download, which never comes if Squirrel refused it; off, it asks
+          // Squirrel again, whose error reaches handleUpdaterError's recovery.
+          yield* electronUpdater.setAutoInstallOnAppQuit(false);
           yield* electronUpdater.quitAndInstall({
             isSilent: true,
             isForceRunAfter: true,
           });
+          yield* Effect.sleep(INSTALL_QUIT_TIMEOUT).pipe(
+            Effect.andThen(Ref.get(installAttemptRef)),
+            Effect.flatMap((current) =>
+              current === attempt
+                ? recoverFailedInstall("The app did not quit to install the update.").pipe(
+                    Effect.andThen(
+                      logUpdaterError("The app did not quit to install the update.", {
+                        timeoutSeconds: Duration.toSeconds(INSTALL_QUIT_TIMEOUT),
+                      }),
+                    ),
+                  )
+                : Effect.void,
+            ),
+            Effect.forkIn(layerScope),
+          );
           return { accepted: true, completed: false, failed: false };
         }).pipe(
           Effect.catchTags({
