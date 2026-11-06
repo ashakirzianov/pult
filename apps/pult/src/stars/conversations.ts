@@ -84,7 +84,12 @@ async function readHistory(thread: Pick<ShellThread, "environmentId" | "id">) {
 
 /** What of a shell row can change a conversation's wakefulness: its projection is read again when it changes. */
 const stampOf = (thread: ShellThread) =>
-  JSON.stringify([thread.updatedAt, thread.latestRun, thread.canSnooze]);
+  JSON.stringify([
+    thread.updatedAt,
+    thread.latestRun,
+    thread.canSnooze,
+    thread.promptCacheExpiresAt,
+  ]);
 
 /** Whether a thread below the conversation works, its subagents' and theirs, as the store has them: a subagent thread's run holds the Star awake as the conversation's own does. */
 const lineageWorks = (thread: ShellThread, threads: ReadonlyArray<ShellThread>) =>
@@ -210,7 +215,10 @@ class StarConversations {
   private async evaluate(thread: ShellThread, evaluation: Evaluation): Promise<void> {
     evaluation.reading = true;
     try {
-      evaluation.wakefulness = wakefulness(await readProjection(thread));
+      evaluation.wakefulness = wakefulness(
+        await readProjection(thread),
+        thread.promptCacheExpiresAt,
+      );
     } catch (error) {
       console.warn(
         `[pult-shell] could not read the Star's conversation ${thread.id}: ${errorMessage(error)}`,
@@ -230,7 +238,7 @@ class StarConversations {
     this.settling.add(key);
     try {
       const projection = await readProjection(thread);
-      const state = wakefulness(projection);
+      const state = wakefulness(projection, thread.promptCacheExpiresAt);
       evaluation.wakefulness = state;
       evaluation.readAt = Date.now();
       const settled = projection.thread.settledOverride === "settled";

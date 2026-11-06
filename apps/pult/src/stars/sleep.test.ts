@@ -123,6 +123,53 @@ const conversation = (overrides: Partial<SleepInput>): SleepInput => ({
 });
 
 NodeTest.describe("wakefulness", () => {
+  NodeTest.test("falls asleep when the prompt cache expires, as the server says", () => {
+    const state = wakefulness(
+      conversation({
+        runs: [run("one", "completed", "2026-11-03T10:10:00.000Z")],
+        providerTurns: [turn("last", "2026-11-03T10:10:00.000Z", { ttl: 300_000 })],
+      }),
+      "2026-11-03T10:40:00.000Z",
+    );
+    NodeAssert.deepEqual(state, { kind: "deadline", at: ms("2026-11-03T10:40:00.000Z") });
+  });
+
+  NodeTest.test(
+    "keeps a conversation un-settled after its cache expires awake 10 minutes from then",
+    () => {
+      const expiresAt = "2026-11-03T10:40:00.000Z";
+      const woken = { ...v2Projection.thread, unsettledAt: at("2026-11-03T12:00:00.000Z") };
+      NodeAssert.deepEqual(wakefulness(conversation({ thread: woken }), expiresAt), {
+        kind: "deadline",
+        at: ms("2026-11-03T12:00:00.000Z") + DEFAULT_CACHE_TTL_MS,
+      });
+      const earlier = { ...v2Projection.thread, unsettledAt: at("2026-11-03T10:20:00.000Z") };
+      NodeAssert.deepEqual(wakefulness(conversation({ thread: earlier }), expiresAt), {
+        kind: "deadline",
+        at: ms(expiresAt),
+      });
+    },
+  );
+
+  NodeTest.test("still holds the conversation awake whatever the server's expiry", () => {
+    NodeAssert.deepEqual(
+      wakefulness(conversation({ runs: [run("live", "running")] }), "2026-11-03T10:40:00.000Z"),
+      { kind: "held", by: "run" },
+    );
+  });
+
+  NodeTest.test(
+    "keeps the turns' rule where the server serves no expiry, an older one or none known",
+    () => {
+      const input = conversation({
+        providerTurns: [turn("last", "2026-11-03T10:10:00.000Z", { ttl: 300_000 })],
+      });
+      const byTurns = { kind: "deadline", at: ms("2026-11-03T10:15:00.000Z") };
+      NodeAssert.deepEqual(wakefulness(input, undefined), byTurns);
+      NodeAssert.deepEqual(wakefulness(input, null), byTurns);
+    },
+  );
+
   NodeTest.test(
     "falls asleep at the last turn's end plus the cache TTL its adapter observed",
     () => {
@@ -158,7 +205,7 @@ NodeTest.describe("wakefulness", () => {
     },
   );
 
-  NodeTest.test("allows 10 minutes where no TTL was observed, as for a Codex turn", () => {
+  NodeTest.test("allows 10 minutes where no TTL was observed", () => {
     const state = wakefulness(
       conversation({ providerTurns: [turn("codex", "2026-11-03T10:10:00.000Z")] }),
     );

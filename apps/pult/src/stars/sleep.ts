@@ -7,7 +7,7 @@
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-/** How long a conversation stays awake after its last turn where the adapter observed no prompt cache TTL. */
+/** How long a conversation stays awake after its last turn where its server serves no prompt cache expiry and the adapter observed no TTL, and after an un-settlement. */
 export const DEFAULT_CACHE_TTL_MS = 10 * 60_000;
 
 /**
@@ -36,17 +36,22 @@ const LIVE_RUNS: ReadonlySet<string> = new Set(["preparing", "starting", "runnin
 const LIVE_SUBAGENTS: ReadonlySet<string> = new Set(["pending", "running", "waiting"]);
 
 /**
- * The rule: a conversation falls asleep at its last provider turn's
- * `completedAt` plus the prompt cache TTL the adapter observed for it
- * (`promptCacheTtlMs` on the turn's token usage, else on the latest earlier
- * turn of the same provider thread that reported one, since a request served
- * wholly from the cache reports none while refreshing it), 10 minutes where
- * none was observed. Without a completed provider turn, its latest finished
- * run stands in, else its creation. A conversation un-settled since counts
- * from its un-settlement instead, so waking it by hand does not put it
- * straight back to sleep.
+ * The rule: a conversation falls asleep when its prompt cache expires, as its
+ * shell row's `promptCacheExpiresAt` says, or 10 minutes after an
+ * un-settlement later than that, so waking it by hand does not put it
+ * straight back to sleep. Where the server serves no expiry (an older one, or
+ * none known), at its last provider turn's `completedAt` plus the prompt cache
+ * TTL the adapter observed for it (`promptCacheTtlMs` on the turn's token
+ * usage, else on the latest earlier turn of the same provider thread that
+ * reported one, since a request served wholly from the cache reports none
+ * while refreshing it), 10 minutes where none was observed; without a
+ * completed provider turn, its latest finished run stands in, else its
+ * creation; a conversation un-settled since counts from its un-settlement.
  */
-export function wakefulness(projection: SleepInput): Wakefulness {
+export function wakefulness(
+  projection: SleepInput,
+  promptCacheExpiresAt?: string | null,
+): Wakefulness {
   if (projection.runs.some((run) => LIVE_RUNS.has(run.status))) return { kind: "held", by: "run" };
   if (projection.subagents.some((subagent) => LIVE_SUBAGENTS.has(subagent.status)))
     return { kind: "held", by: "subagent" };
@@ -54,6 +59,15 @@ export function wakefulness(projection: SleepInput): Wakefulness {
   if (projection.runtimeRequests.some((request) => request.status === "pending"))
     return { kind: "held", by: "request" };
   const { unsettledAt } = projection.thread;
+  const expiresAt = Date.parse(promptCacheExpiresAt ?? "");
+  if (Number.isFinite(expiresAt))
+    return {
+      kind: "deadline",
+      at:
+        unsettledAt == null
+          ? expiresAt
+          : Math.max(expiresAt, DateTime.toEpochMillis(unsettledAt) + DEFAULT_CACHE_TTL_MS),
+    };
   const from = (base: number) =>
     unsettledAt == null ? base : Math.max(base, DateTime.toEpochMillis(unsettledAt));
   const turns = projection.providerTurns
