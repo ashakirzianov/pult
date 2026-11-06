@@ -24,7 +24,7 @@ import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 import { TrayShelves } from "./TrayShelves.tsx";
 
-/** The tray's height, the sidebar's title's. */
+/** The tray's height, the sidebar's title's, and the thread view's bar's (`--pult-bar-height`), so their icons share a line. */
 const ROW_HEIGHT = 35;
 /** On the sidebar part while the header stands in its title, the Pult tab's. */
 const HEADER_IN_TITLE = "pult-header-in-title";

@@ -136,7 +136,7 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
    message's text inset by upstream's padding inside the box's 1px edge,
    and the bar's entries from the box's left edge to its right. */
 .pult-thread-view {
-  --pult-bar-height: 40px;
+  --pult-bar-height: 35px;
   --pult-bar-item-padding: 6px;
   --pult-bar-gap: 2px;
   --pult-bar-button-size: 26px;

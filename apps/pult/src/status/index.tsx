@@ -31,8 +31,8 @@ import "./status.css";
 const STATUS_BAR_VISIBLE = "workbench.statusBar.visible";
 /** The status bar's height, which its part fixes. */
 const STATUS_BAR_HEIGHT = 22;
-/** The strip's, the thread view's bar's (`--pult-bar-height`). */
-const STRIP_HEIGHT = 40;
+/** The strip's, the thread view's bar's (`--pult-bar-height`) and the tray's (`src/panel/rows.tsx`). */
+const STRIP_HEIGHT = 35;
 const MORE_STATUSES = "pult-shell.showMoreStatuses";
 /** The stock entries the strip draws itself, left out of "more". */
 const DRAWN = new Set(["status.editor.mode", "status.editor.selection", "status.problems"]);
