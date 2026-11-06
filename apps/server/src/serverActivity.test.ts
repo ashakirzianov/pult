@@ -200,6 +200,16 @@ it.effect.each([
     rereads: true,
   },
   {
+    label: "a thread archived",
+    event: { type: "thread.archived", payload: {} },
+    rereads: true,
+  },
+  {
+    label: "a thread unarchived",
+    event: { type: "thread.unarchived", payload: {} },
+    rereads: true,
+  },
+  {
     label: "a streaming item",
     event: { type: "turn-item.updated", payload: { type: "assistant_message" } },
     rereads: false,

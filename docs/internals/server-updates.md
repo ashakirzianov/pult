@@ -118,7 +118,9 @@ neither counts here, and a watch would hold the server busy for days. Held queue
 shells and monitors do not count either: recovery holds those queues anyway, and most unmarked
 shells are dev servers and their watchdogs nobody waits on, so counting them would keep the server
 busy forever. Nor do deleted threads, whose rosters and native subagents deletion leaves behind and
-recovery skips. `restingSince` lives in memory and starts again
+recovery skips, or queued runs on archived threads, which nothing starts and recovery skips too.
+Archiving detaches the thread's sessions but leaves its other work to end on its own, and a message
+can still start a run there, so that work counts. `restingSince` lives in memory and starts again
 at boot; work that starts and ends between two reads still restarts it. A failed read or watch
 reads busy, and a stopped watch resyncs with backoff.
 

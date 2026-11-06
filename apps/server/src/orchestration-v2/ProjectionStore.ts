@@ -515,9 +515,9 @@ export interface ProjectionStoreV2Shape {
   /** Threads that are not deleted, archived ones included. */
   readonly countThreads: () => Effect.Effect<number, ProjectionStoreV2Error>;
   /**
-   * Whether a thread not deleted has an active or unheld queued run, a working native subagent, a
-   * request a run waits on, or a roster task `backgroundWorkHoldsCompletion` holds, on any of its
-   * provider threads; unlike settlement, no turn items or pull-request watches.
+   * Whether a thread not deleted has an active run, an unheld queued run unless archived, a working
+   * native subagent, a request a run waits on, or a roster task `backgroundWorkHoldsCompletion`
+   * holds, on any of its provider threads; unlike settlement, no turn items or pull-request watches.
    */
   readonly hasActiveWork: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   /** Every active thread, in shell order. */
@@ -7141,10 +7141,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
       // Deletion cancels runs and requests but leaves rosters and native subagents, and recovery
       // skips deleted threads, so their rows would hold the server busy for good.
-      const liveThread = (row: Statement.Fragment) => sql`EXISTS (
+      const liveThread = (row: Statement.Fragment, alsoRequired = sql``) => sql`EXISTS (
         SELECT 1 FROM orchestration_v2_projection_threads AS thread
-        WHERE thread.thread_id = ${row}.thread_id AND thread.deleted_at IS NULL
+        WHERE thread.thread_id = ${row}.thread_id AND thread.deleted_at IS NULL ${alsoRequired}
       )`;
+      // Archiving leaves a run to end with its detached session, but nothing starts a queued run
+      // on an archived thread, and recovery skips it too.
+      const queueCanStart = sql`AND (run.status <> 'queued' OR thread.archived_at IS NULL)`;
       const rows = yield* sql<{ readonly active: number }>`
         WITH pending_background AS MATERIALIZED (
           -- Recovery's prefilter: most rosters are empty, so few rows reach json_each.
@@ -7165,7 +7168,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   THEN json_extract(payload_json, '$.queueHeld') IS NOT 1
                   ELSE 1 END
               )
-              AND ${liveThread(sql`run`)}
+              AND ${liveThread(sql`run`, queueCanStart)}
           )
           OR EXISTS (
             SELECT 1 FROM orchestration_v2_projection_subagents AS subagent

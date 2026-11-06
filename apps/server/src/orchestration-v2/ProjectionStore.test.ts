@@ -718,7 +718,7 @@ it.effect("record reads filter notification sources without dropping matching me
 );
 
 it.effect(
-  "active work is a live or unheld queued run, a working native subagent, or a blocking request",
+  "active work is a live run, a queued one that can start, a working native subagent, or a blocking request",
   () =>
     Effect.gen(function* () {
       const store = yield* ProjectionStore.ProjectionStoreV2;
@@ -896,9 +896,66 @@ it.effect(
         WHERE provider_thread_id = ${providerThreadId}
       `;
       assert.isTrue(yield* store.hasActiveWork(), "unknown kind");
+      yield* roster([]);
+
+      // Nothing starts a queued run on an archived thread, but its other work still runs.
+      const { thread: open } = yield* store.getThreadProjection(threadId);
+      yield* apply({
+        type: "thread.archived",
+        threadId,
+        occurredAt: now,
+        payload: { ...open, archivedAt: now },
+      });
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "queued" },
+      });
+      assert.isFalse(yield* store.hasActiveWork(), "archived queued run");
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "running" },
+      });
+      assert.isTrue(yield* store.hasActiveWork(), "archived running run");
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "cancelled" },
+      });
+      yield* subagent("provider_native", "running");
+      assert.isTrue(yield* store.hasActiveWork(), "archived native subagent");
+      yield* subagent("provider_native", "completed");
+      yield* request(liveRequest, "pending");
+      assert.isTrue(yield* store.hasActiveWork(), "archived blocking request");
+      yield* request(liveRequest, "resolved");
+      yield* roster([{ taskId: "tests", kind: "command", awaited: true }]);
+      assert.isTrue(yield* store.hasActiveWork(), "archived awaited command");
+      yield* roster([]);
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "queued" },
+      });
+      yield* apply({
+        type: "thread.unarchived",
+        threadId,
+        occurredAt: now,
+        payload: { ...open, archivedAt: null },
+      });
+      assert.isTrue(yield* store.hasActiveWork(), "unarchived queued run");
 
       // Deletion leaves rosters, native subagents and rows behind, which recovery skips too.
-      yield* apply({ type: "run.updated", threadId, occurredAt: now, payload: run });
+      yield* apply({
+        type: "run.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "running" },
+      });
       yield* subagent("provider_native", "running");
       yield* request(liveRequest, "pending");
       const { thread } = yield* store.getThreadProjection(threadId);
