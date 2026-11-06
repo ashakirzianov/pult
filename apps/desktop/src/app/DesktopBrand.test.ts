@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   brandAboutVersion,
   brandDisabledFeatures,
+  brandReleaseUrl,
   brandServerEnvironment,
   desktopBrand,
   T3CODE_DESKTOP_BRAND,
@@ -11,6 +12,19 @@ import {
 describe("DesktopBrand", () => {
   it("is T3 Code's when the build names no brand", () => {
     expect(desktopBrand).toEqual(T3CODE_DESKTOP_BRAND);
+  });
+
+  it("names a release's page under the brand's releases and tag prefix", () => {
+    expect(brandReleaseUrl("0.1.7")).toBe(
+      "https://github.com/pingdotgg/t3code/releases/tag/v0.1.7",
+    );
+    const brand = {
+      ...T3CODE_DESKTOP_BRAND,
+      releases: { page: "https://github.com/owner/fork/releases", tagPrefix: "fork-v" },
+    };
+    expect(brandReleaseUrl("0.0.1", brand)).toBe(
+      "https://github.com/owner/fork/releases/tag/fork-v0.0.1",
+    );
   });
 
   it("leaves the server's environment alone under T3 Code's brand", () => {

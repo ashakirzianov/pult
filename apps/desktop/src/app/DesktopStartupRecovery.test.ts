@@ -211,3 +211,86 @@ it.effect.each([
     }),
   ).pipe(Effect.provide(DesktopState.layer)),
 );
+
+it.effect("opens T3 Code's release pages from the Reinstall and releases buttons", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const checked = yield* Deferred.make<void>();
+      const opened: string[] = [];
+      const bothOpened = yield* Deferred.make<void>();
+      let navigate: ((event: { preventDefault: () => void }, url: string) => void) | undefined;
+      const main = {
+        isDestroyed: () => false,
+        isVisible: () => false,
+        on: () => {},
+        once: () => {},
+      } as unknown as Electron.BrowserWindow;
+      const recovery = {
+        isDestroyed: () => false,
+        loadURL: () => Promise.resolve(),
+        once: () => {},
+        webContents: {
+          setWindowOpenHandler: () => {},
+          on: (event: string, listener: typeof navigate) => {
+            if (event === "will-navigate") navigate = listener;
+          },
+        },
+      } as unknown as Electron.BrowserWindow;
+      const state = yield* DesktopState.DesktopState;
+      yield* listen.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            FileSystem.layerNoop({ readFileString: () => Effect.succeed("0.1.2") }),
+            Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+              appVersion: "0.1.3",
+              stateDir: "/task/state",
+              logDir: "/task/logs",
+              path: { join: (...parts: string[]) => parts.join("/") },
+            } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]),
+            Layer.succeed(ElectronApp.ElectronApp, {
+              on: () => Effect.void,
+            } as unknown as ElectronApp.ElectronApp["Service"]),
+            Layer.succeed(ElectronShell.ElectronShell, {
+              openExternal: (url: string) =>
+                Effect.suspend(() => {
+                  opened.push(url);
+                  return opened.length === 2
+                    ? Deferred.succeed(bothOpened, undefined).pipe(Effect.as(true))
+                    : Effect.succeed(true);
+                }),
+            } as unknown as ElectronShell.ElectronShell["Service"]),
+            Layer.succeed(ElectronTheme.ElectronTheme, {
+              shouldUseDarkColors: Effect.succeed(false),
+            } as ElectronTheme.ElectronTheme["Service"]),
+            Layer.succeed(ElectronWindow.ElectronWindow, {
+              main: Effect.succeedSome(main),
+              create: () => Effect.succeed(recovery),
+            } as unknown as ElectronWindow.ElectronWindow["Service"]),
+            Layer.succeed(DesktopUpdates.DesktopUpdates, {
+              subscribe: Effect.succeed({
+                latest: updateState({ status: "disabled" }),
+                changes: Stream.empty,
+              }),
+              check: () => Deferred.succeed(checked, undefined),
+            } as unknown as DesktopUpdates.DesktopUpdates["Service"]),
+          ),
+        ),
+      );
+      yield* SubscriptionRef.set(state.primaryBackendStartup, {
+        _tag: "Failing",
+        reason: "Server failed before readiness",
+        managedPolicy: false,
+        output: "Failure details",
+      });
+      yield* Deferred.await(checked);
+      const preventDefault = () => {};
+      navigate!({ preventDefault }, "https://startup-recovery.invalid/reinstall");
+      navigate!({ preventDefault }, "https://startup-recovery.invalid/releases");
+      yield* Deferred.await(bothOpened);
+      expect(opened.toSorted()).toEqual([
+        "https://github.com/pingdotgg/t3code/releases",
+        "https://github.com/pingdotgg/t3code/releases/tag/v0.1.2",
+      ]);
+    }),
+  ).pipe(Effect.provide(DesktopState.layer)),
+);

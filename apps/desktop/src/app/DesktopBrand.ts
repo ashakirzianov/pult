@@ -62,6 +62,11 @@ export interface DesktopBrand {
    * "T3 Code" in "Version 0.0.1 (T3 Code 0.1.7, <commit>)". `null` shows the commit alone.
    */
   readonly bundleVersionName: string | null;
+  /**
+   * The releases page startup recovery opens, and what precedes a version in
+   * a release's tag: a version's page is `<page>/tag/<tagPrefix><version>`.
+   */
+  readonly releases: { readonly page: string; readonly tagPrefix: string };
 }
 
 export type DesktopBrandOverride = Partial<DesktopBrand>;
@@ -106,6 +111,7 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   productName: null,
   packageName: "t3code",
   bundleVersionName: null,
+  releases: { page: "https://github.com/pingdotgg/t3code/releases", tagPrefix: "v" },
 };
 
 export const brandFor = <T>(value: PerMode<T>, isDevelopment: boolean): T =>
@@ -150,6 +156,11 @@ export function brandAboutVersion(
   if (brand.bundleVersionName === null || bundleVersion === null || bundleVersion === appVersion)
     return commitHash;
   return `${brand.bundleVersionName} ${bundleVersion}, ${commitHash}`;
+}
+
+/** The page of the brand's release of `version`. */
+export function brandReleaseUrl(version: string, brand: DesktopBrand = desktopBrand): string {
+  return `${brand.releases.page}/tag/${brand.releases.tagPrefix}${version}`;
 }
 
 /**
