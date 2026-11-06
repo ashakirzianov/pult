@@ -47,7 +47,8 @@ const ACTIVE_RUN_STATUSES = new Set<OrchestrationV2Run["status"]>([
   "waiting",
 ]);
 
-// The event's own subject is work `hasActiveWork` counts.
+// The event's own subject is work `hasActiveWork` may count; a queued run on an archived thread
+// it does not, and the reread settles it.
 const startsWork = (event: OrchestrationV2DomainEvent) => {
   switch (event.type) {
     case "run.created":
@@ -139,7 +140,7 @@ const make = Effect.gen(function* () {
   yield* forkParked(watch.pipe(Effect.repeat(watchRestartSchedule)));
 
   // A server that never rests opens no maintenance window; name what holds it, once per holder.
-  const lastHolder = yield* Ref.make<string | null>(null);
+  const reportedHolders = yield* Ref.make<ReadonlySet<string>>(new Set());
   const reportHolder = Effect.gen(function* () {
     const { atRest, since } = yield* Ref.get(state);
     const now = yield* DateTime.now;
@@ -148,7 +149,7 @@ const make = Effect.gen(function* () {
       DateTime.toEpochMillis(now) - DateTime.toEpochMillis(since) <
         Duration.toMillis(BUSY_REPORT_AFTER)
     ) {
-      return yield* Ref.set(lastHolder, null);
+      return yield* Ref.set(reportedHolders, new Set());
     }
     const holder =
       (yield* projections.firstActiveWork()) ??
@@ -157,7 +158,9 @@ const make = Effect.gen(function* () {
         : null);
     if (holder === null) return;
     const key = `${holder.kind}:${holder.threadId}`;
-    if ((yield* Ref.getAndSet(lastHolder, key)) === key) return;
+    const reported = yield* Ref.get(reportedHolders);
+    if (reported.has(key)) return;
+    yield* Ref.set(reportedHolders, new Set([...reported, key]));
     yield* Effect.logInfo("server-activity.busy", { busySince: since, ...holder });
   }).pipe(
     Effect.catchCause((cause) => Effect.logDebug("server-activity.holder-read-failed", { cause })),

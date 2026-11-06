@@ -970,6 +970,7 @@ it.effect(
       });
       yield* subagent("provider_native", "running");
       yield* request(liveRequest, "pending");
+      yield* roster([{ taskId: "tests", kind: "command", awaited: true }]);
       const { thread } = yield* store.getThreadProjection(threadId);
       yield* apply({
         type: "thread.deleted",
