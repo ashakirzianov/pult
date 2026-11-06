@@ -45,11 +45,6 @@ export interface DesktopBrand {
    */
   readonly serverInstallUpdatesAtRest: boolean;
   /**
-   * electron-updater's `autoInstallOnAppQuit`: a quit installs a downloaded update. On macOS it
-   * hands each download to Squirrel.Mac at once, which applies it when the app exits.
-   */
-  readonly autoInstallOnAppQuit: boolean;
-  /**
    * Chromium's intensive wake-up throttling of a page hidden five minutes,
    * its chained timers woken once a minute. Off, they wake once a second, as
    * a hidden page's always do: a page hosting the agents' browsers must
@@ -106,7 +101,6 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   rendererAllowsEval: false,
   serverTelemetryDefault: null,
   serverInstallUpdatesAtRest: false,
-  autoInstallOnAppQuit: false,
   intensiveWakeUpThrottling: true,
   appId: "com.t3tools.t3code",
   productName: null,
