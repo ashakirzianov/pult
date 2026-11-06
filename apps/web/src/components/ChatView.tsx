@@ -112,6 +112,7 @@ import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
 import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
+import { onShellTerminalToggle } from "./chat/shellTerminalToggle";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
@@ -2766,6 +2767,13 @@ export default function ChatView(props: ChatViewProps) {
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
   }, [embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+
+  // Pult: the shell's Toggle Terminal toggles this thread's drawer as `terminal.toggle` does.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the drawer's toggle with the shell's command for as long as this view owns the thread's shortcuts
+  useEffect(() => {
+    if (embedded || backgroundThread || activeThreadKey === null) return;
+    return onShellTerminalToggle(activeThreadKey, toggleTerminalVisibilityStable);
+  }, [embedded, backgroundThread, activeThreadKey, toggleTerminalVisibilityStable]);
 
   // Pult: a background thread's view (the composer under a file) leaves paste-to-focus to the pane's.
   usePasteToFocusComposer(embedded || backgroundThread ? null : activeThreadId, composerRef);
