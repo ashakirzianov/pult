@@ -18,8 +18,8 @@ import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
 const INSTALL_UPDATES_AT_REST_ENV = "T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST";
 
 const TICK_INTERVAL = Duration.minutes(30);
-const REST_REQUIRED = Duration.minutes(15);
-const HOST_IDLE_REQUIRED = Duration.minutes(15);
+const REST_REQUIRED = Duration.minutes(3);
+const HOST_IDLE_REQUIRED = Duration.minutes(3);
 const FRESH_SAMPLE_TIMEOUT = Duration.seconds(10);
 
 /**

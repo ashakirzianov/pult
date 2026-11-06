@@ -130,8 +130,8 @@ A desktop app's server installs the app's updates itself when
 `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
 ([`InstallAtRest`](../../apps/server/src/desktopUpdate/InstallAtRest.ts)), which the desktop sets
 for its supervised server under a brand that asks (`serverInstallUpdatesAtRest`). Every 30 minutes,
-once the server has rested 15 minutes and the desktop's power telemetry has seen no input on the
-host for 15, it runs the ordinary desktop update and commits it; missing or stale telemetry counts
+once the server has rested 3 minutes and the desktop's power telemetry has seen no input on the
+host for 3, it runs the ordinary desktop update and commits it; missing or stale telemetry counts
 as input. The download can take minutes, so both are checked again before the commit, the host on
 a sample the server asks the desktop for then (the periodic one can be two minutes old once the host
 idles); no sample within ten seconds counts as input. A prepared update left uncommitted expires on

@@ -207,12 +207,12 @@ describe("InstallAtRest", () => {
     }),
   );
 
-  it.effect("waits until the server has rested fifteen minutes", () =>
+  it.effect("waits until the server has rested three minutes", () =>
     Effect.gen(function* () {
       const { calls, activity } = yield* start({ activity: busy });
       yield* TestClock.adjust(30 * MINUTE);
       expect(calls).toEqual([]);
-      yield* Ref.set(activity, restingSince(50 * MINUTE));
+      yield* Ref.set(activity, restingSince(58 * MINUTE));
       yield* TestClock.adjust(30 * MINUTE);
       expect(calls).toEqual([]);
       yield* TestClock.adjust(30 * MINUTE);
@@ -221,16 +221,16 @@ describe("InstallAtRest", () => {
   );
 
   it.effect(
-    "waits for fifteen minutes without input, and treats missing or stale telemetry as input",
+    "waits for three minutes without input, and treats missing or stale telemetry as input",
     () =>
       Effect.gen(function* () {
-        const { calls, power } = yield* start({ power: idleHost(15 * 60) });
-        for (const host of [idleHost(15 * 60), idleHost(null), idleHost(20 * 60, true)]) {
+        const { calls, power } = yield* start({ power: idleHost(3 * 60) });
+        for (const host of [idleHost(3 * 60), idleHost(null), idleHost(20 * 60, true)]) {
           yield* Ref.set(power, host);
           yield* TestClock.adjust(30 * MINUTE);
           expect(calls).toEqual([]);
         }
-        yield* Ref.set(power, idleHost(15 * 60 + 1));
+        yield* Ref.set(power, idleHost(3 * 60 + 1));
         yield* TestClock.adjust(30 * MINUTE);
         expect(calls).toEqual(["run", "commit token-1"]);
       }),
