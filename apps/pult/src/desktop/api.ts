@@ -37,6 +37,17 @@ export interface PultDesktop {
    * with the window occluded too. The thin wrapper does not answer it.
    */
   keepRendering(keep: boolean): Promise<void>;
+  /**
+   * The OS's spell checker, the one Chromium's text fields use
+   * (`src/spelling/index.ts`): `misspelled` and `suggestions` answer at once,
+   * each a synchronous call to the browser process; `learn` adds a word to
+   * the user's dictionary, on macOS the OS's own.
+   */
+  readonly spelling: {
+    misspelled(word: string): boolean;
+    suggestions(word: string): string[];
+    learn(word: string): Promise<void>;
+  };
 }
 
 declare global {

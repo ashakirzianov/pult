@@ -11,14 +11,14 @@ import * as NodePath from "node:path";
 
 import { app, BrowserWindow, ipcMain, webContents, type IpcMainInvokeEvent } from "electron";
 
-import { Channel, titleBarLayout, type Reply } from "./ipc.ts";
+import { Channel, learnSpelling, titleBarLayout, type Reply } from "./ipc.ts";
 import { openSecretStore } from "./secretStore.ts";
 
 /**
  * Answers `window.pultDesktop` for the page at `pageOrigin` (upstream's
  * `<scheme>://app`): the secrets in `userData`'s `secrets.json`, the title
  * bar's layout, the window's full screen, the window kept rendering for a
- * browser's capture, and the app's version. Called after
+ * browser's capture, a word the spell checker learns, and the app's version. Called after
  * `ready`, once `userData` is set.
  */
 export function installPultDesktop(input: { readonly pageOrigin: string }): void {
@@ -78,6 +78,7 @@ export function installPultDesktop(input: { readonly pageOrigin: string }): void
       .some((guest) => guest.hostWebContents === contents && !guest.getBackgroundThrottling());
     if (!capturing) contents.setBackgroundThrottling(true);
   });
+  handle(Channel.spellingLearn, (event, word) => learnSpelling(event.sender, word));
   ipcMain.on(Channel.version, (event) => {
     event.returnValue = app.getVersion();
   });

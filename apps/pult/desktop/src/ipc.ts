@@ -1,3 +1,5 @@
+import type { WebContents } from "electron";
+
 /** The preload's IPC channels, one per call of `window.pultDesktop` that main answers. */
 export const Channel = {
   secretsGet: "pult-desktop:secrets.get",
@@ -9,6 +11,7 @@ export const Channel = {
   windowFullScreen: "pult-desktop:window.fullScreen",
   /** Pult.app's alone (`upstreamHost.ts`): `on` while the page's browser host waits on a capture, `off` after. */
   windowKeepRendering: "pult-desktop:window.keepRendering",
+  spellingLearn: "pult-desktop:spelling.learn",
   /** Synchronous, for upstream's preload (`upstreamPreload.ts`): the app's version. */
   version: "pult-desktop:version",
 } as const;
@@ -43,6 +46,15 @@ export function titleBarLayout(zoom: number, fullScreen: boolean) {
   const room =
     process.platform !== "darwin" || fullScreen ? 0 : LIGHTS_END / zoom + ROOM_PAST_LIGHTS;
   return { position, room };
+}
+
+/**
+ * Adds `word` to the spell checker's dictionary of `contents`' session, which
+ * on macOS is the OS's own, for `window.pultDesktop.spelling.learn`.
+ */
+export function learnSpelling(contents: WebContents, word: string): void {
+  if (!contents.session.addWordToSpellCheckerDictionary(word))
+    throw new Error(`The spell checker did not learn "${word}".`);
 }
 
 /**

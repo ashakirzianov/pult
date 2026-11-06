@@ -23,7 +23,7 @@ import {
 } from "electron";
 
 import { appDisplayName, appUserDataName } from "../../src/identity.ts";
-import { Channel, titleBarLayout, VERSION_ARG, type Reply } from "./ipc.ts";
+import { Channel, learnSpelling, titleBarLayout, VERSION_ARG, type Reply } from "./ipc.ts";
 import { openSecretStore } from "./secretStore.ts";
 import { windowState } from "./windowState.ts";
 
@@ -58,6 +58,7 @@ void app.whenReady().then(() => {
   handlePermissions();
   handleSecrets();
   handleWindowState();
+  handleSpelling();
   openWindow();
   // macOS keeps the app running with no window; the Dock icon opens one again.
   app.on("activate", () => {
@@ -231,6 +232,11 @@ function handleWindowState(): void {
     if (process.platform === "darwin") window?.setWindowButtonPosition(position);
     return room;
   });
+}
+
+/** Answers `window.pultDesktop.spelling.learn`; the preload answers its other calls itself. */
+function handleSpelling(): void {
+  handle(Channel.spellingLearn, (event, word) => learnSpelling(event.sender, word));
 }
 
 /**

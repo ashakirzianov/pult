@@ -39,6 +39,7 @@ import { registerLimits } from "./limits/index.ts";
 import { startPanelRows } from "./panel/rows.tsx";
 import { registerPanel } from "./panel/view.tsx";
 import { registerColorSchemeCommand } from "./settings/colorScheme.ts";
+import { startSpelling } from "./spelling/index.ts";
 import { registerSettingsPane } from "./settings/pane.tsx";
 import { registerStarCommands } from "./stars/commands.ts";
 import { startStarConversations } from "./stars/conversations.ts";
@@ -155,6 +156,7 @@ await startPreviewTabs();
 await startLocalServerContext();
 await startUpdateContext();
 startMenuActions();
+if (window.pultDesktop) await startSpelling(window.pultDesktop.spelling);
 
 console.info("[pult-shell] workbench up");
 // In Pult.app the view hosts the preview browsers' webviews page-wide, which an

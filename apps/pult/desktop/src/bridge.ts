@@ -5,7 +5,7 @@
  * (`upstreamPreload.ts`) both expose it; they differ in how they learn the
  * app's version.
  */
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 import type { PultDesktop } from "../../src/desktop/api.ts";
 import { Channel, type Reply } from "./ipc.ts";
@@ -34,6 +34,11 @@ export function exposePultDesktop(version: string): void {
       },
     },
     keepRendering: (keep) => invoke(Channel.windowKeepRendering, keep ? "on" : "off"),
+    spelling: {
+      misspelled: (word) => webFrame.isWordMisspelled(word),
+      suggestions: (word) => webFrame.getWordSuggestions(word),
+      learn: (word) => invoke(Channel.spellingLearn, word),
+    },
   };
   contextBridge.exposeInMainWorld("pultDesktop", pultDesktop);
 }
