@@ -8,6 +8,7 @@ import {
   agentsOutdated,
   isStarRoot,
   newRecord,
+  parseLegacyRecord,
   parseRecord,
   recordText,
   withRecordFields,
@@ -16,23 +17,14 @@ import {
 const record = newRecord("5f0c7e1a-2b3c-4d5e-8f90-1a2b3c4d5e6f", "2026-11-03T12:00:00.000Z");
 
 NodeTest.describe("parseRecord", () => {
-  NodeTest.test("reads the record the page writes", () => {
+  NodeTest.test("reads the record the page writes, plain YAML with no front matter", () => {
     NodeAssert.deepEqual(parseRecord(recordText(record)), record);
-  });
-
-  NodeTest.test("reads a legacy AGENTS.md's record, an origin in it ignored", () => {
-    const legacy = `---\nxaxis-kind: star\nid: abc\nname: "Sirius"\ntint: amber\ncreated: x\norigin: "git@host:me/star.git"\n---\n\n# Star\n`;
-    NodeAssert.deepEqual(parseRecord(legacy), {
-      id: "abc",
-      name: "Sirius",
-      tint: "amber",
-      created: "x",
-    });
+    NodeAssert.doesNotMatch(recordText(record), /^---/m);
   });
 
   NodeTest.test("reads plain, double- and single-quoted values", () => {
     const text =
-      "---\nxaxis-kind: star\nid: abc\nname: 'Vega''s'\ntint: \"mint\"\ncreated: 2026-11-03\n---\nBody\n";
+      "xaxis-kind: star\nid: abc\nname: 'Vega''s'\ntint: \"mint\"\ncreated: 2026-11-03\n";
     NodeAssert.deepEqual(parseRecord(text), {
       id: "abc",
       name: "Vega's",
@@ -41,51 +33,60 @@ NodeTest.describe("parseRecord", () => {
     });
   });
 
-  NodeTest.test(
-    "finds no record in a file of another kind, without an id, or without front matter",
-    () => {
-      NodeAssert.equal(parseRecord("---\nxaxis-kind: note\nid: abc\n---\n"), undefined);
-      NodeAssert.equal(parseRecord("---\nxaxis-kind: star\n---\n"), undefined);
-      NodeAssert.equal(parseRecord("# Agents\n\nxaxis-kind: star\nid: abc\n"), undefined);
-      NodeAssert.equal(parseRecord("---\nxaxis-kind: star\nid: abc\n"), undefined);
-    },
-  );
+  NodeTest.test("finds no record in a file of another kind, or without an id", () => {
+    NodeAssert.equal(parseRecord("xaxis-kind: note\nid: abc\n"), undefined);
+    NodeAssert.equal(parseRecord("xaxis-kind: star\n"), undefined);
+  });
 });
 
-NodeTest.describe("withRecordFields", () => {
+NodeTest.describe("parseLegacyRecord", () => {
   NodeTest.test(
-    "rewrites the fields in place and leaves every other line and the body as they were",
+    "reads the front matter of a legacy AGENTS.md or .pult/star.md, an origin ignored",
     () => {
-      const text =
-        '---\nxaxis-kind: star\nid: abc\nname: ""\n# kept\ntint: amber\ncreated: x\n---\n\nThe body: name: kept\n';
-      const written = withRecordFields(text, { name: "Vega", tint: "sky" });
-      NodeAssert.equal(
-        written,
-        '---\nxaxis-kind: star\nid: abc\nname: "Vega"\n# kept\ntint: "sky"\ncreated: x\n---\n\nThe body: name: kept\n',
-      );
-      NodeAssert.deepEqual(parseRecord(written), {
+      const legacy = `---\nxaxis-kind: star\nid: abc\nname: "Sirius"\ntint: amber\ncreated: x\norigin: "git@host:me/star.git"\n---\n\n# Star\n`;
+      NodeAssert.deepEqual(parseLegacyRecord(legacy), {
         id: "abc",
-        name: "Vega",
-        tint: "sky",
+        name: "Sirius",
+        tint: "amber",
         created: "x",
       });
     },
   );
 
-  NodeTest.test("adds a field the front matter lacks, and quotes what YAML would misread", () => {
-    const written = withRecordFields("---\nxaxis-kind: star\nid: abc\n---\nBody", {
-      name: "a: b # c",
+  NodeTest.test("finds no record without front matter, or of another kind", () => {
+    NodeAssert.equal(parseLegacyRecord("# Agents\n\nxaxis-kind: star\nid: abc\n"), undefined);
+    NodeAssert.equal(parseLegacyRecord("---\nxaxis-kind: star\nid: abc\n"), undefined);
+    NodeAssert.equal(parseLegacyRecord("---\nxaxis-kind: note\nid: abc\n---\n"), undefined);
+  });
+});
+
+NodeTest.describe("withRecordFields", () => {
+  NodeTest.test("rewrites the fields in place and leaves every other line as it was", () => {
+    const text = 'xaxis-kind: star\nid: abc\nname: ""\n# kept\ntint: amber\ncreated: x\n';
+    const written = withRecordFields(text, { name: "Vega", tint: "sky" });
+    NodeAssert.equal(
+      written,
+      'xaxis-kind: star\nid: abc\nname: "Vega"\n# kept\ntint: "sky"\ncreated: x\n',
+    );
+    NodeAssert.deepEqual(parseRecord(written), {
+      id: "abc",
+      name: "Vega",
+      tint: "sky",
+      created: "x",
     });
-    NodeAssert.equal(written, '---\nxaxis-kind: star\nid: abc\nname: "a: b # c"\n---\nBody');
+  });
+
+  NodeTest.test("adds a field the record lacks, and quotes what YAML would misread", () => {
+    const written = withRecordFields("xaxis-kind: star\nid: abc\n", { name: "a: b # c" });
+    NodeAssert.equal(written, 'xaxis-kind: star\nid: abc\nname: "a: b # c"\n');
     NodeAssert.equal(parseRecord(written)?.name, "a: b # c");
   });
 
-  NodeTest.test("keeps a file's line endings, and leaves a file without front matter alone", () => {
+  NodeTest.test("keeps a file's line endings", () => {
     NodeAssert.equal(
-      withRecordFields("---\r\nid: abc\r\n---\r\nBody\r\n", { tint: "rose" }),
-      '---\r\nid: abc\r\ntint: "rose"\r\n---\r\nBody\r\n',
+      withRecordFields("id: abc\r\n", { tint: "rose" }),
+      'id: abc\r\ntint: "rose"\r\n',
     );
-    NodeAssert.equal(withRecordFields("Body", { name: "Vega" }), "Body");
   });
 });
 
@@ -103,14 +104,14 @@ NodeTest.describe("isStarRoot", () => {
 
 NodeTest.describe("AGENTS.md", () => {
   NodeTest.test("loads the record and the Star's own instructions, and holds no record", () => {
-    NodeAssert.match(AGENTS_TEXT, /^@\.pult\/star\.md$/m);
+    NodeAssert.match(AGENTS_TEXT, /^@\.pult\/star\.yaml$/m);
     NodeAssert.match(AGENTS_TEXT, /^@instructions\.md$/m);
-    NodeAssert.equal(parseRecord(AGENTS_TEXT), undefined);
+    NodeAssert.equal(parseLegacyRecord(AGENTS_TEXT), undefined);
   });
 
   NodeTest.test("is rewritten when missing, of no version or older, never when newer", () => {
     NodeAssert.equal(agentsOutdated(undefined), true);
-    NodeAssert.equal(agentsOutdated(recordText(record) + "\n# Star\n"), true);
+    NodeAssert.equal(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
     NodeAssert.equal(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION - 1} -->\n`), true);
     NodeAssert.equal(agentsOutdated(AGENTS_TEXT), false);
     NodeAssert.equal(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);

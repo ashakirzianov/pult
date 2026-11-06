@@ -1,7 +1,7 @@
 // A Star's folder and its record, apart from the workbench so
 // `node --test src/stars/record.test.ts` can run it: where Stars live, what
-// in a Star's folder is Pult's, the record in `.pult/star.md`'s front matter,
-// how it is read and rewritten, the `AGENTS.md` Pult keeps in every Star's
+// in a Star's folder is Pult's, the record in `.pult/star.yaml`, how it is
+// read and rewritten, the `AGENTS.md` Pult keeps in every Star's
 // folder, and the layout before it, which the page migrates.
 
 /** Where an environment's Stars live, relative to its home: a folder each, in one git repository. */
@@ -13,8 +13,8 @@ export const DEFAULT_STAR_FOLDER = "star";
 /** What of a Star's folder is Pult's beside `AGENTS.md`; everything else is the Star's own. */
 export const SYSTEM_DIRECTORY = ".pult";
 
-/** The file holding a Star's record, in its front matter, which the Star may edit too. */
-export const RECORD_FILE = `${SYSTEM_DIRECTORY}/star.md`;
+/** The file holding a Star's record, plain YAML lines, which the Star may edit too: no front matter, which Claude Code strips from the files `AGENTS.md` loads. */
+export const RECORD_FILE = `${SYSTEM_DIRECTORY}/star.yaml`;
 
 /** The transcripts Pult writes of a Star's conversations, a folder per environment (`transcript.ts`). */
 export const CONVERSATIONS_DIRECTORY = `${SYSTEM_DIRECTORY}/conversations`;
@@ -70,7 +70,7 @@ export interface StarRecord {
   readonly created: string;
 }
 
-/** The fields the page rewrites in the front matter. */
+/** The fields the page rewrites in the record. */
 export type RecordFields = Partial<Pick<StarRecord, "name" | "tint">>;
 
 const KIND = "star";
@@ -92,7 +92,7 @@ function frontMatter(
   };
 }
 
-/** A front matter line's key and value: a plain scalar, or a quoted one. */
+/** A record's or front matter's line's key and value: a plain scalar, or a quoted one. */
 function entry(line: string): { readonly key: string; readonly value: string } | undefined {
   const match = /^([A-Za-z0-9_-]+):[ \t]*(.*?)[ \t]*$/.exec(line);
   if (match === null) return undefined;
@@ -123,19 +123,29 @@ export function readFrontMatter(
 ): { readonly fields: ReadonlyMap<string, string>; readonly body: string } | undefined {
   const matter = frontMatter(text);
   if (matter === undefined) return undefined;
-  const fields = new Map(
-    matter.lines.flatMap((line) => {
+  return { fields: fieldsOf(matter.lines), body: text.slice(matter.bodyStart) };
+}
+
+const fieldsOf = (lines: ReadonlyArray<string>) =>
+  new Map(
+    lines.flatMap((line) => {
       const parsed = entry(line);
       return parsed === undefined ? [] : [[parsed.key, parsed.value] as const];
     }),
   );
-  return { fields, body: text.slice(matter.bodyStart) };
+
+/** The Star's record in `.pult/star.yaml`; undefined for a file that is no Star's. */
+export function parseRecord(text: string): StarRecord | undefined {
+  return recordOf(fieldsOf(text.split(/\r?\n/)));
 }
 
-/** The Star's record in a file's front matter, `.pult/star.md`'s or a legacy `AGENTS.md`'s; undefined for a file that is no Star's. */
-export function parseRecord(text: string): StarRecord | undefined {
+/** The record in a legacy file's front matter, a `.pult/star.md`'s or an `AGENTS.md`'s; undefined for a file that is no Star's. */
+export function parseLegacyRecord(text: string): StarRecord | undefined {
   const fields = readFrontMatter(text)?.fields;
-  if (fields === undefined) return undefined;
+  return fields === undefined ? undefined : recordOf(fields);
+}
+
+function recordOf(fields: ReadonlyMap<string, string>): StarRecord | undefined {
   const id = fields.get("id");
   if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
   return {
@@ -147,15 +157,13 @@ export function parseRecord(text: string): StarRecord | undefined {
 }
 
 /**
- * `text` with its front matter's `changes` written, each key's line rewritten
- * in place or added at the end, every other line and the body as they were.
- * A file without front matter is returned as it is.
+ * A record's `text` with `changes` written, each key's line rewritten in
+ * place or added at the end, every other line as it was.
  */
 export function withRecordFields(text: string, changes: RecordFields): string {
-  const matter = frontMatter(text);
-  if (matter === undefined) return text;
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
   const pending = new Map(Object.entries(changes).filter(([, value]) => value !== undefined));
-  const lines = matter.lines.map((line) => {
+  const lines = (text === "" ? [] : text.replace(/\r?\n$/, "").split(/\r?\n/)).map((line) => {
     const key = entry(line)?.key;
     const value = key === undefined ? undefined : pending.get(key);
     if (key === undefined || value === undefined) return line;
@@ -163,8 +171,7 @@ export function withRecordFields(text: string, changes: RecordFields): string {
     return `${key}: ${quoted(value)}`;
   });
   for (const [key, value] of pending) lines.push(`${key}: ${quoted(value)}`);
-  const newline = text.includes("\r\n") ? "\r\n" : "\n";
-  return `---${newline}${lines.map((line) => line + newline).join("")}---${newline}${text.slice(matter.bodyStart)}`;
+  return lines.map((line) => line + newline).join("");
 }
 
 /** A new Star's record. */
@@ -172,20 +179,18 @@ export function newRecord(id: string, created: string): StarRecord {
   return { id, name: "", tint: DEFAULT_TINT, created };
 }
 
-/** A Star's `.pult/star.md`: its record, the front matter alone. */
+/** A Star's `.pult/star.yaml`: its record. */
 export function recordText(record: StarRecord): string {
-  return `---
-xaxis-kind: ${KIND}
+  return `xaxis-kind: ${KIND}
 id: ${quoted(record.id)}
 name: ${quoted(record.name)}
 tint: ${quoted(record.tint)}
 created: ${quoted(record.created)}
----
 `;
 }
 
 /** The version of `AGENTS_TEXT`, its first line: raised with every change of the text. */
-export const AGENTS_VERSION = 1;
+export const AGENTS_VERSION = 2;
 
 /**
  * The `AGENTS.md` Pult keeps in every Star's folder (xaxis
@@ -215,11 +220,13 @@ export function agentsOutdated(text: string | undefined): boolean {
 }
 
 /**
- * The layout before `pult/issues/star-folder-layout`: the record in
+ * The layouts before: until `pult/issues/star-folder-layout`, the record in
  * `AGENTS.md`'s front matter, its body the stock instructions, the
  * transcripts in `conversations/`, and `memory/` beside them, which only
- * those instructions pointed the Star at.
+ * those instructions pointed the Star at; and for a day after, the record
+ * in `.pult/star.md`'s front matter, in today's layout otherwise.
  */
+export const LEGACY_RECORD_FILE = `${SYSTEM_DIRECTORY}/star.md`;
 export const LEGACY_CONVERSATIONS_DIRECTORY = "conversations";
 export const LEGACY_MEMORY_DIRECTORY = "memory";
 

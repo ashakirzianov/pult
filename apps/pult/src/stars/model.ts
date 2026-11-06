@@ -17,7 +17,9 @@ import {
   LEGACY_CONVERSATIONS_DIRECTORY,
   LEGACY_INSTRUCTIONS,
   LEGACY_MEMORY_DIRECTORY,
+  LEGACY_RECORD_FILE,
   newRecord,
+  parseLegacyRecord,
   parseRecord,
   RECORD_FILE,
   recordText,
@@ -55,8 +57,10 @@ export type StarTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
-/** What a folder read needs of the page before it is in the current layout: a legacy one's migration, or Pult's `AGENTS.md`. */
-type Upkeep = "migrate" | "agents";
+/** What a folder read needs of the page before it is in the current layout: a legacy one's migration, from `AGENTS.md`'s record or `.pult/star.md`'s, or Pult's `AGENTS.md`. */
+type Upkeep = "migrate" | "migrate-record" | "agents";
+const migrating = (upkeep: Upkeep | undefined) =>
+  upkeep === "migrate" || upkeep === "migrate-record";
 
 /** The environment's Stars' repository, `~/.pult/stars`, and where it syncs. */
 export interface StarRepository {
@@ -130,15 +134,15 @@ async function readStarFile(server: WorkspaceServer, root: string, relativePath:
   return file.exists === false ? undefined : file;
 }
 
-/** A Star's `.pult/star.md`, or undefined while it has none. */
+/** A Star's `.pult/star.yaml`, or undefined while it has none. */
 const readRecordFile = (server: WorkspaceServer, root: string) =>
   readStarFile(server, root, RECORD_FILE);
 
 /**
  * The folder at `root` as a Star: its record and the upkeep it needs, from
- * `.pult/star.md`, else from a legacy `AGENTS.md`'s front matter, which is
- * migrated; "other" for a `.pult/star.md` that holds no record; undefined
- * for a folder that is no Star.
+ * `.pult/star.yaml`, else from a legacy `.pult/star.md`'s or `AGENTS.md`'s
+ * front matter, which is migrated; "other" for a `.pult/star.yaml` that
+ * holds no record; undefined for a folder that is no Star.
  */
 async function starAt(
   server: WorkspaceServer,
@@ -153,7 +157,10 @@ async function starAt(
     if (record === undefined) return "other";
     return { record, upkeep: agentsOutdated(agents?.contents) ? "agents" : null };
   }
-  const legacy = agents === undefined ? undefined : parseRecord(agents.contents);
+  const starMd = await readStarFile(server, root, LEGACY_RECORD_FILE);
+  const fromStarMd = starMd === undefined ? undefined : parseLegacyRecord(starMd.contents);
+  if (fromStarMd !== undefined) return { record: fromStarMd, upkeep: "migrate-record" };
+  const legacy = agents === undefined ? undefined : parseLegacyRecord(agents.contents);
   return legacy === undefined ? undefined : { record: legacy, upkeep: "migrate" };
 }
 
@@ -169,29 +176,40 @@ async function recordAt(
 /**
  * Moves a legacy Star's folder to the current layout (xaxis
  * `pult/issues/star-folder-layout`), each step skipped where it is done, so
- * a migration cut short finishes on the next read: `conversations/` into
- * `.pult/`, an `instructions.md` pointing at its `memory/`, the record into
- * `.pult/star.md`, and last Pult's `AGENTS.md` over the legacy one, whose
- * record marks the folder as not migrated until then.
+ * a migration cut short finishes on the next read. From `AGENTS.md`'s
+ * record: `conversations/` into `.pult/` and an `instructions.md` pointing
+ * at its `memory/` (from `.pult/star.md`'s, `conversations/` is the Star's
+ * own). Then the record into `.pult/star.yaml`, `.pult/star.md` removed,
+ * and last Pult's `AGENTS.md`, over a legacy record that marks the folder
+ * as not migrated until then.
  */
-async function migrate(server: WorkspaceServer, root: string, record: StarRecord): Promise<void> {
-  const legacy = await listed(server, root, LEGACY_CONVERSATIONS_DIRECTORY);
-  if (legacy !== null && (await listed(server, root, CONVERSATIONS_DIRECTORY)) === null)
-    await server.renameEntry({
-      cwd: root,
-      relativePath: LEGACY_CONVERSATIONS_DIRECTORY,
-      newRelativePath: CONVERSATIONS_DIRECTORY,
-    });
-  if ((await readStarFile(server, root, INSTRUCTIONS_FILE)) === undefined) {
-    const memory = await listed(server, root, LEGACY_MEMORY_DIRECTORY);
-    await server.writeFile({
-      cwd: root,
-      relativePath: INSTRUCTIONS_FILE,
-      contents: memory === null ? "" : LEGACY_INSTRUCTIONS,
-    });
+async function migrate(
+  server: WorkspaceServer,
+  root: string,
+  record: StarRecord,
+  upkeep: "migrate" | "migrate-record",
+): Promise<void> {
+  if (upkeep === "migrate") {
+    const legacy = await listed(server, root, LEGACY_CONVERSATIONS_DIRECTORY);
+    if (legacy !== null && (await listed(server, root, CONVERSATIONS_DIRECTORY)) === null)
+      await server.renameEntry({
+        cwd: root,
+        relativePath: LEGACY_CONVERSATIONS_DIRECTORY,
+        newRelativePath: CONVERSATIONS_DIRECTORY,
+      });
+    if ((await readStarFile(server, root, INSTRUCTIONS_FILE)) === undefined) {
+      const memory = await listed(server, root, LEGACY_MEMORY_DIRECTORY);
+      await server.writeFile({
+        cwd: root,
+        relativePath: INSTRUCTIONS_FILE,
+        contents: memory === null ? "" : LEGACY_INSTRUCTIONS,
+      });
+    }
   }
   if ((await readRecordFile(server, root)) === undefined)
     await server.writeFile({ cwd: root, relativePath: RECORD_FILE, contents: recordText(record) });
+  if ((await readStarFile(server, root, LEGACY_RECORD_FILE)) !== undefined)
+    await server.deleteEntry({ cwd: root, relativePath: LEGACY_RECORD_FILE });
   await server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT });
 }
 
@@ -498,7 +516,7 @@ class StarsModel {
     const folders = [...this.readings.values()].flatMap((reading) => reading.folders);
     // A legacy folder is a Star once migrated, so nothing writes into it meanwhile: its transcripts' keeper would put them where the migration moves the old ones.
     const migrated = [...this.readings.values()].flatMap((reading) =>
-      reading.folders.filter((folder) => reading.upkeep.get(folder.root) !== "migrate"),
+      reading.folders.filter((folder) => !migrating(reading.upkeep.get(folder.root))),
     );
     const stars = starsOf(migrated, projects, threads);
     // The readings too, which tell where a Star may be created.
@@ -523,8 +541,9 @@ class StarsModel {
     }
     const enabled = starSettingKnown() && starEnabled.get();
     if (enabled) {
-      this.keepUp();
-      this.adopt(migrated);
+      this.keepUp(projects);
+      // Every folder, a legacy one too: the server writes only under a project, so its migration waits for it.
+      this.adopt(folders);
       this.title(stars);
     }
     const target = creationTarget({
@@ -548,23 +567,24 @@ class StarsModel {
     if (target !== undefined && !this.creating) void this.create(target);
   }
 
-  /** Runs each folder's upkeep due, a legacy one's migration or Pult's `AGENTS.md`, once per connect, then reads the folder again; a failure is tried again on the next connect. */
-  private keepUp(): void {
+  /** Runs each folder's upkeep due, a legacy one's migration or Pult's `AGENTS.md`, once per connect once the folder is a project, then reads the folder again; a failure is tried again on the next connect. */
+  private keepUp(projects: Parameters<typeof projectAt>[0]): void {
     for (const [environmentId, reading] of this.readings) {
       for (const [root, upkeep] of reading.upkeep) {
         const folder = reading.folders.find((each) => each.root === root);
         if (folder === undefined || reading.keptUp.has(root)) continue;
+        if (projectAt(projects, environmentId, root) === undefined) continue;
         reading.keptUp.add(root);
         const server = environmentServer(environmentId);
         const run =
-          upkeep === "migrate"
-            ? migrate(server, root, folder.record)
-            : server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT });
+          upkeep === "agents"
+            ? server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT })
+            : migrate(server, root, folder.record, upkeep);
         void Promise.resolve(run).then(
           () => this.read(environmentId),
           (error: unknown) =>
             console.warn(
-              `[pult-shell] could not ${upkeep === "migrate" ? "migrate" : "update the AGENTS.md of"} the Star at ${root}: ${errorMessage(error)}`,
+              `[pult-shell] could not ${upkeep === "agents" ? "update the AGENTS.md of" : "migrate"} the Star at ${root}: ${errorMessage(error)}`,
             ),
         );
       }
@@ -745,7 +765,7 @@ class StarsModel {
 
   /**
    * Writes the record's `changes` into `homes` of the Star, a
-   * read-modify-write of `.pult/star.md`'s front matter alone, over the
+   * read-modify-write of `.pult/star.yaml`, its other lines kept, over the
    * version read where the server tells versions; a failure notifies.
    * Whether every home took it. `syncing.ts` (`setStarRecord`) runs it on
    * each home after that home's pull, and commits it.
