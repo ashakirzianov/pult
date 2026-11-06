@@ -4,6 +4,8 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+import type { HostPowerSnapshot } from "@t3tools/contracts";
 
 import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
 import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
@@ -17,15 +19,37 @@ const INSTALL_UPDATES_AT_REST_ENV = "T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST";
 const TICK_INTERVAL = Duration.minutes(30);
 const REST_REQUIRED = Duration.minutes(15);
 const HOST_IDLE_REQUIRED = Duration.minutes(15);
+const FRESH_SAMPLE_TIMEOUT = Duration.seconds(10);
 
-/** Why the server would not install now, or null when it would. */
-const refusal = Effect.gen(function* () {
-  const activity = yield* ServerActivity.ServerActivity;
-  const power = yield* HostPowerMonitor.HostPowerMonitor;
+/**
+ * A host sample taken after this call, or none if the desktop sends none in time: the periodic
+ * one can be two minutes old once the host idles, and input triggers none.
+ */
+const freshHostPower = Effect.gen(function* () {
   const receiver = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
-  const [{ restingSince }, snapshot, now, { latest }] = yield* Effect.all([
+  const requestedAt = yield* DateTime.now;
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const { changes } = yield* receiver.subscribe;
+      yield* receiver.requestHostPowerSample;
+      return yield* changes.pipe(
+        Stream.map((sample) => sample.power),
+        Stream.filter((power) => !DateTime.isLessThan(power.updatedAt, requestedAt)),
+        Stream.runHead,
+        Effect.timeout(FRESH_SAMPLE_TIMEOUT),
+      );
+    }),
+  ).pipe(Effect.catch(() => Effect.succeedNone));
+});
+
+/** Why the server would not install now, judged on this host sample, or null when it would. */
+const refusal = Effect.fn("desktopUpdate.installAtRest.refusal")(function* (
+  host: Option.Option<HostPowerSnapshot>,
+) {
+  const activity = yield* ServerActivity.ServerActivity;
+  const receiver = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
+  const [{ restingSince }, now, { latest }] = yield* Effect.all([
     activity.current,
-    power.snapshot,
     DateTime.now,
     Effect.scoped(receiver.desktopUpdates),
   ]);
@@ -45,6 +69,8 @@ const refusal = Effect.gen(function* () {
     return "the server has not been at rest long enough";
   }
   // Missing or stale telemetry says nothing about the user, so it never counts as idle.
+  if (Option.isNone(host)) return "the desktop sent no fresh host sample";
+  const snapshot = host.value;
   if (
     snapshot.stale ||
     snapshot.idleSeconds === null ||
@@ -57,7 +83,8 @@ const refusal = Effect.gen(function* () {
 
 const tick = Effect.fn("desktopUpdate.installAtRest.tick")(function* () {
   const update = yield* DesktopAppUpdate.DesktopAppUpdate;
-  if ((yield* refusal) !== null) return;
+  const power = yield* HostPowerMonitor.HostPowerMonitor;
+  if ((yield* refusal(Option.some(yield* power.snapshot))) !== null) return;
   // Up to date comes back as a failure too; either way the next tick asks again.
   const prepared = yield* update
     .run(() => Effect.void)
@@ -70,7 +97,7 @@ const tick = Effect.fn("desktopUpdate.installAtRest.tick")(function* () {
     );
   if (prepared?.desktopUpdateToken === undefined) return;
   // The download and prepare took minutes; someone may be back.
-  const late = yield* refusal;
+  const late = yield* refusal(yield* freshHostPower);
   if (late !== null) {
     yield* Effect.logInfo("Desktop app update prepared but not installed at rest.", {
       targetVersion: prepared.targetVersion,

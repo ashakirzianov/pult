@@ -187,6 +187,11 @@ export class DesktopTelemetryReceiver extends Context.Service<
     readonly setDiagnosticsDemand: (
       enabled: boolean,
     ) => Effect.Effect<void, DesktopTelemetryControlError>;
+    /**
+     * Asks the desktop to sample the host now, which it does whenever its intervals are set: resends
+     * the intervals last sent, and nothing before any was.
+     */
+    readonly requestHostPowerSample: Effect.Effect<void, DesktopTelemetryControlError>;
     readonly requestDesktopUpdate: (
       requestId: string,
       trackSwitch?: DesktopTrackSwitch,
@@ -482,6 +487,9 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
       enabled,
     });
 
+  const sentHostPowerIntervals = yield* Ref.make(
+    Option.none<{ readonly activeIntervalMs: number; readonly idleIntervalMs: number }>(),
+  );
   const sendHostPowerIntervals = (
     settings: Parameters<typeof resolveServerBackgroundActivitySettings>[0],
   ) => {
@@ -500,6 +508,9 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
       activeIntervalMs,
       idleIntervalMs,
     }).pipe(
+      Effect.andThen(
+        Ref.set(sentHostPowerIntervals, Option.some({ activeIntervalMs, idleIntervalMs })),
+      ),
       Effect.andThen(
         Ref.set(
           snapshotStaleAfterMs,
@@ -717,6 +728,15 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
     health: Ref.get(health),
     subscribeHealth: subscribeBeforeSnapshotWithoutMutex(healthChanges, Ref.get(health)),
     setDiagnosticsDemand,
+    requestHostPowerSample: Ref.get(sentHostPowerIntervals).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (intervals) =>
+            sendControlMessage({ version: 1, type: "setHostPowerIntervals", ...intervals }),
+        }),
+      ),
+    ),
     requestDesktopUpdate: Effect.fn("DesktopTelemetryReceiver.requestDesktopUpdate")(
       function (requestId, trackSwitch) {
         return sendControlMessage({
@@ -787,6 +807,7 @@ export const layerTest = (
       setDiagnosticsDemand: Effect.fn("DesktopTelemetryReceiver.setDiagnosticsDemand")(function () {
         return Effect.void;
       }),
+      requestHostPowerSample: Effect.void,
       requestDesktopUpdate: Effect.fn("DesktopTelemetryReceiver.requestDesktopUpdate")(function () {
         return Effect.void;
       }),

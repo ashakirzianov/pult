@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   ServerSelfUpdateError,
+  type DesktopHostTelemetrySnapshot,
   type DesktopUpdateState,
   type HostPowerSnapshot,
   type ServerActivitySnapshot,
@@ -11,6 +12,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -73,12 +75,15 @@ interface Harness {
   readonly available?: boolean;
   readonly activity?: ServerActivitySnapshot;
   readonly power?: HostPowerSnapshot;
+  /** The desktop answers a request for a fresh host sample. */
+  readonly answersSamples?: boolean;
   /** The desktop's update state, as its latest report carries it. */
   readonly update?: DesktopUpdateState;
   /** What a run answers; it may change the activity or the host on the way. */
   readonly run?: (state: {
     readonly activity: Ref.Ref<ServerActivitySnapshot>;
     readonly power: Ref.Ref<HostPowerSnapshot>;
+    readonly live: Ref.Ref<HostPowerSnapshot | null>;
     readonly runs: number;
   }) => Effect.Effect<ServerSelfUpdateResult, ServerSelfUpdateError>;
 }
@@ -87,7 +92,24 @@ const start = Effect.fn(function* (options: Harness = {}) {
   const calls: string[] = [];
   const activity = yield* Ref.make(options.activity ?? restingSince(0));
   const power = yield* Ref.make(options.power ?? idleHost(20 * 60));
+  // A fresh sample reads `live`, or `power` while it is null; `power` is the last periodic one.
+  const live = yield* Ref.make<HostPowerSnapshot | null>(null);
   const update = yield* Ref.make(options.update ?? downloaded());
+  const samples = yield* PubSub.unbounded<DesktopHostTelemetrySnapshot>();
+  const sampleNow = Effect.gen(function* () {
+    const host = (yield* Ref.get(live)) ?? (yield* Ref.get(power));
+    const now = yield* DateTime.now;
+    yield* PubSub.publish(samples, {
+      version: 1,
+      type: "desktopTelemetry",
+      sequence: 1,
+      sampledAtUnixMs: DateTime.toEpochMillis(now),
+      electronPid: 1,
+      power: { ...host, updatedAt: now },
+      speedLimitPercent: Option.none(),
+      electronProcesses: [],
+    });
+  });
   const run = options.run ?? (() => Effect.succeed(prepared));
   yield* Layer.build(
     InstallAtRest.layer.pipe(
@@ -106,6 +128,13 @@ const start = Effect.fn(function* (options: Harness = {}) {
             }),
           ),
           DesktopTelemetryReceiver.layerTest({
+            subscribe: PubSub.subscribe(samples).pipe(
+              Effect.map((subscription) => ({
+                latest: Option.none(),
+                changes: Stream.fromSubscription(subscription),
+              })),
+            ),
+            requestHostPowerSample: options.answersSamples === false ? Effect.void : sampleNow,
             desktopUpdates: Ref.get(update).pipe(
               Effect.map((state) => ({
                 latest: Option.some({
@@ -124,7 +153,12 @@ const start = Effect.fn(function* (options: Harness = {}) {
               run: () =>
                 Effect.suspend(() => {
                   calls.push("run");
-                  return run({ activity, power, runs: calls.filter((c) => c === "run").length });
+                  return run({
+                    activity,
+                    power,
+                    live,
+                    runs: calls.filter((c) => c === "run").length,
+                  });
                 }),
               commit: (token) =>
                 Effect.sync(() => calls.push(`commit ${token}`)).pipe(Effect.andThen(Effect.never)),
@@ -222,6 +256,28 @@ describe("InstallAtRest", () => {
       yield* Ref.set(power, idleHost(20 * 60));
       yield* TestClock.adjust(30 * MINUTE);
       expect(calls).toEqual(["run", "run", "commit token-1"]);
+    }),
+  );
+
+  it.effect("checks the host again on a sample taken after the download", () =>
+    Effect.gen(function* () {
+      // The last periodic sample, minutes old, still reads idle; the host has had input since.
+      const { calls } = yield* start({
+        run: ({ live }) => Ref.set(live, idleHost(40)).pipe(Effect.as(prepared)),
+      });
+      yield* TestClock.adjust(30 * MINUTE);
+      expect(calls).toEqual(["run"]);
+    }),
+  );
+
+  it.effect("does not install without a fresh host sample", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* start({ answersSamples: false });
+      yield* TestClock.adjust(31 * MINUTE);
+      expect(calls).toEqual(["run"]);
+      // It gave up waiting, so the next tick runs.
+      yield* TestClock.adjust(30 * MINUTE);
+      expect(calls).toEqual(["run", "run"]);
     }),
   );
 

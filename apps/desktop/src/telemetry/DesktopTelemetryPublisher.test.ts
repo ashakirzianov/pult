@@ -124,6 +124,59 @@ describe("DesktopTelemetryPublisher", () => {
   );
 });
 
+describe("DesktopTelemetryPublisher host samples", () => {
+  // The server asks for a fresh sample this way before installing an update at rest.
+  it.effect("samples the host at once when its intervals are set", () =>
+    Effect.gen(function* () {
+      let idleSeconds = 1_200;
+      const layer = DesktopTelemetryPublisher.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            layerElectronApp([]),
+            Layer.succeed(
+              ElectronPowerMonitor.ElectronPowerMonitor,
+              ElectronPowerMonitor.ElectronPowerMonitor.of({
+                isOnBatteryPower: Effect.succeed(false),
+                getSystemIdleTime: Effect.sync(() => idleSeconds),
+                getSystemIdleState: () => Effect.succeed("idle"),
+                getCurrentThermalState: Effect.succeed("nominal"),
+                onSimpleEvent: () => Effect.void,
+                onThermalStateChange: () => Effect.void,
+                onSpeedLimitChange: () => Effect.void,
+              }),
+            ),
+            layerHistory,
+            Layer.succeed(DesktopShellEnvironment.DesktopShellEnvironment, {
+              installIntoProcess: Effect.succeed(true),
+              awaitDiscovery: Effect.succeed(true),
+              updates: Stream.empty,
+            }),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const publisher = yield* DesktopTelemetryPublisher.DesktopTelemetryPublisher;
+        const idleSecondsNow = publisher.latest.pipe(
+          Effect.map((sample) => Option.getOrThrow(sample).power.idleSeconds),
+        );
+        yield* TestClock.adjust(Duration.millis(1));
+        assert.equal(yield* idleSecondsNow, 1_200);
+
+        idleSeconds = 3;
+        yield* publisher.handleControlForSource("server", {
+          version: 1,
+          type: "setHostPowerIntervals",
+          activeIntervalMs: 30_000,
+          idleIntervalMs: 120_000,
+        });
+        // Well inside both intervals, so only the request explains a new sample.
+        yield* TestClock.adjust(Duration.millis(1));
+        assert.equal(yield* idleSecondsNow, 3);
+      }).pipe(Effect.provide(Layer.merge(layer, TestClock.layer())));
+    }),
+  );
+});
+
 describe("DesktopRendererHistory", () => {
   it.effect(
     "persists surface identity and memory through renderer replacement and destruction",
