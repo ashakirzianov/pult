@@ -28,6 +28,7 @@ import {
 } from "./preview.ts";
 import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./PreviewMount.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
+import { toggleTerminal } from "./terminal.ts";
 import {
   isPromotion,
   type MountedView,
@@ -103,6 +104,11 @@ export interface ThreadViewMounts {
   ): () => void;
   /** Ends a session on its server (Close Browser Session, a user's tab closed); whether it ended. */
   closePreviewSession(environmentId: string, threadId: string, tabId: string): Promise<boolean>;
+  /**
+   * Toggles the thread's terminal drawer, upstream's, in its mounted view, or
+   * with `open` opens it (`terminal.ts`); whether a mounted view took it.
+   */
+  toggleTerminal(environmentId: string, threadId: string, open: boolean): boolean;
 }
 
 /**
@@ -152,5 +158,6 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     previewSessions,
     followPreviewSessions,
     closePreviewSession,
+    toggleTerminal,
   };
 }
