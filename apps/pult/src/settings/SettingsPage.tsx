@@ -5,6 +5,7 @@ import { useRef, useState, useSyncExternalStore } from "react";
 
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
+import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { starStore } from "../stars/model.ts";
 import { TINTS, tintOf } from "../stars/record.ts";
@@ -41,6 +42,7 @@ export function SettingsPage({
       <h1 className="pult-settings-title">Settings</h1>
       <EnvironmentsSection />
       <StarSection />
+      <LimitsSection />
       <AppearanceSection colorScheme={colorScheme} />
       <ModeSection mode={mode} />
       <VSCodeSection />
@@ -415,6 +417,52 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
         current={current}
         onChoose={(scheme) => void setColorScheme(scheme)}
       />
+    </section>
+  );
+}
+
+/**
+ * The usage limits' Weekend (`pult.limits.weekend`, `src/limits/weekend.ts`):
+ * a button per day, Monday first, pressed while the day is a weekend day,
+ * which the Limits shelf's pace counts no time on; Saturday and Sunday by
+ * default, none for a pace by the calendar.
+ */
+function LimitsSection() {
+  const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
+  const days = DAYS.filter((day) => weekend.has(dayNumber(day)));
+  return (
+    <section className="pult-settings-section">
+      <h2>Limits</h2>
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">Weekend</div>
+          <div className="pult-settings-row-description">
+            The days you do not work: a limit's pace counts no time on them, so a weekly limit is
+            paced over your working days. None, every day counts.
+          </div>
+        </div>
+        <div className="pult-settings-segments" role="group" aria-label="Weekend">
+          {DAYS.map((day) => {
+            const pressed = days.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                className="pult-settings-segment"
+                aria-pressed={pressed}
+                title={day.charAt(0).toUpperCase() + day.slice(1)}
+                onClick={() =>
+                  void setLimitsWeekend(
+                    pressed ? days.filter((other) => other !== day) : [...days, day],
+                  )
+                }
+              >
+                {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }

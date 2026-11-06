@@ -9,12 +9,14 @@ import { showThreads } from "../panel/explorer.ts";
 import { limitsShelf } from "./limits.ts";
 import { limitsStore, refreshLimits, startLimitsModel } from "./model.ts";
 import { revealLimits } from "./shelf.ts";
+import { limitsWeekend, registerLimitsWeekend, startLimitsWeekend } from "./weekend.ts";
 
 /**
  * The usage limits (xaxis `pult/issues/provider-limits-page`): the model
  * (`model.ts`), and the palette's Pult: Show Usage Limits and Refresh Usage
- * Limits. The shelf itself is the left panel's (`src/panel/LimitsShelf.tsx`).
- * Registered before the workbench starts.
+ * Limits, and the weekend the pace waits over (`weekend.ts`). The shelf
+ * itself is the left panel's (`src/panel/LimitsShelf.tsx`). Registered
+ * before the workbench starts.
  */
 export function registerLimits(): void {
   const category = { value: "Pult", original: "Pult" };
@@ -31,7 +33,9 @@ export function registerLimits(): void {
 
       async run(accessor: ServicesAccessor): Promise<void> {
         const notifications = accessor.get(INotificationService);
-        if (limitsShelf(limitsStore.get().accounts, Date.now(), true) === null) {
+        if (
+          limitsShelf(limitsStore.get().accounts, Date.now(), true, limitsWeekend.get()) === null
+        ) {
           notifications.info("Pult: no provider reports any usage of its limits.");
           return;
         }
@@ -58,5 +62,7 @@ export function registerLimits(): void {
       }
     },
   );
+  registerLimitsWeekend();
+  void startLimitsWeekend();
   startLimitsModel();
 }

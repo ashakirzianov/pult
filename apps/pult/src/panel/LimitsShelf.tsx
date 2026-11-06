@@ -1,5 +1,5 @@
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
-import { elapsedShare, formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
+import { formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
 import { useRef, useSyncExternalStore } from "react";
 
 import {
@@ -7,9 +7,10 @@ import {
   UsageProviderIcon,
   usageProvider,
 } from "../../view/usageProviders.tsx";
-import { limitsShelf, type ShelfWindow } from "../limits/limits.ts";
+import { limitsShelf, paceShare, type ShelfWindow } from "../limits/limits.ts";
 import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts";
 import { limitsShowAll, setLimitsShowAll } from "../limits/shelf.ts";
+import { limitsWeekend } from "../limits/weekend.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { closedShelves, closeShelf, ShelfHeader, useReveal } from "./shelves.tsx";
 
@@ -28,15 +29,17 @@ const refreshAction = toAction({
  * while none has (`limitsShelf`). Refresh is the header's hover action and in
  * its right-click, its tooltip when each environment's limits were last
  * checked and the notices. The rows are no jump targets and do nothing on
- * click. `now` is the panel's minute clock, which the pace moves with.
+ * click. `now` is the panel's minute clock, which the pace moves with, but
+ * on the weekend (`pult.limits.weekend`, `paceShare`).
  */
 export function LimitsShelf({ now }: { now: number }) {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
   const showAll = useSyncExternalStore(limitsShowAll.subscribe, limitsShowAll.get);
+  const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
   const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has("limits");
   const element = useRef<HTMLLIElement>(null);
   useReveal("limits", element);
-  const shelf = limitsShelf(limits.accounts, now, showAll);
+  const shelf = limitsShelf(limits.accounts, now, showAll, weekend);
   if (closed || shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
@@ -75,6 +78,7 @@ export function LimitsShelf({ now }: { now: number }) {
             windows={windows}
             several={several}
             now={now}
+            weekend={weekend}
           />
         ))}
         {shelf.toggle === null ? null : (
@@ -99,18 +103,21 @@ export function LimitsShelf({ now }: { now: number }) {
  * its email, else the provider's short name), its plan and, while several
  * environments are held, the environments it is logged in on (a hub's
  * account, its hub's name); then a line per window, "Weekly · 84% · resets
- * in 2d 3h", over a bar of the share used with a tick at even pace.
+ * in 2d 3h", over a bar of the share used with a tick at even pace, which
+ * waits over the weekend.
  */
 function AccountRows({
   account,
   windows,
   several,
   now,
+  weekend,
 }: {
   account: LimitAccount;
   windows: ReadonlyArray<ShelfWindow>;
   several: boolean;
   now: number;
+  weekend: ReadonlySet<number>;
 }) {
   const provider = usageProvider(account.driver);
   const providerName = provider?.label ?? String(account.driver);
@@ -146,7 +153,7 @@ function AccountRows({
         {windows.map(({ window, warning }) => {
           const used = Math.round(window.usedPercent);
           const resets = formatResetsIn(window, now);
-          const pace = elapsedShare(window, now);
+          const pace = paceShare(window, now, weekend);
           const text = [
             window.label,
             `${used}%`,

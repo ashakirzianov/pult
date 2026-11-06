@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
+import { limitsWeekend } from "../limits/weekend.ts";
 import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
@@ -48,6 +49,7 @@ export function TrayShelves() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
+  const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
@@ -105,7 +107,7 @@ export function TrayShelves() {
           title: `${label} · ${state.settled.count}`,
         };
       case "limits": {
-        const shelfShown = limitsShelf(limits.accounts, now, false);
+        const shelfShown = limitsShelf(limits.accounts, now, false, weekend);
         return {
           badge: shelfShown !== null && shelfShown.warnings > 0 ? shelfShown.warnings : undefined,
           empty: shelfShown === null,
