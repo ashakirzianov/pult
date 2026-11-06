@@ -1039,6 +1039,9 @@ type ShellThreadRow = {
   readonly latest_run_started_at: string | null;
   readonly latest_run_completed_at: string | null;
   readonly latest_run_stop_requested: number;
+  readonly prompt_cache_expires_at: string | null;
+  readonly prompt_cache_turn_completed_at: string | null;
+  readonly prompt_cache_ttl_ms: number | null;
   readonly active_run_id: string | null;
   readonly active_run_status: string | null;
   readonly activity_run_status: string | null;
@@ -1547,6 +1550,45 @@ const linkCardStillAsks = (
   latestUserAuthoredMessageAt === null ||
   !DateTime.isGreaterThan(latestUserAuthoredMessageAt, item.startedAt ?? item.updatedAt);
 
+/**
+ * The active provider thread's latest usage turn: its `promptCacheExpiresAt`, else its end plus
+ * the latest reported TTL (a request served wholly from cache reports none but refreshes it).
+ * Idle compactions count. The shell row's `prompt_cache_*` columns feed it the same turn.
+ */
+function promptCacheExpiry(input: {
+  readonly expiresAt: string | null | undefined;
+  readonly completedAt: DateTime.Utc | null;
+  readonly ttlMs: number | null | undefined;
+}): DateTime.Utc | null {
+  if (input.expiresAt != null) {
+    const expiresAtMs = Date.parse(input.expiresAt);
+    return Number.isFinite(expiresAtMs) ? DateTime.makeUnsafe(expiresAtMs) : null;
+  }
+  return input.completedAt === null || input.ttlMs == null
+    ? null
+    : DateTime.add(input.completedAt, { milliseconds: input.ttlMs });
+}
+
+function promptCacheExpiryOfProjection(
+  projection: OrchestrationV2ThreadProjection,
+): DateTime.Utc | null {
+  const turns = projection.providerTurns
+    .filter(
+      (turn) =>
+        turn.providerThreadId === projection.thread.activeProviderThreadId &&
+        turn.tokenUsage !== undefined,
+    )
+    .toSorted((left, right) => right.ordinal - left.ordinal);
+  const latest = turns[0];
+  if (latest === undefined) return null;
+  return promptCacheExpiry({
+    expiresAt: latest.tokenUsage?.promptCacheExpiresAt,
+    completedAt: latest.completedAt,
+    ttlMs: turns.find((turn) => turn.tokenUsage?.promptCacheTtlMs !== undefined)?.tokenUsage
+      ?.promptCacheTtlMs,
+  });
+}
+
 export function threadShellFromProjection(
   projection: OrchestrationV2ThreadProjection,
 ): OrchestrationV2ThreadShell {
@@ -1652,6 +1694,7 @@ export function threadShellFromProjection(
     latestRunRequestedAt: latestRun?.requestedAt ?? null,
     latestRunStartedAt: latestRun?.startedAt ?? null,
     latestRunCompletedAt: latestRun?.completedAt ?? null,
+    promptCacheExpiresAt: promptCacheExpiryOfProjection(projection),
     latestRunStopRequested:
       latestRun != null &&
       projection.turnItems.some(
@@ -1773,6 +1816,7 @@ type ShellThreadState = {
   readonly latestRunRequestedAt: DateTime.Utc | null;
   readonly latestRunStartedAt: DateTime.Utc | null;
   readonly latestRunCompletedAt: DateTime.Utc | null;
+  readonly promptCacheExpiresAt: DateTime.Utc | null;
   readonly latestRunStopRequested: boolean;
   readonly activeRunId: RunId | null;
   readonly blockedOnThreadWait: boolean;
@@ -1933,6 +1977,7 @@ function shellFromState(input: {
     latestRunRequestedAt: input.state.latestRunRequestedAt,
     latestRunStartedAt: input.state.latestRunStartedAt,
     latestRunCompletedAt: input.state.latestRunCompletedAt,
+    promptCacheExpiresAt: input.state.promptCacheExpiresAt,
     latestRunStopRequested: input.state.latestRunStopRequested,
     activeRunId: input.state.activeRunId,
     blockedOnThreadWait: input.state.blockedOnThreadWait,
@@ -6166,6 +6211,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE stop_request.thread_id = t.thread_id AND stop_request.run_id = presented.run_id
                   AND stop_request.type = 'run_interrupt_request'
               ) AS latest_run_stop_requested,
+              -- Mirrors promptCacheExpiryOfProjection.
+              json_extract(cache_turn.payload_json, '$.tokenUsage.promptCacheExpiresAt')
+                AS prompt_cache_expires_at,
+              cache_turn.completed_at AS prompt_cache_turn_completed_at,
+              CASE
+                WHEN json_extract(cache_turn.payload_json, '$.tokenUsage.promptCacheExpiresAt') IS NULL
+                  THEN (
+                    SELECT json_extract(ttl.payload_json, '$.tokenUsage.promptCacheTtlMs')
+                    FROM orchestration_v2_projection_provider_turns ttl
+                      INDEXED BY orchestration_v2_projection_provider_turns_thread_ordinal_idx
+                    WHERE ttl.provider_thread_id = cache_turn.provider_thread_id
+                      AND ttl.thread_id = t.thread_id
+                      AND ttl.ordinal <= cache_turn.ordinal
+                      AND json_extract(ttl.payload_json, '$.tokenUsage.promptCacheTtlMs') IS NOT NULL
+                    ORDER BY ttl.ordinal DESC
+                    LIMIT 1
+                  )
+              END AS prompt_cache_ttl_ms,
               active.run_id AS active_run_id,
               active.status AS active_run_status,
               (
@@ -6326,6 +6389,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 candidate.ordinal DESC, candidate.run_id DESC
               LIMIT 1
             ) AND blocked.status = 'failed'
+            -- The active provider thread's latest turn with token usage.
+            LEFT JOIN orchestration_v2_projection_provider_turns cache_turn
+              ON cache_turn.provider_turn_id = (
+                SELECT turn.provider_turn_id
+                FROM orchestration_v2_projection_provider_turns turn
+                  INDEXED BY orchestration_v2_projection_provider_turns_thread_ordinal_idx
+                WHERE turn.provider_thread_id = t.active_provider_thread_id
+                  AND turn.thread_id = t.thread_id
+                  AND json_extract(turn.payload_json, '$.tokenUsage') IS NOT NULL
+                ORDER BY turn.ordinal DESC
+                LIMIT 1
+              )
             WHERE t.deleted_at IS NULL${
               listedOnly
                 ? sql` AND json_extract(t.payload_json, '$.lineage.relationshipToParent') IS NOT 'subagent'
@@ -6850,6 +6925,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           latestRunRequestedAt,
           latestRunStartedAt,
           latestRunCompletedAt,
+          promptCacheExpiresAt: promptCacheExpiry({
+            expiresAt: row.prompt_cache_expires_at,
+            completedAt:
+              row.prompt_cache_turn_completed_at === null
+                ? null
+                : DateTime.makeUnsafe(row.prompt_cache_turn_completed_at),
+            ttlMs: row.prompt_cache_ttl_ms,
+          }),
           latestRunStopRequested,
           activeRunId: row.active_run_id === null ? null : RunId.make(row.active_run_id),
           blockedOnThreadWait: deriveBlockedOnThreadWait({

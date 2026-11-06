@@ -486,6 +486,121 @@ it.effect("record reads restrict provider histories to delivery identities", () 
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("shells agree on the active provider thread's prompt cache expiry", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const now = yield* DateTime.now;
+    const minutes = (count: number) => DateTime.add(now, { minutes: count });
+    const threadId = ThreadId.make("thread:prompt-cache");
+    const active = ProviderThreadId.make("provider-thread:prompt-cache:active");
+    const other = ProviderThreadId.make("provider-thread:prompt-cache:other");
+    const nodeId = NodeId.make("node:prompt-cache");
+    yield* store.apply({
+      id: EventId.make("event:prompt-cache:thread"),
+      type: "thread.created",
+      threadId,
+      occurredAt: now,
+      payload: {
+        createdBy: "user",
+        creationSource: "web",
+        id: threadId,
+        projectId: ProjectId.make("project:prompt-cache"),
+        title: "Prompt cache",
+        providerInstanceId,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        activeProviderThreadId: active,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        lastVisitedAt: null,
+        deletedAt: null,
+      },
+    });
+    const expiries = Effect.gen(function* () {
+      const sqlShell = (yield* store.getShellSnapshot()).threads.find(
+        (thread) => thread.id === threadId,
+      );
+      const memoryShell = ProjectionStore.threadShellFromProjection(
+        yield* store.getThreadProjection(threadId),
+      );
+      return [sqlShell?.promptCacheExpiresAt, memoryShell.promptCacheExpiresAt].map((value) =>
+        value == null ? value : DateTime.formatIso(value),
+      );
+    });
+    const turn = (
+      id: string,
+      providerThreadId: ProviderThreadId,
+      ordinal: number,
+      completedAt: DateTime.Utc | null,
+      tokenUsage?: { readonly promptCacheTtlMs?: number; readonly promptCacheExpiresAt?: string },
+    ) =>
+      store.apply({
+        id: EventId.make(`event:prompt-cache:${id}`),
+        type: "provider-turn.updated",
+        threadId,
+        nodeId,
+        driver,
+        occurredAt: now,
+        payload: {
+          id: ProviderTurnId.make(`turn:prompt-cache:${id}`),
+          providerThreadId,
+          nodeId,
+          runAttemptId: null,
+          nativeTurnRef: null,
+          ordinal,
+          status: completedAt === null ? "running" : "completed",
+          startedAt: now,
+          completedAt,
+          ...(tokenUsage === undefined
+            ? {}
+            : {
+                tokenUsage: {
+                  usedTokens: 1_000,
+                  updatedAt: DateTime.formatIso(completedAt ?? now),
+                  ...tokenUsage,
+                },
+              }),
+        },
+      });
+    const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
+
+    // Nothing observed yet.
+    assert.deepEqual(yield* expiries, [null, null]);
+    // Usage without a TTL ever reported: unknown.
+    yield* turn("1", active, 1, minutes(1), {});
+    assert.deepEqual(yield* expiries, [null, null]);
+    // The adapter's own expiry wins.
+    yield* turn("2", active, 2, minutes(2), {
+      promptCacheTtlMs: 5 * 60_000,
+      promptCacheExpiresAt: iso(minutes(6)),
+    });
+    assert.deepEqual(yield* expiries, [iso(minutes(6)), iso(minutes(6))]);
+    // A request served wholly from the cache reports no TTL: its end plus the latest one reported.
+    yield* turn("3", active, 3, minutes(4), {});
+    assert.deepEqual(yield* expiries, [iso(minutes(9)), iso(minutes(9))]);
+    // A turn without usage, or another provider thread's, changes nothing.
+    yield* turn("4", active, 4, minutes(5));
+    yield* turn("other", other, 1, minutes(8), {
+      promptCacheTtlMs: 60 * 60_000,
+      promptCacheExpiresAt: iso(minutes(68)),
+    });
+    assert.deepEqual(yield* expiries, [iso(minutes(9)), iso(minutes(9))]);
+    // A TTL without an expiry counts from the turn's end; a running turn's end is unknown.
+    yield* turn("5", active, 5, minutes(10), { promptCacheTtlMs: 30 * 60_000 });
+    assert.deepEqual(yield* expiries, [iso(minutes(40)), iso(minutes(40))]);
+    yield* turn("6", active, 6, null, {});
+    assert.deepEqual(yield* expiries, [null, null]);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("idle compaction filters keep the latest run, live work and the newest usage", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
