@@ -205,29 +205,20 @@ body.pult-dragging .pult-browser-host webview {
 }
 
 /* The light themes' depth shadows, inset on the editor part's edges so the
-   sidebar and panel seem to float above it: under files the strip's fade is
+   sidebar and panel seem to float above it: under files the strip's edge is
    the seam, and the shadow read as a second one. */
 .monaco-workbench.vs:not(.pult-mode-vscode) .part.editor::after {
   box-shadow: none;
 }
 
 /* The scroll shadow under the tabs' row, Monaco's 6px inset shadow shown
-   while a file is scrolled, is the fade the thread's turns get under their
-   tab instead: the same stops as the strip's below (src/status/status.css),
-   downwards. The element is Monaco's overlay, shown and sized by it. */
+   while a file is scrolled, is the blank band the thread's turns get under
+   their tab instead (view/shell.css, the composer box's border width). The
+   element is Monaco's overlay, shown and sized by it. */
 .monaco-workbench:not(.pult-mode-vscode) .monaco-editor .scroll-decoration {
-  height: 1.5rem;
+  height: 1px;
   box-shadow: none;
-  background: linear-gradient(
-    to bottom,
-    var(--vscode-editor-background) 0%,
-    color-mix(in srgb, var(--vscode-editor-background) 90%, transparent) 10%,
-    color-mix(in srgb, var(--vscode-editor-background) 70%, transparent) 24%,
-    color-mix(in srgb, var(--vscode-editor-background) 42%, transparent) 42%,
-    color-mix(in srgb, var(--vscode-editor-background) 18%, transparent) 62%,
-    color-mix(in srgb, var(--vscode-editor-background) 4%, transparent) 82%,
-    transparent 100%
-  );
+  background: var(--vscode-editor-background);
   pointer-events: none;
 }
 
@@ -264,7 +255,7 @@ body.pult-dragging .pult-browser-host webview {
   box-shadow: none;
 }
 
-/* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the fade is the seam. */
+/* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the blank band is the seam. */
 .monaco-workbench:not(.pult-mode-vscode)
   .part.editor
   > .content

@@ -386,26 +386,31 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   background: var(--background);
 }
 
-/* The turns fade into the composer as they fade under the tab at the
-   top (upstream's `topbar-scroll-fade` mask, its stops mirrored): over the
-   thread's opaque canvas, a fade to that canvas. */
+/* No fades at the main area's seams, a blank band of the composer box's
+   border width instead: the turns end that far above the composer, and
+   that far under the tab, where upstream's `topbar-scroll-fade` mask keeps
+   its scrollbar's column and loses its fade. */
 .pult-thread-view [data-chat-composer-overlay="true"]:not(.inset-0)::before {
   content: "";
   position: absolute;
   inset-inline: 0;
   bottom: 100%;
-  height: var(--workspace-titlebar-scroll-fade-height, 1.5rem);
-  background: linear-gradient(
-    to top,
-    var(--background) 0%,
-    color-mix(in srgb, var(--background) 90%, transparent) 10%,
-    color-mix(in srgb, var(--background) 70%, transparent) 24%,
-    color-mix(in srgb, var(--background) 42%, transparent) 42%,
-    color-mix(in srgb, var(--background) 18%, transparent) 62%,
-    color-mix(in srgb, var(--background) 4%, transparent) 82%,
-    transparent 100%
-  );
+  height: 1px;
+  background: var(--background);
   pointer-events: none;
+}
+
+.pult-thread-view .topbar-scroll-fade {
+  -webkit-mask-image: linear-gradient(black, black), linear-gradient(black, black);
+  -webkit-mask-position: bottom, right;
+  -webkit-mask-size:
+    100% calc(100% - 1px),
+    var(--app-scrollbar-width) 100%;
+  mask-image: linear-gradient(black, black), linear-gradient(black, black);
+  mask-position: bottom, right;
+  mask-size:
+    100% calc(100% - 1px),
+    var(--app-scrollbar-width) 100%;
 }
 
 /* A draft's environment and branch strip, without its seam under the composer. */
