@@ -11,9 +11,11 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as References from "effect/References";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -301,6 +303,39 @@ describe("InstallAtRest", () => {
       expect(calls).toEqual(["run", "commit token-1"]);
     }),
   );
+
+  it.effect("logs why it did not install once, until the reason changes", () => {
+    const lines: Array<string> = [];
+    const logger = Logger.make(({ logLevel, message }) => {
+      const [text, fields] = Array.isArray(message) ? message : [message];
+      if (text === "Desktop app update not installed at rest.")
+        lines.push(`${logLevel} ${(fields as { readonly reason: string }).reason}`);
+    });
+    return Effect.gen(function* () {
+      yield* start({
+        run: ({ runs }) =>
+          Effect.fail(
+            new ServerSelfUpdateError({
+              reason: runs < 3 ? "Already up to date on 0.0.1." : "Network down.",
+            }),
+          ),
+      });
+      yield* TestClock.adjust(4 * 30 * MINUTE);
+      expect(lines).toEqual([
+        "Info Already up to date on 0.0.1.",
+        "Debug Already up to date on 0.0.1.",
+        "Info Network down.",
+        "Debug Network down.",
+      ]);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Logger.layer([logger], { mergeWithExisting: false }),
+          Layer.succeed(References.MinimumLogLevel, "Debug"),
+        ),
+      ),
+    );
+  });
 
   it.effect("tries again next tick after a failure or when up to date", () =>
     Effect.gen(function* () {

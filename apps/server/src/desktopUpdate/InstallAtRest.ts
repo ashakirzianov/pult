@@ -4,6 +4,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { HostPowerSnapshot } from "@t3tools/contracts";
 
@@ -81,30 +82,34 @@ const refusal = Effect.fn("desktopUpdate.installAtRest.refusal")(function* (
   return null;
 });
 
-const tick = Effect.fn("desktopUpdate.installAtRest.tick")(function* () {
+const tick = Effect.fn("desktopUpdate.installAtRest.tick")(function* (
+  lastReason: Ref.Ref<string | null>,
+) {
   const update = yield* DesktopAppUpdate.DesktopAppUpdate;
   const power = yield* HostPowerMonitor.HostPowerMonitor;
-  if ((yield* refusal(Option.some(yield* power.snapshot))) !== null) return;
-  // Up to date comes back as a failure too; either way the next tick asks again.
-  const prepared = yield* update
-    .run(() => Effect.void)
-    .pipe(
-      Effect.catch((error) =>
-        Effect.logInfo("Desktop app update not installed at rest.", { reason: error.reason }).pipe(
-          Effect.as(null),
+  // A quiet night answers the same each tick, so only a new reason is worth a line.
+  const notInstalled = (reason: string) =>
+    Ref.getAndSet(lastReason, reason).pipe(
+      Effect.flatMap((last) =>
+        (last === reason ? Effect.logDebug : Effect.logInfo)(
+          "Desktop app update not installed at rest.",
+          { reason },
         ),
       ),
     );
+  if ((yield* refusal(Option.some(yield* power.snapshot))) !== null) return;
+  // Up to date comes back as a failure too, untyped; either way the next tick asks again.
+  const prepared = yield* update
+    .run(() => Effect.void)
+    .pipe(Effect.catch((error) => notInstalled(error.reason).pipe(Effect.as(null))));
   if (prepared?.desktopUpdateToken === undefined) return;
   // The download and prepare took minutes; someone may be back.
   const late = yield* refusal(yield* freshHostPower);
   if (late !== null) {
-    yield* Effect.logInfo("Desktop app update prepared but not installed at rest.", {
-      targetVersion: prepared.targetVersion,
-      reason: late,
-    });
+    yield* notInstalled(`prepared ${prepared.targetVersion}, but ${late}`);
     return;
   }
+  yield* Ref.set(lastReason, null);
   yield* Effect.logInfo("Installing the desktop app update at rest.", {
     targetVersion: prepared.targetVersion,
   });
@@ -130,7 +135,10 @@ const make = Effect.gen(function* () {
     return;
   }
   yield* Effect.logInfo("Desktop app updates install while the server and the host rest.");
-  yield* forkParked(Effect.forever(Effect.sleep(TICK_INTERVAL).pipe(Effect.andThen(tick()))));
+  const lastReason = yield* Ref.make<string | null>(null);
+  yield* forkParked(
+    Effect.forever(Effect.sleep(TICK_INTERVAL).pipe(Effect.andThen(tick(lastReason)))),
+  );
 });
 
 export const layer = Layer.effectDiscard(make);
