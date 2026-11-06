@@ -1,6 +1,6 @@
 # Pult
 
-Pult is a fork of T3 Code with its own client: the shell at `apps/pult`, on VS Code's workbench, and the server changes it needs in `apps/server`, kept additive and offered upstream when generic. The shell is described in [`apps/pult/README.md`](apps/pult/README.md); agents start at [`AGENTS.md`](AGENTS.md). The rest of this file is upstream's README.
+Pult is a fork of T3 Code with its own client: the shell at `apps/pult`, on VS Code's workbench, and the server changes it needs in `apps/server`, kept additive so upstream merges stay easy. The shell is described in [`apps/pult/README.md`](apps/pult/README.md); agents start at [`AGENTS.md`](AGENTS.md). The rest of this file is upstream's README.
 
 ---
 
