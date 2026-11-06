@@ -132,7 +132,8 @@ const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  return { archiveVersion: environment.appVersion };
+  // The remote runs the CLI release matching this server, whose version the app's may differ from.
+  return { archiveVersion: serverPackageJson.version };
 };
 
 const layerDesktopSshEnvironment = Layer.unwrap(
