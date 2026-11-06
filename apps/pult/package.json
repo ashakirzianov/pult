@@ -52,6 +52,7 @@
     "@codingame/monaco-vscode-quickaccess-service-override": "37.6.1",
     "@codingame/monaco-vscode-references-view-default-extension": "37.6.1",
     "@codingame/monaco-vscode-remote-agent-service-override": "37.6.1",
+    "@codingame/monaco-vscode-rust-default-extension": "37.6.1",
     "@codingame/monaco-vscode-scm-service-override": "37.6.1",
     "@codingame/monaco-vscode-search-result-default-extension": "37.6.1",
     "@codingame/monaco-vscode-search-service-override": "37.6.1",

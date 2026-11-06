@@ -933,6 +933,9 @@ importers:
       '@codingame/monaco-vscode-remote-agent-service-override':
         specifier: 37.6.1
         version: 37.6.1
+      '@codingame/monaco-vscode-rust-default-extension':
+        specifier: 37.6.1
+        version: 37.6.1
       '@codingame/monaco-vscode-scm-service-override':
         specifier: 37.6.1
         version: 37.6.1
@@ -3847,6 +3850,9 @@ packages:
 
   '@codingame/monaco-vscode-remote-agent-service-override@37.6.1':
     resolution: {integrity: sha512-3xv/y+iMrZQ7NhQQX3R1/CDE4I3oMgxhSTbc3bOFuoAS0coGf/Ppfc1EkmsFOLzAkkdQlzJcWjCwpZMNs2WgiQ==}
+
+  '@codingame/monaco-vscode-rust-default-extension@37.6.1':
+    resolution: {integrity: sha512-EahzMz1IBKf2eV1NitzZ3l+YoyCQzbIHCDKHAOVrgVloH4LQEAeBAHc1CH6BgygIIvejtnqmInvwPeDRA8XUHg==}
 
   '@codingame/monaco-vscode-scm-service-override@37.6.1':
     resolution: {integrity: sha512-FGMSYqX++bk8ut+/8jy6T+5cU7K7tZ3hJxiSjGiYjKxCDwJokpK9Sv7rT6HPv2qulWtUNoVob83dtxRKXVb4VQ==}
@@ -14043,6 +14049,10 @@ snapshots:
     dependencies:
       '@codingame/monaco-vscode-api': 37.6.1
       '@codingame/monaco-vscode-environment-service-override': 37.6.1
+
+  '@codingame/monaco-vscode-rust-default-extension@37.6.1':
+    dependencies:
+      '@codingame/monaco-vscode-api': 37.6.1
 
   '@codingame/monaco-vscode-scm-service-override@37.6.1':
     dependencies:

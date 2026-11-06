@@ -8,6 +8,7 @@ import "@codingame/monaco-vscode-markdown-basics-default-extension";
 import "@codingame/monaco-vscode-css-default-extension";
 import "@codingame/monaco-vscode-html-default-extension";
 import "@codingame/monaco-vscode-yaml-default-extension";
+import "@codingame/monaco-vscode-rust-default-extension";
 import "@codingame/monaco-vscode-shellscript-default-extension";
 import "@codingame/monaco-vscode-diff-default-extension";
 import "@codingame/monaco-vscode-search-result-default-extension";
@@ -35,6 +36,7 @@ import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerMode, startMode } from "./mode.ts";
 import { gateEditorMenus } from "./editorMenus.ts";
 import { registerPultFiles } from "./files/index.ts";
+import { registerGrammars } from "./grammars/index.ts";
 import { registerLimits } from "./limits/index.ts";
 import { startPanelRows } from "./panel/rows.tsx";
 import { registerPanel } from "./panel/view.tsx";
@@ -60,6 +62,7 @@ import { syncColorScheme } from "./theme.ts";
 import { installWorkers } from "./workers.ts";
 
 installWorkers();
+registerGrammars();
 
 // User data (settings, keybindings, storage) persists in IndexedDB across reloads.
 await createIndexedDBProviders();
