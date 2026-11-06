@@ -210,3 +210,52 @@
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
+
+/* Under an environment's row (EnvironmentAccess.tsx): its pairing links and clients, inset, a row each. */
+.pult-settings-access {
+  margin: 0 0 4px 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.pult-settings-access .pult-settings-row {
+  padding: 6px 0;
+}
+
+/* The pairing link Pair Device minted: its QR code beside the link, the code and its actions. */
+.pult-settings-pairing {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 8px 0 8px 16px;
+  padding: 12px;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background);
+}
+
+.pult-settings-pairing-qr {
+  flex-shrink: 0;
+  width: 148px;
+  height: 148px;
+  border-radius: 4px;
+}
+
+.pult-settings-pairing-addresses {
+  width: fit-content;
+  margin-top: 8px;
+}
+
+.pult-settings-pairing-value {
+  margin-top: 8px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.pult-settings-pairing-actions {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}

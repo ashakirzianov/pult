@@ -1,10 +1,13 @@
 import { getService, ICommandService, IContextKeyService } from "@codingame/monaco-vscode-api";
 import { MenuId } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { type AccessState, followAccess } from "../connection/access.ts";
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
+import { pairings } from "../connection/pairDevice.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
+import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, MODES, setMode } from "../mode.ts";
 import { starStore } from "../stars/model.ts";
@@ -20,6 +23,7 @@ import {
   syncStar,
 } from "../stars/syncing.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
+import { AuthorizedClients, PairingCard } from "./EnvironmentAccess.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -61,9 +65,11 @@ const PHASES: Record<ShellEnvironment["phase"], string> = {
 /**
  * Every environment the page holds, in the order they were connected, each
  * with its server's host, how its connection stands and why when it is not
- * ready, and Disconnect, and Retry while it is not ready; then Connect to
- * Environment, which adds one. The palette's Pult: Connect to Environment,
- * Disconnect and Retry Connection are the same commands.
+ * ready, and Disconnect, Pair Device while it is ready and Retry while it is
+ * not, then its pairing links and clients; then Connect to Environment,
+ * which adds one, and in Pult.app its local server and that server's network
+ * access. The palette's Pult: Connect to Environment, Disconnect, Retry
+ * Connection and Pair Device are the same commands.
  */
 function EnvironmentsSection() {
   const environments = useSyncExternalStore(
@@ -78,39 +84,11 @@ function EnvironmentsSection() {
       ) : (
         <ul className="pult-settings-rows">
           {environments.map((environment) => (
-            <li key={environment.environmentId} className="pult-settings-row">
-              <div className="pult-settings-row-text">
-                <div className="pult-settings-row-label">
-                  {environmentName(environment, environments)}
-                </div>
-                <div className="pult-settings-row-description">
-                  {[hostOf(environment), PHASES[environment.phase]]
-                    .filter((part) => part !== undefined)
-                    .join(" · ")}
-                </div>
-                {environment.error === null ? null : (
-                  <div className="pult-settings-row-error">{environment.error}</div>
-                )}
-              </div>
-              <div className="pult-settings-row-actions">
-                {environment.phase === "ready" ? null : (
-                  <button
-                    type="button"
-                    className="pult-settings-button"
-                    onClick={() => run("pult-shell.retryConnection", environment.environmentId)}
-                  >
-                    Retry
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="pult-settings-button"
-                  onClick={() => run("pult-shell.disconnect", environment.environmentId)}
-                >
-                  Disconnect
-                </button>
-              </div>
-            </li>
+            <EnvironmentRow
+              key={environment.environmentId}
+              environment={environment}
+              environments={environments}
+            />
           ))}
         </ul>
       )}
@@ -122,7 +100,78 @@ function EnvironmentsSection() {
         Connect to Environment
       </button>
       <LocalServerRow />
+      <NetworkAccessRow />
     </section>
+  );
+}
+
+/**
+ * An environment's row, Pair Device while it is ready, and under it the
+ * pairing link Pair Device minted, until it expires and, once the
+ * environment's access is known, while it is still outstanding, then that access,
+ * followed while the row shows (`EnvironmentAccess.tsx`).
+ */
+function EnvironmentRow({
+  environment,
+  environments,
+}: {
+  environment: ShellEnvironment;
+  environments: ReadonlyArray<ShellEnvironment>;
+}) {
+  const { environmentId } = environment;
+  const [access, setAccess] = useState<AccessState>();
+  useEffect(() => followAccess(environmentId, setAccess), [environmentId]);
+  const pairing = useSyncExternalStore(pairings.subscribe, pairings.get).get(environmentId);
+  const outstanding =
+    pairing !== undefined &&
+    (access?._tag !== "snapshot" ||
+      access.snapshot.pairingLinks.some((link) => link.id === pairing.id));
+  return (
+    <li>
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">
+            {environmentName(environment, environments)}
+          </div>
+          <div className="pult-settings-row-description">
+            {[hostOf(environment), PHASES[environment.phase]]
+              .filter((part) => part !== undefined)
+              .join(" · ")}
+          </div>
+          {environment.error === null ? null : (
+            <div className="pult-settings-row-error">{environment.error}</div>
+          )}
+        </div>
+        <div className="pult-settings-row-actions">
+          {environment.phase === "ready" ? (
+            <button
+              type="button"
+              className="pult-settings-button"
+              onClick={() => run("pult-shell.pairDevice", environmentId)}
+            >
+              Pair Device…
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="pult-settings-button"
+              onClick={() => run("pult-shell.retryConnection", environmentId)}
+            >
+              Retry
+            </button>
+          )}
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => run("pult-shell.disconnect", environmentId)}
+          >
+            Disconnect
+          </button>
+        </div>
+      </div>
+      {outstanding ? <PairingCard key={pairing.id} pairing={pairing} /> : null}
+      <AuthorizedClients environmentId={environmentId} access={access} />
+    </li>
   );
 }
 
@@ -130,6 +179,30 @@ const LOCAL_SERVER_CHOICES = [
   { value: "on", label: "On" },
   { value: "off", label: "Off" },
 ] as const;
+
+const NETWORK_ACCESS_CHOICES = [
+  { value: "network-accessible", label: "On" },
+  { value: "local-only", label: "Off" },
+] as const;
+
+/**
+ * In Pult.app with its local server on, whether other devices reach it
+ * (`src/desktop/serverExposure.ts`), which a pairing link of it needs; a
+ * change asks, then relaunches the app.
+ */
+function NetworkAccessRow() {
+  const mode = useSyncExternalStore(serverExposure.subscribe, serverExposure.get);
+  if (mode === undefined) return null;
+  return (
+    <SegmentedRow
+      label="Reachable from other devices"
+      description="On, devices on your network reach this computer's server, and a device you pair connects to it; off, only this computer does. Changing it restarts Pult."
+      choices={NETWORK_ACCESS_CHOICES}
+      current={mode}
+      onChoose={(choice) => void setNetworkAccess(choice === "network-accessible")}
+    />
+  );
+}
 
 /**
  * In Pult.app, its local server (`src/desktop/localServer.ts`), as the app

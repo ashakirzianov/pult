@@ -23,6 +23,7 @@ import {
 } from "@t3tools/shared/remote";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import type * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
@@ -209,11 +210,16 @@ class ShellConnection {
   /**
    * Runs an effect on the environment's supervisor: RPCs go to its live
    * session, and fail with `EnvironmentRpcUnavailableError` while there is
-   * none or the page does not hold the environment.
+   * none or the page does not hold the environment; HTTP requests go through
+   * the page's fetch (`src/connection/access.ts`).
    */
   run<A, E>(
     environmentId: string,
-    effect: Effect.Effect<A, E, EnvironmentSupervisor.EnvironmentSupervisor>,
+    effect: Effect.Effect<
+      A,
+      E,
+      EnvironmentSupervisor.EnvironmentSupervisor | HttpClient.HttpClient
+    >,
   ): Promise<A> {
     const id = this.heldOf(environmentId)?.saved.profile.environmentId;
     if (id === undefined) {

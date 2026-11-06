@@ -14,6 +14,7 @@ import type { ResolvedRemotePairingTarget } from "@t3tools/shared/remote";
 
 import { connection, type ShellEnvironment } from "./connection.ts";
 import { ConnectedContext } from "./contextKey.ts";
+import { pairDevice } from "./pairDevice.ts";
 import { parseConnectInput } from "./pairing.ts";
 import { ProbeError } from "./probe.ts";
 
@@ -23,7 +24,9 @@ import { ProbeError } from "./probe.ts";
  * (`pult-shell.disconnect [environmentId]`, while the page holds one, which
  * it forgets with its bearer) and "Pult: Retry Connection"
  * (`pult-shell.retryConnection [environmentId]`, for one waiting between
- * attempts); with several environments held, the last two pick one first.
+ * attempts) and "Pult: Pair Device…" (`pult-shell.pairDevice [environmentId]`,
+ * which mints a pairing link for another device, `pairDevice.ts`); with
+ * several environments held, the last three pick one first.
  * The prompts are the page's, so no extension can bind the page to a server
  * of its choosing; only a development build takes a pairing link as
  * argument, for `scripts/drive.ts`.
@@ -98,6 +101,27 @@ export function registerConnectionCommands(): void {
         }
         const picked = await pickEnvironment(waiting, "Retry an environment's connection now");
         if (picked !== undefined) await connection.retryNow(picked.environmentId);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.pairDevice",
+          title: { value: "Pair Device…", original: "Pair Device…" },
+          category,
+          f1: true,
+          precondition: ConnectedContext,
+        });
+      }
+
+      async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
+        const picked =
+          typeof environmentId === "string"
+            ? connection.environment(environmentId)
+            : await pickEnvironment(connection.environments, "Pair a device with an environment");
+        if (picked !== undefined) await pairDevice(picked.environmentId);
       }
     },
   );
