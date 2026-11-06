@@ -1,5 +1,5 @@
-import { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
-import { EnvironmentRpcUnavailableError, subscribe } from "@t3tools/client-runtime/rpc";
+import type { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
+import { subscribe } from "@t3tools/client-runtime/rpc";
 import {
   applyAuthAccessStreamEvent,
   EMPTY_AUTH_ACCESS_SNAPSHOT,
@@ -13,12 +13,11 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { connection } from "./connection.ts";
+import { withPreparedConnection } from "./http.ts";
 
 // An environment's access (xaxis `pult/issues/pair-device`): the pairing
 // links it has outstanding and the clients it has authorized, which the
@@ -33,31 +32,16 @@ type AuthRequest<A, E> = Pick<
   "url" | "request"
 >;
 
-/**
- * A POST to the server's auth API with the environment's prepared
- * connection, as `peerPairingCode.ts` sends one. Pult runs no T3 Connect, so
- * every connection it prepares authorizes with a bearer, never DPoP.
- */
+/** A POST to the server's auth API with the environment's prepared connection (`http.ts`). */
 function authPost<A, E>(environmentId: string, request: AuthRequest<A, E>): Promise<A> {
-  return connection.run(
-    environmentId,
-    Effect.gen(function* () {
-      const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-      const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-      if (Option.isNone(prepared)) {
-        return yield* new EnvironmentRpcUnavailableError({
-          environmentId,
-          message: `${supervisor.target.label} is not connected.`,
-        });
-      }
-      return yield* executeAuthenticatedEnvironmentHttpRequest({
-        ...request,
-        prepared: prepared.value,
-        signer: Option.none(),
-        group: "auth",
-        method: "POST",
-        timeoutMs: TIMEOUT_MS,
-      });
+  return withPreparedConnection(environmentId, (prepared) =>
+    executeAuthenticatedEnvironmentHttpRequest({
+      ...request,
+      prepared,
+      signer: Option.none(),
+      group: "auth",
+      method: "POST",
+      timeoutMs: TIMEOUT_MS,
     }),
   );
 }
