@@ -20,9 +20,9 @@
   visibility: hidden;
 }
 
-/* The file ends at a border above the composer as above the status strip,
-   which lets its own border go while the composer shows (`src/status/status.css`,
-   the same border). The grid's cell clips its view, so the strip's is let
+/* The file ends at a blank band above the composer, as the thread's turns
+   do above theirs (`view/shell.css`), in place of the status strip's border,
+   which goes while the composer shows (`src/status/status.css`). The grid's cell clips its view, so the strip's is let
    overflow. */
 .monaco-workbench .split-view-view:has(> .pult-composer-strip) {
   overflow: visible;
@@ -41,7 +41,7 @@
   inset-inline: 0;
   bottom: 100%;
   height: 1px;
-  background: var(--vscode-panel-border, var(--vscode-editorGroup-border));
+  background: var(--vscode-editor-background);
   pointer-events: none;
 }
 

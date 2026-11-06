@@ -52,10 +52,11 @@
   color: var(--vscode-problemsWarningIcon-foreground);
 }
 
-/* The file ends at a border above the strip, of the composer box's border
-   width (`view/shell.css`), over the file's last line, where the thread's
-   turns end at a blank band above their composer. The grid's cell clips its
-   view, so the strip's is let overflow. */
+/* The file ends at a border above the strip, the composer box's (upstream's
+   `--chat-composer-outline`, `ComposerSurface.tsx`, by the view's `dark`
+   class) laid on the editor's canvas, over the file's last line, where the
+   thread's turns end at a blank band above their composer. The grid's cell
+   clips its view, so the strip's is let overflow. */
 .monaco-workbench .split-view-view:has(> .pult-status-strip) {
   overflow: visible;
 }
@@ -66,8 +67,13 @@
   inset-inline: 0;
   bottom: 100%;
   height: 1px;
-  background: var(--vscode-panel-border, var(--vscode-editorGroup-border));
+  background: linear-gradient(rgb(0 0 0 / 8%), rgb(0 0 0 / 8%)) var(--vscode-editor-background);
   pointer-events: none;
+}
+
+.dark .pult-status-strip::before {
+  background: linear-gradient(rgb(255 255 255 / 5%), rgb(255 255 255 / 5%))
+    var(--vscode-editor-background);
 }
 
 /* "More": the stock bar's other entries, one row each, in the workbench's hover. */

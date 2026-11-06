@@ -381,8 +381,10 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 
 /* The composer sits on the thread's canvas, not over its turns: the overlay
    upstream floats above the timeline is opaque, and the timeline already
-   keeps its last turn clear of it. */
+   keeps its last turn clear of it. Its top padding goes, so the band below
+   is all that shows between the turns and the box. */
 .pult-thread-view [data-chat-composer-overlay="true"] {
+  padding-top: 0;
   background: var(--background);
 }
 
