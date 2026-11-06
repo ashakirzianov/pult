@@ -5,12 +5,7 @@
 import { scopedKey, type ShellThread } from "../threads/store.ts";
 import { lineageWorks, type StarHome, threadsBelow } from "./stars.ts";
 
-/**
- * The states `pult-star` draws a look for and Pult shows, its stills named
- * after them (`mark.ts`). `talking`, the current conversation's latest
- * assistant message streaming, is never derived yet: the shell's thread rows
- * carry no streaming flag (`starLook`).
- */
+/** The states `pult-star` draws a look for and Pult shows, its stills named after them (`mark.ts`). */
 export type StarLook =
   | "asleep"
   | "stirring"
@@ -29,7 +24,14 @@ export const FINISHED_MS = 3 * 60_000;
 /** What the look reads of a thread: its own, or one below the conversation. */
 export type LookThread = Pick<
   ShellThread,
-  "environmentId" | "id" | "rootId" | "working" | "waiting" | "awaitsUser" | "latestRun"
+  | "environmentId"
+  | "id"
+  | "rootId"
+  | "working"
+  | "waiting"
+  | "awaitsUser"
+  | "assistantStreaming"
+  | "latestRun"
 >;
 
 /** What the look reads besides the Star. */
@@ -54,9 +56,12 @@ export function finishedUntil(current: Pick<LookThread, "latestRun">): number | 
  * an unsent message, else asleep. Awake, the first that holds of: troubled,
  * its latest run failed, a usage limit's stop among them, until the next
  * starts (an interrupted run is not a failure, and ends finished); waiting, a
- * runtime request of it or of a thread below it awaits the user; thinking,
- * its own run is on, a queued message among it (upstream's Waiting, a run
- * held open by background work, is not its own); delegating, a thread below
+ * runtime request of it or of a thread below it awaits the user; talking, it
+ * works and an assistant message of its run streams, as the shell row says
+ * (never for a provider that sends its text whole, as Claude's adapter does,
+ * nor from an older server); thinking, its own run is on, a queued message
+ * among it (upstream's Waiting, a run held open by background work, is not
+ * its own); delegating, a thread below
  * it works, or its run is held open by background work; listening, its
  * composer holds an unsent message; finished, for `FINISHED_MS` after its
  * latest run ended; else awake.
@@ -80,6 +85,7 @@ export function starLook(
   if (current.latestRun?.status === "failed") return "troubled";
   if (current.awaitsUser || threadsBelow(current, inputs.threads).some((each) => each.awaitsUser))
     return "waiting";
+  if (current.working && current.assistantStreaming) return "talking";
   if (current.working && !current.waiting) return "thinking";
   if (current.waiting || lineageWorks(current, inputs.threads)) return "delegating";
   if (inputs.unsent.has(scopedKey(current.environmentId, current.id))) return "listening";

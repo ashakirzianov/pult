@@ -344,6 +344,7 @@ export function shellThreads(
       workingSince: resolveThreadWorkingStartedAt(thread),
       pinned: thread.pinnedAt !== null,
       awaitsUser: thread.hasPendingApprovals || thread.hasPendingUserInput,
+      assistantStreaming: thread.source.assistantMessageStreaming === true,
       canSnooze: canSnooze(thread, { now }),
       latestRun:
         thread.latestRun === null

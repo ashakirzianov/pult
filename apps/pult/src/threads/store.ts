@@ -47,6 +47,8 @@ export interface ShellThread {
   readonly pinned: boolean;
   /** A runtime request of its own, an approval or a question, awaits the user (upstream's row's Approval or Input). */
   readonly awaitsUser: boolean;
+  /** An assistant message of its active run is streaming, as its server says; false from a server that predates the flag. */
+  readonly assistantStreaming: boolean;
   /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
   readonly latestRun: {

@@ -14,6 +14,7 @@ const thread = (id: string, overrides: Partial<LookThread> = {}): LookThread => 
   working: false,
   waiting: false,
   awaitsUser: false,
+  assistantStreaming: false,
   latestRun: { status: "completed", startedAt: "2026-11-06T09:59:00.000Z", finishedAt: ENDED },
   ...overrides,
 });
@@ -108,6 +109,19 @@ NodeTest.describe("starLook", () => {
     NodeAssert.equal(look(thread("conversation"), { unsent, now: AFTER - 1 }), "listening");
   });
 
+  NodeTest.test("talks while its run works and an assistant message streams", () => {
+    const talking = { working: true, assistantStreaming: true, latestRun: run("running") };
+    NodeAssert.equal(look(thread("conversation", talking)), "talking");
+    NodeAssert.equal(
+      look(thread("conversation", { ...talking, assistantStreaming: false })),
+      "thinking",
+    );
+    NodeAssert.equal(
+      look(thread("conversation", { ...talking, working: false, latestRun: null })),
+      "awake",
+    );
+  });
+
   NodeTest.test("waits while a runtime request of it or below it awaits the user", () => {
     NodeAssert.equal(look(thread("conversation", { awaitsUser: true })), "waiting");
     NodeAssert.equal(
@@ -117,7 +131,7 @@ NodeTest.describe("starLook", () => {
   });
 
   NodeTest.test(
-    "takes troubled, waiting, thinking, delegating, listening, finished in that order",
+    "takes troubled, waiting, talking, thinking, delegating, listening, finished in that order",
     () => {
       const unsent = new Set(["a/conversation"]);
       const working = [subagent("child", { working: true })];
@@ -130,6 +144,28 @@ NodeTest.describe("starLook", () => {
           thread("conversation", { awaitsUser: true, working: true, latestRun: run("running") }),
         ),
         "waiting",
+      );
+      NodeAssert.equal(
+        look(
+          thread("conversation", {
+            awaitsUser: true,
+            working: true,
+            assistantStreaming: true,
+            latestRun: run("running"),
+          }),
+        ),
+        "waiting",
+      );
+      NodeAssert.equal(
+        look(
+          thread("conversation", {
+            working: true,
+            assistantStreaming: true,
+            latestRun: run("running"),
+          }),
+          { threads: working, unsent },
+        ),
+        "talking",
       );
       NodeAssert.equal(
         look(thread("conversation", { working: true, latestRun: run("running") }), {
