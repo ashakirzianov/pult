@@ -45,6 +45,8 @@ export interface ShellThread {
   /** When its current work started, while it works and the server knows. */
   readonly workingSince: string | null;
   readonly pinned: boolean;
+  /** A runtime request of its own, an approval or a question, awaits the user (upstream's row's Approval or Input). */
+  readonly awaitsUser: boolean;
   /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
   readonly latestRun: {

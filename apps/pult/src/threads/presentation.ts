@@ -339,6 +339,7 @@ export function shellThreads(
       waiting: thread.runtime?.status === "idle",
       workingSince: resolveThreadWorkingStartedAt(thread),
       pinned: thread.pinnedAt !== null,
+      awaitsUser: thread.hasPendingApprovals || thread.hasPendingUserInput,
       canSnooze: canSnooze(thread, { now }),
       latestRun:
         thread.latestRun === null
