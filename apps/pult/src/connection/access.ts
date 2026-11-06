@@ -53,12 +53,19 @@ export interface MintedPairing {
   readonly expiresAt: number;
 }
 
-/** Mints a pairing credential on the environment with upstream's standard client scopes, which the session must hold itself. */
-export async function mintPairing(environmentId: string): Promise<MintedPairing> {
+/**
+ * Mints a pairing credential on the environment with upstream's standard
+ * client scopes, which the session must hold itself; its label, when given,
+ * names the link and then the client that redeems it.
+ */
+export async function mintPairing(environmentId: string, label?: string): Promise<MintedPairing> {
   const minted = await authPost(environmentId, {
     url: (urls) => urls.pairingCredential(),
     request: ({ client, headers }) =>
-      client.pairingCredential({ headers, payload: { scopes: AuthStandardClientScopes } }),
+      client.pairingCredential({
+        headers,
+        payload: { scopes: AuthStandardClientScopes, ...(label === undefined ? {} : { label }) },
+      }),
   });
   return {
     id: minted.id,

@@ -1,4 +1,9 @@
-import { getService, ICommandService, INotificationService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  ICommandService,
+  INotificationService,
+  IQuickInputService,
+} from "@codingame/monaco-vscode-api";
 
 import { advertisedEndpoints } from "../desktop/serverExposure.ts";
 import { type MintedPairing, mintPairing } from "./access.ts";
@@ -45,16 +50,27 @@ export function dismissPairing(pairing: Pairing): void {
 
 /**
  * Pair Device (`pult-shell.pairDevice [environmentId]`, the settings page's
- * row action): mints a pairing link on the environment and shows it on the
- * settings page; a failure, a session without `access:write` among them, is
- * a notification with the server's reason.
+ * row action): asks for the device's name, optional, which the server gives
+ * the link and then the client that redeems it, mints a pairing link on the
+ * environment and shows it on the settings page; Escape mints nothing, and a
+ * failure, a session without `access:write` among them, is a notification
+ * with the server's reason.
  */
 export async function pairDevice(environmentId: string): Promise<void> {
   const environment = connection.environment(environmentId);
   if (environment === undefined) return;
   const local = connection.localEnvironment?.environmentId === environment.environmentId;
+  const name = await (
+    await getService(IQuickInputService)
+  ).input({
+    title: `Pair a device with ${environmentName(environment, connection.environments)}`,
+    prompt: "A name for the device, shown in the environment's clients (optional)",
+    placeHolder: "My phone",
+  });
+  if (name === undefined) return;
+  const label = name.trim() === "" ? undefined : name.trim();
   try {
-    const minted = await mintPairing(environment.environmentId);
+    const minted = await mintPairing(environment.environmentId, label);
     const endpoints = local ? await advertisedEndpoints() : undefined;
     const pairing: Pairing = {
       ...minted,
