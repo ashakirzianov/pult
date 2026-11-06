@@ -308,7 +308,7 @@ export function ComposerControlsSlotItem(props: {
  * from this share of the window (`data-level` on its slot item, `heavy` or
  * `full`), ahead of upstream's red past 90%.
  */
-const HEAVY_CONTEXT_TOKENS = 150_000;
+const HEAVY_CONTEXT_TOKENS = 250_000;
 const FULL_CONTEXT_PERCENTAGE = 75;
 
 function contextLevel(usage: ContextWindowSnapshot | null) {
