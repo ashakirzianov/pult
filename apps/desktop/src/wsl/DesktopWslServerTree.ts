@@ -21,6 +21,29 @@ const Marker = Schema.Struct({ version: Schema.String });
 const decodeMarker = Schema.decodeUnknownEffect(Schema.fromJsonString(Marker));
 const encodeMarker = Schema.encodeEffect(Schema.fromJsonString(Marker));
 
+// The app's version can be set apart from its bundles' (the artifact script's --app-version), so the
+// tree is keyed on the bundles' version and the build's commit: another build of the server extracts anew.
+const AppPackageMetadata = Schema.Struct({
+  version: Schema.String,
+  t3codeBundleVersion: Schema.optional(Schema.String),
+  t3codeCommitHash: Schema.optional(Schema.String),
+});
+const decodeAppPackageMetadata = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(AppPackageMetadata),
+);
+const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/;
+// The key names a directory that the sweep removes siblings of.
+const TREE_KEY_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
+
+/** The extracted tree's key: `<bundles' version>+<commit>`, or the version alone without a commit. */
+export function resolveServerTreeKey(metadata: typeof AppPackageMetadata.Type): string | null {
+  const version = metadata.t3codeBundleVersion ?? metadata.version;
+  const commit = metadata.t3codeCommitHash?.toLowerCase();
+  const key =
+    commit !== undefined && COMMIT_HASH_PATTERN.test(commit) ? `${version}+${commit}` : version;
+  return TREE_KEY_PATTERN.test(key) && !key.includes("..") ? key : null;
+}
+
 export class DesktopWslServerTreeExtractError extends Schema.TaggedError<DesktopWslServerTreeExtractError>()(
   "DesktopWslServerTreeExtractError",
   {
@@ -102,10 +125,17 @@ export const make = Effect.gen(function* () {
   const serverRoot = environment.serverRoot;
   const needsExtraction = environment.isPackaged && environment.platform === "win32";
   const treeRoot = join(environment.stateDir, "wsl-server-tree");
-  const version = environment.appVersion;
-  const versionDir = join(treeRoot, version);
+  const appPackageJsonPath = join(environment.appRoot, "package.json");
 
-  const sweepStale = Effect.gen(function* () {
+  const treeKey = yield* Effect.cached(
+    fs.readFileString(appPackageJsonPath).pipe(
+      Effect.flatMap(decodeAppPackageMetadata),
+      Effect.map(resolveServerTreeKey),
+      Effect.orElseSucceed(() => null),
+    ),
+  );
+
+  const sweepStale = Effect.fn("DesktopWslServerTree.sweepStale")(function* (version: string) {
     const entries = yield* fs.readDirectory(treeRoot).pipe(Effect.orElseSucceed(() => []));
     yield* Effect.forEach(
       entries.filter((entry) => entry !== version),
@@ -114,34 +144,43 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const markerMatches = Effect.gen(function* () {
-    const raw = yield* fs.readFileString(join(versionDir, MARKER_FILE_NAME));
-    const marker = yield* decodeMarker(raw);
-    return marker.version === version;
-  }).pipe(Effect.orElseSucceed(() => false));
+  const markerMatches = Effect.fn("DesktopWslServerTree.markerMatches")(
+    function* (version: string, versionDir: string) {
+      const raw = yield* fs.readFileString(join(versionDir, MARKER_FILE_NAME));
+      const marker = yield* decodeMarker(raw);
+      return marker.version === version;
+    },
+    Effect.orElseSucceed(() => false),
+  );
 
-  const extract = Effect.gen(function* () {
-    yield* Effect.log(`[wsl-server-tree] Extracting ${serverRoot} to ${versionDir}...`);
-    yield* fs.makeDirectory(treeRoot, { recursive: true });
-    // A sibling temp directory permits atomic rename; explicit cleanup avoids a scoped finalizer failing after the move.
-    const partialDir = yield* fs.makeTempDirectory({
-      directory: treeRoot,
-      prefix: `.${version}.extract-`,
-    });
-    yield* Effect.gen(function* () {
-      yield* copyTree(fs, join, serverRoot, partialDir);
-      const markerJson = yield* encodeMarker({ version });
-      yield* fs.writeFileString(join(partialDir, MARKER_FILE_NAME), `${markerJson}\n`);
-      yield* fs.remove(versionDir, { recursive: true }).pipe(Effect.ignore);
-      yield* fs.rename(partialDir, versionDir);
-    }).pipe(
-      Effect.ensuring(fs.remove(partialDir, { recursive: true, force: true }).pipe(Effect.ignore)),
-    );
-    yield* Effect.log(`[wsl-server-tree] Extraction complete at ${versionDir}.`);
-  }).pipe(
-    Effect.mapError(
-      (cause) => new DesktopWslServerTreeExtractError({ targetDir: versionDir, cause }),
-    ),
+  const extract = Effect.fn("DesktopWslServerTree.extract")(
+    function* (version: string, versionDir: string) {
+      yield* Effect.log(`[wsl-server-tree] Extracting ${serverRoot} to ${versionDir}...`);
+      yield* fs.makeDirectory(treeRoot, { recursive: true });
+      // A sibling temp directory permits atomic rename; explicit cleanup avoids a scoped finalizer failing after the move.
+      const partialDir = yield* fs.makeTempDirectory({
+        directory: treeRoot,
+        prefix: `.${version}.extract-`,
+      });
+      yield* Effect.gen(function* () {
+        yield* copyTree(fs, join, serverRoot, partialDir);
+        const markerJson = yield* encodeMarker({ version });
+        yield* fs.writeFileString(join(partialDir, MARKER_FILE_NAME), `${markerJson}\n`);
+        yield* fs.remove(versionDir, { recursive: true }).pipe(Effect.ignore);
+        yield* fs.rename(partialDir, versionDir);
+      }).pipe(
+        Effect.ensuring(
+          fs.remove(partialDir, { recursive: true, force: true }).pipe(Effect.ignore),
+        ),
+      );
+      yield* Effect.log(`[wsl-server-tree] Extraction complete at ${versionDir}.`);
+    },
+    (effect, _version, versionDir) =>
+      effect.pipe(
+        Effect.mapError(
+          (cause) => new DesktopWslServerTreeExtractError({ targetDir: versionDir, cause }),
+        ),
+      ),
   );
 
   const gate = yield* Semaphore.make(1);
@@ -151,7 +190,12 @@ export const make = Effect.gen(function* () {
       needsExtraction
         ? Effect.gen(function* () {
             // Delete completeness first: a locked Windows file can leave a half-deleted tree that must not be reused.
-            yield* fs.remove(join(versionDir, MARKER_FILE_NAME), { force: true });
+            const entries = yield* fs.readDirectory(treeRoot).pipe(Effect.orElseSucceed(() => []));
+            yield* Effect.forEach(
+              entries,
+              (entry) => fs.remove(join(treeRoot, entry, MARKER_FILE_NAME), { force: true }),
+              { discard: true },
+            );
             yield* fs.remove(treeRoot, { recursive: true, force: true });
           }).pipe(
             Effect.catch((cause) =>
@@ -171,11 +215,21 @@ export const make = Effect.gen(function* () {
         if (!needsExtraction) {
           return { ok: true, root: serverRoot } as const;
         }
-        if (yield* markerMatches) {
-          yield* sweepStale;
+        const version = yield* treeKey;
+        if (version === null) {
+          // The packaged app's own manifest does not change between attempts.
+          return {
+            ok: false,
+            reason: `WSL server files could not be identified from ${appPackageJsonPath}.`,
+            fatal: true,
+          } as const;
+        }
+        const versionDir = join(treeRoot, version);
+        if (yield* markerMatches(version, versionDir)) {
+          yield* sweepStale(version);
           return { ok: true, root: versionDir } as const;
         }
-        const result = yield* extract.pipe(
+        const result = yield* extract(version, versionDir).pipe(
           Effect.map(() => ({ ok: true, root: versionDir }) as const),
           Effect.catch((error) =>
             Effect.succeed({
@@ -188,7 +242,7 @@ export const make = Effect.gen(function* () {
           ),
         );
         if (result.ok) {
-          yield* sweepStale;
+          yield* sweepStale(version);
         }
         return result;
       }),

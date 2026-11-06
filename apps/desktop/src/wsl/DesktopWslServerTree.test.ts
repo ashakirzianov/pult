@@ -26,7 +26,7 @@ const layerEnvironment = (input: {
     platform: "win32",
     processArch: "x64",
     appVersion: input.appVersion ?? "1.2.3",
-    appPath: "/repo",
+    appPath: `${input.baseDir}/app`,
     isPackaged: input.isPackaged ?? true,
     resourcesPath: input.resourcesPath,
     runningUnderArm64Translation: false,
@@ -42,18 +42,31 @@ const layerEnvironment = (input: {
     ),
   );
 
+// The packaged app's manifest, which names the bundles' version and commit beside the app's own.
+const writeAppPackageJson = (baseDir: string, manifest: Record<string, string>) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* fileSystem.makeDirectory(path.join(baseDir, "app"), { recursive: true });
+    yield* fileSystem.writeFileString(
+      path.join(baseDir, "app", "package.json"),
+      JSON.stringify(manifest),
+    );
+  });
+
 const withTempDir = <A, E, R>(
   run: (tempDir: string) => Effect.Effect<A, E, R>,
 ): Effect.Effect<
   A,
   E | PlatformError.PlatformError,
-  FileSystem.FileSystem | Exclude<R, Scope.Scope>
+  FileSystem.FileSystem | Path.Path | Exclude<R, Scope.Scope>
 > =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const tempDir = yield* fileSystem.makeTempDirectoryScoped({
       prefix: "t3-wsl-server-tree-test-",
     });
+    yield* writeAppPackageJson(tempDir, { version: "1.2.3" });
     return yield* run(tempDir);
   }).pipe(Effect.scoped);
 
@@ -241,7 +254,7 @@ describe("DesktopWslServerTree", () => {
     ).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("re-extracts when the app version changes", () =>
+  it.effect("re-extracts when the server's version changes", () =>
     withTempDir((tempDir) =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -255,11 +268,11 @@ describe("DesktopWslServerTree", () => {
         const first = yield* ensureWith({
           baseDir: tempDir,
           resourcesPath: path.join(tempDir, "resources"),
-          appVersion: "1.2.3",
         });
         assert.isTrue(first.ok);
 
         yield* fileSystem.writeFileString(path.join(serverRoot, "apps/server/dist/bin.mjs"), "new");
+        yield* writeAppPackageJson(tempDir, { version: "1.2.4" });
         const second = yield* ensureWith({
           baseDir: tempDir,
           resourcesPath: path.join(tempDir, "resources"),
@@ -275,6 +288,80 @@ describe("DesktopWslServerTree", () => {
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
   );
+
+  it.effect("keys the tree on the bundles' version and commit, not the app's version", () =>
+    withTempDir((tempDir) =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const resourcesPath = path.join(tempDir, "resources");
+        const serverEntry = path.join(resourcesPath, "server.asar", "apps/server/dist/bin.mjs");
+        yield* fileSystem.makeDirectory(path.dirname(serverEntry), { recursive: true });
+        yield* fileSystem.writeFileString(serverEntry, "first-build");
+        const manifest = { version: "0.0.1", t3codeBundleVersion: "1.2.3" };
+        yield* writeAppPackageJson(tempDir, { ...manifest, t3codeCommitHash: "aaaaaaaaaaaa" });
+
+        const first = yield* ensureWith({ baseDir: tempDir, resourcesPath, appVersion: "0.0.1" });
+        assert.isTrue(first.ok);
+        assert.equal(path.basename(first.ok ? first.root : ""), "1.2.3+aaaaaaaaaaaa");
+
+        // A second build of the same app version, with other server files.
+        yield* fileSystem.writeFileString(serverEntry, "second-build");
+        yield* writeAppPackageJson(tempDir, { ...manifest, t3codeCommitHash: "BBBBBBBBBBBB" });
+        const second = yield* ensureWith({ baseDir: tempDir, resourcesPath, appVersion: "0.0.1" });
+        assert.isTrue(second.ok);
+        const root = second.ok ? second.root : "";
+        assert.equal(path.basename(root), "1.2.3+bbbbbbbbbbbb");
+        assert.equal(
+          yield* fileSystem.readFileString(path.join(root, "apps/server/dist/bin.mjs")),
+          "second-build",
+        );
+        assert.deepStrictEqual(yield* fileSystem.readDirectory(path.dirname(root)), [
+          "1.2.3+bbbbbbbbbbbb",
+        ]);
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("refuses to extract when the app's manifest cannot name the tree", () =>
+    withTempDir((tempDir) =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const resourcesPath = path.join(tempDir, "resources");
+        const serverEntry = path.join(resourcesPath, "server.asar", "apps/server/dist/bin.mjs");
+        yield* fileSystem.makeDirectory(path.dirname(serverEntry), { recursive: true });
+        yield* fileSystem.writeFileString(serverEntry, "x");
+        yield* writeAppPackageJson(tempDir, { version: "../escape" });
+
+        const result = yield* ensureWith({ baseDir: tempDir, resourcesPath });
+        assert.isFalse(result.ok);
+        if (!result.ok) {
+          assert.include(result.reason, "could not be identified");
+          assert.isTrue(result.fatal);
+        }
+        assert.isFalse(yield* fileSystem.exists(path.join(tempDir, "userdata", "wsl-server-tree")));
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it("names the tree by the bundles' version and a well-formed commit", () => {
+    const key = DesktopWslServerTree.resolveServerTreeKey;
+    assert.equal(key({ version: "1.2.3" }), "1.2.3");
+    assert.equal(key({ version: "0.0.1", t3codeBundleVersion: "1.2.3" }), "1.2.3");
+    assert.equal(
+      key({
+        version: "0.0.1",
+        t3codeBundleVersion: "1.2.3-nightly.4",
+        t3codeCommitHash: "abc1234",
+      }),
+      "1.2.3-nightly.4+abc1234",
+    );
+    assert.equal(key({ version: "1.2.3", t3codeCommitHash: "unknown" }), "1.2.3");
+    assert.isNull(key({ version: "1.2.3/x" }));
+    assert.isNull(key({ version: "1..2" }));
+    assert.isNull(key({ version: "" }));
+  });
 
   it.effect("re-extracts after legacy cleanup partially deletes the completed tree", () =>
     withTempDir((tempDir) =>
