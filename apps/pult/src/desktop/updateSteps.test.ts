@@ -48,6 +48,32 @@ NodeTest.test("an update found is downloaded once, then answered", () => {
   );
 });
 
+NodeTest.test("a download that failed to install here is left to Restart to Update", () => {
+  const download = {
+    status: "downloaded" as const,
+    availableVersion: "0.0.2",
+    downloadedVersion: "0.0.2",
+  };
+  for (const failed of [{ notAppliedVersion: "0.0.2" }, { installFailedVersion: "0.0.2" }]) {
+    NodeAssert.deepEqual(
+      nextUpdateStep(state({ ...download, ...failed }), false),
+      answer("info", "Pult 0.0.2 downloaded. Restart to Update installs it."),
+    );
+  }
+  NodeAssert.deepEqual(
+    nextUpdateStep(
+      state({
+        status: "downloaded",
+        availableVersion: "0.0.3",
+        downloadedVersion: "0.0.3",
+        installFailedVersion: "0.0.2",
+      }),
+      false,
+    ),
+    answer("info", "Pult 0.0.3 downloaded; it installs when Pult rests."),
+  );
+});
+
 NodeTest.test("a check or a download running, whoever started it, is waited for", () => {
   NodeAssert.deepEqual(nextUpdateStep(state({ status: "checking" }), false), { kind: "wait" });
   NodeAssert.deepEqual(

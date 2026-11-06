@@ -28,10 +28,15 @@ export function updateRunning(state: DesktopUpdateState): boolean {
 export function nextUpdateStep(state: DesktopUpdateState, downloadTried: boolean): UpdateStep {
   const downloaded = installableVersion(state);
   if (downloaded !== null) {
+    // The server installs at rest only a download that has not failed to install here.
+    const failedHere =
+      downloaded === state.notAppliedVersion || downloaded === state.installFailedVersion;
     return {
       kind: "answer",
       severity: "info",
-      message: `Pult ${downloaded} downloaded; it installs when Pult rests.`,
+      message: failedHere
+        ? `Pult ${downloaded} downloaded. Restart to Update installs it.`
+        : `Pult ${downloaded} downloaded; it installs when Pult rests.`,
     };
   }
   if (!state.enabled || state.status === "disabled") {
