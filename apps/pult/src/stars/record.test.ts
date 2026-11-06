@@ -3,18 +3,31 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import {
+  AGENTS_TEXT,
+  AGENTS_VERSION,
+  agentsOutdated,
   isStarRoot,
   newRecord,
   parseRecord,
-  stockInstructions,
+  recordText,
   withRecordFields,
 } from "./record.ts";
 
 const record = newRecord("5f0c7e1a-2b3c-4d5e-8f90-1a2b3c4d5e6f", "2026-11-03T12:00:00.000Z");
 
 NodeTest.describe("parseRecord", () => {
-  NodeTest.test("reads the record the stock instructions carry", () => {
-    NodeAssert.deepEqual(parseRecord(stockInstructions(record)), record);
+  NodeTest.test("reads the record the page writes", () => {
+    NodeAssert.deepEqual(parseRecord(recordText(record)), record);
+  });
+
+  NodeTest.test("reads a legacy AGENTS.md's record, an origin in it ignored", () => {
+    const legacy = `---\nxaxis-kind: star\nid: abc\nname: "Sirius"\ntint: amber\ncreated: x\norigin: "git@host:me/star.git"\n---\n\n# Star\n`;
+    NodeAssert.deepEqual(parseRecord(legacy), {
+      id: "abc",
+      name: "Sirius",
+      tint: "amber",
+      created: "x",
+    });
   });
 
   NodeTest.test("reads plain, double- and single-quoted values", () => {
@@ -40,12 +53,6 @@ NodeTest.describe("parseRecord", () => {
 });
 
 NodeTest.describe("withRecordFields", () => {
-  NodeTest.test("sets an origin, and an empty one reads as none", () => {
-    const set = withRecordFields(stockInstructions(record), { origin: "git@host:me/star.git" });
-    NodeAssert.equal(parseRecord(set)?.origin, "git@host:me/star.git");
-    NodeAssert.equal(parseRecord(withRecordFields(set, { origin: "" }))?.origin, undefined);
-  });
-
   NodeTest.test(
     "rewrites the fields in place and leaves every other line and the body as they were",
     () => {
@@ -88,8 +95,24 @@ NodeTest.describe("isStarRoot", () => {
     NodeAssert.equal(isStarRoot("/home/anton/.pult/stars/vega/"), true);
     NodeAssert.equal(isStarRoot("C:\\Users\\anton\\.pult\\stars\\star"), true);
     NodeAssert.equal(isStarRoot("/Users/anton/.pult/stars"), false);
-    NodeAssert.equal(isStarRoot("/Users/anton/.pult/stars/star/memory"), false);
+    NodeAssert.equal(isStarRoot("/Users/anton/.pult/stars/star/.pult"), false);
     NodeAssert.equal(isStarRoot("/Users/anton/repos/stars/star"), false);
     NodeAssert.equal(isStarRoot(null), false);
+  });
+});
+
+NodeTest.describe("AGENTS.md", () => {
+  NodeTest.test("loads the record and the Star's own instructions, and holds no record", () => {
+    NodeAssert.match(AGENTS_TEXT, /^@\.pult\/star\.md$/m);
+    NodeAssert.match(AGENTS_TEXT, /^@instructions\.md$/m);
+    NodeAssert.equal(parseRecord(AGENTS_TEXT), undefined);
+  });
+
+  NodeTest.test("is rewritten when missing, of no version or older, never when newer", () => {
+    NodeAssert.equal(agentsOutdated(undefined), true);
+    NodeAssert.equal(agentsOutdated(recordText(record) + "\n# Star\n"), true);
+    NodeAssert.equal(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION - 1} -->\n`), true);
+    NodeAssert.equal(agentsOutdated(AGENTS_TEXT), false);
+    NodeAssert.equal(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);
   });
 });

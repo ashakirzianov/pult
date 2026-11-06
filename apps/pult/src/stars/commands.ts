@@ -19,7 +19,7 @@ import { pultResource } from "../files/workspace.ts";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { canCreateStarOn, createStar, primaryHome, starById, starStore } from "./model.ts";
-import { RECORD_FILE } from "./record.ts";
+import { INSTRUCTIONS_FILE } from "./record.ts";
 import { type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
@@ -56,7 +56,7 @@ function homeResource(home: NonNullable<ReturnType<typeof primaryHome>>, path = 
   );
 }
 
-/** The Star's `AGENTS.md`, its record and standing instructions, as a tab among the selection's, from the home that stands for it. */
+/** The Star's own `instructions.md`, which its `AGENTS.md` loads, as a tab among the selection's, from the home that stands for it. */
 async function editStarInstructions(star: Star): Promise<void> {
   const home = primaryHome(star);
   if (home === undefined)
@@ -65,7 +65,7 @@ async function editStarInstructions(star: Star): Promise<void> {
     );
   await (
     await getService(IEditorService)
-  ).openEditor({ resource: homeResource(home, RECORD_FILE), options: { pinned: true } });
+  ).openEditor({ resource: homeResource(home, INSTRUCTIONS_FILE), options: { pinned: true } });
 }
 
 /**
@@ -89,8 +89,8 @@ async function openStarFolder(star: Star): Promise<void> {
 /**
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
  * [environmentId]`, while a held environment has none, picked among them
- * while there are several; while the page holds a Star that syncs, a second
- * home of it, cloned from its origin), Edit Star Instructions
+ * while there are several; while the page's Stars sync, their repository
+ * cloned there from its origin), Edit Star Instructions
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`) and Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
@@ -113,7 +113,7 @@ export function registerStarCommands(): void {
       }
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
-        // A Star that syncs gets a second home, cloned from its origin, rather than a new Star beside it.
+        // Stars that sync are cloned there, each a second home, rather than a new Star made beside them.
         const origin = starStore.get().find((star) => star.origin !== undefined)?.origin;
         if (typeof environmentId === "string") return createStar(environmentId, origin);
         const candidates = connection.environments.filter((environment) =>

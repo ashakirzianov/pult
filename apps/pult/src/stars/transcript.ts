@@ -5,7 +5,7 @@
 // that changes nothing writes nothing; and the text read back, for the fold
 // of the Star's tab.
 //
-// conversations/<environmentId>/2026-11-03T14-02-11Z-<threadId>.md:
+// .pult/conversations/<environmentId>/2026-11-03T14-02-11Z-<threadId>.md:
 //
 //   ---
 //   thread: "<threadId>"

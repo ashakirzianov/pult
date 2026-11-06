@@ -6,7 +6,7 @@ import { MessageId, ORCHESTRATION_V2_WS_METHODS, ProjectId, ThreadId } from "@t3
 import { connection } from "../connection/index.ts";
 import { isStarDraft, projectDrafts } from "../panel/drafts.ts";
 import { runOperation } from "../threads/park.ts";
-import { type ShellThread, threadStore } from "../threads/store.ts";
+import { threadStore } from "../threads/store.ts";
 import { starGit } from "./git.ts";
 import {
   rereadStars,
@@ -14,10 +14,11 @@ import {
   starById,
   starFoldersRead,
   starOfProject,
+  starRepository,
   starStore,
 } from "./model.ts";
-import { parseRecord, type RecordFields, STARS_DIRECTORY } from "./record.ts";
-import { conversationsOf, type Star, type StarHome, starName } from "./stars.ts";
+import { type RecordFields, STARS_DIRECTORY } from "./record.ts";
+import { conversationsOf, type Star, type StarHome } from "./stars.ts";
 import {
   commitMessages,
   HANDOFF_TITLE,
@@ -32,13 +33,13 @@ import {
 /** How long a pull before a sleeping Star wakes stands before another occasion pulls again. */
 const WAKE_PULL_INTERVAL_MS = 60_000;
 
-/** A home's sync as the page last ran it, for the settings page's line. */
-export interface HomeSync {
+/** An environment's Stars' repository's sync as the page last ran it, for the settings page's line. */
+export interface RepositorySync {
   /** What runs now, while something does. */
   readonly busy: string | null;
   readonly lastSync: number | null;
   readonly failure: string | null;
-  /** What waits, or what the Star was handed. */
+  /** What waits, or what a Star was handed. */
   readonly note: string | null;
 }
 
@@ -49,10 +50,12 @@ interface Occasion {
   readonly message: (environmentName: string) => string;
   /** Sync Star's or the setting's, which tells what it did. */
   readonly manual: boolean;
-  /** The origin to sync with where it is not the home's record's yet: one being set. */
+  /** The origin being set, which the repository is pointed at first. */
   readonly origin?: string;
-  /** A change of the record, written after the pull and committed and pushed with the rest. */
-  readonly record?: RecordFields;
+  /** A change of a Star's record, written into its home after the pull and committed with the rest. */
+  readonly record?: { readonly starId: string; readonly changes: RecordFields };
+  /** The Star the occasion is for, which a divergence goes to first. */
+  readonly starId?: string;
 }
 
 function errorMessage(error: unknown): string {
@@ -61,19 +64,16 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-const homeKey = (home: Pick<StarHome, "environmentId" | "root">) =>
-  `${home.environmentId}\n${home.root}`;
-const lastSegment = (path: string) =>
-  path
-    .split(/[/\\]/)
-    .filter((segment) => segment !== "")
-    .at(-1) ?? path;
 const environmentName = (environmentId: string) =>
   threadStore.environment(environmentId)?.name ?? environmentId;
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
 const ready = (environmentId: string) => connection.environment(environmentId)?.phase === "ready";
-const named = (star: { readonly id: string; readonly name: string }) =>
-  `${star.name.trim() === "" ? "Star" : `"${star.name}"`} (${star.id})`;
+/** The Stars with a home on the environment. */
+const starsOn = (environmentId: string) =>
+  starStore.get().filter((star) => star.homes.some((home) => home.environmentId === environmentId));
+/** " on <environment>" while the page holds several, for what it tells. */
+const onWhich = (environmentId: string) =>
+  connection.environments.length > 1 ? ` on ${environmentName(environmentId)}` : "";
 
 async function notify(severity: "info" | "error", message: string): Promise<void> {
   const notifications = await getService(INotificationService);
@@ -96,22 +96,22 @@ const threadExists = (environmentId: string, threadId: string) =>
     );
 
 /**
- * The Stars' sync (xaxis `pult/issues/star-sync`): each home whose record
- * names an origin is synced on the occasions the page sees, one at a time
- * per home: in full (a fast-forward pull, a commit of what the folder holds
- * and a push) once per connect while the Star sleeps, after each transcript
- * the page writes, on Sync Star and for a change of the record; a pull alone
- * as a sleeping Star's draft is written in. Each occasion first makes the
- * folder a repository of its own where it is not one, in place, and points
- * its `origin` at the record's, fetched (`vcs.init`, `vcs.setRemote`, which
- * a stock server fails). A failure is told and tried again on the next
- * occasion; a divergence is handed to the Star.
+ * The Stars' sync (xaxis `pult/issues/star-sync`,
+ * `pult/issues/star-folder-layout`): each environment's Stars live in one
+ * repository, `~/.pult/stars`, which the page makes one where it is not
+ * and commits on the occasions it sees, one at a time per environment: in
+ * full once per connect while every Star there sleeps, after each
+ * transcript the page writes, on Sync Star and for a change of a record;
+ * with an origin (its `.git/config`'s, the one place it is kept) each full
+ * occasion fetches, pulls and pushes too, and a sleeping Star's draft
+ * written in pulls alone. A failure is told and tried again on the next
+ * occasion; a divergence is handed to a Star.
  */
 class StarSync {
-  private readonly homes = new Map<string, HomeSync>();
-  /** Each home's occasions, run one after another. */
+  private readonly repositories = new Map<string, RepositorySync>();
+  /** Each environment's occasions, run one after another. */
   private readonly chains = new Map<string, Promise<boolean>>();
-  /** The homes synced in full since their environment connected. */
+  /** The environments synced in full since they connected. */
   private readonly connected = new Set<string>();
   private readonly pulledAt = new Map<string, number>();
   private version = 0;
@@ -119,8 +119,8 @@ class StarSync {
 
   start(): void {
     connection.onDidChange(() => {
-      for (const key of this.connected)
-        if (!ready(key.split("\n")[0] ?? "")) this.connected.delete(key);
+      for (const environmentId of this.connected)
+        if (!ready(environmentId)) this.connected.delete(environmentId);
       this.update();
     });
     starStore.subscribe(() => this.update());
@@ -145,14 +145,18 @@ class StarSync {
     return () => this.listeners.delete(listener);
   }
 
-  home(home: Pick<StarHome, "environmentId" | "root">): HomeSync | undefined {
-    return this.homes.get(homeKey(home));
+  repository(environmentId: string): RepositorySync | undefined {
+    return this.repositories.get(environmentId);
   }
 
-  private change(home: Pick<StarHome, "environmentId" | "root">, changes: Partial<HomeSync>): void {
-    const key = homeKey(home);
-    this.homes.set(key, {
-      ...(this.homes.get(key) ?? { busy: null, lastSync: null, failure: null, note: null }),
+  private change(environmentId: string, changes: Partial<RepositorySync>): void {
+    this.repositories.set(environmentId, {
+      ...(this.repositories.get(environmentId) ?? {
+        busy: null,
+        lastSync: null,
+        failure: null,
+        note: null,
+      }),
       ...changes,
     });
     this.version++;
@@ -160,308 +164,287 @@ class StarSync {
   }
 
   /**
-   * Syncs in full every home that names an origin once after its environment
-   * connects, while its Star sleeps: an awake one syncs as it falls asleep.
-   * Whether it sleeps is known once every held home's threads are in.
+   * Syncs in full every environment holding a Star once after it connects,
+   * while every Star there sleeps: an awake one's folder is its
+   * conversation's to change, and its sleep's transcript syncs it. Whether
+   * they sleep is known once the environment's threads are in.
    */
   private update(): void {
     if (connection.connecting || !starFoldersRead()) return;
-    for (const star of starStore.get()) {
-      const known = star.homes.every(
-        (home) =>
-          !held(home.environmentId) || threadStore.environment(home.environmentId)?.loaded === true,
-      );
-      if (!known) continue;
-      for (const home of star.homes) {
-        const key = homeKey(home);
-        if (home.origin === undefined || !ready(home.environmentId) || this.connected.has(key))
-          continue;
-        this.connected.add(key);
-        // An awake Star's folder is its conversation's to change: its sleep's transcript syncs it.
-        if (star.state === "asleep")
-          void this.run(star.id, home, {
-            kind: "full",
-            message: commitMessages.sync,
-            manual: false,
-          });
-      }
+    for (const environment of connection.environments) {
+      const environmentId = environment.environmentId;
+      if (!ready(environmentId) || this.connected.has(environmentId)) continue;
+      const stars = starsOn(environmentId);
+      if (stars.length === 0 || threadStore.environment(environmentId)?.loaded !== true) continue;
+      this.connected.add(environmentId);
+      if (stars.every((star) => star.state === "asleep"))
+        void this.run(environmentId, { kind: "full", message: commitMessages.sync, manual: false });
     }
   }
 
-  /** The setting: a new origin, taken through the Star's homes (`changeRecord`); empty, every home stops syncing. */
-  async setOrigin(starId: string, url: string): Promise<void> {
-    const star = starById(starId);
-    if (star === undefined) return;
+  /** The environments holding a Star whose repository the page has read, the held ones alone. */
+  private repositoriesHeld(): string[] {
+    return connection.environments
+      .map((environment) => environment.environmentId)
+      .filter(
+        (environmentId) => starsOn(environmentId).length > 0 && starRepository(environmentId),
+      );
+  }
+
+  /**
+   * The setting: every held environment's Stars' repository pointed at a new
+   * origin and synced, one after the other, so each pulls what the one
+   * before pushed; empty, each one's origin removed, the repository kept.
+   */
+  async setOrigin(url: string): Promise<void> {
     const origin = url.trim();
-    if (origin === "") return this.stop(star);
+    const environments = this.repositoriesHeld();
+    if (origin === "") {
+      await Promise.all(
+        environments.map((environmentId) =>
+          this.queue(environmentId, async () => {
+            const repository = starRepository(environmentId);
+            if (repository !== undefined)
+              await starGit(environmentId).setRemote(repository.root, null, false);
+            this.change(environmentId, {
+              note: "Not syncing: the repository stays as it is.",
+              failure: null,
+            });
+            await rereadStars(environmentId);
+            return true;
+          }),
+        ),
+      );
+      return;
+    }
     const problem = originProblem(origin);
     if (problem !== undefined) return notify("error", problem);
-    await this.changeRecord(star, { origin }, origin);
+    for (const environmentId of environments)
+      await this.run(environmentId, {
+        kind: "full",
+        message: commitMessages.settings,
+        manual: true,
+        origin,
+      });
   }
 
-  /** Name and Tint: written into the Star's homes (`changeRecord`). */
+  /** Name and Tint: written into each held home of the Star after that home's pull, and committed, and pushed where its repository syncs. */
   async setRecord(starId: string, changes: RecordFields): Promise<void> {
     const star = starById(starId);
-    if (star !== undefined) await this.changeRecord(star, changes);
-  }
-
-  /**
-   * A change of the record on every held home. The homes that sync, or every
-   * one when `origin` is a new origin, take it through the origin: one, a
-   * home syncing already where there is one, writes it, commits and pushes
-   * it, and the others then pull it, each pointed at `origin` first; so no
-   * home holds an edit of the record its pull would refuse to overwrite. A
-   * home that does not sync is written in place. Whether the origin took it.
-   */
-  private async changeRecord(star: Star, changes: RecordFields, origin?: string): Promise<boolean> {
-    const homes = star.homes.filter((home) => held(home.environmentId));
-    const syncing = homes.filter((home) => origin !== undefined || home.origin !== undefined);
-    const direct = homes.filter((home) => !syncing.includes(home));
-    if (direct.length > 0) await setStarFields(star.id, changes, direct);
-    const first = syncing.find((home) => home.origin !== undefined) ?? syncing[0];
-    if (first === undefined) return true;
-    // These occasions sync them: the record's change must not start another as it lands.
-    for (const home of syncing) this.connected.add(homeKey(home));
-    const manual = origin !== undefined;
-    const pushed = await this.run(star.id, first, {
-      kind: "full",
-      message: changes.origin === "" ? commitMessages.stop : commitMessages.settings,
-      manual,
-      record: changes,
-      ...(origin === undefined ? {} : { origin }),
-    });
-    if (!pushed) return false;
-    for (const home of syncing)
-      if (home !== first)
-        void this.run(star.id, home, {
-          kind: "pull",
-          message: commitMessages.sync,
-          manual,
-          ...(origin === undefined ? {} : { origin }),
-        });
-    return true;
-  }
-
-  /**
-   * Clearing the origin stops every held home syncing, a change of the
-   * record like any other (`changeRecord`), so the homes stop in step and
-   * none has diverged from the others when syncing starts again; where the
-   * origin cannot take it, each home's record is written in place, so it
-   * stops anyway. The repository and its remote stay as they are.
-   */
-  private async stop(star: Star): Promise<void> {
-    const homes = star.homes.filter(
-      (home) => home.origin !== undefined && held(home.environmentId),
+    if (star === undefined) return;
+    await Promise.all(
+      star.homes
+        .filter((home) => held(home.environmentId))
+        .map((home) =>
+          this.run(home.environmentId, {
+            kind: "full",
+            message: commitMessages.settings,
+            manual: false,
+            record: { starId, changes },
+            starId,
+          }),
+        ),
     );
-    if (!(await this.changeRecord(star, { origin: "" })))
-      await Promise.all(
-        homes.map((home) => this.queue(home, () => setStarFields(star.id, { origin: "" }, [home]))),
-      );
-    for (const home of homes)
-      this.change(home, { note: "Not syncing: the repository stays as it is.", failure: null });
   }
 
-  /**
-   * Makes the home's folder a repository of its own where it is not one, in
-   * place, and points its `origin` at `origin`, fetched, which a stock
-   * server cannot; refuses, with a notification naming both, an origin whose
-   * branch holds another Star, the folder's remote put back as it was. Its
-   * status then, and whether the origin has its branch; undefined when
-   * refused.
-   */
-  private async connect(
-    star: Star,
-    home: StarHome,
-    origin: string,
-  ): Promise<{ readonly status: HomeStatus; readonly published: boolean } | undefined> {
-    const git = starGit(home.environmentId);
-    if (!(await git.status(home.root)).ownRepository) await git.init(home.root);
-    const previous = await git.setRemote(home.root, origin, true);
-    const status = await git.status(home.root);
-    const theirs =
-      status.branch === null ? undefined : await git.originRecord(home.root, status.branch);
-    const record = theirs === undefined ? undefined : parseRecord(theirs);
-    if (record !== undefined && record.id !== star.id) {
-      const reason = `${origin} holds another Star, ${named(record)}, and yours is ${named(star)}; Pult does not merge two Stars.`;
-      if (previous !== origin) await git.setRemote(home.root, previous, false);
-      this.change(home, { failure: reason });
-      await notify("error", `Pult did not sync your Star: ${reason}`);
-      return undefined;
-    }
-    return { status, published: theirs !== undefined };
-  }
-
-  /** Sync Star: every held home that names an origin, in full. */
+  /** Sync Star: the repository of every held home of the Star that syncs, in full. */
   async syncNow(starId: string): Promise<void> {
     const star = starById(starId);
     if (star === undefined) return;
-    const homes = star.homes.filter(
-      (home) => home.origin !== undefined && held(home.environmentId),
-    );
-    if (homes.length === 0)
+    const environments = star.homes
+      .map((home) => home.environmentId)
+      .filter((environmentId) => held(environmentId) && starRepository(environmentId)?.origin);
+    if (environments.length === 0)
       return notify(
         "info",
-        `${starName(star)} does not sync: give it an origin in Pult's settings, under Star.`,
+        "Your Stars do not sync: give them an origin in Pult's settings, under Star.",
       );
-    for (const home of homes)
-      void this.run(star.id, home, { kind: "full", message: commitMessages.sync, manual: true });
+    for (const environmentId of environments)
+      void this.run(environmentId, {
+        kind: "full",
+        message: commitMessages.sync,
+        manual: true,
+        starId,
+      });
   }
 
-  /** After a transcript the page wrote into a home: its conversation's commit, and a push. */
-  afterTranscript(home: StarHome, thread: Pick<ShellThread, "title" | "settledAt">): void {
+  /** After a transcript the page wrote into a home: its conversation's commit, and a push where the repository syncs. */
+  afterTranscript(
+    home: StarHome,
+    conversation: { readonly title: string; readonly settledAt: string | null },
+  ): void {
     const star = starStore
       .get()
-      .find((each) => each.homes.some((candidate) => homeKey(candidate) === homeKey(home)));
-    const current = star?.homes.find((candidate) => homeKey(candidate) === homeKey(home));
-    if (star === undefined || current?.origin === undefined) return;
-    void this.run(star.id, current, {
+      .find((each) =>
+        each.homes.some(
+          (candidate) =>
+            candidate.environmentId === home.environmentId && candidate.root === home.root,
+        ),
+      );
+    void this.run(home.environmentId, {
       kind: "full",
       message: () =>
-        commitMessages.conversation(thread.title, thread.settledAt ?? new Date().toISOString()),
+        commitMessages.conversation(
+          conversation.title,
+          conversation.settledAt ?? new Date().toISOString(),
+        ),
       manual: false,
+      ...(star === undefined ? {} : { starId: star.id }),
     });
   }
 
-  /** Before a sleeping Star wakes, its draft written in: a pull of the draft's home, at most once a minute, so the send never waits on it. */
+  /** Before a sleeping Star wakes, its draft written in: a pull of its environment's repository, at most once a minute, so the send never waits on it. */
   private beforeWake(star: Star, environmentId: string): void {
     if (star.current !== null) return;
-    const home = star.homes.find((each) => each.environmentId === environmentId);
-    if (home?.origin === undefined || !ready(home.environmentId)) return;
-    const key = homeKey(home);
+    if (starRepository(environmentId)?.origin === undefined || !ready(environmentId)) return;
     const now = Date.now();
-    if (now - (this.pulledAt.get(key) ?? 0) < WAKE_PULL_INTERVAL_MS) return;
-    this.pulledAt.set(key, now);
-    void this.run(star.id, home, { kind: "pull", message: commitMessages.sync, manual: false });
+    if (now - (this.pulledAt.get(environmentId) ?? 0) < WAKE_PULL_INTERVAL_MS) return;
+    this.pulledAt.set(environmentId, now);
+    void this.run(environmentId, {
+      kind: "pull",
+      message: commitMessages.sync,
+      manual: false,
+      starId: star.id,
+    });
   }
 
-  /** Runs `task` on the home after what runs or waits there; whether it did what it set out to. */
-  private queue(home: StarHome, task: () => Promise<boolean>): Promise<boolean> {
-    const key = homeKey(home);
-    const next = (this.chains.get(key) ?? Promise.resolve(true)).then(task);
-    this.chains.set(key, next);
+  /** Runs `task` on the environment's repository after what runs or waits there; whether it did what it set out to. */
+  private queue(environmentId: string, task: () => Promise<boolean>): Promise<boolean> {
+    const next = (this.chains.get(environmentId) ?? Promise.resolve(true)).then(task);
+    this.chains.set(environmentId, next);
     return next;
   }
 
-  private run(starId: string, home: StarHome, occasion: Occasion): Promise<boolean> {
-    const key = homeKey(home);
-    return this.queue(home, () => this.sync(starId, key, occasion));
+  private run(environmentId: string, occasion: Occasion): Promise<boolean> {
+    return this.queue(environmentId, () => this.sync(environmentId, occasion));
   }
 
-  /** The occasion on the home as the page holds it when its turn comes; whether it synced. */
-  private async sync(starId: string, key: string, occasion: Occasion): Promise<boolean> {
-    const star = starById(starId);
-    const home = star?.homes.find((candidate) => homeKey(candidate) === key);
-    const origin = occasion.origin ?? home?.origin;
-    if (star === undefined || home === undefined || origin === undefined) return false;
-    const name = environmentName(home.environmentId);
-    const git = starGit(home.environmentId);
-    this.change(home, { busy: occasion.kind === "pull" ? "Pulling…" : "Syncing…" });
+  /**
+   * The occasion on the environment's repository as the page holds it when
+   * its turn comes: made a repository where it is not one, pointed at the
+   * origin being set and fetched, or its own origin fetched; then what the
+   * plan says. Whether it synced.
+   */
+  private async sync(environmentId: string, occasion: Occasion): Promise<boolean> {
+    const repository = starRepository(environmentId);
+    const origin = occasion.origin ?? repository?.origin;
+    if (repository === undefined || (occasion.kind === "pull" && origin === undefined))
+      return false;
+    const git = starGit(environmentId);
+    const name = environmentName(environmentId);
+    this.change(environmentId, { busy: occasion.kind === "pull" ? "Pulling…" : "Syncing…" });
     try {
-      const connected = await this.connect(star, home, origin);
-      if (connected === undefined) return false;
-      const { status, published } = connected;
+      if (!(await git.status(repository.root)).ownRepository) await git.init(repository.root);
+      if (origin !== undefined) await git.setRemote(repository.root, origin, true);
+      const status = await git.status(repository.root);
       const plan = syncPlan(status, occasion.kind, {
         writes: occasion.record !== undefined,
-        published,
+        // A new origin may not have the branch its stale upstream names.
+        published: occasion.origin === undefined || occasion.origin === repository.origin,
+        remote: origin !== undefined,
       });
-      if (plan.kind === "diverged") return await this.handOff(star, home, occasion, status);
+      if (plan.kind === "diverged")
+        return await this.handOff(environmentId, repository.root, occasion, status);
       if (plan.pull) {
         try {
-          await git.pull(home.root);
+          await git.pull(repository.root);
         } catch (error) {
           if (!refusedByGit(errorMessage(error))) throw error;
-          return await this.handOff(star, home, occasion, status);
+          return await this.handOff(environmentId, repository.root, occasion, status);
         }
       }
-      if (occasion.record !== undefined && !(await setStarFields(star.id, occasion.record, [home])))
-        return false;
-      if (plan.commit)
-        await git.stacked(home.root, "commit", occasion.message(name), home.projectId);
+      if (occasion.record !== undefined) {
+        const { starId, changes } = occasion.record;
+        const home = starById(starId)?.homes.find((each) => each.environmentId === environmentId);
+        if (home === undefined || !(await setStarFields(starId, changes, [home]))) return false;
+      }
+      if (plan.commit) await git.stacked(repository.root, "commit", occasion.message(name), null);
       if (plan.push) {
         try {
-          await git.stacked(home.root, "push", occasion.message(name), home.projectId);
+          await git.stacked(repository.root, "push", occasion.message(name), null);
         } catch (error) {
           // A tracked branch's rejected push is a fetch behind, which the next occasion reads; a first one meets the origin's own history.
           if (plan.pull || !refusedByGit(errorMessage(error))) throw error;
-          return await this.handOff(star, home, occasion, status);
+          return await this.handOff(environmentId, repository.root, occasion, status);
         }
       }
-      this.change(home, { lastSync: Date.now(), failure: null, note: null });
-      if (occasion.manual)
-        await notify(
-          "info",
-          `${starName(star)} is in sync with ${origin}${star.homes.length === 1 ? "" : ` on ${name}`}.`,
-        );
+      this.change(environmentId, { lastSync: Date.now(), failure: null, note: null });
+      if (occasion.manual && origin !== undefined)
+        await notify("info", `Your Stars are in sync with ${origin}${onWhich(environmentId)}.`);
       return true;
     } catch (error) {
       const message = errorMessage(error);
       console.warn(
-        `[pult-shell] could not sync the Star at ${home.root} on ${home.environmentId}: ${message}`,
+        `[pult-shell] could not sync the Stars at ${repository.root} on ${environmentId}: ${message}`,
       );
-      this.change(home, { failure: message });
-      await notify(
-        "error",
-        `Pult could not sync ${starName(star)}${star.homes.length === 1 ? "" : ` on ${name}`}: ${message}`,
-      );
+      this.change(environmentId, { failure: message });
+      await notify("error", `Pult could not sync your Stars${onWhich(environmentId)}: ${message}`);
       return false;
     } finally {
-      this.change(home, { busy: null });
-      // A pull or a commit changes the folder, which a watch tells late, or not at all on a server without one.
-      await rereadStars(home.environmentId);
+      this.change(environmentId, { busy: null });
+      // A pull or a commit changes the folders, which a watch tells late, or not at all on a server without one.
+      await rereadStars(environmentId);
     }
   }
 
   /**
-   * Hands a divergence to the Star as the first message of a conversation it
-   * wakes in, on the home's environment and project, with its latest
+   * Hands a divergence to a Star, the occasion's where it has a home on the
+   * environment, else the first one there, as the first message of a
+   * conversation it wakes in, on its home's project, with its latest
    * conversation there's model and modes; once, its thread's id deterministic
-   * from the home and both sides (`handoffThreadId`), looked up on the
+   * from the repository and both sides (`handoffThreadId`), looked up on the
    * server, so no page, and no reload, hands the same divergence over
    * again. An awake Star, one being written to, or one about to be (a pull
    * before its wake) gets it when it next falls asleep, its sleep's sync
    * finding it again. Never a sync: false.
    */
   private async handOff(
-    star: Star,
-    home: StarHome,
+    environmentId: string,
+    root: string,
     occasion: Occasion,
     status: HomeStatus,
   ): Promise<false> {
-    const name = environmentName(home.environmentId);
-    const what = `${starName(star)}'s folder on ${name} has diverged from its origin`;
-    if (home.projectId === null) return false;
+    const stars = starsOn(environmentId);
+    const star = stars.find((each) => each.id === occasion.starId) ?? stars[0];
+    const home = star?.homes.find((each) => each.environmentId === environmentId);
+    const what = `Your Stars' repository${onWhich(environmentId)} has diverged from its origin`;
+    if (star === undefined || home?.projectId == null) return false;
     const branch = status.branch ?? "HEAD";
     const threadId = await handoffThreadId({
-      environmentId: home.environmentId,
-      root: home.root,
+      environmentId,
+      root,
       branch,
       head: status.head,
       behind: status.behind,
     });
-    if (await threadExists(home.environmentId, threadId)) {
-      this.change(home, { note: `${what}; your Star has it to reconcile.`, failure: null });
+    if (await threadExists(environmentId, threadId)) {
+      this.change(environmentId, {
+        note: `${what}; your Star has it to reconcile.`,
+        failure: null,
+      });
       return false;
     }
     const writing = projectDrafts
       .get()
-      .some(
-        (draft) => draft.environmentId === home.environmentId && draft.projectId === home.projectId,
-      );
+      .some((draft) => draft.environmentId === environmentId && draft.projectId === home.projectId);
     // A pull before a wake hands nothing over: the user is about to write to the Star.
     if (star.current !== null || writing || occasion.kind === "pull") {
-      this.change(home, { note: `${what}; Pult hands it to your Star when it next falls asleep.` });
+      this.change(environmentId, {
+        note: `${what}; Pult hands it to your Star when it next falls asleep.`,
+      });
       return false;
     }
     // The model and modes of its latest conversation there, else of its latest anywhere.
     const conversations = conversationsOf(star.homes, threadStore.get().threads);
     const model =
-      conversations.find((thread) => thread.environmentId === home.environmentId) ??
-      conversations[0];
+      conversations.find((thread) => thread.environmentId === environmentId) ?? conversations[0];
     if (model === undefined) {
-      this.change(home, { note: `${what}; reconcile it with git in the folder.` });
+      this.change(environmentId, {
+        note: `${what}; reconcile it with git in ~/${STARS_DIRECTORY}.`,
+      });
       await notify(
         "error",
-        `${what}, and your Star has had no conversation to wake with; reconcile it with git in the folder.`,
+        `${what}, and your Star has had no conversation to wake with; reconcile it with git in ~/${STARS_DIRECTORY}.`,
       );
       return false;
     }
@@ -473,13 +456,13 @@ class StarSync {
     );
     const { modelSelection, runtimeMode, interactionMode } = projection.thread;
     const text = handoffMessage({
-      environmentName: name,
-      folder: `~/${STARS_DIRECTORY}/${lastSegment(home.root)}`,
+      environmentName: environmentName(environmentId),
+      repository: `~/${STARS_DIRECTORY}`,
       branch,
       uncommitted: status.uncommitted,
     });
     await runOperation(
-      home.environmentId,
+      environmentId,
       Operations.startThreadTurn({
         threadId: ThreadId.make(threadId),
         message: {
@@ -505,7 +488,7 @@ class StarSync {
         },
       }),
     );
-    this.change(home, { note: `${what}; your Star has it to reconcile.`, failure: null });
+    this.change(environmentId, { note: `${what}; your Star has it to reconcile.`, failure: null });
     await notify("info", `${what}: Pult woke your Star to reconcile it.`);
     return false;
   }
@@ -518,19 +501,20 @@ export function startStarSync(): void {
   sync.start();
 }
 
-/** The sync's state for `useSyncExternalStore`: a version, which changes as any home's does. */
+/** The sync's state for `useSyncExternalStore`: a version, which changes as any repository's does. */
 export const starSyncStore = {
   get: () => sync.get(),
   subscribe: (listener: () => void) => sync.subscribe(listener),
 };
 
-export const setStarOrigin = (starId: string, url: string) => sync.setOrigin(starId, url);
-/** Name and Tint, through the origin where the Star syncs. */
+/** The Stars' origin, on every held environment's repository; empty, none. */
+export const setStarOrigin = (url: string) => sync.setOrigin(url);
+/** Name and Tint, written after each home's pull and committed. */
 export const setStarRecord = (starId: string, changes: RecordFields) =>
   sync.setRecord(starId, changes);
 export const syncStar = (starId: string) => sync.syncNow(starId);
-export const starHomeSync = (home: Pick<StarHome, "environmentId" | "root">) => sync.home(home);
+export const starRepositorySync = (environmentId: string) => sync.repository(environmentId);
 export const afterStarTranscript = (
   home: StarHome,
-  thread: Pick<ShellThread, "title" | "settledAt">,
-) => sync.afterTranscript(home, thread);
+  conversation: { readonly title: string; readonly settledAt: string | null },
+) => sync.afterTranscript(home, conversation);

@@ -8,21 +8,30 @@ import { type Disposable, toFilesError, type WorkspaceServer } from "../files/fi
 import { environmentHome, environmentServer } from "../files/server.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import {
+  AGENTS_FILE,
+  AGENTS_TEXT,
+  agentsOutdated,
   CONVERSATIONS_DIRECTORY,
   DEFAULT_STAR_FOLDER,
-  MEMORY_DIRECTORY,
+  INSTRUCTIONS_FILE,
+  LEGACY_CONVERSATIONS_DIRECTORY,
+  LEGACY_INSTRUCTIONS,
+  LEGACY_MEMORY_DIRECTORY,
   newRecord,
   parseRecord,
   RECORD_FILE,
+  recordText,
   STAR_PROJECT_ICON,
   type RecordFields,
   STAR_PROJECT_TITLE,
+  type StarRecord,
   STARS_DIRECTORY,
-  stockInstructions,
+  SYSTEM_DIRECTORY,
   withRecordFields,
 } from "./record.ts";
 import { starGit } from "./git.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
+import { originOf } from "./sync.ts";
 import { isTranscriptName, transcriptHead, transcriptsFolder } from "./transcript.ts";
 import {
   creationTarget,
@@ -33,6 +42,7 @@ import {
   type Star,
   type StarFolder,
   type StarHome,
+  starName,
   starsOf,
   wakeHome,
 } from "./stars.ts";
@@ -45,10 +55,26 @@ export type StarTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
+/** What a folder read needs of the page before it is in the current layout: a legacy one's migration, or Pult's `AGENTS.md`. */
+type Upkeep = "migrate" | "agents";
+
+/** The environment's Stars' repository, `~/.pult/stars`, and where it syncs. */
+export interface StarRepository {
+  readonly environmentId: string;
+  readonly root: string;
+  readonly origin?: string;
+}
+
 /** How the page stands with an environment's Stars' folder. */
 interface Reading {
   read: "pending" | "read" | "failed";
   folders: ReadonlyArray<StarFolder>;
+  /** The Stars' repository, once read; its origin from its `.git/config`. */
+  repository: StarRepository | undefined;
+  /** The folders' upkeep due, by root. */
+  upkeep: ReadonlyMap<string, Upkeep>;
+  /** The roots whose upkeep the page ran since the environment last connected, each once. */
+  readonly keptUp: Set<string>;
   /** Whether the last read read every folder, so none of them may be a Star the page cannot see. */
   complete: boolean;
   /** Whether the page tried to create a Star on it, or adopted its folders, since it last connected. */
@@ -98,20 +124,81 @@ async function listed(server: WorkspaceServer, cwd: string, directoryPath: strin
   }
 }
 
-/** A Star's `AGENTS.md`, or undefined while it has none. */
-async function readRecordFile(server: WorkspaceServer, root: string) {
-  const file = await server.readFile({ cwd: root, relativePath: RECORD_FILE, allowMissing: true });
+/** A file of a Star's folder, or undefined while it has none. */
+async function readStarFile(server: WorkspaceServer, root: string, relativePath: string) {
+  const file = await server.readFile({ cwd: root, relativePath, allowMissing: true });
   return file.exists === false ? undefined : file;
 }
 
-/** What `AGENTS.md` at `root` is: none, a Star's record, or someone else's file. */
+/** A Star's `.pult/star.md`, or undefined while it has none. */
+const readRecordFile = (server: WorkspaceServer, root: string) =>
+  readStarFile(server, root, RECORD_FILE);
+
+/**
+ * The folder at `root` as a Star: its record and the upkeep it needs, from
+ * `.pult/star.md`, else from a legacy `AGENTS.md`'s front matter, which is
+ * migrated; "other" for a `.pult/star.md` that holds no record; undefined
+ * for a folder that is no Star.
+ */
+async function starAt(
+  server: WorkspaceServer,
+  root: string,
+): Promise<{ readonly record: StarRecord; readonly upkeep: Upkeep | null } | "other" | undefined> {
+  const [file, agents] = await Promise.all([
+    readRecordFile(server, root),
+    readStarFile(server, root, AGENTS_FILE),
+  ]);
+  if (file !== undefined) {
+    const record = parseRecord(file.contents);
+    if (record === undefined) return "other";
+    return { record, upkeep: agentsOutdated(agents?.contents) ? "agents" : null };
+  }
+  const legacy = agents === undefined ? undefined : parseRecord(agents.contents);
+  return legacy === undefined ? undefined : { record: legacy, upkeep: "migrate" };
+}
+
+/** What `root` holds: no Star, a Star (in either layout), or a record file that is someone else's. */
 async function recordAt(
   server: WorkspaceServer,
   root: string,
 ): Promise<"absent" | "star" | "other"> {
-  const file = await readRecordFile(server, root);
-  if (file === undefined) return "absent";
-  return parseRecord(file.contents) === undefined ? "other" : "star";
+  const found = await starAt(server, root);
+  return found === undefined ? "absent" : found === "other" ? "other" : "star";
+}
+
+/**
+ * Moves a legacy Star's folder to the current layout (xaxis
+ * `pult/issues/star-folder-layout`), each step skipped where it is done, so
+ * a migration cut short finishes on the next read: `conversations/` into
+ * `.pult/`, an `instructions.md` pointing at its `memory/`, the record into
+ * `.pult/star.md`, and last Pult's `AGENTS.md` over the legacy one, whose
+ * record marks the folder as not migrated until then.
+ */
+async function migrate(server: WorkspaceServer, root: string, record: StarRecord): Promise<void> {
+  const legacy = await listed(server, root, LEGACY_CONVERSATIONS_DIRECTORY);
+  if (legacy !== null && (await listed(server, root, CONVERSATIONS_DIRECTORY)) === null)
+    await server.renameEntry({
+      cwd: root,
+      relativePath: LEGACY_CONVERSATIONS_DIRECTORY,
+      newRelativePath: CONVERSATIONS_DIRECTORY,
+    });
+  if ((await readStarFile(server, root, INSTRUCTIONS_FILE)) === undefined) {
+    const memory = await listed(server, root, LEGACY_MEMORY_DIRECTORY);
+    await server.writeFile({
+      cwd: root,
+      relativePath: INSTRUCTIONS_FILE,
+      contents: memory === null ? "" : LEGACY_INSTRUCTIONS,
+    });
+  }
+  if ((await readRecordFile(server, root)) === undefined)
+    await server.writeFile({ cwd: root, relativePath: RECORD_FILE, contents: recordText(record) });
+  await server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT });
+}
+
+/** The URL of the Stars' repository's `origin`, from its `.git/config`; undefined where it is no repository or has none. */
+async function originAt(server: WorkspaceServer, repository: string) {
+  const config = await readStarFile(server, repository, ".git/config");
+  return config === undefined ? undefined : originOf(config.contents);
 }
 
 /** When each transcript read ended, by its front matter, by environment, home and name: read once per page session, and again once the page rewrites it. */
@@ -147,20 +234,25 @@ async function transcriptEnd(
 
 /**
  * The Stars' folders under the environment's home: each folder of
- * `~/.pult/stars` whose `AGENTS.md` carries a record, null while there is
- * no such directory; each folder read on its own, so one that fails leaves
- * the others, and the read incomplete.
+ * `~/.pult/stars` with a record (`starAt`), and the upkeep each needs, with
+ * the repository's origin; null while there is no such directory; each
+ * folder read on its own, so one that fails leaves the others, and the read
+ * incomplete.
  */
 async function readFolders(server: WorkspaceServer, environmentId: string, home: string) {
   const entries = await listed(server, home, STARS_DIRECTORY);
   if (entries === null) return null;
+  const repository = hostJoin(home, STARS_DIRECTORY);
+  const origin = await originAt(server, repository);
   const results = await Promise.allSettled(
     entries
-      .filter((entry) => entry.kind === "directory")
-      .map(async (entry): Promise<ReadonlyArray<StarFolder>> => {
+      // The repository's own `.git`, and anything else hidden, is no Star.
+      .filter((entry) => entry.kind === "directory" && !lastSegment(entry.path).startsWith("."))
+      .map(async (entry) => {
         const root = hostJoin(home, STARS_DIRECTORY, lastSegment(entry.path));
-        const record = parseRecord((await readRecordFile(server, root))?.contents ?? "");
-        if (record === undefined) return [];
+        const found = await starAt(server, root);
+        if (found === undefined || found === "other") return [];
+        const { record, upkeep } = found;
         const listing = await listed(server, root, transcriptsFolder(environmentId)).catch(
           () => null,
         );
@@ -173,15 +265,15 @@ async function readFolders(server: WorkspaceServer, environmentId: string, home:
           newest === undefined
             ? undefined
             : await transcriptEnd(server, environmentId, root, newest);
-        return [
-          {
-            environmentId,
-            root,
-            record,
-            transcripts,
-            ...(newestEnded === undefined ? {} : { newestEnded }),
-          },
-        ];
+        const folder: StarFolder = {
+          environmentId,
+          root,
+          record,
+          transcripts,
+          ...(newestEnded === undefined ? {} : { newestEnded }),
+          ...(origin === undefined ? {} : { origin }),
+        };
+        return [{ folder, upkeep }];
       }),
   );
   for (const result of results) {
@@ -190,8 +282,15 @@ async function readFolders(server: WorkspaceServer, environmentId: string, home:
         `[pult-shell] could not read a Star's folder on ${environmentId}: ${errorMessage(result.reason)}`,
       );
   }
+  const read = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   return {
-    folders: results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])),
+    repository: { environmentId, root: repository, ...(origin === undefined ? {} : { origin }) },
+    folders: read.map((each) => each.folder),
+    upkeep: new Map(
+      read.flatMap((each) =>
+        each.upkeep === null ? [] : [[each.folder.root, each.upkeep] as const],
+      ),
+    ),
     complete: results.every((result) => result.status === "fulfilled"),
   };
 }
@@ -213,15 +312,17 @@ function isWorkspaceConflict(error: unknown): boolean {
 const refused = new Set<string>();
 
 /**
- * The page's Stars (xaxis `pult/issues/star-home`): on each held environment
- * the folders of `~/.pult/stars` whose `AGENTS.md` front matter carries a
- * Star's record, read on each connect, after the page's own writes and as
- * the folder changes (`projects.watchEntries`, as the explorer watches),
- * merged by their record's id into Stars over the thread model's projects
- * and threads (`stars.ts`). While Show Star is on and the page holds no Star
- * once every environment has answered, it creates one on the first ready
- * environment (`creationTarget`); a folder with a record and no project is
- * adopted as a project.
+ * The page's Stars (xaxis `pult/issues/star-home`,
+ * `pult/issues/star-folder-layout`): on each held environment the folders of
+ * `~/.pult/stars` with a Star's record, read on each connect, after the
+ * page's own writes and as the folder changes (`projects.watchEntries`, as
+ * the explorer watches), merged by their record's id into Stars over the
+ * thread model's projects and threads (`stars.ts`). While Show Star is on,
+ * a legacy folder is migrated and an outdated `AGENTS.md` rewritten; a
+ * folder with a record and no project is adopted as a project, and each
+ * Star's projects are titled with its name; and while the page holds no
+ * Star once every environment has answered, it creates one on the first
+ * ready environment (`creationTarget`).
  */
 class StarsModel {
   /** By environment id, as the connection holds them. */
@@ -272,6 +373,10 @@ class StarsModel {
     );
   }
 
+  repository(environmentId: string): StarRepository | undefined {
+    return this.readings.get(environmentId)?.repository;
+  }
+
   /** Follows every environment the connection holds and no other, reading each one's Stars as it becomes ready. */
   private followEnvironments(): void {
     const environments = connection.environments;
@@ -287,6 +392,9 @@ class StarsModel {
         reading = {
           read: "pending",
           folders: [],
+          repository: undefined,
+          upkeep: new Map(),
+          keptUp: new Set(),
           complete: false,
           attempted: false,
           adopted: new Set(),
@@ -302,6 +410,7 @@ class StarsModel {
         // A failed creation or adoption is tried again on the next connect.
         reading.attempted = false;
         reading.adopted.clear();
+        reading.keptUp.clear();
         this.halted = false;
         void this.read(environment.environmentId);
       }
@@ -322,6 +431,11 @@ class StarsModel {
       if (reading.generation !== generation || this.readings.get(environmentId) !== reading) return;
       reading.read = "read";
       reading.folders = folders?.folders ?? [];
+      reading.repository = folders?.repository ?? {
+        environmentId,
+        root: hostJoin(home, STARS_DIRECTORY),
+      };
+      reading.upkeep = folders?.upkeep ?? new Map();
       reading.complete = folders?.complete ?? true;
       if (folders !== null)
         await this.watch(environmentId, reading, server, hostJoin(home, STARS_DIRECTORY));
@@ -382,7 +496,11 @@ class StarsModel {
   private update(): void {
     const { projects, threads } = threadStore.get();
     const folders = [...this.readings.values()].flatMap((reading) => reading.folders);
-    const stars = starsOf(folders, projects, threads);
+    // A legacy folder is a Star once migrated, so nothing writes into it meanwhile: its transcripts' keeper would put them where the migration moves the old ones.
+    const migrated = [...this.readings.values()].flatMap((reading) =>
+      reading.folders.filter((folder) => reading.upkeep.get(folder.root) !== "migrate"),
+    );
+    const stars = starsOf(migrated, projects, threads);
     // The readings too, which tell where a Star may be created.
     const signature = JSON.stringify([
       stars.map((star) => [
@@ -404,7 +522,11 @@ class StarsModel {
       for (const listener of this.listeners) listener();
     }
     const enabled = starSettingKnown() && starEnabled.get();
-    if (enabled) this.adopt(folders);
+    if (enabled) {
+      this.keepUp();
+      this.adopt(migrated);
+      this.title(stars);
+    }
     const target = creationTarget({
       enabled,
       restoring: connection.connecting,
@@ -426,6 +548,54 @@ class StarsModel {
     if (target !== undefined && !this.creating) void this.create(target);
   }
 
+  /** Runs each folder's upkeep due, a legacy one's migration or Pult's `AGENTS.md`, once per connect, then reads the folder again; a failure is tried again on the next connect. */
+  private keepUp(): void {
+    for (const [environmentId, reading] of this.readings) {
+      for (const [root, upkeep] of reading.upkeep) {
+        const folder = reading.folders.find((each) => each.root === root);
+        if (folder === undefined || reading.keptUp.has(root)) continue;
+        reading.keptUp.add(root);
+        const server = environmentServer(environmentId);
+        const run =
+          upkeep === "migrate"
+            ? migrate(server, root, folder.record)
+            : server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT });
+        void Promise.resolve(run).then(
+          () => this.read(environmentId),
+          (error: unknown) =>
+            console.warn(
+              `[pult-shell] could not ${upkeep === "migrate" ? "migrate" : "update the AGENTS.md of"} the Star at ${root}: ${errorMessage(error)}`,
+            ),
+        );
+      }
+    }
+  }
+
+  /** The Stars' projects whose title is not the Star's name: each retitled once per name, so the page and upstream's own apps name the project as the Star. */
+  private readonly titled = new Set<string>();
+  private title(stars: ReadonlyArray<Star>): void {
+    for (const star of stars) {
+      const name = starName(star);
+      for (const home of star.homes) {
+        if (home.projectId === null) continue;
+        const project = threadStore.project(home.environmentId, home.projectId);
+        const key = JSON.stringify([home.environmentId, home.projectId, name]);
+        if (project === undefined || project.name === name || this.titled.has(key)) continue;
+        this.titled.add(key);
+        void mutate(home.environmentId, {
+          type: "project.update",
+          commandId: newCommandId(),
+          projectId: ProjectId.make(home.projectId),
+          title: name,
+        }).catch((error: unknown) => {
+          console.warn(
+            `[pult-shell] could not title the Star's project ${home.projectId}: ${errorMessage(error)}`,
+          );
+        });
+      }
+    }
+  }
+
   /** Makes each folder with a record and no project a project, once per connect: the folder of a Star made elsewhere, or by a creation cut short. */
   private adopt(folders: ReadonlyArray<StarFolder>): void {
     const loaded = (environmentId: string) =>
@@ -434,7 +604,7 @@ class StarsModel {
       const reading = this.readings.get(folder.environmentId);
       if (reading === undefined || reading.adopted.has(folder.root)) continue;
       reading.adopted.add(folder.root);
-      void this.createProject(folder.environmentId, folder.root).then(
+      void this.createProject(folder.environmentId, folder.root, starName(folder.record)).then(
         (projectId) =>
           setStarIcon(folder.environmentId, projectId).then(() => this.read(folder.environmentId)),
         (error: unknown) =>
@@ -447,21 +617,22 @@ class StarsModel {
 
   /**
    * Creates a Star on the environment, `~/.pult/stars/star`: the project,
-   * titled Star, which makes the folder, then the folder's `memory/` and
-   * `conversations/` and its `AGENTS.md`, the record and the stock
-   * instructions, written only where a read at the folder finds none, then
-   * the project's 🌟. A folder there that is a Star already is read and
-   * adopted; an empty one is finished only when this page made its
-   * project; a project another page has just made there is left to that
-   * page; anything else there is refused, told once per page session. One
-   * notification says the Star is ready; a failure notifies, and is tried
-   * again on the next connect. Until its re-read lands no other creation
-   * starts, and after a failure, a refusal or a lost race none by default
-   * until an environment connects.
+   * titled Star, which makes the folder, then its `.pult/`, its empty
+   * `instructions.md`, its record and Pult's `AGENTS.md`, written only where
+   * a read at the folder finds no record, then the project's 🌟. A folder
+   * there that is a Star already is read and adopted; one holding only what
+   * a creation writes is finished only when this page made its project; a
+   * project another page has just made there is left to that page; anything
+   * else there is refused, told once per page session. One notification says
+   * the Star is ready; a failure notifies, and is tried again on the next
+   * connect. Until its re-read lands no other creation starts, and after a
+   * failure, a refusal or a lost race none by default until an environment
+   * connects.
    *
-   * With an `origin`, a Star the page holds syncs through, the folder is a
-   * clone of it instead, a second home of that Star (`syncing.ts`), cloned
-   * only where nothing is there yet, then made the project it is.
+   * With an `origin`, where the page's Stars sync, the environment's
+   * `~/.pult/stars` is a clone of it instead, every Star in it a home there
+   * (`syncing.ts`), cloned only where nothing is there yet; the read then
+   * adopts each as a project.
    */
   async create(environmentId: string, origin?: string): Promise<void> {
     const reading = this.readings.get(environmentId);
@@ -475,49 +646,41 @@ class StarsModel {
       const server = environmentServer(environmentId);
       const root = hostJoin(home, STARS_DIRECTORY, DEFAULT_STAR_FOLDER);
       const key = `${environmentId}\n${root}`;
-      const refuse = () => {
+      const refuse = (
+        what = `~/${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER} exists and is not a Star`,
+      ) => {
         this.halted = true;
         if (refused.has(key)) return;
         refused.add(key);
-        notifications.error(
-          `Pult did not create your Star: ~/${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER} exists and is not a Star.`,
-        );
+        notifications.error(`Pult did not create your Star: ${what}.`);
       };
-      const project = projectAt(threadStore.get().projects, environmentId, root);
-      const entries = await listed(server, home, `${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER}`);
       if (origin !== undefined) {
-        if (entries !== null)
-          return (await recordAt(server, root)) === "star" ? undefined : refuse();
-        await starGit(environmentId).clone(origin, root);
-        const record = parseRecord((await readRecordFile(server, root))?.contents ?? "");
-        if (record === undefined)
-          throw new Error(`${origin} holds no Star yet: sync it from its first home.`);
-        const projectId = project?.id ?? (await this.createProject(environmentId, root));
-        this.made.add(key);
-        created = { environmentId, root, record, transcripts: [] };
-        await setStarIcon(environmentId, projectId);
-        notifications.prompt(Severity.Info, `Your Star is ready here too, synced with ${origin}.`, [
-          { label: "Open Star", run: () => void openStar(record.id) },
-        ]);
+        const there = await listed(server, home, STARS_DIRECTORY);
+        if (there !== null && there.length > 0)
+          return refuse(`~/${STARS_DIRECTORY} exists, so Pult does not clone ${origin} into it`);
+        await starGit(environmentId).clone(origin, hostJoin(home, STARS_DIRECTORY));
+        notifications.info(`Your Stars are here too, synced with ${origin}.`);
         return;
       }
+      const project = projectAt(threadStore.get().projects, environmentId, root);
+      const entries = await listed(server, home, `${STARS_DIRECTORY}/${DEFAULT_STAR_FOLDER}`);
       if (entries !== null) {
         const found = await recordAt(server, root);
         if (found === "star") return;
         if (found === "other") return refuse();
-        // A folder of this page's own making, its project made here and nothing in it but its folders, is finished; anything else is someone's.
+        // A folder of this page's own making, its project made here and nothing in it but what a creation writes, is finished; anything else is someone's.
         const ours =
           project !== undefined &&
           this.made.has(key) &&
           entries.every((entry) =>
-            [MEMORY_DIRECTORY, CONVERSATIONS_DIRECTORY].includes(lastSegment(entry.path)),
+            [SYSTEM_DIRECTORY, INSTRUCTIONS_FILE, AGENTS_FILE].includes(lastSegment(entry.path)),
           );
         if (!ours) return refuse();
       }
       let projectId = project?.id;
       if (projectId === undefined) {
         try {
-          projectId = await this.createProject(environmentId, root);
+          projectId = await this.createProject(environmentId, root, STAR_PROJECT_TITLE);
           this.made.add(key);
         } catch (error) {
           // The server tells no reason, so a project at the root, or the folder there now, means another page got there first: its Star shows as it writes the folder.
@@ -533,17 +696,19 @@ class StarsModel {
           return;
         }
       }
-      await server.createDirectory({ cwd: root, relativePath: MEMORY_DIRECTORY });
       await server.createDirectory({ cwd: root, relativePath: CONVERSATIONS_DIRECTORY });
-      // Never over a file there: another page's record is adopted, anything else refused.
+      // Never over a record there: another page's is adopted, anything else refused.
       const found = await recordAt(server, root);
       if (found === "star") return;
       if (found === "other") return refuse();
+      if ((await readStarFile(server, root, INSTRUCTIONS_FILE)) === undefined)
+        await server.writeFile({ cwd: root, relativePath: INSTRUCTIONS_FILE, contents: "" });
+      await server.writeFile({ cwd: root, relativePath: AGENTS_FILE, contents: AGENTS_TEXT });
       const record = newRecord(crypto.randomUUID(), new Date().toISOString());
       await server.writeFile({
         cwd: root,
         relativePath: RECORD_FILE,
-        contents: stockInstructions(record),
+        contents: recordText(record),
       });
       created = { environmentId, root, record, transcripts: [] };
       await setStarIcon(environmentId, projectId);
@@ -564,13 +729,13 @@ class StarsModel {
     }
   }
 
-  /** A project titled Star at `root`, which the server makes when it is missing; its id. */
-  private async createProject(environmentId: string, root: string): Promise<string> {
+  /** A project titled `title` at `root`, which the server makes when it is missing; its id. */
+  private async createProject(environmentId: string, root: string, title: string): Promise<string> {
     const project = await mutate(environmentId, {
       type: "project.create",
       commandId: newCommandId(),
       projectId: ProjectId.make(crypto.randomUUID()),
-      title: STAR_PROJECT_TITLE,
+      title,
       workspaceRoot: root,
       createWorkspaceRootIfMissing: true,
       defaultModelSelection: null,
@@ -580,10 +745,10 @@ class StarsModel {
 
   /**
    * Writes the record's `changes` into `homes` of the Star, a
-   * read-modify-write of `AGENTS.md`'s front matter alone, over the version
-   * read where the server tells versions; a failure notifies. Whether every
-   * home took it. A Star that syncs takes them through its origin
-   * (`syncing.ts`, `setStarRecord`), not here.
+   * read-modify-write of `.pult/star.md`'s front matter alone, over the
+   * version read where the server tells versions; a failure notifies.
+   * Whether every home took it. `syncing.ts` (`setStarRecord`) runs it on
+   * each home after that home's pull, and commits it.
    */
   async setFields(
     starId: string,
@@ -656,7 +821,7 @@ export function starById(starId: string): Star | undefined {
   return model.get().find((star) => star.id === starId);
 }
 
-/** Creates a Star on the environment, or with `origin` a second home of the Star syncing through it, cloned from it. */
+/** Creates a Star on the environment, or with `origin` clones the Stars' repository syncing through it there. */
 export const createStar = (environmentId: string, origin?: string) =>
   model.create(environmentId, origin);
 /** Reads the environment's Stars' folders again: after the page wrote a transcript, which a watch may tell late or not at all. */
@@ -665,6 +830,8 @@ export const rereadStars = (environmentId: string) => model.read(environmentId);
 export const forgetTranscriptEnd = (environmentId: string, root: string, name: string) =>
   transcriptEnds.delete(transcriptKey(environmentId, root, name));
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
+/** The environment's Stars' repository, once its folder was read. */
+export const starRepository = (environmentId: string) => model.repository(environmentId);
 /** Whether every ready environment's Stars' folders have been read (`syncing.ts` waits for it). */
 export const starFoldersRead = () => model.allRead();
 export const setStarFields = (

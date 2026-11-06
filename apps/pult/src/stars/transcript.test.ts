@@ -201,10 +201,10 @@ NodeTest.describe("transcriptsFolder", () => {
   NodeTest.test(
     "names the environment's folder by one segment of its id, which can name nothing above it",
     () => {
-      NodeAssert.equal(transcriptsFolder("env-1"), "conversations/env-1");
-      NodeAssert.equal(transcriptsFolder("../../.ssh"), "conversations/.._.._.ssh");
-      NodeAssert.equal(transcriptsFolder(".."), "conversations/_..");
-      NodeAssert.equal(transcriptsFolder(""), "conversations/_");
+      NodeAssert.equal(transcriptsFolder("env-1"), ".pult/conversations/env-1");
+      NodeAssert.equal(transcriptsFolder("../../.ssh"), ".pult/conversations/.._.._.ssh");
+      NodeAssert.equal(transcriptsFolder(".."), ".pult/conversations/_..");
+      NodeAssert.equal(transcriptsFolder(""), ".pult/conversations/_");
     },
   );
 });

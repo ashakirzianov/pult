@@ -10,7 +10,6 @@ import { actionStarted, commitFailure, commitProgress } from "../changes/commit.
 import { changesServer } from "../changes/server.ts";
 import { connection } from "../connection/index.ts";
 import { whenReady } from "../files/server.ts";
-import { RECORD_FILE } from "./record.ts";
 import type { HomeStatus } from "./sync.ts";
 
 const serverChecks = { authorize: () => Effect.void };
@@ -98,22 +97,6 @@ export function starGit(environmentId: string) {
       }
       if (progress.failure !== null) throw new Error(progress.failure);
     },
-    /** The origin's `AGENTS.md` on `branch`, as last fetched; undefined where the origin has no such branch or file. */
-    originRecord: (root: string, branch: string) =>
-      changes
-        .diffFileContents({
-          cwd: root,
-          sourceKind: "working-tree",
-          changeType: "change",
-          baseRef: `origin/${branch}`,
-          headRef: null,
-          oldPath: RECORD_FILE,
-          newPath: RECORD_FILE,
-        })
-        .then(
-          (contents) => contents.oldContents,
-          () => undefined,
-        ),
     /** Clones `url` into `destination`, a host path that is missing or empty. */
     clone: async (url: string, destination: string) => {
       await whenReady(environmentId);

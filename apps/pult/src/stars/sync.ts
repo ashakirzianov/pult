@@ -1,7 +1,8 @@
-// How a Star's folder syncs through its origin, apart from the workbench so
-// `node --test src/stars/sync.test.ts` can run it: which origins the page
-// takes, what each occasion runs, the commits' messages, and the handoff
-// that gives the Star a divergence to reconcile (`syncing.ts` runs it).
+// How the Stars' repository syncs through its origin, apart from the
+// workbench so `node --test src/stars/sync.test.ts` can run it: which
+// origins the page takes, where it reads the repository's, what each
+// occasion runs, the commits' messages, and the handoff that gives a Star a
+// divergence to reconcile (`syncing.ts` runs it).
 
 /** Why the page will not take `url` as an origin, or undefined when it will. */
 export function originProblem(url: string): string | undefined {
@@ -12,14 +13,28 @@ export function originProblem(url: string): string | undefined {
   // Git takes a path as it is, with no shell to expand `~` and no folder of the user's to resolve it against.
   if (scheme === undefined && !/^[^/\\:]+:/.test(origin) && !origin.startsWith("/"))
     return "Give a repository's path in full, from /, or a Git URL.";
-  // The origin is kept in AGENTS.md, which the origin itself then holds: no secret goes in it.
-  const userinfo = scheme === undefined ? undefined : /^[^:]+:\/\/([^/@]*)@/.exec(origin)?.[1];
-  if (userinfo !== undefined && (scheme === "http" || scheme === "https" || userinfo.includes(":")))
-    return "Pult keeps the origin in your Star's AGENTS.md, which it pushes, so it takes no token or password in the URL: use an SSH URL, or a credential helper.";
   return undefined;
 }
 
-/** A home's repository as the server's status reads it, after its origin was fetched. */
+/**
+ * The URL of `origin` in a repository's `.git/config`, the one place the
+ * Stars' origin is kept; undefined where it has none.
+ */
+export function originOf(config: string): string | undefined {
+  let inOrigin = false;
+  for (const line of config.split(/\r?\n/)) {
+    const section = /^\s*\[([^\]]*)\]/.exec(line)?.[1];
+    if (section !== undefined) {
+      inOrigin = /^remote\s+"origin"$/.test(section.trim());
+      continue;
+    }
+    const url = inOrigin ? /^\s*url\s*=\s*(.*?)\s*$/.exec(line)?.[1] : undefined;
+    if (url !== undefined && url !== "") return url.replace(/^"(.*)"$/, "$1");
+  }
+  return undefined;
+}
+
+/** The Stars' repository as the server's status reads it, after its origin was fetched. */
 export interface HomeStatus {
   /** Whether the folder is a repository's root, not a folder inside another one. */
   readonly ownRepository: boolean;
@@ -34,14 +49,15 @@ export interface HomeStatus {
 }
 
 /**
- * What an occasion runs on a home connected to its origin, by the ahead and
- * behind counts alone. A branch both ahead and behind has diverged, which
- * runs nothing and goes to the Star. Otherwise a branch with an upstream
- * the origin has (`published`, which a new origin may not be) pulls, a
- * fast-forward the server's pull is, every time; and a full occasion (after
- * a conversation's transcript, on connect, on Sync Star, or a change of the
- * record, `writes`) then commits what the folder holds uncommitted and
- * pushes, which publishes a branch the origin lacks.
+ * What an occasion runs on the repository, by the ahead and behind counts
+ * alone. A full occasion (after a conversation's transcript, on connect, on
+ * Sync Star, or a change of a record, `writes`) commits what the repository
+ * holds uncommitted, origin or none. With an origin (`remote`): a branch
+ * both ahead and behind has diverged, which runs nothing and goes to a
+ * Star; otherwise a branch with an upstream the origin has (`published`,
+ * which a new origin may not be) pulls, a fast-forward the server's pull
+ * is, every time; and a full occasion then pushes, which publishes a branch
+ * the origin lacks.
  */
 export type SyncPlan =
   | { readonly kind: "diverged" }
@@ -55,9 +71,13 @@ export type SyncPlan =
 export function syncPlan(
   status: HomeStatus,
   occasion: "pull" | "full",
-  { writes = false, published = true }: { readonly writes?: boolean; readonly published?: boolean },
+  {
+    writes = false,
+    published = true,
+    remote = true,
+  }: { readonly writes?: boolean; readonly published?: boolean; readonly remote?: boolean },
 ): SyncPlan {
-  const tracked = status.hasUpstream && published;
+  const tracked = remote && status.hasUpstream && published;
   if (tracked && status.ahead > 0 && status.behind > 0) return { kind: "diverged" };
   const full = occasion === "full";
   const commit = full && (writes || status.uncommitted.length > 0);
@@ -65,7 +85,7 @@ export function syncPlan(
     kind: "run",
     pull: tracked,
     commit,
-    push: full && status.branch !== null && (!tracked || commit || status.ahead > 0),
+    push: remote && full && status.branch !== null && (!tracked || commit || status.ahead > 0),
   };
 }
 
@@ -91,38 +111,37 @@ export const commitMessages = {
     `Star: ${title.trim() === "" ? "conversation" : title.trim()}, ${day(endedAt)}`,
   sync: (environmentName: string) => `Star: sync from ${environmentName}`,
   settings: () => "Star: settings",
-  stop: () => "Star: stop syncing",
 };
 
 /**
- * The first message of the conversation a divergence wakes the Star with,
+ * The first message of the conversation a divergence wakes a Star with,
  * built deterministically: what diverged, the files uncommitted, and the
- * ask to reconcile it in its folder with git and push, which Pult does not
- * do itself.
+ * ask to reconcile the Stars' repository with git and push, which Pult does
+ * not do itself.
  */
 export function handoffMessage(input: {
   readonly environmentName: string;
-  readonly folder: string;
+  readonly repository: string;
   readonly branch: string;
   readonly uncommitted: ReadonlyArray<string>;
 }): string {
   const upstream = `origin/${input.branch}`;
   return [
-    `Pult could not sync your folder, \`${input.folder}\` on ${input.environmentName}, with its origin, and hands it to you to reconcile: \`${input.branch}\` and \`${upstream}\` have diverged, or git refused to bring \`${upstream}\` in over the changes here. \`git fetch origin\`, then \`git status\` and \`git log --stat HEAD...${upstream}\` show what differs.`,
+    `Pult could not sync the Stars' repository, \`${input.repository}\` on ${input.environmentName}, with its origin, and hands it to you to reconcile: \`${input.branch}\` and \`${upstream}\` have diverged, or git refused to bring \`${upstream}\` in over the changes here. \`git fetch origin\`, then \`git status\` and \`git log --stat HEAD...${upstream}\` show what differs.`,
     input.uncommitted.length === 0
       ? ""
       : `Files changed here and not committed:\n${input.uncommitted.map((file) => `- \`${file}\``).join("\n")}`,
-    `Reconcile it in your folder with git, keeping what both sides know (your memory, and the conversations, which do not conflict since each environment writes its own folder), commit, and push to \`${upstream}\`. Pult does not resolve it itself; it syncs again when you next fall asleep.`,
+    `Reconcile it with git, keeping what both sides know (the transcripts do not conflict, since each environment writes its own folder of them), commit, and push to \`${upstream}\`. Pult does not resolve it itself; it syncs again when you next fall asleep.`,
   ]
     .filter((part) => part !== "")
     .join("\n\n");
 }
 
 /** The title of the conversation a handoff wakes, which the server keeps until the Star's first reply retitles it. */
-export const HANDOFF_TITLE = "Reconcile your folder";
+export const HANDOFF_TITLE = "Reconcile the Stars' repository";
 
 /**
- * The handoff's thread id, deterministic from the home, the commit its
+ * The handoff's thread id, deterministic from the repository, the commit its
  * branch is at and how far behind the origin it is, so a divergence is
  * handed to the Star once, whichever page sees it and however often, and
  * again only when either side moves: Pult commits nothing on a diverged
@@ -130,6 +149,7 @@ export const HANDOFF_TITLE = "Reconcile your folder";
  */
 export async function handoffThreadId(input: {
   readonly environmentId: string;
+  /** The repository's root, `~/.pult/stars`. */
   readonly root: string;
   readonly branch: string;
   readonly head: string | null;

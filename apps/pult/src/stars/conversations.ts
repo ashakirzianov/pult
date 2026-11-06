@@ -334,8 +334,11 @@ class StarConversations {
     const whole = !partial && sameInstant(transcriptHead(contents)?.ended, settledAt);
     if (present && !existing.truncated && existing.contents === contents) return whole;
     await server.writeFile({ cwd: home.root, relativePath, contents });
-    // Its conversation's commit and push, where the Star syncs.
-    afterStarTranscript(home, thread);
+    // Its conversation's commit, and push where the Stars sync, under the server's title: the page's names the thread as the Star.
+    afterStarTranscript(home, {
+      title: projection.thread.title,
+      settledAt,
+    });
     refreshTranscript(home.environmentId, home.root, name);
     forgetTranscriptEnd(home.environmentId, home.root, name);
     await rereadStars(home.environmentId);

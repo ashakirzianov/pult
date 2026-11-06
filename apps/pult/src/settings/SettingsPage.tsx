@@ -14,7 +14,7 @@ import { threadStore } from "../threads/store.ts";
 import {
   setStarOrigin,
   setStarRecord,
-  starHomeSync,
+  starRepositorySync,
   starSyncStore,
   syncStar,
 } from "../stars/syncing.ts";
@@ -156,8 +156,8 @@ const SHOW_STAR_CHOICES = [
 /**
  * The Star (`src/stars/`): per Star the page holds, its Name and Tint,
  * written into the record of every home the page holds, Edit Instructions
- * (its `AGENTS.md` as a tab) and Open Star Folder (the explorer at its
- * folder); then Show Star (`pult.star.enabled`), which the palette's Show
+ * (its own `instructions.md` as a tab) and Open Star Folder (the explorer at
+ * its folder); then the Stars' Sync, once for all of them; then Show Star (`pult.star.enabled`), which the palette's Show
  * Star and Hide Star set too: hidden, the left panel shows no Star's card
  * and Pult creates none, deleting nothing.
  */
@@ -177,6 +177,7 @@ function StarSection() {
       {stars.map((star) => (
         <StarSettings key={star.id} star={star} several={stars.length > 1} />
       ))}
+      {stars.length === 0 ? null : <StarSyncRow stars={stars} />}
       <SegmentedRow
         label="Show Star"
         description="Hidden, the left panel shows no Star and Pult creates none; nothing is deleted."
@@ -259,8 +260,8 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">Instructions and folder</div>
           <div className="pult-settings-row-description">
-            Your Star reads its AGENTS.md at the start of every conversation, and keeps its memory
-            in its folder.
+            Your Star reads its instructions at the start of every conversation, and keeps what it
+            needs in its folder.
           </div>
         </div>
         <div className="pult-settings-row-actions">
@@ -280,21 +281,21 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
           </button>
         </div>
       </div>
-      <StarSyncRow star={star} several={several} />
     </>
   );
 }
 
 /**
- * The Star's Sync (`src/stars/syncing.ts`): its origin, a Git URL or a
- * repository's path on the environment, written on Enter or leaving the
- * field, empty to stop syncing; Sync Now while it is set; and a line per
- * home of when it last synced, what failed, and what waits or was handed to
- * the Star.
+ * The Stars' Sync (`src/stars/syncing.ts`): the origin of their repository,
+ * `~/.pult/stars`, a Git URL or a repository's path on the environment,
+ * written on Enter or leaving the field into every held environment's
+ * repository, empty to stop syncing; Sync Now while it is set; and a line
+ * per environment of when it last synced, what failed, and what waits or
+ * was handed to a Star.
  */
-function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
+function StarSyncRow({ stars }: { stars: ReadonlyArray<Star> }) {
   useSyncExternalStore(starSyncStore.subscribe, starSyncStore.get);
-  const origin = star.origin ?? "";
+  const origin = stars.find((star) => star.origin !== undefined)?.origin ?? "";
   const [typed, setTyped] = useState(origin);
   const [editing, setEditing] = useState(false);
   // Escape leaves the field through its blur, which this tells to write nothing, as the name's does.
@@ -305,12 +306,17 @@ function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
       cancelled.current = false;
       return;
     }
-    if (typed.trim() !== origin) void setStarOrigin(star.id, typed.trim());
+    if (typed.trim() !== origin) void setStarOrigin(typed.trim());
   };
-  const lines = star.homes.flatMap((home) => {
-    const state = starHomeSync(home);
+  const homes = [
+    ...new Map(
+      stars.flatMap((star) => star.homes.map((home) => [home.environmentId, home] as const)),
+    ).values(),
+  ];
+  const lines = homes.flatMap((home) => {
+    const state = starRepositorySync(home.environmentId);
     const where =
-      star.homes.length > 1
+      homes.length > 1
         ? `${threadStore.environment(home.environmentId)?.name ?? home.environmentId}: `
         : "";
     if (home.origin === undefined)
@@ -327,16 +333,17 @@ function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
       ...(state?.note == null ? [] : [{ text: `${where}${state.note}`, error: false }]),
     ];
   });
+  const first = stars[0];
   return (
     <div className="pult-settings-row">
       <div className="pult-settings-row-text">
-        <label className="pult-settings-row-label" htmlFor={`pult-star-origin-${star.id}`}>
-          {several ? `Sync of ${starName(star)}` : "Sync"}
+        <label className="pult-settings-row-label" htmlFor="pult-star-origin">
+          Sync
         </label>
         <div className="pult-settings-row-description">
-          A Git repository your Star's folder syncs with: Pult commits and pushes it after each
-          conversation, and pulls it on connecting and before your Star wakes. Empty, it does not
-          sync.
+          A Git repository your Stars sync with, every Star in one: Pult commits after each
+          conversation, then pushes, and pulls on connecting and before a Star wakes. Empty, it only
+          commits.
         </div>
         {lines.map((line) => (
           <div
@@ -349,7 +356,7 @@ function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
       </div>
       <div className="pult-settings-row-actions">
         <input
-          id={`pult-star-origin-${star.id}`}
+          id="pult-star-origin"
           className="pult-settings-input"
           type="text"
           placeholder="git@host:you/star.git"
@@ -374,7 +381,7 @@ function StarSyncRow({ star, several }: { star: Star; several: boolean }) {
           <button
             type="button"
             className="pult-settings-button"
-            onClick={() => void syncStar(star.id)}
+            onClick={() => first !== undefined && void syncStar(first.id)}
           >
             Sync Now
           </button>

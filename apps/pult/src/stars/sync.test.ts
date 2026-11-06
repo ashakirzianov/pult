@@ -6,6 +6,7 @@ import {
   handoffMessage,
   handoffThreadId,
   type HomeStatus,
+  originOf,
   originProblem,
   refusedByGit,
   syncPlan,
@@ -33,15 +34,6 @@ NodeTest.describe("originProblem", () => {
       NodeAssert.equal(originProblem(url), undefined, url);
   });
 
-  NodeTest.test(
-    "refuses a token or a password in the URL, which AGENTS.md would carry to the origin",
-    () => {
-      NodeAssert.match(originProblem("https://ghp_abc@github.com/me/star.git") ?? "", /token/);
-      NodeAssert.match(originProblem("https://me:secret@github.com/me/star.git") ?? "", /token/);
-      NodeAssert.match(originProblem("ssh://me:secret@host/star.git") ?? "", /token/);
-    },
-  );
-
   NodeTest.test("refuses an empty origin, spaces, and a relative path", () => {
     NodeAssert.notEqual(originProblem(" "), undefined);
     NodeAssert.notEqual(originProblem("/srv/my star.git"), undefined);
@@ -49,6 +41,20 @@ NodeTest.describe("originProblem", () => {
     NodeAssert.notEqual(originProblem("~/star.git"), undefined);
   });
 });
+
+NodeTest.test(
+  "originOf reads origin's URL from a repository's config, and no other remote's",
+  () => {
+    const config = `[core]\n\turl = not-this\n[remote "upstream"]\n\turl = git@host:them/stars.git\n[remote "origin"]\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n\turl = git@host:me/stars.git\n[branch "main"]\n\tremote = origin\n`;
+    NodeAssert.equal(originOf(config), "git@host:me/stars.git");
+    NodeAssert.equal(
+      originOf('[remote "origin"]\r\n  url = "/srv/stars.git"\r\n'),
+      "/srv/stars.git",
+    );
+    NodeAssert.equal(originOf('[remote "upstream"]\n\turl = x\n'), undefined);
+    NodeAssert.equal(originOf(""), undefined);
+  },
+);
 
 NodeTest.describe("syncPlan", () => {
   const run = (pull: boolean, commit: boolean, push: boolean) => ({
@@ -59,7 +65,7 @@ NodeTest.describe("syncPlan", () => {
   });
 
   NodeTest.test("publishes a branch the origin lacks, committing what is uncommitted first", () => {
-    const fresh = { ...synced, hasUpstream: false, uncommitted: ["AGENTS.md"] };
+    const fresh = { ...synced, hasUpstream: false, uncommitted: ["star/AGENTS.md"] };
     NodeAssert.deepEqual(syncPlan(fresh, "full", {}), run(false, true, true));
     NodeAssert.deepEqual(syncPlan(fresh, "pull", {}), run(false, false, false));
     // A new origin without the branch: its stale upstream neither pulls nor diverges.
@@ -73,13 +79,22 @@ NodeTest.describe("syncPlan", () => {
   NodeTest.test("always pulls a tracked branch, and pushes only what it has to", () => {
     NodeAssert.deepEqual(syncPlan(synced, "full", {}), run(true, false, false));
     NodeAssert.deepEqual(
-      syncPlan({ ...synced, uncommitted: ["memory/a.md"] }, "full", {}),
+      syncPlan({ ...synced, uncommitted: ["star/notes.md"] }, "full", {}),
       run(true, true, true),
     );
     NodeAssert.deepEqual(syncPlan({ ...synced, ahead: 2 }, "full", {}), run(true, false, true));
     NodeAssert.deepEqual(
       syncPlan({ ...synced, behind: 3, uncommitted: ["x"] }, "pull", {}),
       run(true, false, false),
+    );
+  });
+
+  NodeTest.test("without an origin, commits and neither pulls nor pushes", () => {
+    const local = { ...synced, hasUpstream: false, uncommitted: ["star/instructions.md"] };
+    NodeAssert.deepEqual(syncPlan(local, "full", { remote: false }), run(false, true, false));
+    NodeAssert.deepEqual(
+      syncPlan({ ...synced, ahead: 1, behind: 1 }, "full", { remote: false }),
+      run(false, false, false),
     );
   });
 
@@ -108,9 +123,9 @@ NodeTest.test("refusedByGit takes the refusals the server names, and nothing els
 NodeTest.describe("the handoff", () => {
   const input = {
     environmentName: "laptop",
-    folder: "~/.pult/stars/star",
+    repository: "~/.pult/stars",
     branch: "main",
-    uncommitted: ["memory/notes.md"],
+    uncommitted: ["star/notes.md"],
   };
 
   NodeTest.test(
@@ -119,19 +134,19 @@ NodeTest.describe("the handoff", () => {
       const text = handoffMessage(input);
       NodeAssert.match(
         text,
-        /your folder, `~\/.pult\/stars\/star` on laptop, with its origin.*`main` and `origin\/main` have diverged/,
+        /the Stars' repository, `~\/.pult\/stars` on laptop, with its origin.*`main` and `origin\/main` have diverged/,
       );
-      NodeAssert.match(text, /- `memory\/notes.md`/);
+      NodeAssert.match(text, /- `star\/notes.md`/);
       NodeAssert.match(text, /push to `origin\/main`/);
       NodeAssert.equal(text, handoffMessage(input));
       NodeAssert.doesNotMatch(handoffMessage({ ...input, uncommitted: [] }), /not committed/);
     },
   );
 
-  NodeTest.test("is one thread per home and state of both sides", async () => {
+  NodeTest.test("is one thread per repository and state of both sides", async () => {
     const home = {
       environmentId: "env",
-      root: "/home/me/.pult/stars/star",
+      root: "/home/me/.pult/stars",
       branch: "main",
       head: "b".repeat(40),
       behind: 1,

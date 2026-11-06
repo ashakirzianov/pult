@@ -1,20 +1,29 @@
 // A Star's folder and its record, apart from the workbench so
-// `node --test src/stars/record.test.ts` can run it: where Stars live, the
-// record in `AGENTS.md`'s front matter, how it is read and rewritten, and the
-// stock instructions written once at creation.
+// `node --test src/stars/record.test.ts` can run it: where Stars live, what
+// in a Star's folder is Pult's, the record in `.pult/star.md`'s front matter,
+// how it is read and rewritten, the `AGENTS.md` Pult keeps in every Star's
+// folder, and the layout before it, which the page migrates.
 
-/** Where an environment's Stars live, relative to its home: a folder each. */
+/** Where an environment's Stars live, relative to its home: a folder each, in one git repository. */
 export const STARS_DIRECTORY = ".pult/stars";
 
 /** The folder the page creates a Star in by default, under `STARS_DIRECTORY`. */
 export const DEFAULT_STAR_FOLDER = "star";
 
-/** The file holding a Star's record, in its front matter, and its standing instructions, in its body. */
-export const RECORD_FILE = "AGENTS.md";
+/** What of a Star's folder is Pult's beside `AGENTS.md`; everything else is the Star's own. */
+export const SYSTEM_DIRECTORY = ".pult";
 
-/** What a Star's folder holds beside its record: its memory, its own to write, and the transcripts Pult writes of its conversations. */
-export const MEMORY_DIRECTORY = "memory";
-export const CONVERSATIONS_DIRECTORY = "conversations";
+/** The file holding a Star's record, in its front matter, which the Star may edit too. */
+export const RECORD_FILE = `${SYSTEM_DIRECTORY}/star.md`;
+
+/** The transcripts Pult writes of a Star's conversations, a folder per environment (`transcript.ts`). */
+export const CONVERSATIONS_DIRECTORY = `${SYSTEM_DIRECTORY}/conversations`;
+
+/** Pult's instructions to the Star, the same for every Star, rewritten by a newer Pult (`AGENTS_TEXT`). */
+export const AGENTS_FILE = "AGENTS.md";
+
+/** The Star's own instructions, which `AGENTS.md` loads: empty at creation, the Star's to keep. */
+export const INSTRUCTIONS_FILE = "instructions.md";
 
 /** The 🌟 upstream's UI shows for a Star's project. */
 export const STAR_PROJECT_ICON = { kind: "emoji", emoji: "🌟" } as const;
@@ -51,20 +60,18 @@ export function tintOf(name: string) {
 }
 
 /**
- * A Star's record: who it is. `name` is empty until the user names it, and
- * the UI calls it "Star" meanwhile. `origin`, while it is set, is where its
- * folder syncs (`sync.ts`); empty or absent, it does not.
+ * A Star's record: who it is. `name` is empty until the user or the Star
+ * names it, and the UI calls it "Star" meanwhile.
  */
 export interface StarRecord {
   readonly id: string;
   readonly name: string;
   readonly tint: string;
   readonly created: string;
-  readonly origin?: string;
 }
 
 /** The fields the page rewrites in the front matter. */
-export type RecordFields = Partial<Pick<StarRecord, "name" | "tint" | "origin">>;
+export type RecordFields = Partial<Pick<StarRecord, "name" | "tint">>;
 
 const KIND = "star";
 
@@ -125,19 +132,17 @@ export function readFrontMatter(
   return { fields, body: text.slice(matter.bodyStart) };
 }
 
-/** The Star's record in `AGENTS.md`'s front matter; undefined for a file that is no Star's. */
+/** The Star's record in a file's front matter, `.pult/star.md`'s or a legacy `AGENTS.md`'s; undefined for a file that is no Star's. */
 export function parseRecord(text: string): StarRecord | undefined {
   const fields = readFrontMatter(text)?.fields;
   if (fields === undefined) return undefined;
   const id = fields.get("id");
   if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
-  const origin = fields.get("origin")?.trim() ?? "";
   return {
     id,
     name: fields.get("name") ?? "",
     tint: fields.get("tint") || DEFAULT_TINT,
     created: fields.get("created") ?? "",
-    ...(origin === "" ? {} : { origin }),
   };
 }
 
@@ -167,13 +172,8 @@ export function newRecord(id: string, created: string): StarRecord {
   return { id, name: "", tint: DEFAULT_TINT, created };
 }
 
-/**
- * A new Star's `AGENTS.md`: its record, then its standing instructions,
- * written once and never overwritten, since they are the Star's and the
- * user's to change. They tell the Star what it is and where its memory and
- * its earlier conversations are; nothing of them is loaded into a thread.
- */
-export function stockInstructions(record: StarRecord): string {
+/** A Star's `.pult/star.md`: its record, the front matter alone. */
+export function recordText(record: StarRecord): string {
   return `---
 xaxis-kind: ${KIND}
 id: ${quoted(record.id)}
@@ -181,14 +181,48 @@ name: ${quoted(record.name)}
 tint: ${quoted(record.tint)}
 created: ${quoted(record.created)}
 ---
-
-# Star
-
-You are the user's Star: one continuous conversation with them, for as long as they keep you. The conversation is held in threads. After a while without messages you fall asleep, and the user's next message wakes you in a fresh thread, with nothing of the earlier ones loaded.
-
-- \`${MEMORY_DIRECTORY}/\`, beside this file, is yours. Write down what you will want to know later as you go, not at the end: a conversation can end without warning.
-- \`${CONVERSATIONS_DIRECTORY}/<environment>/\` holds the transcripts of your earlier conversations, which Pult writes when you fall asleep, each file named by when its conversation started. When the user refers to something said earlier, read the one it is in; do not read them all at the start.
-
-Pult reads this file's front matter, your name and tint among it; keep it as it is.
 `;
 }
+
+/** The version of `AGENTS_TEXT`, its first line: raised with every change of the text. */
+export const AGENTS_VERSION = 1;
+
+/**
+ * The `AGENTS.md` Pult keeps in every Star's folder (xaxis
+ * `pult/issues/star-folder-layout`): what the Star is and what Pult does for
+ * it, loading its record and its own instructions. Claude Code expands the
+ * `@` lines; Codex does not, which its last paragraph covers.
+ */
+export const AGENTS_TEXT = `<!-- pult-agents-md: ${AGENTS_VERSION} -->
+# Star
+
+You are the user's Star: their personal agent in Pult, the app they talk to you through, and the same agent across all your conversations with them. Each conversation is a thread. After a while without messages you fall asleep, and the user's next message wakes you in a fresh thread with none of the earlier ones loaded; what carries over is this folder. Whatever you will want to know later has to be in it by then, and a conversation can end without warning.
+
+- \`${RECORD_FILE}\` is your record, loaded below: your name and your tint, the colour Pult draws you in. You and the user can both change them. \`name\` is free text, empty until you are named; \`tint\` is one of amber, coral, rose, violet, indigo, sky or mint. Leave \`id\` and \`created\` as they are.
+- \`${CONVERSATIONS_DIRECTORY}/<environment>/\` holds the transcripts of your earlier conversations. Pult writes one as you fall asleep, named by when that conversation started. When the user refers to something said earlier, read the transcript it is in; don't read them all at the start.
+
+Pult manages this file and \`${SYSTEM_DIRECTORY}/\`, and rewrites this file as Pult changes, so anything you write here will be lost. Everything else in this folder is yours. Your own instructions go in \`${INSTRUCTIONS_FILE}\`, which you manage on your own and which is loaded below. If you don't see the contents of \`${INSTRUCTIONS_FILE}\` or \`${RECORD_FILE}\` below, read them before your first reply.
+
+@${RECORD_FILE}
+@${INSTRUCTIONS_FILE}
+`;
+
+/** Whether an `AGENTS.md` is due Pult's text: missing, of no version, or of an older one; a newer Pult's is left alone. */
+export function agentsOutdated(text: string | undefined): boolean {
+  if (text === undefined) return true;
+  const version = /^<!-- pult-agents-md: (\d+) -->/.exec(text)?.[1];
+  return version === undefined || Number(version) < AGENTS_VERSION;
+}
+
+/**
+ * The layout before `pult/issues/star-folder-layout`: the record in
+ * `AGENTS.md`'s front matter, its body the stock instructions, the
+ * transcripts in `conversations/`, and `memory/` beside them, which only
+ * those instructions pointed the Star at.
+ */
+export const LEGACY_CONVERSATIONS_DIRECTORY = "conversations";
+export const LEGACY_MEMORY_DIRECTORY = "memory";
+
+/** A migrated Star's `instructions.md`, where it has a `memory/`: the one pointer of the stock instructions only they gave. */
+export const LEGACY_INSTRUCTIONS = `- \`${LEGACY_MEMORY_DIRECTORY}/\` is yours: write down what you will want to know later as you go, not at the end.
+`;

@@ -13,10 +13,12 @@ export interface StarFolder {
   /** Its host path. */
   readonly root: string;
   readonly record: StarRecord;
-  /** The transcripts' file names in its `conversations/<environmentId>/`, its own environment's, oldest first (`transcript.ts`). */
+  /** The transcripts' file names in its `.pult/conversations/<environmentId>/`, its own environment's, oldest first (`transcript.ts`). */
   readonly transcripts: ReadonlyArray<string>;
   /** When the newest of them ended, by its front matter, where the page could read it. */
   readonly newestEnded?: string;
+  /** Where the environment's Stars' repository syncs, its `origin`; absent while it does not (`sync.ts`). */
+  readonly origin?: string;
 }
 
 /** A Star's folder on one environment, and its project there, null until the page adopts it. */
@@ -26,7 +28,7 @@ export interface StarHome {
   readonly projectId: string | null;
   readonly transcripts: ReadonlyArray<string>;
   readonly newestEnded?: string;
-  /** Where its folder syncs, by its own record; absent while it does not (`sync.ts`). */
+  /** Where its environment's Stars' repository syncs; absent while it does not (`sync.ts`). */
   readonly origin?: string;
 }
 
@@ -58,7 +60,7 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly name: string;
   readonly tint: string;
   readonly created: string;
-  /** Where it syncs, by its first home's record; absent while it does not. */
+  /** Where it syncs, its first home's repository's origin; absent while it does not. */
   readonly origin?: string;
   readonly homes: ReadonlyArray<StarHome>;
   readonly current: Thread | null;
@@ -143,7 +145,7 @@ export function starsOf<Thread extends StarThread>(
       projectId: projectAt(projects, folder.environmentId, folder.root)?.id ?? null,
       transcripts: folder.transcripts,
       ...(folder.newestEnded === undefined ? {} : { newestEnded: folder.newestEnded }),
-      ...(folder.record.origin === undefined ? {} : { origin: folder.record.origin }),
+      ...(folder.origin === undefined ? {} : { origin: folder.origin }),
     });
   }
   return [...byId.values()].map(({ record, homes }) => {
@@ -164,7 +166,7 @@ export function starsOf<Thread extends StarThread>(
       name: record.name,
       tint: record.tint,
       created: record.created,
-      ...(record.origin === undefined ? {} : { origin: record.origin }),
+      ...(homes[0]?.origin === undefined ? {} : { origin: homes[0].origin }),
       homes,
       current,
       latest: roots[0] ?? null,
