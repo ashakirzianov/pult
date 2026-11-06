@@ -50,8 +50,6 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   let quitAndInstallCount = 0;
   let downloadCount = 0;
   let allowDowngrade = false;
-  let autoInstallOnAppQuit = false;
-  const autoInstallOnAppQuitAtInstall: boolean[] = [];
   const checkAllowedDowngrade: boolean[] = [];
   let fullChangelog = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
@@ -82,10 +80,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
         feedUrls.push(options);
       }),
     setAutoDownload: () => Effect.void,
-    setAutoInstallOnAppQuit: (value) =>
-      Effect.sync(() => {
-        autoInstallOnAppQuit = value;
-      }),
+    setAutoInstallOnAppQuit: () => Effect.void,
     setChannel: () => Effect.void,
     setAllowPrerelease: () => Effect.void,
     allowDowngrade: Effect.sync(() => allowDowngrade),
@@ -108,7 +103,6 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     quitAndInstall: () =>
       Effect.sync(() => {
         quitAndInstallCount += 1;
-        autoInstallOnAppQuitAtInstall.push(autoInstallOnAppQuit);
         installSteps.push("quitAndInstall");
       }).pipe(Effect.andThen(options.quitAndInstall ?? Effect.void)),
     on: (eventName, listener) =>
@@ -312,12 +306,6 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     /** Whether each feed check could offer an older release, and the flag now. */
     checkAllowedDowngrade,
     allowDowngrade: () => allowDowngrade,
-    /** Sets electron-updater's flag as a brand that installs on quit does at configure. */
-    setAutoInstallOnAppQuit: (value: boolean) => {
-      autoInstallOnAppQuit = value;
-    },
-    /** electron-updater's `autoInstallOnAppQuit` when each quitAndInstall ran. */
-    autoInstallOnAppQuitAtInstall,
     listenerCount: () =>
       Array.from(listeners.values()).reduce(
         (total, eventListeners) => total + eventListeners.size,
