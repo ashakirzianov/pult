@@ -16,7 +16,6 @@
   "breadcrumbs.enabled": false,
   "editor.minimap.enabled": false,
   "editor.scrollBeyondLastLine": false,
-  "editor.padding.bottom": 24,
   "editor.fontSize": 13,
   "editor.wordWrap": "bounded",
   "editor.wordWrapColumn": 80,
