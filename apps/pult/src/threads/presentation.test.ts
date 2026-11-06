@@ -273,7 +273,7 @@ NodeTest.describe("shellThreads", () => {
   });
 
   NodeTest.test(
-    "dates a card by the user's latest message, a settled one by its settlement, as upstream's rows",
+    "dates a card by its latest run's end, else the user's latest message, a settled one by its settlement",
     () => {
       const message = {
         latestUserMessageAt: at("2026-06-20T08:00:00.000Z"),
@@ -284,6 +284,12 @@ NodeTest.describe("shellThreads", () => {
           {
             environmentId: "env",
             threads: [
+              thread("ran", {
+                ...message,
+                latestRunId: RunId.make("run"),
+                status: "completed",
+                latestRunCompletedAt: at("2026-06-20T08:30:00.000Z"),
+              }),
               thread("active", message),
               thread("settled", {
                 ...message,
@@ -300,6 +306,7 @@ NodeTest.describe("shellThreads", () => {
       NodeAssert.deepEqual(
         threads.map((each) => [each.id, each.ageFrom]),
         [
+          ["ran", "2026-06-20T08:30:00.000Z"],
           ["active", "2026-06-20T08:00:00.000Z"],
           ["settled", "2026-06-20T09:00:00.000Z"],
         ],

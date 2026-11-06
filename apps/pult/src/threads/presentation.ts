@@ -315,7 +315,7 @@ export function shellThreads(
       ageFrom:
         shelf === "settled" || (shelf === null && settled)
           ? resolveSettledThreadTimestamp(thread)
-          : (thread.latestUserMessageAt ?? thread.updatedAt),
+          : (thread.latestRun?.completedAt ?? thread.latestUserMessageAt ?? thread.updatedAt),
       woke: isWoke(thread, now),
       working: threadStatus(thread, now)?.badge === "R",
       waiting: thread.runtime?.status === "idle",

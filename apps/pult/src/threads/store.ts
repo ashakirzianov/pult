@@ -32,7 +32,7 @@ export interface ShellThread {
   readonly branch: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
-  /** What its card's age counts from, as upstream's row: a settled thread's settlement, else its latest message from the user, else its last change. */
+  /** What its card's age counts from: a settled thread's settlement, else its latest run's end, which its prompt cache counts from, else its latest message from the user, else its last change. */
   readonly ageFrom: string | null;
   /** Woke from a snooze and not visited since (upstream's Woke). */
   readonly woke: boolean;
