@@ -17,7 +17,7 @@ import { forgetTranscriptEnd, rereadStars, starStore } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { asleepBy, type Wakefulness, wakefulness } from "./sleep.ts";
 import { afterStarTranscript } from "./syncing.ts";
-import { conversationsOf, type StarHome } from "./stars.ts";
+import { conversationsOf, lineageWorks, type StarHome } from "./stars.ts";
 import {
   formatTranscript,
   transcriptHead,
@@ -90,16 +90,6 @@ const stampOf = (thread: ShellThread) =>
     thread.canSnooze,
     thread.promptCacheExpiresAt,
   ]);
-
-/** Whether a thread below the conversation works, its subagents' and theirs, as the store has them: a subagent thread's run holds the Star awake as the conversation's own does. */
-const lineageWorks = (thread: ShellThread, threads: ReadonlyArray<ShellThread>) =>
-  threads.some(
-    (each) =>
-      each.environmentId === thread.environmentId &&
-      each.rootId === thread.id &&
-      each.id !== thread.id &&
-      each.working,
-  );
 
 /** Whether the conversation's composer holds anything the user wrote or attached, by the composer store. */
 async function hasUnsentMessage(

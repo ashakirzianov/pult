@@ -174,6 +174,27 @@ export function starsOf<Thread extends StarThread>(
   });
 }
 
+/** The threads below a conversation, its subagents' and theirs, as the store has them. */
+export function threadsBelow<Thread extends Pick<ShellThread, "environmentId" | "id" | "rootId">>(
+  thread: Pick<ShellThread, "environmentId" | "id">,
+  threads: ReadonlyArray<Thread>,
+): Thread[] {
+  return threads.filter(
+    (each) =>
+      each.environmentId === thread.environmentId &&
+      each.rootId === thread.id &&
+      each.id !== thread.id,
+  );
+}
+
+/** Whether a thread below the conversation works: a subagent thread's run holds the Star awake as the conversation's own does. */
+export function lineageWorks(
+  thread: Pick<ShellThread, "environmentId" | "id">,
+  threads: ReadonlyArray<Pick<ShellThread, "environmentId" | "id" | "rootId" | "working">>,
+): boolean {
+  return threadsBelow(thread, threads).some((each) => each.working);
+}
+
 /** Since when a sleeping Star sleeps: its last conversation's end, else its creation. */
 export function asleepSince(star: Pick<Star<StarThread>, "lastEnded" | "created">): string {
   return star.lastEnded ?? star.created;
