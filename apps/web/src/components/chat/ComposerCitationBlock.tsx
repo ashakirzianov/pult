@@ -639,7 +639,7 @@ export function requestReviewCommentFocus(commentId: string): void {
 
 /**
  * A file or diff comment's block: its path and lines, which open the file,
- * and the comment, kept as the record's text; the lines' range says what is cited.
+ * and the comment, kept as the record's text; its tooltip shows the lines.
  */
 export function ComposerReviewCommentBlock({
   editor,
@@ -656,6 +656,10 @@ export function ComposerReviewCommentBlock({
   const [focusRequested, setFocusRequested] = useState(
     () => requestedAt !== undefined && Date.now() - requestedAt < FOCUS_REQUEST_TTL_MS,
   );
+  const quoted = comment.diff
+    .split("\n")
+    .filter((line) => !line.startsWith("@@"))
+    .join("\n");
   return (
     <CitationBlock
       editor={editor}
@@ -678,7 +682,12 @@ export function ComposerReviewCommentBlock({
             {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
             {comment.rangeLabel}
           </TooltipTrigger>
-          <TooltipPopup side="top">Open the file</TooltipPopup>
+          <TooltipPopup side="top" variant="code">
+            <span className="line-clamp-8 whitespace-pre-wrap">{quoted}</span>
+            <span className="mt-1 block font-sans text-muted-foreground text-xs">
+              Open the file
+            </span>
+          </TooltipPopup>
         </Tooltip>
       }
       savedComment={comment.text}
