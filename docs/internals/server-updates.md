@@ -128,5 +128,11 @@ A desktop app's server installs the app's updates itself when
 for its supervised server under a brand that asks (`serverInstallUpdatesAtRest`). Every 30 minutes,
 once the server has rested 15 minutes and the desktop's power telemetry has seen no input on the
 host for 15, it runs the ordinary desktop update and commits it; missing or stale telemetry counts
-as input. The download can take minutes, so both are checked again before the commit. A prepared
-update left uncommitted expires on the desktop and stays downloaded for the next tick.
+as input. The download can take minutes, so both are checked again before the commit, the host on
+a sample the server asks the desktop for then (the periodic one can be two minutes old once the host
+idles); no sample within ten seconds counts as input. A prepared update left uncommitted expires on
+the desktop and stays downloaded for the next tick. A download whose last install failed
+(`installFailedVersion`) is left to the user: each attempt restarts the server, and the worker's
+memory does not survive that. A gap remains after the re-check: the commit can wait up to 90 seconds
+for a feed check to finish before it stops the backends, and work started in it is cut and
+continued by restart continuation like any other.
