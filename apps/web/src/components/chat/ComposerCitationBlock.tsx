@@ -512,7 +512,7 @@ function CitationBlock({
 
   return (
     // Tinted while the caret is elsewhere, plain while its comment is edited.
-    <span className="my-1 flex w-full min-w-0 flex-col gap-0.5 rounded-r-md border-l-2 border-primary bg-primary/8 py-1 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
+    <span className="my-0.5 flex w-full min-w-0 flex-col rounded-r-md border-l-2 border-primary bg-primary/8 py-0.5 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
       {quote}
       <textarea
         ref={inputRef}
@@ -551,6 +551,10 @@ function CitationBlock({
 const QUOTE_CLASS_NAME =
   "line-clamp-3 cursor-pointer whitespace-pre-wrap text-muted-foreground no-underline wrap-break-word hover:text-foreground";
 
+/** An assistant citation's quote, on one line; its tooltip shows it whole. */
+const ASSISTANT_QUOTE_CLASS_NAME =
+  "truncate cursor-pointer text-muted-foreground text-xs no-underline hover:text-foreground";
+
 /** An assistant citation's block: the quoted text, which goes to it, and the comment, kept as the node's attribute. */
 export function ComposerCitationBlock({
   editor,
@@ -577,7 +581,7 @@ export function ComposerCitationBlock({
             render={
               <a
                 href="#"
-                className={QUOTE_CLASS_NAME}
+                className={ASSISTANT_QUOTE_CLASS_NAME}
                 onClick={(event) => {
                   event.preventDefault();
                   void navigate(assistantCitationNavigation(citation));
@@ -587,7 +591,10 @@ export function ComposerCitationBlock({
           >
             {citation.text}
           </TooltipTrigger>
-          <TooltipPopup side="top">Go to the quoted text</TooltipPopup>
+          <TooltipPopup side="top">
+            <span className="line-clamp-8 whitespace-pre-wrap">{citation.text}</span>
+            <span className="mt-1 block text-muted-foreground">Go to the quoted text</span>
+          </TooltipPopup>
         </Tooltip>
       }
       savedComment={citation.comment ?? ""}
