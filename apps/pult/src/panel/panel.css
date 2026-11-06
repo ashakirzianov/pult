@@ -258,6 +258,11 @@
   font-weight: 500;
 }
 
+/* The age while the thread's prompt cache is about to expire. */
+.pult-card-status-cache {
+  color: var(--vscode-editorWarning-foreground);
+}
+
 .pult-card-title {
   margin-top: 3px;
   overflow: hidden;

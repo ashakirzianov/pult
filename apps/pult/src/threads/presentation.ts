@@ -22,6 +22,7 @@ import {
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 import { isStarRoot } from "../stars/record.ts";
 import {
@@ -129,6 +130,19 @@ export function shelve(
     snoozed: snoozed.toSorted((left, right) => wakeMs(left) - wakeMs(right)),
     settled: sortSettledThreads(settled),
   };
+}
+
+/** How long before its prompt cache expires a card warns of it. */
+const PROMPT_CACHE_WARNING_MS = 10 * 60_000;
+
+/** A card's warning that its thread's prompt cache is about to expire, from 10 minutes before until it does; null otherwise. */
+export function promptCacheWarning(
+  thread: Pick<ShellThread, "promptCacheExpiresAt">,
+  now: number,
+): string | null {
+  const left = Date.parse(thread.promptCacheExpiresAt ?? "") - now;
+  if (!(left > 0 && left <= PROMPT_CACHE_WARNING_MS)) return null;
+  return `Prompt cache expires in ${Math.ceil(left / 60_000)}m`;
 }
 
 /** The next time one of `threads` wakes from its snooze, after `now`. */
@@ -316,6 +330,10 @@ export function shellThreads(
         shelf === "settled" || (shelf === null && settled)
           ? resolveSettledThreadTimestamp(thread)
           : (thread.latestRun?.completedAt ?? thread.latestUserMessageAt ?? thread.updatedAt),
+      promptCacheExpiresAt:
+        thread.source.promptCacheExpiresAt == null
+          ? thread.source.promptCacheExpiresAt
+          : DateTime.formatIso(thread.source.promptCacheExpiresAt),
       woke: isWoke(thread, now),
       working: threadStatus(thread, now)?.badge === "R",
       waiting: thread.runtime?.status === "idle",

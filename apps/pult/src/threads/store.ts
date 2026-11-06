@@ -34,6 +34,8 @@ export interface ShellThread {
   readonly updatedAt: string;
   /** What its card's age counts from: a settled thread's settlement, else its latest run's end, which its prompt cache counts from, else its latest message from the user, else its last change. */
   readonly ageFrom: string | null;
+  /** When its prompt cache expires, as its server says; null where the server knows no cache lifetime, undefined from a server that predates the field. */
+  readonly promptCacheExpiresAt: string | null | undefined;
   /** Woke from a snooze and not visited since (upstream's Woke). */
   readonly woke: boolean;
   /** In motion: working, or waiting on background work that will wake it. */

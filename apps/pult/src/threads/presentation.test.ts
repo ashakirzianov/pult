@@ -20,6 +20,7 @@ import {
 import {
   nextWake,
   NO_THREAD_FEATURES,
+  promptCacheWarning,
   shellThreads,
   shelve,
   threadStatus,
@@ -314,6 +315,32 @@ NodeTest.describe("shellThreads", () => {
     },
   );
 
+  NodeTest.test("carries the server's prompt cache expiry, absent from an older server", () => {
+    const threads = shellThreads(
+      [
+        {
+          environmentId: "env",
+          threads: [
+            thread("known", { promptCacheExpiresAt: at("2026-06-20T12:07:00.000Z") }),
+            thread("unknown", { promptCacheExpiresAt: null }),
+            thread("older"),
+          ],
+          projects: [],
+          features: ALL,
+        },
+      ],
+      NOW,
+    );
+    NodeAssert.deepEqual(
+      new Map(threads.map((each) => [each.id, each.promptCacheExpiresAt])),
+      new Map([
+        ["known", "2026-06-20T12:07:00.000Z"],
+        ["unknown", null],
+        ["older", undefined],
+      ]),
+    );
+  });
+
   NodeTest.test("puts a Star's threads on no shelf, dated by their settlement once asleep", () => {
     const star = {
       ...v2Project,
@@ -376,4 +403,24 @@ NodeTest.describe("shellThreads", () => {
       );
     },
   );
+});
+
+NodeTest.describe("promptCacheWarning", () => {
+  const now = Date.parse(NOW);
+  const expiring = (iso: string | null | undefined) =>
+    promptCacheWarning({ promptCacheExpiresAt: iso }, now);
+
+  NodeTest.test("warns from 10 minutes before the cache expires until it does", () => {
+    NodeAssert.equal(expiring("2026-06-20T12:10:30.000Z"), null);
+    NodeAssert.equal(expiring("2026-06-20T12:10:00.000Z"), "Prompt cache expires in 10m");
+    NodeAssert.equal(expiring("2026-06-20T12:06:20.000Z"), "Prompt cache expires in 7m");
+    NodeAssert.equal(expiring("2026-06-20T12:00:20.000Z"), "Prompt cache expires in 1m");
+    NodeAssert.equal(expiring(NOW), null);
+    NodeAssert.equal(expiring("2026-06-20T11:50:00.000Z"), null);
+  });
+
+  NodeTest.test("says nothing where the server knows no expiry", () => {
+    NodeAssert.equal(expiring(null), null);
+    NodeAssert.equal(expiring(undefined), null);
+  });
 });

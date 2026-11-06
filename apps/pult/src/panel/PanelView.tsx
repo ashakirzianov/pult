@@ -13,7 +13,7 @@ import {
   wakeThread,
 } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
-import { NO_THREAD_FEATURES } from "../threads/presentation.ts";
+import { NO_THREAD_FEATURES, promptCacheWarning } from "../threads/presentation.ts";
 import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
 import { onDidSelectThread, selectedDraft } from "../threads/selection.ts";
 import {
@@ -390,6 +390,7 @@ function ThreadCard({
       keyOf(thread),
     ) && !selected;
   useProjectIcons();
+  const activity = activities.get(keyOf(thread)) ?? null;
   return (
     <li
       className={`pult-card${selected ? " pult-card-selected" : ""}${thread.shelf === "settled" ? " pult-card-settled" : ""}`}
@@ -399,6 +400,8 @@ function ThreadCard({
         role="button"
         tabIndex={0}
         className="pult-card-select"
+        // On the card, since hovering it swaps the status for the thread's actions.
+        title={ageWarning(thread, activity, now) ?? undefined}
         aria-current={selected || undefined}
         onClick={select}
         onKeyDown={(event) => {
@@ -431,7 +434,7 @@ function ThreadCard({
             <span className="pult-card-unsent" title="Unsent message" aria-label="Unsent message" />
           ) : null}
           <StatusSlot thread={thread} features={features}>
-            <Status thread={thread} activity={activities.get(keyOf(thread)) ?? null} now={now} />
+            <Status thread={thread} activity={activity} now={now} />
           </StatusSlot>
         </span>
         <span className="pult-card-title">{thread.title}</span>
@@ -609,7 +612,20 @@ function StatusSlot({
   );
 }
 
-/** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age. */
+/** The warning a status showing the thread's plain age gives while its prompt cache is about to expire. */
+function ageWarning(thread: ShellThread, activity: Activity, now: number): string | null {
+  if (
+    activity !== null ||
+    thread.latestRun?.status === "failed" ||
+    thread.woke ||
+    thread.shelf === "snoozed" ||
+    thread.shelf === "settled"
+  )
+    return null;
+  return promptCacheWarning(thread, now);
+}
+
+/** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age, in the warning colour while its prompt cache is about to expire. */
 function Status({
   thread,
   activity,
@@ -652,7 +668,15 @@ function Status({
       </span>
     );
   }
-  return <span className="pult-card-status">{age(thread.ageFrom ?? thread.updatedAt, now)}</span>;
+  const warning = ageWarning(thread, activity, now);
+  return (
+    <span
+      className={`pult-card-status${warning === null ? "" : " pult-card-status-cache"}`}
+      title={warning ?? undefined}
+    >
+      {age(thread.ageFrom ?? thread.updatedAt, now)}
+    </span>
+  );
 }
 
 /** The time since `iso`, in T3 Code's short form: `now`, `5m`, `3h`, `2d`. */
