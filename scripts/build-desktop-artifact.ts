@@ -3592,6 +3592,24 @@ export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMac
   },
 );
 
+// The version each build step carries. The packaged app (its bundle, update feed and
+// artifact names) may carry a version line of its own; the compiled server, web and
+// desktop bundles keep theirs, and so do the Windows server sidecar and the embedded
+// WSL runtime, the CLI archive named for the server's version.
+export function resolveDesktopBuildVersions(input: {
+  readonly version: string | undefined;
+  readonly appVersion: string | undefined;
+  readonly serverVersion: string;
+}) {
+  const bundles = input.version ?? input.serverVersion;
+  return {
+    app: input.appVersion ?? bundles,
+    bundles,
+    windowsServerSidecar: bundles,
+    windowsWslRuntime: bundles,
+  } as const;
+}
+
 const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(function* (
   options: ResolvedBuildOptions,
 ) {
@@ -3668,10 +3686,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       }),
   });
 
-  const bundleVersion = options.version ?? serverPackageJson.version;
-  // The packaged app (its bundle, update feed and artifact names) may carry a
-  // version line of its own; the compiled server, web and desktop bundles keep theirs.
-  const appVersion = options.appVersion ?? bundleVersion;
+  const versions = resolveDesktopBuildVersions({
+    version: options.version,
+    appVersion: options.appVersion,
+    serverVersion: serverPackageJson.version,
+  });
+  const bundleVersion = versions.bundles;
+  const appVersion = versions.app;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
@@ -3977,7 +3998,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       repoRoot,
       serverDistDir: distDirs.serverDist,
       arch: options.arch,
-      bundleVersion,
+      bundleVersion: versions.windowsServerSidecar,
       runtimeExternalDependencies: resolvedServerRuntimeExternalDependencies,
       fffNodeVersion: serverPackageJson.dependencies["@ff-labs/fff-node"],
       allowBuilds: workspaceAllowBuilds,
@@ -4096,7 +4117,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       stageDistDir,
       appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
       targetArch: options.arch,
-      bundleVersion,
+      bundleVersion: versions.windowsWslRuntime,
       expectWslRuntime: bundlesWslRuntime({
         platform: options.platform,
         runtimeArchivePath: options.wslRuntime,

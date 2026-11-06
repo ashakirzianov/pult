@@ -43,6 +43,7 @@ import {
   resolveMacPasskeySigningConfiguration,
   resolveMergedStageDependencies,
   resolveBuildOptions,
+  resolveDesktopBuildVersions,
   stageWslRuntimeArchive,
   ancestorNodeModulesPaths,
   copyDirectoryPreservingSymlinks,
@@ -1802,6 +1803,36 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(fromEnv.appVersion, "0.0.2");
     }),
   );
+
+  it("hands the Windows server steps the bundles' version when the app carries its own", () => {
+    // The server sidecar's package.json and the WSL runtime archive are the server's;
+    // only the packaged app takes --app-version.
+    assert.deepStrictEqual(
+      resolveDesktopBuildVersions({
+        version: undefined,
+        appVersion: "0.0.1",
+        serverVersion: "0.1.7",
+      }),
+      { app: "0.0.1", bundles: "0.1.7", windowsServerSidecar: "0.1.7", windowsWslRuntime: "0.1.7" },
+    );
+    assert.deepStrictEqual(
+      resolveDesktopBuildVersions({
+        version: "0.2.0",
+        appVersion: "0.0.1",
+        serverVersion: "0.1.7",
+      }),
+      { app: "0.0.1", bundles: "0.2.0", windowsServerSidecar: "0.2.0", windowsWslRuntime: "0.2.0" },
+    );
+    // A stock build carries one version everywhere.
+    assert.deepStrictEqual(
+      resolveDesktopBuildVersions({
+        version: undefined,
+        appVersion: undefined,
+        serverVersion: "0.1.7",
+      }),
+      { app: "0.1.7", bundles: "0.1.7", windowsServerSidecar: "0.1.7", windowsWslRuntime: "0.1.7" },
+    );
+  });
 });
 
 it("keeps the prefix of a UNC path instead of going relative", () => {
