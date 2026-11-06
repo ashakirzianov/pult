@@ -171,6 +171,19 @@ export type ProjectionRecoveryKind =
   | "subagent-results"
   | "delegated-completions";
 
+/** What `hasActiveWork` counts on a thread. */
+export type ProjectionActiveWorkKind =
+  | "run"
+  | "queued-run"
+  | "native-subagent"
+  | "runtime-request"
+  | "background-work";
+
+export interface ProjectionActiveWorkHolder {
+  readonly threadId: ThreadId;
+  readonly kind: ProjectionActiveWorkKind;
+}
+
 export type ProjectionLimitRecoveryCandidate = Pick<
   OrchestrationV2ThreadShell,
   | "id"
@@ -520,6 +533,11 @@ export interface ProjectionStoreV2Shape {
    * holds, on any of its provider threads; unlike settlement, no turn items or pull-request watches.
    */
   readonly hasActiveWork: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
+  /** Some work `hasActiveWork` counts, for naming what keeps a server busy; null when none. */
+  readonly firstActiveWork: () => Effect.Effect<
+    ProjectionActiveWorkHolder | null,
+    ProjectionStoreV2Error
+  >;
   /** Every active thread, in shell order. */
   readonly listActiveShellIndex: () => Effect.Effect<
     ReadonlyArray<ActiveShellIndexEntry>,
@@ -7138,7 +7156,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return rows[0]?.count ?? 0;
     }, Effect.mapError(shellSnapshotReadError));
 
-    const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
+    // One read per kind `hasActiveWork` counts, each selecting the thread and the kind.
+    const activeWorkReads = () => {
       // Deletion cancels runs and requests but leaves rosters and native subagents, and recovery
       // skips deleted threads, so their rows would hold the server busy for good.
       const liveThread = (row: Statement.Fragment, alsoRequired = sql``) => sql`EXISTS (
@@ -7148,53 +7167,84 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       // Archiving leaves a run to end with its detached session, but nothing starts a queued run
       // on an archived thread, and recovery skips it too.
       const queueCanStart = sql`AND (run.status <> 'queued' OR thread.archived_at IS NULL)`;
-      const rows = yield* sql<{ readonly active: number }>`
-        WITH pending_background AS MATERIALIZED (
+      return {
+        pendingBackground: sql`pending_background AS MATERIALIZED (
           -- Recovery's prefilter: most rosters are empty, so few rows reach json_each.
-          SELECT payload_json FROM orchestration_v2_projection_provider_threads AS roster
+          SELECT thread_id, payload_json FROM orchestration_v2_projection_provider_threads AS roster
           WHERE CASE WHEN json_valid(payload_json)
             THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0
             ELSE 0 END
             AND ${liveThread(sql`roster`)}
-        )
-        SELECT (
-          EXISTS (
-            -- Spelled as the recovery index's predicate, so the read uses it.
-            SELECT 1 FROM orchestration_v2_projection_runs AS run
-            WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
-              AND (
-                status <> 'queued'
-                OR CASE WHEN json_valid(payload_json)
-                  THEN json_extract(payload_json, '$.queueHeld') IS NOT 1
-                  ELSE 1 END
-              )
-              AND ${liveThread(sql`run`, queueCanStart)}
-          )
-          OR EXISTS (
-            SELECT 1 FROM orchestration_v2_projection_subagents AS subagent
-            WHERE origin = 'provider_native' AND status IN ('pending', 'running', 'waiting')
-              AND ${liveThread(sql`subagent`)}
-          )
-          OR EXISTS (
-            SELECT 1 FROM orchestration_v2_projection_runtime_requests AS request
-            WHERE status = 'pending'
-              AND CASE WHEN json_valid(payload_json)
-                THEN json_extract(payload_json, '$.responseCapability.type') IS NOT 'message'
+        )`,
+        runs: sql`
+          -- Spelled as the recovery index's predicate, so the read uses it.
+          SELECT thread_id, CASE status WHEN 'queued' THEN 'queued-run' ELSE 'run' END AS kind
+          FROM orchestration_v2_projection_runs AS run
+          WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+            AND (
+              status <> 'queued'
+              OR CASE WHEN json_valid(payload_json)
+                THEN json_extract(payload_json, '$.queueHeld') IS NOT 1
                 ELSE 1 END
-              AND ${liveThread(sql`request`)}
-          )
-          -- backgroundWorkHoldsCompletion: awaited work, or any kind but a command or monitor,
-          -- since an unknown kind decodes as a background task.
-          OR EXISTS (
-            SELECT 1
-            FROM pending_background,
-              json_each(pending_background.payload_json, '$.pendingBackgroundTasks') AS task
-            WHERE json_extract(task.value, '$.awaited') IS 1
-              OR IFNULL(json_extract(task.value, '$.kind'), '') NOT IN ('command', 'monitor')
-          )
+            )
+            AND ${liveThread(sql`run`, queueCanStart)}
+        `,
+        subagents: sql`
+          SELECT thread_id, 'native-subagent' AS kind
+          FROM orchestration_v2_projection_subagents AS subagent
+          WHERE origin = 'provider_native' AND status IN ('pending', 'running', 'waiting')
+            AND ${liveThread(sql`subagent`)}
+        `,
+        requests: sql`
+          SELECT thread_id, 'runtime-request' AS kind
+          FROM orchestration_v2_projection_runtime_requests AS request
+          WHERE status = 'pending'
+            AND CASE WHEN json_valid(payload_json)
+              THEN json_extract(payload_json, '$.responseCapability.type') IS NOT 'message'
+              ELSE 1 END
+            AND ${liveThread(sql`request`)}
+        `,
+        // backgroundWorkHoldsCompletion: awaited work, or any kind but a command or monitor,
+        // since an unknown kind decodes as a background task.
+        background: sql`
+          SELECT pending_background.thread_id, 'background-work' AS kind
+          FROM pending_background,
+            json_each(pending_background.payload_json, '$.pendingBackgroundTasks') AS task
+          WHERE json_extract(task.value, '$.awaited') IS 1
+            OR IFNULL(json_extract(task.value, '$.kind'), '') NOT IN ('command', 'monitor')
+        `,
+      };
+    };
+
+    const hasActiveWork = Effect.fn("ProjectionStore.hasActiveWork")(function* () {
+      const reads = activeWorkReads();
+      const rows = yield* sql<{ readonly active: number }>`
+        WITH ${reads.pendingBackground}
+        SELECT (
+          EXISTS (${reads.runs})
+          OR EXISTS (${reads.subagents})
+          OR EXISTS (${reads.requests})
+          OR EXISTS (${reads.background})
         ) AS active
       `;
       return rows[0]?.active === 1;
+    }, Effect.mapError(shellSnapshotReadError));
+
+    const firstActiveWork = Effect.fn("ProjectionStore.firstActiveWork")(function* () {
+      const reads = activeWorkReads();
+      const rows = yield* sql<{
+        readonly thread_id: string;
+        readonly kind: ProjectionActiveWorkKind;
+      }>`
+        WITH ${reads.pendingBackground}
+        ${reads.runs}
+        UNION ALL ${reads.subagents}
+        UNION ALL ${reads.requests}
+        UNION ALL ${reads.background}
+        LIMIT 1
+      `;
+      const row = rows[0];
+      return row === undefined ? null : { threadId: ThreadId.make(row.thread_id), kind: row.kind };
     }, Effect.mapError(shellSnapshotReadError));
 
     const listActiveShellIndex = Effect.fn("ProjectionStore.listActiveShellIndex")(function* () {
@@ -7444,6 +7494,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       listActiveSubagentThreadIds: readOnReader(listActiveSubagentThreadIds),
       countThreads: readOnReader(countThreads),
       hasActiveWork: readOnReader(hasActiveWork),
+      firstActiveWork: readOnReader(firstActiveWork),
       listActiveShellIndex: readOnReader(listActiveShellIndex),
       readShellSnapshot: readOnReader(readShellSnapshot),
       listOlderSettledThreads: readOnReader(listOlderSettledThreads),

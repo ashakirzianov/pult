@@ -729,6 +729,18 @@ it.effect(
       let step = 0;
       const apply = (event: Omit<Parameters<typeof store.apply>[0], "id">) =>
         store.apply({ ...event, id: EventId.make(`event:active-work:${step++}`) } as never);
+      // Both reads agree, and the holder names what holds.
+      const holds = Effect.fnUntraced(function* (
+        kind: ProjectionStore.ProjectionActiveWorkKind | null,
+        label: string,
+      ) {
+        assert.equal(yield* store.hasActiveWork(), kind !== null, label);
+        assert.deepEqual(
+          yield* store.firstActiveWork(),
+          kind === null ? null : { threadId, kind },
+          label,
+        );
+      });
 
       const runStatuses = [
         ["preparing", true],
@@ -749,7 +761,7 @@ it.effect(
           occurredAt: now,
           payload: { ...run, status },
         });
-        assert.equal(yield* store.hasActiveWork(), active, status);
+        yield* holds(active ? (status === "queued" ? "queued-run" : "run") : null, status);
       }
       yield* apply({
         type: "run.updated",
@@ -807,7 +819,7 @@ it.effect(
         ["app_owned", "running", false],
       ] as const) {
         yield* subagent(origin, status);
-        assert.equal(yield* store.hasActiveWork(), active, `${origin} ${status}`);
+        yield* holds(active ? "native-subagent" : null, `${origin} ${status}`);
       }
 
       const requestNode = NodeId.make("node:active-work:request");
@@ -843,7 +855,7 @@ it.effect(
         [liveRequest, "resolved", false],
       ] as const) {
         yield* request(responseCapability, status);
-        assert.equal(yield* store.hasActiveWork(), active, `${responseCapability.type} ${status}`);
+        yield* holds(active ? "runtime-request" : null, `${responseCapability.type} ${status}`);
       }
 
       const providerThreadId = ProviderThreadId.make("provider-thread:active-work");
@@ -882,7 +894,7 @@ it.effect(
         [{ taskId: "job", kind: "background_task" }, true],
       ] as const) {
         yield* roster([task]);
-        assert.equal(yield* store.hasActiveWork(), active, JSON.stringify(task));
+        yield* holds(active ? "background-work" : null, JSON.stringify(task));
       }
       yield* roster([]);
       assert.isFalse(yield* store.hasActiveWork(), "empty roster");
@@ -912,14 +924,14 @@ it.effect(
         occurredAt: now,
         payload: { ...run, status: "queued" },
       });
-      assert.isFalse(yield* store.hasActiveWork(), "archived queued run");
+      yield* holds(null, "archived queued run");
       yield* apply({
         type: "run.updated",
         threadId,
         occurredAt: now,
         payload: { ...run, status: "running" },
       });
-      assert.isTrue(yield* store.hasActiveWork(), "archived running run");
+      yield* holds("run", "archived running run");
       yield* apply({
         type: "run.updated",
         threadId,
@@ -927,13 +939,13 @@ it.effect(
         payload: { ...run, status: "cancelled" },
       });
       yield* subagent("provider_native", "running");
-      assert.isTrue(yield* store.hasActiveWork(), "archived native subagent");
+      yield* holds("native-subagent", "archived native subagent");
       yield* subagent("provider_native", "completed");
       yield* request(liveRequest, "pending");
-      assert.isTrue(yield* store.hasActiveWork(), "archived blocking request");
+      yield* holds("runtime-request", "archived blocking request");
       yield* request(liveRequest, "resolved");
       yield* roster([{ taskId: "tests", kind: "command", awaited: true }]);
-      assert.isTrue(yield* store.hasActiveWork(), "archived awaited command");
+      yield* holds("background-work", "archived awaited command");
       yield* roster([]);
       yield* apply({
         type: "run.updated",
@@ -947,7 +959,7 @@ it.effect(
         occurredAt: now,
         payload: { ...open, archivedAt: null },
       });
-      assert.isTrue(yield* store.hasActiveWork(), "unarchived queued run");
+      yield* holds("queued-run", "unarchived queued run");
 
       // Deletion leaves rosters, native subagents and rows behind, which recovery skips too.
       yield* apply({

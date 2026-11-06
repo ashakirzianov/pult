@@ -14,6 +14,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -47,6 +48,7 @@ const makeHarness = Effect.fnUntraced(function* (initial: {
   readonly dispatching?: boolean;
 }) {
   const work = yield* Ref.make<boolean | "fails">(initial.work);
+  const holder = yield* Ref.make<ProjectionStore.ProjectionActiveWorkHolder | null>(null);
   const dispatching = yield* Ref.make(initial.dispatching ?? false);
   const newSubscription = Queue.unbounded<
     OrchestrationV2StoredEvent,
@@ -69,6 +71,7 @@ const makeHarness = Effect.fnUntraced(function* (initial: {
                 () => Effect.die("projection read failed"),
               ),
             ),
+          firstActiveWork: () => Ref.get(holder),
         }),
         Layer.mock(ScheduledTasks.ScheduledTaskService)({
           hasRunningTask: () => Ref.get(dispatching),
@@ -81,6 +84,7 @@ const makeHarness = Effect.fnUntraced(function* (initial: {
     Ref.get(events).pipe(Effect.flatMap((queue) => Queue.offer(queue, event)));
   return {
     layer,
+    holder,
     /** Changes the store's answer, then delivers the event, a second later. */
     signal: (value: boolean | "fails", event: OrchestrationV2StoredEvent) =>
       inOneSecond(Ref.set(work, value).pipe(Effect.andThen(deliver(event)))),
@@ -312,6 +316,42 @@ it.effect("a failed watch reads busy, then resyncs and watches again", () =>
     }).pipe(Effect.provide(harness.layer));
   }),
 );
+
+it.effect("a server busy for hours names what holds it, once per holder", () => {
+  const lines: Array<string> = [];
+  const logger = Logger.make(({ message }) => {
+    const [text, fields] = Array.isArray(message) ? message : [message];
+    if (text !== "server-activity.busy") return;
+    const { threadId, kind } = fields as ProjectionStore.ProjectionActiveWorkHolder;
+    lines.push(`${kind} ${threadId}`);
+  });
+  const holding = (thread: string, kind: ProjectionStore.ProjectionActiveWorkKind) => ({
+    threadId: ThreadId.make(thread),
+    kind,
+  });
+  return Effect.gen(function* () {
+    const harness = yield* makeHarness({ work: true });
+    yield* Ref.set(harness.holder, holding("thread:a", "queued-run"));
+    yield* Effect.gen(function* () {
+      yield* TestClock.adjust("150 minutes");
+      assert.deepEqual(lines, [], "busy for less than three hours");
+      yield* TestClock.adjust("60 minutes");
+      assert.deepEqual(lines, ["queued-run thread:a"]);
+
+      yield* Ref.set(harness.holder, holding("thread:b", "run"));
+      yield* TestClock.adjust("60 minutes");
+      assert.deepEqual(lines, ["queued-run thread:a", "run thread:b"]);
+
+      // A rest ends the story; the next stretch is told afresh.
+      yield* harness.setWork(false);
+      yield* harness.setWork(true);
+      yield* TestClock.adjust("150 minutes");
+      assert.lengthOf(lines, 2);
+      yield* TestClock.adjust("60 minutes");
+      assert.deepEqual(lines, ["queued-run thread:a", "run thread:b", "run thread:b"]);
+    }).pipe(Effect.provide(harness.layer));
+  }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+});
 
 describe("with the real event sink", () => {
   const threadId = ThreadId.make("thread:server-activity");

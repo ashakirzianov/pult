@@ -217,6 +217,7 @@ it.effect(
           listActiveSubagentThreadIds: () => Effect.die("unused listActiveSubagentThreadIds"),
           countThreads: () => Effect.die("unused countThreads"),
           hasActiveWork: () => Effect.die("unused hasActiveWork"),
+          firstActiveWork: () => Effect.die("unused firstActiveWork"),
           listActiveShellIndex: () => Effect.die("unused listActiveShellIndex"),
           listOlderSettledThreads: () => Effect.die("unused listOlderSettledThreads"),
           readShellSnapshot: () => Effect.die("unused readShellSnapshot"),

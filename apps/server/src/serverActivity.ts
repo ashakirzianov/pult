@@ -72,6 +72,11 @@ const startsWork = (event: OrchestrationV2DomainEvent) => {
   }
 };
 
+// Longer than any ordinary turn or workflow, short enough to name a stuck holder the same evening,
+// before a night's maintenance window is lost to it.
+const BUSY_REPORT_AFTER = Duration.hours(3);
+const BUSY_REPORT_INTERVAL = Duration.minutes(30);
+
 const watchRestartSchedule = Schedule.exponential("1 second").pipe(
   Schedule.modifyDelay(({ duration }) =>
     Effect.succeed(Duration.min(duration, Duration.minutes(1))),
@@ -90,10 +95,15 @@ const make = Effect.gen(function* () {
       Effect.logWarning("server-activity.read-failed", { cause }).pipe(Effect.as(true)),
     ),
   );
-  const restingSince = yield* Ref.make<DateTime.Utc | null>(null);
+  // Busy until the first read, since construction.
+  const state = yield* Ref.make({ atRest: false, since: yield* DateTime.now });
   const record = (busy: boolean) =>
     DateTime.now.pipe(
-      Effect.flatMap((now) => Ref.update(restingSince, (since) => (busy ? null : (since ?? now)))),
+      Effect.flatMap((now) =>
+        Ref.update(state, (current) =>
+          current.atRest === !busy ? current : { atRest: !busy, since: now },
+        ),
+      ),
     );
 
   // Read the sequence before the state, so every later change reaches the stream.
@@ -128,9 +138,37 @@ const make = Effect.gen(function* () {
   );
   yield* forkParked(watch.pipe(Effect.repeat(watchRestartSchedule)));
 
+  // A server that never rests opens no maintenance window; name what holds it, once per holder.
+  const lastHolder = yield* Ref.make<string | null>(null);
+  const reportHolder = Effect.gen(function* () {
+    const { atRest, since } = yield* Ref.get(state);
+    const now = yield* DateTime.now;
+    if (
+      atRest ||
+      DateTime.toEpochMillis(now) - DateTime.toEpochMillis(since) <
+        Duration.toMillis(BUSY_REPORT_AFTER)
+    ) {
+      return yield* Ref.set(lastHolder, null);
+    }
+    const holder =
+      (yield* projections.firstActiveWork()) ??
+      ((yield* scheduledTasks.hasRunningTask())
+        ? { threadId: null, kind: "scheduled-task" as const }
+        : null);
+    if (holder === null) return;
+    const key = `${holder.kind}:${holder.threadId}`;
+    if ((yield* Ref.getAndSet(lastHolder, key)) === key) return;
+    yield* Effect.logInfo("server-activity.busy", { busySince: since, ...holder });
+  }).pipe(
+    Effect.catchCause((cause) => Effect.logDebug("server-activity.holder-read-failed", { cause })),
+  );
+  yield* forkParked(
+    Effect.forever(Effect.sleep(BUSY_REPORT_INTERVAL).pipe(Effect.andThen(reportHolder))),
+  );
+
   return ServerActivity.of({
-    current: Ref.get(restingSince).pipe(
-      Effect.map((since) => ({ atRest: since !== null, restingSince: since })),
+    current: Ref.get(state).pipe(
+      Effect.map(({ atRest, since }) => ({ atRest, restingSince: atRest ? since : null })),
     ),
   });
 });

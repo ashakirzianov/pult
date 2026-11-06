@@ -122,7 +122,9 @@ recovery skips, or queued runs on archived threads, which nothing starts and rec
 Archiving detaches the thread's sessions but leaves its other work to end on its own, and a message
 can still start a run there, so that work counts. `restingSince` lives in memory and starts again
 at boot; work that starts and ends between two reads still restarts it. A failed read or watch
-reads busy, and a stopped watch resyncs with backoff.
+reads busy, and a stopped watch resyncs with backoff. A server busy for three hours logs
+`server-activity.busy` with a thread and kind of work holding it, again only when the holder
+changes, so a holder that never ends is visible.
 
 A desktop app's server installs the app's updates itself when
 `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
