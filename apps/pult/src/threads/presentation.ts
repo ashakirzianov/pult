@@ -322,7 +322,11 @@ export function shellThreads(
       checkoutRoot: thread.worktreePath ?? project?.workspaceRoot ?? null,
       projectIcon: project?.projectIcon ?? null,
       projectFaviconPath: project?.faviconPath ?? null,
-      title: thread.title,
+      // A Star's conversation is named as the Star, its project's title, which the Stars' model keeps as the Star's name; the server's own title stays in its transcript.
+      title:
+        project !== undefined && thread.lineage.parentThreadId === null && inStar(thread)
+          ? project.title
+          : thread.title,
       branch: thread.branch,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
