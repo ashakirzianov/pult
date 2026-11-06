@@ -196,6 +196,12 @@ export function canReuseCodexContextUsage(previous: ModelSelection, next: ModelS
   );
 }
 
+// Codex reports no prompt cache lifetime. OpenAI's prompt caching guide
+// (https://developers.openai.com/api/docs/guides/prompt-caching.md): GPT-5.6 and later keep
+// entries at least 30 minutes by default, and GPT-5.5's 24h retention "typically" keeps them
+// around 30 minutes.
+const CODEX_PROMPT_CACHE_TTL_MS = 30 * 60_000;
+
 export function codexProviderTurnTokenUsage(
   tokenUsage: CodexSchema.V2ThreadTokenUsageUpdatedNotification["tokenUsage"],
   updatedAt: string,
@@ -207,6 +213,11 @@ export function codexProviderTurnTokenUsage(
     cachedInputTokens: Math.max(0, tokenUsage.last.cachedInputTokens),
     outputTokens: Math.max(0, tokenUsage.last.outputTokens),
     reasoningOutputTokens: Math.max(0, tokenUsage.last.reasoningOutputTokens),
+    promptCacheTtlMs: CODEX_PROMPT_CACHE_TTL_MS,
+    // Codex does not say when its newest request started, so the lifetime counts from its usage.
+    promptCacheExpiresAt: DateTime.formatIso(
+      DateTime.add(DateTime.makeUnsafe(updatedAt), { milliseconds: CODEX_PROMPT_CACHE_TTL_MS }),
+    ),
     updatedAt,
   };
 }

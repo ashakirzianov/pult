@@ -116,6 +116,8 @@ describe("CodexAdapterV2 context usage", () => {
       cachedInputTokens: 10_000,
       outputTokens: 5_000,
       reasoningOutputTokens: 1_000,
+      promptCacheTtlMs: 30 * 60_000,
+      promptCacheExpiresAt: "2026-08-29T00:30:00.000Z",
       updatedAt: "2026-08-29T00:00:00.000Z",
     });
   });
