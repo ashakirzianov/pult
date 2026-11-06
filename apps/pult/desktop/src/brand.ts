@@ -72,6 +72,12 @@ const brand: DesktopBrandOverride = {
   // Pult.app's version is its own line, its server and bundles upstream's
   // (`pult/decisions`, `release-stream`): About reads "Version 0.0.1 (T3 Code 0.1.7, <commit>)".
   bundleVersionName: "T3 Code",
+  // Startup recovery's Reinstall and releases buttons open Pult's releases, tagged
+  // `pult-v<version>` (`.github/workflows/pult-release.yml`), never upstream's.
+  releases: {
+    page: `https://github.com/${UPDATE_FEED_REPOSITORY}/releases`,
+    tagPrefix: "pult-v",
+  },
 };
 
 export default brand;
