@@ -1060,6 +1060,7 @@ type ShellThreadRow = {
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
   readonly has_actionable_proposed_plan: number;
+  readonly assistant_message_streaming: number;
 };
 
 type ShellRunRow = {
@@ -1715,6 +1716,13 @@ export function threadShellFromProjection(
     // Thread detail owns message bodies. Keeping them out of shell rows makes
     // initial hydration and streaming updates independent of transcript size.
     latestVisibleMessage: null,
+    assistantMessageStreaming: projection.messages.some(
+      (message) =>
+        message.role === "assistant" &&
+        message.streaming &&
+        message.runId !== null &&
+        liveRunIds.has(message.runId),
+    ),
     latestUserMessageAt: latestUserMessage?.updatedAt ?? null,
     latestUserAuthoredMessageAt,
     hasActionableProposedPlan: projection.plans.some(
@@ -1830,6 +1838,7 @@ type ShellThreadState = {
   readonly latestUserMessageAt: DateTime.Utc | null;
   readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
   readonly hasActionableProposedPlan: boolean;
+  readonly assistantMessageStreaming: boolean;
   readonly pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
   readonly providerInstanceHistory: OrchestrationV2ThreadShell["providerInstanceHistory"];
   readonly goal: OrchestrationV2ThreadShell["goal"];
@@ -1991,6 +2000,7 @@ function shellFromState(input: {
     pendingRuntimeRequest: input.state.pendingRuntimeRequest,
     pendingGuestMessageCount: pendingGuestMessageCount(input.state.thread.guestShare),
     latestVisibleMessage: null,
+    assistantMessageStreaming: input.state.assistantMessageStreaming,
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
     hasActionableProposedPlan: input.state.hasActionableProposedPlan,
@@ -6351,7 +6361,20 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE plan.thread_id = t.thread_id
                   AND plan.kind = 'proposed_plan'
                   AND plan.status = 'active'
-              ) AS has_actionable_proposed_plan
+              ) AS has_actionable_proposed_plan,
+              -- Mirrors threadShellFromProjection's assistantMessageStreaming.
+              EXISTS (
+                SELECT 1
+                -- Keep runs outermost so completed history is never scanned for a streaming message.
+                FROM orchestration_v2_projection_runs r
+                CROSS JOIN orchestration_v2_projection_messages message
+                  INDEXED BY orchestration_v2_projection_messages_run_idx
+                WHERE r.thread_id = t.thread_id
+                  AND r.status IN ('preparing', 'starting', 'running', 'waiting')
+                  AND NOT ${isSilentShellRun("r")}
+                  AND message.run_id = r.run_id AND message.thread_id = t.thread_id
+                  AND message.role = 'assistant' AND message.streaming = 1
+              ) AS assistant_message_streaming
             FROM orchestration_v2_projection_threads t
             LEFT JOIN orchestration_v2_projection_runs active ON active.run_id = (
               SELECT r.run_id
@@ -6964,6 +6987,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               : DateTime.makeUnsafe(row.latest_user_message_at),
           latestUserAuthoredMessageAt,
           hasActionableProposedPlan: row.has_actionable_proposed_plan === 1,
+          assistantMessageStreaming: row.assistant_message_streaming === 1,
           pendingBackgroundTasks,
           providerInstanceHistory: providerInstanceHistoryForShell({
             threadId: thread.id,

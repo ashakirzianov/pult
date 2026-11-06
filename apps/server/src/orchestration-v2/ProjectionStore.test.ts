@@ -9,6 +9,7 @@ import {
   CheckpointScopeId,
   MessageId,
   type ModelSelection,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
@@ -1312,6 +1313,83 @@ it.effect("SQL shells flag only an active turn blocked solely on T3 thread waits
     yield* assertBlocked(true);
     yield* updateItem({ ...blockingDelegation, status: "completed", completedAt: at });
     yield* assertBlocked(false);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("shells flag an assistant message streaming in an active run until it stops", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = yield* addRolledBackRecoveryCandidate("assistant-streaming");
+    const initial = yield* store.getThreadProjection(threadId);
+    const at = initial.updatedAt;
+    const run = {
+      ...initial.runs[0]!,
+      id: RunId.make("run:assistant-streaming:active"),
+      ordinal: 2,
+      status: "running" as const,
+      completedAt: null,
+    };
+    yield* store.apply({
+      id: EventId.make("event:assistant-streaming:active"),
+      type: "run.created",
+      threadId,
+      occurredAt: at,
+      payload: run,
+    });
+    let sequence = 0;
+    const updateMessage = (payload: OrchestrationV2ConversationMessage) =>
+      store.apply({
+        id: EventId.make(`event:assistant-streaming:message:${sequence++}`),
+        type: "message.updated",
+        threadId,
+        runId: payload.runId ?? undefined,
+        occurredAt: at,
+        payload,
+      });
+    const assertStreaming = Effect.fnUntraced(function* (expected: boolean) {
+      const listed = (yield* store.getShellSnapshot()).threads.find((row) => row.id === threadId);
+      const memory = ProjectionStore.threadShellFromProjection(
+        yield* store.getThreadProjection(threadId),
+      );
+      for (const shell of [yield* store.getThreadShell(threadId), listed, memory]) {
+        assert.equal(shell?.assistantMessageStreaming, expected);
+      }
+    });
+    const message: OrchestrationV2ConversationMessage = {
+      id: MessageId.make("message:assistant-streaming"),
+      threadId,
+      runId: run.id,
+      nodeId: null,
+      role: "assistant",
+      text: "Hel",
+      attachments: [],
+      streaming: true,
+      createdBy: "agent",
+      creationSource: "provider",
+      createdAt: at,
+      updatedAt: at,
+    };
+
+    yield* assertStreaming(false);
+    yield* updateMessage(message);
+    yield* assertStreaming(true);
+    yield* updateMessage({ ...message, text: "Hello" });
+    yield* assertStreaming(true);
+    yield* updateMessage({ ...message, text: "Hello", streaming: false });
+    yield* assertStreaming(false);
+
+    // Left streaming by a run that ended, or not the assistant's, a message says nothing.
+    yield* updateMessage({
+      ...message,
+      id: MessageId.make("message:assistant-streaming:stale"),
+      runId: initial.runs[0]!.id,
+    });
+    yield* updateMessage({
+      ...message,
+      id: MessageId.make("message:assistant-streaming:user"),
+      role: "user",
+    });
+    yield* assertStreaming(false);
   }).pipe(Effect.provide(layerTest)),
 );
 
