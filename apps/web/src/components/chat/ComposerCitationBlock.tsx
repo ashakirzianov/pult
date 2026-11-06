@@ -512,7 +512,7 @@ function CitationBlock({
 
   return (
     // Tinted while the caret is elsewhere, plain while its comment is edited.
-    <span className="my-0.5 flex w-full min-w-0 flex-col rounded-r-md border-l-2 border-primary bg-primary/8 py-0.5 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
+    <span className="flex w-full min-w-0 flex-col rounded-r-md border-l-2 border-primary bg-primary/8 py-0.5 pr-2 pl-2.5 transition-colors focus-within:bg-transparent">
       {quote}
       <textarea
         ref={inputRef}
