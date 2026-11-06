@@ -548,9 +548,6 @@ function CitationBlock({
   );
 }
 
-const QUOTE_CLASS_NAME =
-  "line-clamp-3 cursor-pointer whitespace-pre-wrap text-muted-foreground no-underline wrap-break-word hover:text-foreground";
-
 /** An assistant citation's quote, on one line; its tooltip shows it whole. */
 const ASSISTANT_QUOTE_CLASS_NAME =
   "truncate cursor-pointer text-muted-foreground text-xs no-underline hover:text-foreground";
@@ -642,7 +639,7 @@ export function requestReviewCommentFocus(commentId: string): void {
 
 /**
  * A file or diff comment's block: its path and lines, which open the file,
- * the quoted lines, and the comment, kept as the record's text.
+ * and the comment, kept as the record's text; the lines' range says what is cited.
  */
 export function ComposerReviewCommentBlock({
   editor,
@@ -659,37 +656,30 @@ export function ComposerReviewCommentBlock({
   const [focusRequested, setFocusRequested] = useState(
     () => requestedAt !== undefined && Date.now() - requestedAt < FOCUS_REQUEST_TTL_MS,
   );
-  const quoted = comment.diff
-    .split("\n")
-    .filter((line) => !line.startsWith("@@"))
-    .join("\n");
   return (
     <CitationBlock
       editor={editor}
       matches={(node) => node.attrs.contextId === contextId}
       quote={
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <a
-                  href="#"
-                  className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    actions.openMention(comment.filePath);
-                  }}
-                />
-              }
-            >
-              {comment.filePath} ·{" "}
-              {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
-              {comment.rangeLabel}
-            </TooltipTrigger>
-            <TooltipPopup side="top">Open the file</TooltipPopup>
-          </Tooltip>
-          <span className={`${QUOTE_CLASS_NAME} cursor-text font-mono text-xs`}>{quoted}</span>
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <a
+                href="#"
+                className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
+                onClick={(event) => {
+                  event.preventDefault();
+                  actions.openMention(comment.filePath);
+                }}
+              />
+            }
+          >
+            {comment.filePath} ·{" "}
+            {comment.sectionTitle === "File comment" ? "" : `${comment.sectionTitle} · `}
+            {comment.rangeLabel}
+          </TooltipTrigger>
+          <TooltipPopup side="top">Open the file</TooltipPopup>
+        </Tooltip>
       }
       savedComment={comment.text}
       maxLength={REVIEW_COMMENT_MAX_LENGTH}
