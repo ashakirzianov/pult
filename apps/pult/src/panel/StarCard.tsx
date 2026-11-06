@@ -1,8 +1,9 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
+import { useSyncExternalStore } from "react";
 
-import { starMarkUrl } from "../stars/mark.ts";
+import { starMarks, starMarkUrl } from "../stars/mark.ts";
 import { asleepSince, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
@@ -36,7 +37,7 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
 
 /**
  * A Star's card, the panel's first row, under no header (`star-card`): its
- * mark, its name ("Star" while it has none), its environment's chip while
+ * mark, its look's still (`mark.ts`, `look.ts` in `src/stars/`), its name ("Star" while it has none), its environment's chip while
  * the page holds several, and its state, Asleep with how long (dimmed),
  * Awake, or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
@@ -61,6 +62,7 @@ export function StarCard({
   now: number;
 }) {
   const select = () => run("pult-shell.selectStar", star.id);
+  const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
   return (
     <li className={`pult-card pult-card-star${selected ? " pult-card-selected" : ""}`}>
       <div
@@ -81,7 +83,7 @@ export function StarCard({
         }}
       >
         <span className="pult-star-row">
-          <img className="pult-star-mark" src={starMarkUrl(star.tint)} alt="" />
+          <img className="pult-star-mark" src={starMarkUrl(star, marks)} alt="" />
           <span className="pult-star-name">{starName(star)}</span>
           <EnvironmentChip label={environment} />
           <StarStatus star={star} now={now} />
