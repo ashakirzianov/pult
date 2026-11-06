@@ -70,10 +70,11 @@ const readProjection = (thread: Pick<ShellThread, "environmentId" | "id">) =>
  * turns, partial.
  */
 async function readHistory(thread: Pick<ShellThread, "environmentId" | "id">) {
-  const credential = connection.credential(thread.environmentId);
   try {
-    if (credential === undefined) throw new Error("The page holds no bearer for its environment.");
-    return { projection: await readWholeProjection(credential, thread.id), partial: false };
+    return {
+      projection: await readWholeProjection(thread.environmentId, thread.id),
+      partial: false,
+    };
   } catch (error) {
     console.warn(
       `[pult-shell] could not read the whole of the Star's conversation ${thread.id}, its transcript from its latest turns alone: ${errorMessage(error)}`,
