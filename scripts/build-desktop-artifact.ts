@@ -3106,7 +3106,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
   readonly repoRoot: string;
   readonly serverDistDir: string;
   readonly arch: typeof BuildArch.Type;
-  readonly appVersion: string;
+  readonly bundleVersion: string;
   readonly runtimeExternalDependencies: Record<string, string>;
   readonly fffNodeVersion: string;
   readonly allowBuilds: Record<string, boolean>;
@@ -3132,7 +3132,7 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
   );
   const sidecarPackageJson = {
     name: "t3code-server",
-    version: input.appVersion,
+    version: input.bundleVersion,
     private: true,
     packageManager: rootPackageJson.packageManager,
     dependencies: sidecarDependencies,
@@ -3338,7 +3338,7 @@ export const validateWindowsPackagedPayload = Effect.fn(
   readonly stageDistDir: string;
   readonly appExecutableName: string;
   readonly targetArch: typeof BuildArch.Type;
-  readonly appVersion: string;
+  readonly bundleVersion: string;
   readonly expectWslRuntime?: boolean;
   readonly fileLimit?: number;
   readonly verbose?: boolean;
@@ -3497,8 +3497,9 @@ export const validateWindowsPackagedPayload = Effect.fn(
       );
     }
     const members = parseWslRuntimeArchiveMembers(listing.stdout);
-    // The WSL installer finds t3 under the archive's single stem-named directory.
-    const stem = wslRuntimeArchiveStem(input.appVersion, input.targetArch);
+    // The WSL installer finds t3 under the archive's single stem-named directory. The
+    // archive is the CLI's, named for the server's version, which an --app-version build keeps.
+    const stem = wslRuntimeArchiveStem(input.bundleVersion, input.targetArch);
     const topLevel = new Set(members.map((member) => member.split("/")[0]));
     if (topLevel.size !== 1 || !topLevel.has(stem)) {
       return yield* invalidWslRuntime(
@@ -3976,7 +3977,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       repoRoot,
       serverDistDir: distDirs.serverDist,
       arch: options.arch,
-      appVersion,
+      bundleVersion,
       runtimeExternalDependencies: resolvedServerRuntimeExternalDependencies,
       fffNodeVersion: serverPackageJson.dependencies["@ff-labs/fff-node"],
       allowBuilds: workspaceAllowBuilds,
@@ -4095,7 +4096,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       stageDistDir,
       appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
       targetArch: options.arch,
-      appVersion,
+      bundleVersion,
       expectWslRuntime: bundlesWslRuntime({
         platform: options.platform,
         runtimeArchivePath: options.wslRuntime,

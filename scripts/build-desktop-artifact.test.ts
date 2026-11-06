@@ -896,7 +896,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
 
         const secondAsarPath = path.join(path.dirname(fixture.generatedAsarPath), "second.asar");
@@ -933,7 +933,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             stageDistDir: fixture.stageDistDir,
             appExecutableName: fixture.appExecutableName,
             targetArch,
-            appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+            bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
             expectWslRuntime: true,
           });
 
@@ -957,7 +957,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             stageDistDir: fixture.stageDistDir,
             appExecutableName: fixture.appExecutableName,
             targetArch,
-            appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+            bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
             expectWslRuntime: true,
           }).pipe(Effect.flip);
 
@@ -978,7 +978,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: "9.9.9",
+          bundleVersion: "9.9.9",
           expectWslRuntime: true,
         }).pipe(Effect.flip);
 
@@ -996,7 +996,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
           expectWslRuntime: true,
         }).pipe(Effect.flip);
 
@@ -1017,7 +1017,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
           expectWslRuntime: true,
         }).pipe(Effect.flip);
 
@@ -1042,7 +1042,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
           expectWslRuntime: true,
         }).pipe(Effect.flip);
 
@@ -1077,7 +1077,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
 
         const primaryProbe = commands.find(
@@ -1171,7 +1171,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "arm64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
 
         assert.isFalse(
@@ -1211,7 +1211,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "arm64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         }).pipe(Effect.flip);
 
         assert.instanceOf(error, WindowsPrimaryNativeProbeError);
@@ -1235,7 +1235,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         }).pipe(Effect.flip);
 
         assert.instanceOf(error, WindowsPackagedPayloadValidationError);
@@ -1264,7 +1264,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         }).pipe(Effect.flip);
         assert.instanceOf(nativeError, WindowsPackagedPayloadValidationError);
         assert.equal(nativeError.reason, "unpacked-native-missing");
@@ -1285,7 +1285,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         }).pipe(Effect.flip);
         assert.instanceOf(resourceMonitorError, WindowsPackagedPayloadValidationError);
         assert.equal(resourceMonitorError.reason, "resource-monitor-missing");
@@ -1304,7 +1304,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
           fileLimit: 2,
         }).pipe(Effect.flip);
 
@@ -1397,7 +1397,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "arm64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          bundleVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
       }),
     ).pipe(
