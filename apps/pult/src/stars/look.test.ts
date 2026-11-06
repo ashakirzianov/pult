@@ -51,7 +51,7 @@ NodeTest.describe("starLook", () => {
     },
   );
 
-  NodeTest.test("is finished for a minute after the last run ends, then awake", () => {
+  NodeTest.test("is finished for three minutes after the last run ends, then awake", () => {
     NodeAssert.equal(look(thread("conversation"), { now: AFTER - 1 }), "finished");
     NodeAssert.equal(look(thread("conversation"), { now: AFTER }), "awake");
     NodeAssert.equal(look(thread("conversation", { latestRun: null })), "awake");
@@ -144,7 +144,7 @@ NodeTest.describe("starLook", () => {
 });
 
 NodeTest.describe("finishedUntil", () => {
-  NodeTest.test("is the latest run's end plus the minute, null without one", () => {
+  NodeTest.test("is the latest run's end plus the three minutes, null without one", () => {
     NodeAssert.equal(finishedUntil(thread("conversation")), AFTER);
     NodeAssert.equal(finishedUntil(thread("conversation", { latestRun: run("running") })), null);
   });

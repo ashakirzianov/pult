@@ -24,7 +24,7 @@ export type StarLook =
   | "troubled";
 
 /** How long a Star looks finished after its current conversation's last turn ends. */
-export const FINISHED_MS = 60_000;
+export const FINISHED_MS = 3 * 60_000;
 
 /** What the look reads of a thread: its own, or one below the conversation. */
 export type LookThread = Pick<
