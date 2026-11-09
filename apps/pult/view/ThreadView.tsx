@@ -33,6 +33,7 @@ import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
+import { ContextMeter } from "./ContextMeter.tsx";
 import { draftKey, heldDraft } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
@@ -216,7 +217,12 @@ function useTarget(mount: Mount): ViewTarget {
   return useSyncExternalStore(mount.subscribe, mount.target);
 }
 
-function makeRoot(mount: Mount, composerOnly: boolean, header: MountOptions["timelineHeader"]) {
+function makeRoot(
+  mount: Mount,
+  bar: HTMLElement,
+  composerOnly: boolean,
+  header: MountOptions["timelineHeader"],
+) {
   function NavigationFollower() {
     const router = useRouter();
     useEffect(
@@ -235,6 +241,13 @@ function makeRoot(mount: Mount, composerOnly: boolean, header: MountOptions["tim
             <NavigationFollower />
             {target.kind !== "thread" || composerOnly ? null : (
               <ActivityReporter environmentId={target.environmentId} threadId={target.threadId} />
+            )}
+            {target.kind !== "thread" ? null : (
+              <ContextMeter
+                bar={bar}
+                environmentId={target.environmentId}
+                threadId={target.threadId}
+              />
             )}
             <ConfirmDialogHost />
             <CustomSnoozeDialogHost />
@@ -329,10 +342,10 @@ const composerBarEntries: ComposerControlsSlotEntries = {
 
 /**
  * Mounts the view above the pane's composer bar: the thread's settings
- * (model, reasoning, mode, attachments, the context window, a draft's
- * environment and branch) and its notices render there, out
- * of the composer, which keeps the message and its send button
- * (`ComposerControlsSlot`).
+ * (model, reasoning, mode, attachments, a draft's environment and branch)
+ * and its notices render there, out of the composer, which keeps the
+ * message and its send button (`ComposerControlsSlot`), and so does the
+ * shell's context window meter (`ContextMeter.tsx`).
  */
 function mountView(
   element: HTMLElement,
@@ -342,8 +355,10 @@ function mountView(
   options: MountOptions = {},
 ): MountedView {
   const mount = makeMount(target, onPromoted);
+  const bar = document.createElement("div");
+  bar.className = "pult-composer-bar";
   const router = makeThreadRouter({
-    root: makeRoot(mount, composerOnly, options.timelineHeader),
+    root: makeRoot(mount, bar, composerOnly, options.timelineHeader),
     landing: makeLanding(mount),
     initialPath: mount.home(),
   });
@@ -351,8 +366,6 @@ function mountView(
   element.classList.toggle("pult-composer-only", composerOnly);
   const main = document.createElement("div");
   main.className = "pult-thread-main";
-  const bar = document.createElement("div");
-  bar.className = "pult-composer-bar";
   element.append(main, bar);
   const root = createRoot(main);
   const composerOptions = {
