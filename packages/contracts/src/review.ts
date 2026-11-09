@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
@@ -96,3 +96,73 @@ export type ReviewDiffPreviewResult = typeof ReviewDiffPreviewResult.Type;
 
 export const ReviewDiffPreviewError = Schema.Union([VcsError, GitCommandError]);
 export type ReviewDiffPreviewError = typeof ReviewDiffPreviewError.Type;
+
+// Pult: a checkout's commit history and its refs, for the shell's Source Control
+// Graph (xaxis `pult/issues/scm-history`); a commit's files and their two sides
+// are `getDiffPreview` with `commitSha` and `getDiffFileContents` with `commit`.
+
+/** The most commits one page of `review.getLog` holds. */
+const REVIEW_LOG_MAX_LIMIT = 500;
+
+/**
+ * A page of the commits reachable from `refs`, in topological order, newest
+ * first: `skip` commits of the walk passed over, then at most `limit`.
+ */
+export const ReviewLogInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  /** What the walk starts from, refs or commit shas as `git log` takes them; HEAD when absent or empty. */
+  refs: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** The page's cursor: how many commits of the walk come before it. */
+  skip: Schema.optional(NonNegativeInt),
+  /** Defaults to 50. */
+  limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(REVIEW_LOG_MAX_LIMIT))),
+});
+export type ReviewLogInput = typeof ReviewLogInput.Type;
+
+export const ReviewLogCommit = Schema.Struct({
+  sha: TrimmedNonEmptyString,
+  /** First parent first; none for a root commit. */
+  parents: Schema.Array(TrimmedNonEmptyString),
+  subject: Schema.String,
+  /** The whole message, its subject included. */
+  message: Schema.String,
+  authorName: Schema.String,
+  authorEmail: Schema.String,
+  /** ISO 8601, the author's date. */
+  authoredAt: Schema.String,
+  /** The full names of the branches, remote branches and tags at the commit (`refs/heads/main`). */
+  refs: Schema.Array(TrimmedNonEmptyString),
+});
+export type ReviewLogCommit = typeof ReviewLogCommit.Type;
+
+export const ReviewLogResult = Schema.Struct({
+  commits: Schema.Array(ReviewLogCommit),
+  /** Whether the walk goes on past this page. */
+  hasMore: Schema.Boolean,
+});
+export type ReviewLogResult = typeof ReviewLogResult.Type;
+
+export const ReviewRefsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ReviewRefsInput = typeof ReviewRefsInput.Type;
+
+/** A checkout's HEAD and its branches, remote branches and tags, each with the commit it is at. */
+export const ReviewRefsResult = Schema.Struct({
+  head: Schema.Struct({
+    /** The branch HEAD names (`refs/heads/main`); null when detached. */
+    ref: Schema.NullOr(TrimmedNonEmptyString),
+    /** Null before the first commit. */
+    sha: Schema.NullOr(TrimmedNonEmptyString),
+  }),
+  /** Symbolic refs (`refs/remotes/origin/HEAD`) left out; a tag at the commit it peels to. */
+  refs: Schema.Array(
+    Schema.Struct({
+      name: TrimmedNonEmptyString,
+      sha: TrimmedNonEmptyString,
+      /** A branch's upstream (`refs/remotes/origin/main`), null when it has none. */
+      upstream: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
+});
+export type ReviewRefsResult = typeof ReviewRefsResult.Type;

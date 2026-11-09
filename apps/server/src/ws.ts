@@ -2008,6 +2008,7 @@ export const layerWsRpc = (
           secretReferences: true,
           secretRequestReferences: true,
           serverActivity: true,
+          reviewLog: true,
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
             onSome: (root) => ({ scratchWorkspaceRoot: root }),
@@ -3295,6 +3296,8 @@ export const layerWsRpc = (
         [WS_METHODS.vcsSetRemote]: (input) =>
           gitWorkflow.setRemote(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.reviewGetBranchCommits]: (input) => review.getBranchCommits(input),
+        [WS_METHODS.reviewGetLog]: (input) => review.getLog(input),
+        [WS_METHODS.reviewGetRefs]: (input) => review.getRefs(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
         [WS_METHODS.terminalOpen]: (input) => terminalManager.open(input),

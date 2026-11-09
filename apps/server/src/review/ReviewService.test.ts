@@ -260,3 +260,33 @@ describe("ReviewService", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
+
+// Pult: the history the shell's Source Control Graph reads keeps to the review's workspaces.
+describe("ReviewService history", () => {
+  it.effect("rejects a log or refs cwd outside the configured workspace roots", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-workspace-" });
+      const outsideRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-outside-" });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-review-base-" });
+      const detectCalls: Array<{ readonly cwd: string }> = [];
+
+      const errors = yield* Effect.gen(function* () {
+        const review = yield* ReviewService.ReviewService;
+        return [
+          yield* review.getLog({ cwd: outsideRoot }).pipe(Effect.flip),
+          yield* review.getRefs({ cwd: outsideRoot }).pipe(Effect.flip),
+        ];
+      }).pipe(Effect.provide(layer({ workspaceRoot, baseDir, detectCalls })));
+
+      assert.deepStrictEqual(
+        errors.map((error) => [error._tag, "operation" in error ? error.operation : null]),
+        [
+          ["VcsRepositoryDetectionError", "ReviewService.getLog"],
+          ["VcsRepositoryDetectionError", "ReviewService.getRefs"],
+        ],
+      );
+      assert.deepStrictEqual(detectCalls, []);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});

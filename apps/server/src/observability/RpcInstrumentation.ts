@@ -201,6 +201,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.vcsInit]: "vcs",
   [WS_METHODS.vcsSetRemote]: "vcs",
   [WS_METHODS.reviewGetBranchCommits]: "review",
+  [WS_METHODS.reviewGetLog]: "review",
+  [WS_METHODS.reviewGetRefs]: "review",
   [WS_METHODS.reviewGetDiffPreview]: "review",
   [WS_METHODS.reviewGetDiffFileContents]: "review",
   [WS_METHODS.terminalOpen]: "terminal",

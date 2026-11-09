@@ -15,17 +15,24 @@ import {
   type ReviewDiffPreviewError,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
+  type ReviewLogInput,
+  type ReviewLogResult,
+  type ReviewRefsInput,
+  type ReviewRefsResult,
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
+import * as ReviewLog from "./ReviewLog.ts";
 
 const WORKSPACE_BOUND_SUBJECTS = {
   "ReviewService.getBranchCommits": "commit list",
   "ReviewService.getDiffPreview": "diff preview",
   "ReviewService.getDiffFileContents": "diff file contents",
+  "ReviewService.getLog": "commit log",
+  "ReviewService.getRefs": "ref list",
 } as const;
 
 export class ReviewService extends Context.Service<
@@ -40,6 +47,14 @@ export class ReviewService extends Context.Service<
     readonly getDiffFileContents: (
       input: ReviewDiffFileContentsInput,
     ) => Effect.Effect<ReviewDiffFileContentsResult, ReviewDiffPreviewError>;
+    /** Pult: a page of the checkout's commits (`review.getLog`). */
+    readonly getLog: (
+      input: ReviewLogInput,
+    ) => Effect.Effect<ReviewLogResult, ReviewDiffPreviewError>;
+    /** Pult: the checkout's HEAD and refs (`review.getRefs`). */
+    readonly getRefs: (
+      input: ReviewRefsInput,
+    ) => Effect.Effect<ReviewRefsResult, ReviewDiffPreviewError>;
   }
 >()("t3/review/ReviewService") {}
 
@@ -144,10 +159,42 @@ export const make = Effect.gen(function* () {
     return yield* git.getReviewDiffFileContents(input);
   });
 
+  // Pult: a checkout's history for the shell's Source Control Graph, Git's alone.
+  const requireGit = Effect.fn("ReviewService.requireGit")(function* (
+    operation: "ReviewService.getLog" | "ReviewService.getRefs",
+    cwd: string,
+  ) {
+    yield* assertWorkspaceBoundCwd(operation, cwd);
+    const handle = yield* vcsRegistry.detect({ cwd, requestedKind: "auto" });
+    if (handle?.kind !== "git") {
+      return yield* new VcsUnsupportedOperationError({
+        operation,
+        kind: handle?.kind ?? "unknown",
+        detail: "Commit history requires a Git repository.",
+      });
+    }
+  });
+
+  const getLog: ReviewService["Service"]["getLog"] = Effect.fn("ReviewService.getLog")(
+    function* (input) {
+      yield* requireGit("ReviewService.getLog", input.cwd);
+      return yield* ReviewLog.getLog(git, input);
+    },
+  );
+
+  const getRefs: ReviewService["Service"]["getRefs"] = Effect.fn("ReviewService.getRefs")(
+    function* (input) {
+      yield* requireGit("ReviewService.getRefs", input.cwd);
+      return yield* ReviewLog.getRefs(git, input);
+    },
+  );
+
   return ReviewService.of({
     getBranchCommits,
     getDiffPreview,
     getDiffFileContents,
+    getLog,
+    getRefs,
   });
 });
 
