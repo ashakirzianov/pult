@@ -26,7 +26,6 @@ import {
   RuntimeMode,
 } from "@t3tools/contracts";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
-import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   declinePendingApprovals,
   sendApprovalFeedback,
@@ -62,6 +61,7 @@ import { type ChatMessage } from "../../types";
 import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
+import { failedDraftThreadId } from "./failedDraftThreadId";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
@@ -1444,9 +1444,7 @@ export function useComposerSend(input: ComposerSendInput) {
         restoreFailedDraftThread(
           draftId,
           draftThread,
-          wasBootstrapThreadDeleted(squashAtomCommandFailure(failure))
-            ? newThreadId()
-            : threadIdForSend,
+          failedDraftThreadId(squashAtomCommandFailure(failure), threadIdForSend, newThreadId),
         );
         clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
       }
