@@ -223,17 +223,12 @@ export interface ComposerControlsSlotEntries {
 
 export const ComposerControlsSlotEntries = createContext<ComposerControlsSlotEntries | null>(null);
 
-export function ComposerControlsSlotItem(props: {
-  item: string;
-  level?: string | undefined;
-  children: ReactNode;
-}) {
+export function ComposerControlsSlotItem(props: { item: string; children: ReactNode }) {
   const slot = use(ComposerControlsSlot);
   if (slot === null) return props.children;
   return createPortal(
     <div
       data-chat-composer-slot-item={props.item}
-      data-level={props.level}
       data-chat-composer-resting-controls="true"
       className="flex min-w-0 items-center gap-1"
     >
