@@ -46,6 +46,14 @@ import {
   type IViewsRegistry,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import type {
+  ISCMHistoryItem,
+  ISCMHistoryItemChange,
+  ISCMHistoryItemRef,
+  ISCMHistoryItemRefsChangeEvent,
+  ISCMHistoryOptions,
+  ISCMHistoryProvider,
+} from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/history";
+import type {
   ISCMActionButtonDescriptor,
   ISCMProvider,
   ISCMRepository,
@@ -53,7 +61,12 @@ import type {
   ISCMResourceDecorations,
   ISCMResourceGroup,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
-import { ProjectId, ThreadId, type ReviewDiffPreviewSourceKind } from "@t3tools/contracts";
+import {
+  ProjectId,
+  REVIEW_LOG_MAX_LIMIT,
+  ThreadId,
+  type ReviewDiffPreviewSourceKind,
+} from "@t3tools/contracts";
 
 import type { TurnCheckpoints } from "../../view/main.tsx";
 
@@ -83,6 +96,7 @@ import {
   type CommitProgress,
   commitProgress,
 } from "./commit.ts";
+import { historyItem, type HistoryRefs, historyRefs, refsChange } from "./history.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 import { changesServer } from "./server.ts";
 import {
@@ -121,11 +135,24 @@ const PUSH_COMMAND = "pult-shell.push";
 /** While the view shows one thread's checkout, under its card: for `when` clauses. */
 const ChangesFilteredContext = new RawContextKey<boolean>("pult.changesFiltered", false);
 
-/** The content provider's query: a change and which of its sides. */
-interface Side {
-  readonly change: Change;
-  readonly side: "old" | "new";
+/** The content provider's query: a change, or a file of a commit the Graph lists, and which of its sides. */
+type Side =
+  | { readonly change: Change; readonly side: "old" | "new" }
+  | { readonly commit: CommitFile; readonly side: "old" | "new" };
+
+/** A file a commit changed, as the Graph lists it, from the server's metadata alone: how it changed is read from its own patch when a side is shown. */
+interface CommitFile {
+  readonly environmentId: string;
+  readonly cwd: string;
+  readonly sha: string;
+  /** The commit's first parent, or the empty tree for a root commit, as the server diffs it. */
+  readonly parent: string;
+  readonly path: string;
+  readonly previousPath: string | null;
 }
+
+/** A Graph page's size when it asks for none, the git extension's. */
+const HISTORY_PAGE = 50;
 
 /** The group of a turn the thread view named, alone in the view while the filter's thread has one. */
 const TURN_GROUP = "turn";
@@ -234,6 +261,144 @@ function sides(change: Change): { readonly original: URI; readonly modified: URI
   };
 }
 
+function commitSideUri(file: CommitFile, side: Side["side"]): URI {
+  const path = side === "old" ? (file.previousPath ?? file.path) : file.path;
+  return pultUri(file.environmentId, joinPath(file.cwd, path)).with({
+    scheme: DIFF_SCHEME,
+    query: JSON.stringify({ commit: file, side } satisfies Side),
+  });
+}
+
+/**
+ * A checkout's history for VS Code's Graph, on a server with the fork's log
+ * (`review.getLog`, `review.getRefs`), after the git extension's: its branch,
+ * upstream and base, which the Graph's default filter walks, every ref for
+ * the others, read again whenever the checkout's changes are; a commit's
+ * files from upstream's commit preview, each a diff of `pult-diff:` sides.
+ * No incoming or outgoing changes nodes, which need a merge base.
+ */
+class CheckoutHistory implements ISCMHistoryProvider {
+  readonly historyItemRef = observableValue<ISCMHistoryItemRef | undefined>(this, undefined);
+  readonly historyItemRemoteRef = observableValue<ISCMHistoryItemRef | undefined>(this, undefined);
+  readonly historyItemBaseRef = observableValue<ISCMHistoryItemRef | undefined>(this, undefined);
+  readonly historyItemRefChanges = observableValue<ISCMHistoryItemRefsChangeEvent>(this, {
+    added: [],
+    removed: [],
+    modified: [],
+    silent: true,
+  });
+  private refs: HistoryRefs | undefined;
+  private generation = 0;
+
+  constructor(private readonly checkout: Checkout) {}
+
+  private get server() {
+    return changesServer(this.checkout.environmentId);
+  }
+
+  /** Reads the refs again, `baseRef` the base the server diffs the branch against; the Graph refreshes as they moved. The newest read wins. */
+  async refresh(baseRef: string | null): Promise<void> {
+    const generation = ++this.generation;
+    let refs: HistoryRefs;
+    try {
+      refs = historyRefs(await this.server.refs(this.checkout.root), baseRef);
+    } catch (error) {
+      // Not a repository, a worktree gone: the Graph keeps what it showed.
+      console.warn("[pult-shell] could not read a checkout's refs", error);
+      return;
+    }
+    if (generation !== this.generation) return;
+    const change = refsChange(this.refs, refs);
+    const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+    const recoloured = !same(this.refs?.remote, refs.remote) || !same(this.refs?.base, refs.base);
+    this.refs = refs;
+    if (change === undefined && !recoloured) return;
+    this.historyItemRemoteRef.set(refs.remote, undefined);
+    this.historyItemBaseRef.set(refs.base, undefined);
+    this.historyItemRef.set(refs.current, undefined);
+    this.historyItemRefChanges.set(
+      change ?? { added: [], removed: [], modified: [], silent: true },
+      undefined,
+    );
+  }
+
+  provideHistoryItemRefs(): Promise<ISCMHistoryItemRef[]> {
+    return Promise.resolve([...(this.refs?.all ?? [])]);
+  }
+
+  async provideHistoryItems(options: ISCMHistoryOptions): Promise<ISCMHistoryItem[]> {
+    if (typeof options.limit === "object") todo("a history page that ends at a commit");
+    if (options.filterText !== undefined) todo("a history filtered by text");
+    const refs = options.historyItemRefs ?? [];
+    // A checkout with no branch or commit yet has nothing to walk.
+    if (refs.length === 0) return [];
+    const page = await this.server.log({
+      cwd: this.checkout.root,
+      refs: [...refs],
+      ...(options.skip === undefined ? {} : { skip: options.skip }),
+      limit: Math.min(options.limit ?? HISTORY_PAGE, REVIEW_LOG_MAX_LIMIT),
+    });
+    return page.commits.map((commit) => historyItem(commit, this.refs));
+  }
+
+  /** The commit's files against its first parent, the one the Graph names, as the server diffs a commit. */
+  async provideHistoryItemChanges(
+    historyItemId: string,
+    historyItemParentId: string | undefined,
+  ): Promise<ISCMHistoryItemChange[]> {
+    const { environmentId, root } = this.checkout;
+    const preview = await this.server.diffPreview({
+      cwd: root,
+      commitSha: historyItemId,
+      metadataOnly: true,
+    });
+    const source = preview.sources.find((candidate) => candidate.kind === "commit");
+    if (source === undefined || source.baseRef === null || source.headRef === null) return [];
+    if (historyItemParentId !== undefined && historyItemParentId !== source.baseRef)
+      todo("a commit's changes against another than its first parent");
+    const { baseRef: parent, headRef: sha } = source;
+    return (source.files ?? []).map((stat) => {
+      const file: CommitFile = {
+        environmentId,
+        cwd: root,
+        sha,
+        parent,
+        path: stat.path,
+        previousPath: stat.previousPath,
+      };
+      return {
+        uri: pultUri(environmentId, joinPath(root, stat.path)),
+        originalUri: commitSideUri(file, "old"),
+        modifiedUri: commitSideUri(file, "new"),
+      };
+    });
+  }
+
+  async resolveHistoryItem(historyItemId: string): Promise<ISCMHistoryItem | undefined> {
+    const page = await this.server.log({
+      cwd: this.checkout.root,
+      refs: [historyItemId],
+      limit: 1,
+    });
+    const commit = page.commits[0];
+    return commit === undefined ? undefined : historyItem(commit, this.refs);
+  }
+
+  // The page runs no chat to hand a commit to.
+  resolveHistoryItemChatContext(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  }
+
+  resolveHistoryItemChangeRangeChatContext(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  }
+
+  // Without a merge base the Graph draws no incoming or outgoing changes node.
+  resolveHistoryItemRefsCommonAncestor(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  }
+}
+
 class ChangeResource implements ISCMResource {
   readonly sourceUri: URI;
   readonly decorations: ISCMResourceDecorations;
@@ -313,9 +478,10 @@ let providers = 0;
 let inputs = 0;
 
 /**
- * The source control of one checkout: no history, the turn's group and the
- * server's two, of which one at most holds files, and its commit message box
- * with the Commit button under it, Cmd+Enter in the box committing too.
+ * The source control of one checkout: its history on a server with the
+ * fork's log, the turn's group and the server's two, of which one at most
+ * holds files, and its commit message box with the Commit button under it,
+ * Cmd+Enter in the box committing too.
  */
 class ChangesProvider implements ISCMProvider {
   readonly id = `pult-shell.changes.${++providers}`;
@@ -329,7 +495,8 @@ class ChangesProvider implements ISCMProvider {
   readonly contextValue = constObservable(undefined);
   readonly commitTemplate = constObservable("");
   readonly artifactProvider = constObservable(undefined);
-  readonly historyProvider = constObservable(undefined);
+  /** The checkout's history, set once the server tells it serves the fork's log; none on a stock server. */
+  readonly historyProvider = observableValue<CheckoutHistory | undefined>(this, undefined);
   /** The Commit button, set by the view as the checkout's changes and its commit go. */
   readonly actionButton = observableValue<ISCMActionButtonDescriptor | undefined>(this, undefined);
   readonly statusBarCommands = constObservable(undefined);
@@ -384,6 +551,8 @@ interface Entry {
   readonly checkout: Checkout;
   /** The one source it shows (`shownChanges`), after the last refresh; undefined before one, without changes, or when it failed. */
   shown: ReturnType<typeof shownChanges>;
+  /** The base the server diffs its branch against (`main`, `origin/main`), after the last refresh, which its history colours; null with none. */
+  baseRef: string | null;
   /** Bumped on every answer, for the provider's `rendered`. */
   version: number;
   failure: string | null;
@@ -604,6 +773,7 @@ class ChangesView {
         key,
         checkout,
         shown: undefined,
+        baseRef: null,
         version: 0,
         failure: null,
         loading: undefined,
@@ -691,6 +861,8 @@ class ChangesView {
         if (!current()) return;
         entry.failure = null;
         entry.shown = shownChanges(environmentId, root, preview.sources);
+        entry.baseRef =
+          preview.sources.find((source) => source.kind === "branch-range")?.baseRef ?? null;
       },
       (error: unknown) => {
         // Not a repository, a worktree gone, or a server without the review calls: no changes to show.
@@ -705,6 +877,8 @@ class ChangesView {
       entry.version += 1;
       this.contents.clear();
       this.render();
+      // Its history moves with its changes: a commit, a pull, a run's end.
+      void entry.registered?.provider.historyProvider.get()?.refresh(entry.baseRef);
     });
     return entry.loading;
   }
@@ -835,7 +1009,19 @@ class ChangesView {
     repository.input.onDidChange(({ value }) => {
       if (entry.registered?.repository === repository) entry.message = value;
     });
+    void this.attachHistory(entry, provider);
     return { repository, provider };
+  }
+
+  /** The checkout's history, on a server that serves the fork's log; a stock server's checkout keeps none, as upstream's view has no Graph. */
+  private async attachHistory(entry: Entry, provider: ChangesProvider): Promise<void> {
+    const served = await changesServer(entry.checkout.environmentId)
+      .hasHistory()
+      .catch(() => false);
+    if (!served || entry.registered?.provider !== provider) return;
+    const history = new CheckoutHistory(entry.checkout);
+    provider.historyProvider.set(history, undefined);
+    await history.refresh(entry.baseRef);
   }
 
   /** The thread a commit of the checkout names, for the server's project settings: the filter's, when on it, else the first on it. */
@@ -1287,7 +1473,18 @@ class ChangesView {
   }
 
   private async sideContents(uri: URI): Promise<string> {
-    const { change, side } = JSON.parse(uri.query) as Side;
+    const query = JSON.parse(uri.query) as Side;
+    if ("commit" in query) {
+      const key = JSON.stringify(["commit", query.commit]);
+      let loading = this.contents.get(key);
+      if (loading === undefined) {
+        loading = commitContents(query.commit);
+        this.contents.set(key, loading);
+      }
+      const contents = await loading;
+      return query.side === "old" ? contents.oldContents : contents.newContents;
+    }
+    const { change, side } = query;
     const key = JSON.stringify([
       uri.authority,
       change.cwd,
@@ -1485,6 +1682,40 @@ async function turnContents(
     change.changeType === "deleted" ? "" : read(change.headRef, change.path),
   ]);
   return { oldContents, newContents };
+}
+
+/**
+ * A commit's file's two sides: how it changed read from the server's patch
+ * of that file alone, which the commit's file list leaves out, then both
+ * sides through the file contents RPC, which reads neither side of a file
+ * the commit adds or deletes.
+ */
+async function commitContents(
+  file: CommitFile,
+): Promise<{ readonly oldContents: string; readonly newContents: string }> {
+  const server = changesServer(file.environmentId);
+  const preview = await server.diffPreview({
+    cwd: file.cwd,
+    commitSha: file.sha,
+    file: { path: file.path, previousPath: file.previousPath, sourceKind: "commit" },
+  });
+  const patch = preview.sources.find((source) => source.kind === "commit")?.diff ?? "";
+  const changeType =
+    patchFiles(patch)[0]?.changeType ?? (file.previousPath === null ? "change" : "rename-changed");
+  return server.diffFileContents({
+    cwd: file.cwd,
+    sourceKind: "commit",
+    changeType,
+    baseRef: file.parent,
+    headRef: file.sha,
+    oldPath: file.previousPath ?? file.path,
+    newPath: file.path,
+  });
+}
+
+/** What the view does not do yet, loud where it is asked for: `grep 'todo('` lists it. */
+function todo(reason: string): never {
+  throw new Error(`Pult's changes view does not do this yet: ${reason}.`);
 }
 
 function joinPath(root: string, relativePath: string): string {

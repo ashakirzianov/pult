@@ -1,4 +1,5 @@
 import {
+  getInitialServerConfig,
   request,
   requestGuarded,
   // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- the page runs none of upstream's atoms the client guard reads; the server checks the scopes itself.
@@ -15,6 +16,9 @@ import {
   type ReviewDiffFileContentsResult,
   type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
+  type ReviewLogInput,
+  type ReviewLogResult,
+  type ReviewRefsResult,
   type VcsPullResult,
   type VcsStatusResult,
   WS_METHODS,
@@ -32,11 +36,26 @@ const serverChecks = { authorize: () => Effect.void };
  * The server's review calls the changes view uses, on the page's connection
  * to `environmentId`: a project's diff sources with their files, a file's
  * two sides, a turn's patch, a checkout's status against its upstream, a
- * pull, and a commit or push. A call waits for a connecting
- * environment, as the files' do.
+ * pull, a commit or push, and a checkout's history. A call waits for a
+ * connecting environment, as the files' do.
  */
 export function changesServer(environmentId: string) {
   return {
+    /** Whether the server serves `log` and `refs`, the fork's, which a stock server lacks (`pult/decisions`, `capability-gated-rpcs`). */
+    hasHistory: async (): Promise<boolean> => {
+      await whenReady(environmentId);
+      return (await connection.run(environmentId, getInitialServerConfig())).reviewLog === true;
+    },
+    /** A page of the checkout's commits, from `refs` or HEAD. */
+    log: async (input: ReviewLogInput): Promise<ReviewLogResult> => {
+      await whenReady(environmentId);
+      return connection.run(environmentId, request(WS_METHODS.reviewGetLog, input));
+    },
+    /** The checkout's HEAD and its branches, remote branches and tags. */
+    refs: async (cwd: string): Promise<ReviewRefsResult> => {
+      await whenReady(environmentId);
+      return connection.run(environmentId, request(WS_METHODS.reviewGetRefs, { cwd }));
+    },
     diffPreview: async (input: ReviewDiffPreviewInput): Promise<ReviewDiffPreviewResult> => {
       await whenReady(environmentId);
       return connection.run(environmentId, request(WS_METHODS.reviewGetDiffPreview, input));

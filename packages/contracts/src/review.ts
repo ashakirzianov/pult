@@ -102,7 +102,7 @@ export type ReviewDiffPreviewError = typeof ReviewDiffPreviewError.Type;
 // are `getDiffPreview` with `commitSha` and `getDiffFileContents` with `commit`.
 
 /** The most commits one page of `review.getLog` holds. */
-const REVIEW_LOG_MAX_LIMIT = 500;
+export const REVIEW_LOG_MAX_LIMIT = 500;
 
 /**
  * A page of the commits reachable from `refs`, in topological order, newest
