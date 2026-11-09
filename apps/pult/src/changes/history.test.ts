@@ -59,19 +59,17 @@ NodeTest.describe("historyRefs", () => {
     NodeAssert.equal(historyRefs(result(), null).base, undefined);
   });
 
-  NodeTest.test("names a detached HEAD by its commit, and an unborn branch with no commit", () => {
-    const detached = historyRefs(result({ ref: null, sha: HEAD }), null);
-    NodeAssert.equal(detached.current?.id, HEAD);
-    NodeAssert.equal(detached.current?.name, HEAD.slice(0, 8));
-    NodeAssert.equal(detached.remote, undefined);
-    const unborn = historyRefs({ head: { ref: "refs/heads/main", sha: null }, refs: [] }, null);
-    NodeAssert.equal(unborn.current?.id, "refs/heads/main");
-    NodeAssert.equal(unborn.current?.revision, undefined);
-    NodeAssert.equal(
-      historyRefs({ head: { ref: null, sha: null }, refs: [] }, null).current,
-      undefined,
-    );
-  });
+  NodeTest.test(
+    "names a detached HEAD by its commit, and gives an unborn branch no current ref",
+    () => {
+      const detached = historyRefs(result({ ref: null, sha: HEAD }), null);
+      NodeAssert.equal(detached.current?.id, HEAD);
+      NodeAssert.equal(detached.current?.name, HEAD.slice(0, 8));
+      NodeAssert.equal(detached.remote, undefined);
+      const unborn = historyRefs({ head: { ref: "refs/heads/main", sha: null }, refs: [] }, null);
+      NodeAssert.equal(unborn.current, undefined);
+    },
+  );
 });
 
 NodeTest.describe("historyItem", () => {

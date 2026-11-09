@@ -49,14 +49,14 @@ export function historyRefs(result: ReviewRefsResult, baseRef: string | null): H
   const all = result.refs.map((ref) => refOf(ref.name, ref.sha));
   const byName = new Map(all.map((ref) => [ref.id, ref]));
   const { head } = result;
-  // Before the first commit the branch is at none.
+  // Before the first commit the branch is at none, and the Graph has nothing to walk.
   const current =
-    head.ref === null && head.sha === null
+    head.sha === null
       ? undefined
       : {
-          id: head.ref ?? head.sha!,
-          name: head.ref === null ? head.sha!.slice(0, 8) : refOf(head.ref, "").name,
-          ...(head.sha === null ? {} : { revision: head.sha }),
+          id: head.ref ?? head.sha,
+          name: head.ref === null ? head.sha.slice(0, 8) : refOf(head.ref, "").name,
+          revision: head.sha,
           color: CURRENT_COLOR,
           icon: { id: "target" },
         };

@@ -23,6 +23,7 @@ import type { ThemeIcon } from "@codingame/monaco-vscode-api/vscode/vs/base/comm
 // The package ships `observable`'s types only; its parts are modules of their own.
 import { constObservable } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/observables/constObservable";
 import { observableValue } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/observables/observableValue";
+import { transaction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/transaction";
 import type { IExtUri } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
 import { ResourceTree } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resourceTree";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
@@ -313,13 +314,16 @@ class CheckoutHistory implements ISCMHistoryProvider {
     const recoloured = !same(this.refs?.remote, refs.remote) || !same(this.refs?.base, refs.base);
     this.refs = refs;
     if (change === undefined && !recoloured) return;
-    this.historyItemRemoteRef.set(refs.remote, undefined);
-    this.historyItemBaseRef.set(refs.base, undefined);
-    this.historyItemRef.set(refs.current, undefined);
-    this.historyItemRefChanges.set(
-      change ?? { added: [], removed: [], modified: [], silent: true },
-      undefined,
-    );
+    // One transaction, so the Graph, which reads the refs and their changes, refreshes once.
+    transaction((tx) => {
+      this.historyItemRemoteRef.set(refs.remote, tx);
+      this.historyItemBaseRef.set(refs.base, tx);
+      this.historyItemRef.set(refs.current, tx);
+      this.historyItemRefChanges.set(
+        change ?? { added: [], removed: [], modified: [], silent: true },
+        tx,
+      );
+    });
   }
 
   provideHistoryItemRefs(): Promise<ISCMHistoryItemRef[]> {
