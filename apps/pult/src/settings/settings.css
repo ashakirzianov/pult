@@ -1,5 +1,7 @@
-/* The Pult settings page (src/settings), themed on the workbench's editor colours. Its own box model, as the shell's
-   UI is React in the page and the workbench's default is the browser's (src/style.css). */
+/* The Pult settings page (src/settings), in Pult's own look rather than the workbench's: grouped boxes at the cards'
+   radius, neutral controls, the accent on a switch that is on and a chosen day alone. Every colour is the workbench
+   theme's, the neutral fills mixed from its foreground, so any theme works. Its own box model, as the shell's UI is
+   React in the page and the workbench's default is the browser's (src/style.css). */
 .pult-settings-pane,
 .pult-settings-pane *,
 .pult-settings-pane *::before,
@@ -9,6 +11,10 @@
 
 /* The pane's element is the page's native scroller (src/nativeScroll.ts). */
 .pult-settings-pane {
+  --pult-settings-hairline: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  --pult-settings-fill: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  --pult-settings-control: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+  --pult-settings-control-hover: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -16,6 +22,7 @@
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
   font-size: 13px;
+  line-height: 1.35;
 }
 
 /* The workbench outlines any focused `tabindex="-1"` element inside it, from a sheet loaded after this one. */
@@ -24,47 +31,71 @@
 }
 
 .pult-settings {
-  max-width: 720px;
+  max-width: 640px;
   margin: 0 auto;
-  padding: 32px 24px 48px;
-}
-
-.pult-settings-title {
-  margin: 0 0 24px;
-  font-size: 26px;
-  font-weight: 600;
+  padding: 20px 24px 48px;
 }
 
 .pult-settings-section {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
+/* A section's name, as the left panel's shelves are headed. */
 .pult-settings-section h2 {
-  margin: 0 0 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--vscode-settings-headerBorder, var(--vscode-panel-border));
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.pult-settings-note {
-  margin: 0 0 12px;
+  margin: 0 0 6px 12px;
   color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 500;
 }
 
-/* An environment's row: its name, host, phase and error, its actions at the right. */
-.pult-settings-rows {
-  margin: 0 0 12px;
-  padding: 0;
-  list-style: none;
+/* A box of rows, a hairline between them. */
+.pult-settings-group {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 8px;
+  background: var(--pult-settings-fill);
+}
+
+.pult-settings-group + .pult-settings-group,
+.pult-settings-footnote + .pult-settings-group {
+  margin-top: 10px;
+}
+
+/* What a group's rows leave unsaid, under it. */
+.pult-settings-footnote {
+  margin: 6px 12px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
 }
 
 .pult-settings-row {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--vscode-widget-border, transparent);
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.pult-settings-group > * + .pult-settings-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 1px;
+  background: var(--pult-settings-hairline);
+}
+
+/* Under an environment's row (EnvironmentAccess.tsx): its pairing links and clients, inset past the row's dot. */
+.pult-settings-subrow {
+  min-height: 34px;
+  padding: 5px 12px 5px 32px;
+  font-size: 12px;
+}
+
+.pult-settings-group > * + .pult-settings-subrow::before {
+  left: 32px;
 }
 
 .pult-settings-row-text {
@@ -73,107 +104,243 @@
 }
 
 .pult-settings-row-label {
-  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .pult-settings-row-description {
-  margin-top: 2px;
+  margin-top: 1px;
   color: var(--vscode-descriptionForeground);
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .pult-settings-row-error {
-  margin-top: 4px;
+  margin-top: 1px;
   color: var(--vscode-errorForeground);
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .pult-settings-row-actions {
   display: flex;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 0;
+}
+
+/* How an environment's connection stands: connecting until it is ready, or it is out of reach. */
+.pult-settings-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vscode-editorWarning-foreground);
+}
+
+.pult-settings-dot[data-phase="ready"] {
+  background: var(--vscode-charts-green);
+}
+
+.pult-settings-dot[data-phase="offline"],
+.pult-settings-dot[data-phase="blocked"] {
+  background: var(--vscode-errorForeground);
 }
 
 .pult-settings-button {
-  padding: 4px 12px;
-  border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 4px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--pult-settings-control);
+  box-shadow: inset 0 0 0 0.5px var(--pult-settings-hairline);
+  color: var(--vscode-foreground);
   font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .pult-settings-button:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
+  background: var(--pult-settings-control-hover);
 }
 
-.pult-settings-button-primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.pult-settings-button-primary:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
-.pult-settings-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
-/* A setting's choices, joined into one control, the chosen one in the primary button's colours. */
-.pult-settings-segments {
-  display: flex;
+/* A row's quiet action, a client's Revoke. */
+.pult-settings-link {
   flex-shrink: 0;
-  overflow: hidden;
-  border: 1px solid var(--vscode-button-border, var(--vscode-widget-border, transparent));
-  border-radius: 4px;
-}
-
-.pult-settings-segment {
-  padding: 4px 12px;
+  padding: 0;
   border: none;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
+  background: none;
+  color: var(--vscode-descriptionForeground);
   font: inherit;
   cursor: pointer;
 }
 
-.pult-settings-segment + .pult-settings-segment {
-  border-left: 1px solid var(--vscode-button-border, var(--vscode-widget-border, transparent));
+.pult-settings-link:hover {
+  color: var(--vscode-foreground);
 }
 
-.pult-settings-segment:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
+.pult-settings-button:focus-visible,
+.pult-settings-link:focus-visible,
+.pult-settings-switch:focus-visible,
+.pult-settings-day:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* A group's last row as its one action, Connect to Environment. */
+.pult-settings-add {
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-settings-add:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* Inset, as the group clips what overflows its rounded corners. */
+.pult-settings-add:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+.pult-settings-add .codicon {
+  flex-shrink: 0;
+  width: 8px;
+  font-size: 12px;
+  text-indent: -2px;
+}
+
+/* A setting that is on or off. */
+.pult-settings-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+  cursor: pointer;
+}
+
+.pult-settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vscode-button-foreground);
+  box-shadow: 0 1px 2px var(--vscode-widget-shadow);
+  transition: left 0.12s;
+}
+
+.pult-settings-switch[aria-checked="true"] {
+  background: var(--vscode-button-background);
+}
+
+.pult-settings-switch[aria-checked="true"]::after {
+  left: 16px;
+}
+
+/* A setting's choices on one track, the chosen one raised: the canvas's colour on a light theme, lighter than the
+   track on a dark one. */
+.pult-settings-segments {
+  display: flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--pult-settings-control);
+}
+
+.pult-settings-segment {
+  height: 20px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .pult-settings-segment[aria-pressed="true"] {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background: var(--vscode-editor-background);
+  box-shadow:
+    0 0 0 0.5px var(--pult-settings-hairline),
+    0 1px 2px var(--vscode-widget-shadow);
 }
 
-.pult-settings-segment[aria-pressed="true"]:hover {
-  background: var(--vscode-button-hoverBackground);
+.monaco-workbench.vs-dark .pult-settings-segment[aria-pressed="true"],
+.monaco-workbench.hc-black .pult-settings-segment[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--vscode-foreground) 26%, var(--vscode-editor-background));
 }
 
-/* Inset, as the control clips what overflows its rounded corners. */
+/* Inset, as a segment fills its track's height. */
 .pult-settings-segment:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
-/* The Star's name, in the workbench's input colours. */
-.pult-settings-input {
+/* The weekend's days, a round button each, a chosen one in the accent. */
+.pult-settings-days {
+  display: flex;
   flex-shrink: 0;
-  width: 220px;
-  padding: 4px 8px;
-  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
-  border-radius: 4px;
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
+  gap: 5px;
+}
+
+.pult-settings-day {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--pult-settings-control);
+  color: var(--vscode-foreground);
   font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pult-settings-day:hover {
+  background: var(--pult-settings-control-hover);
+}
+
+.pult-settings-day[aria-pressed="true"] {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+/* The Star's name and its sync's origin. */
+.pult-settings-input {
+  flex-shrink: 1;
+  width: 210px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--pult-settings-control);
+  box-shadow: inset 0 0 0 0.5px var(--pult-settings-hairline);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+}
+
+.pult-settings-input-origin {
+  width: 280px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
 }
 
 .pult-settings-input::placeholder {
@@ -189,12 +356,12 @@
 .pult-settings-swatches {
   display: flex;
   flex-shrink: 0;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pult-settings-swatch {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -202,7 +369,7 @@
 }
 
 .pult-settings-swatch[aria-checked="true"] {
-  outline: 2px solid var(--vscode-foreground);
+  outline: 1.5px solid var(--vscode-foreground);
   outline-offset: 2px;
 }
 
@@ -211,28 +378,17 @@
   outline-offset: 2px;
 }
 
-/* Under an environment's row (EnvironmentAccess.tsx): its pairing links and clients, inset, a row each. */
-.pult-settings-access {
-  margin: 0 0 4px 16px;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-}
-
-.pult-settings-access .pult-settings-row {
-  padding: 6px 0;
-}
-
-/* The pairing link Pair Device minted: its QR code beside the link, the code and its actions. */
+/* The pairing link Pair Device minted, a card under its environment's row: its QR code beside the link, the code and
+   its actions. */
 .pult-settings-pairing {
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  margin: 8px 0 8px 16px;
+  margin: 2px 12px 12px 32px;
   padding: 12px;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: 6px;
-  background: var(--vscode-editorWidget-background);
+  border-radius: 8px;
+  background: var(--pult-settings-fill);
+  box-shadow: inset 0 0 0 1px var(--pult-settings-hairline);
 }
 
 .pult-settings-pairing-qr {
@@ -256,6 +412,6 @@
 }
 
 .pult-settings-pairing-actions {
-  flex-wrap: wrap;
+  justify-content: flex-start;
   margin-top: 10px;
 }

@@ -86,7 +86,7 @@ export function PairingCard({ pairing }: { pairing: Pairing }) {
           {address === undefined ? null : (
             <button
               type="button"
-              className="pult-settings-button pult-settings-button-primary"
+              className="pult-settings-button"
               onClick={() => void copy(address.url, "pairing link")}
             >
               Copy Link
@@ -148,7 +148,8 @@ function QrCodeSvg({ value }: { value: string }) {
  * The environment's outstanding pairing links (label, expiry, Revoke) and
  * authorized clients (label or device, last connected, Revoke, this page's
  * own marked and not revocable here), newest first, as its access stream
- * stands; why it cannot be read, when it cannot.
+ * stands, each a row of the environments' group, inset under the
+ * environment's; why it cannot be read, when it cannot.
  */
 export function AuthorizedClients({
   environmentId,
@@ -160,7 +161,7 @@ export function AuthorizedClients({
   if (access === undefined) return null;
   if (access._tag === "failed")
     return (
-      <div className="pult-settings-access">
+      <div className="pult-settings-row pult-settings-subrow">
         <div className="pult-settings-row-description">
           Pult cannot list this environment's clients. {access.message}
         </div>
@@ -176,36 +177,34 @@ export function AuthorizedClients({
       DateTime.toEpochMillis(b.issuedAt) - DateTime.toEpochMillis(a.issuedAt),
   );
   return (
-    <ul className="pult-settings-access">
+    <>
       {links.map((link) => (
         <PairingLinkRow key={link.id} environmentId={environmentId} link={link} />
       ))}
       {sessions.map((session) => (
         <ClientRow key={session.sessionId} environmentId={environmentId} session={session} />
       ))}
-    </ul>
+    </>
   );
 }
 
 function PairingLinkRow({ environmentId, link }: { environmentId: string; link: AuthPairingLink }) {
   return (
-    <li className="pult-settings-row">
+    <div className="pult-settings-row pult-settings-subrow">
       <div className="pult-settings-row-text">
         <div className="pult-settings-row-label">{link.label ?? "Pairing link"}</div>
         <div className="pult-settings-row-description">
           Not used yet · expires {dateTime(DateTime.toEpochMillis(link.expiresAt))}
         </div>
       </div>
-      <div className="pult-settings-row-actions">
-        <button
-          type="button"
-          className="pult-settings-button"
-          onClick={() => void revoke("pairing link", revokePairingLink(environmentId, link.id))}
-        >
-          Revoke
-        </button>
-      </div>
-    </li>
+      <button
+        type="button"
+        className="pult-settings-link"
+        onClick={() => void revoke("pairing link", revokePairingLink(environmentId, link.id))}
+      >
+        Revoke
+      </button>
+    </div>
   );
 }
 
@@ -235,22 +234,20 @@ function ClientRow({
         ? "Not connected yet"
         : `Last connected ${dateTime(DateTime.toEpochMillis(session.lastConnectedAt))}`;
   return (
-    <li className="pult-settings-row">
+    <div className="pult-settings-row pult-settings-subrow">
       <div className="pult-settings-row-text">
         <div className="pult-settings-row-label">{label}</div>
         <div className="pult-settings-row-description">{[...device, seen].join(" · ")}</div>
       </div>
       {session.current ? null : (
-        <div className="pult-settings-row-actions">
-          <button
-            type="button"
-            className="pult-settings-button"
-            onClick={() => void revoke("client", revokeClient(environmentId, session.sessionId))}
-          >
-            Revoke
-          </button>
-        </div>
+        <button
+          type="button"
+          className="pult-settings-link"
+          onClick={() => void revoke("client", revokeClient(environmentId, session.sessionId))}
+        >
+          Revoke
+        </button>
       )}
-    </li>
+    </div>
   );
 }

@@ -9,7 +9,7 @@ import { pairings } from "../connection/pairDevice.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
-import { type modeChoice, MODES, setMode } from "../mode.ts";
+import { type modeChoice, setMode } from "../mode.ts";
 import { starStore } from "../stars/model.ts";
 import { TINTS, tintOf } from "../stars/record.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
@@ -31,8 +31,9 @@ function run(command: string, ...args: unknown[]): void {
 
 /**
  * The Pult settings page, a tab among the selected thread's (`pane.tsx`):
- * Pult's own settings first, then the workbench's Manage menu behind one
- * button, whose editors open as tabs beside it.
+ * Pult's own settings in groups of rows, then VS Code's, its mode and the
+ * workbench's Manage menu behind one button, whose editors open as tabs
+ * beside the page.
  */
 export function SettingsPage({
   colorScheme,
@@ -43,13 +44,11 @@ export function SettingsPage({
 }) {
   return (
     <div className="pult-settings">
-      <h1 className="pult-settings-title">Settings</h1>
       <EnvironmentsSection />
       <StarSection />
       <LimitsSection />
       <AppearanceSection colorScheme={colorScheme} />
-      <ModeSection mode={mode} />
-      <VSCodeSection />
+      <VSCodeSection mode={mode} />
     </div>
   );
 }
@@ -67,8 +66,8 @@ const PHASES: Record<ShellEnvironment["phase"], string> = {
  * with its server's host, how its connection stands and why when it is not
  * ready, and Disconnect, Pair Device while it is ready and Retry while it is
  * not, then its pairing links and clients; then Connect to Environment,
- * which adds one, and in Pult.app its local server and that server's network
- * access. The palette's Pult: Connect to Environment, Disconnect, Retry
+ * the group's last row, which adds one, and in Pult.app its local server and
+ * that server's network access, a group of their own. The palette's Pult: Connect to Environment, Disconnect, Retry
  * Connection and Pair Device are the same commands.
  */
 function EnvironmentsSection() {
@@ -79,34 +78,34 @@ function EnvironmentsSection() {
   return (
     <section className="pult-settings-section">
       <h2>Environments</h2>
+      <div className="pult-settings-group">
+        {environments.map((environment) => (
+          <EnvironmentRow
+            key={environment.environmentId}
+            environment={environment}
+            environments={environments}
+          />
+        ))}
+        <button
+          type="button"
+          className="pult-settings-row pult-settings-add"
+          onClick={() => run("pult-shell.connect")}
+        >
+          <i className="codicon codicon-add" aria-hidden />
+          Connect to Environment…
+        </button>
+      </div>
       {environments.length === 0 ? (
-        <p className="pult-settings-note">Pult is not connected to an environment.</p>
-      ) : (
-        <ul className="pult-settings-rows">
-          {environments.map((environment) => (
-            <EnvironmentRow
-              key={environment.environmentId}
-              environment={environment}
-              environments={environments}
-            />
-          ))}
-        </ul>
-      )}
-      <button
-        type="button"
-        className="pult-settings-button pult-settings-button-primary"
-        onClick={() => run("pult-shell.connect")}
-      >
-        Connect to Environment
-      </button>
-      <LocalServerRow />
-      <NetworkAccessRow />
+        <p className="pult-settings-footnote">Pult is not connected to an environment.</p>
+      ) : null}
+      <LocalServerGroup />
     </section>
   );
 }
 
 /**
- * An environment's row, Pair Device while it is ready, and under it the
+ * An environment's row, a dot in its phase's colour before its name, Pair
+ * Device while it is ready, and under it the
  * pairing link Pair Device minted, until it expires and, once the
  * environment's access is known, while it is still outstanding, then that access,
  * followed while the row shows (`EnvironmentAccess.tsx`).
@@ -127,8 +126,9 @@ function EnvironmentRow({
     (access?._tag !== "snapshot" ||
       access.snapshot.pairingLinks.some((link) => link.id === pairing.id));
   return (
-    <li>
+    <>
       <div className="pult-settings-row">
+        <span className="pult-settings-dot" data-phase={environment.phase} aria-hidden />
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">
             {environmentName(environment, environments)}
@@ -171,70 +171,52 @@ function EnvironmentRow({
       </div>
       {outstanding ? <PairingCard key={pairing.id} pairing={pairing} /> : null}
       <AuthorizedClients environmentId={environmentId} access={access} />
-    </li>
-  );
-}
-
-const LOCAL_SERVER_CHOICES = [
-  { value: "on", label: "On" },
-  { value: "off", label: "Off" },
-] as const;
-
-const NETWORK_ACCESS_CHOICES = [
-  { value: "network-accessible", label: "On" },
-  { value: "local-only", label: "Off" },
-] as const;
-
-/**
- * In Pult.app with its local server on, whether other devices reach it
- * (`src/desktop/serverExposure.ts`), which a pairing link of it needs; a
- * change asks, then relaunches the app.
- */
-function NetworkAccessRow() {
-  const mode = useSyncExternalStore(serverExposure.subscribe, serverExposure.get);
-  if (mode === undefined) return null;
-  return (
-    <SegmentedRow
-      label="Reachable from other devices"
-      description="On, devices on your network reach this computer's server, and a device you pair connects to it; off, only this computer does. Changing it restarts Pult."
-      choices={NETWORK_ACCESS_CHOICES}
-      current={mode}
-      onChoose={(choice) => void setNetworkAccess(choice === "network-accessible")}
-    />
+    </>
   );
 }
 
 /**
  * In Pult.app, its local server (`src/desktop/localServer.ts`), as the app
- * started; a change asks, then relaunches the app. The palette's Turn On and
- * Turn Off Local Server are the same.
+ * started, and with it on, whether other devices reach it
+ * (`src/desktop/serverExposure.ts`), which a pairing link of it needs; a
+ * change of either asks, then relaunches the app. The palette's Turn On and
+ * Turn Off Local Server set the first.
  */
-function LocalServerRow() {
+function LocalServerGroup() {
   const enabled = localServerEnabled();
+  const exposure = useSyncExternalStore(serverExposure.subscribe, serverExposure.get);
   if (enabled === undefined) return null;
   return (
-    <SegmentedRow
-      label="Local server"
-      description="On, Pult runs a server on this computer and connects to it; off, Pult is a client of other environments alone. Changing it restarts Pult."
-      choices={LOCAL_SERVER_CHOICES}
-      current={enabled ? "on" : "off"}
-      onChoose={(choice) => void setLocalServerEnabled(choice === "on")}
-    />
+    <>
+      <div className="pult-settings-group">
+        <SwitchRow
+          label="Local server"
+          description="Run a server on this computer."
+          checked={enabled}
+          onChange={(on) => void setLocalServerEnabled(on)}
+        />
+        {exposure === undefined ? null : (
+          <SwitchRow
+            label="Reachable from other devices"
+            description="Devices on your network can connect to this computer's server."
+            checked={exposure === "network-accessible"}
+            onChange={(on) => void setNetworkAccess(on)}
+          />
+        )}
+      </div>
+      <p className="pult-settings-footnote">A change restarts Pult.</p>
+    </>
   );
 }
 
-const SHOW_STAR_CHOICES = [
-  { value: "shown", label: "Shown" },
-  { value: "hidden", label: "Hidden" },
-] as const;
-
 /**
- * The Star (`src/stars/`): per Star the page holds, its Name and Tint,
- * written into the record of every home the page holds, Edit Instructions
- * (its own `instructions.md` as a tab) and Open Star Folder (the explorer at
- * its folder); then the Stars' Sync, once for all of them; then Show Star (`pult.star.enabled`), which the palette's Show
- * Star and Hide Star set too: hidden, the left panel shows no Star's card
- * and Pult creates none, deleting nothing.
+ * The Star (`src/stars/`): per Star the page holds, a group of its Name and
+ * Tint, written into the record of every home the page holds, its
+ * Instructions (its own `instructions.md` as a tab) and its Folder (the
+ * explorer at its folder); then the Stars' Sync, once for all of them; then
+ * Show Star (`pult.star.enabled`), a switch, which the palette's Show Star
+ * and Hide Star set too: off, the left panel shows no Star's card and Pult
+ * creates none, deleting nothing.
  */
 function StarSection() {
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
@@ -242,24 +224,23 @@ function StarSection() {
   return (
     <section className="pult-settings-section">
       <h2>Star</h2>
-      {stars.length === 0 ? (
-        <p className="pult-settings-note">
-          {enabled
-            ? "Pult creates your Star once it is connected to an environment."
-            : "Pult creates no Star while it is hidden."}
-        </p>
-      ) : null}
       {stars.map((star) => (
         <StarSettings key={star.id} star={star} several={stars.length > 1} />
       ))}
-      {stars.length === 0 ? null : <StarSyncRow stars={stars} />}
-      <SegmentedRow
-        label="Show Star"
-        description="Hidden, the left panel shows no Star and Pult creates none; nothing is deleted."
-        choices={SHOW_STAR_CHOICES}
-        current={enabled ? "shown" : "hidden"}
-        onChoose={(choice) => void setStarEnabled(choice === "shown")}
-      />
+      {stars.length === 0 ? null : <StarSyncGroup stars={stars} />}
+      <div className="pult-settings-group">
+        <SwitchRow
+          label="Show Star"
+          description="Off, Pult shows and creates no Star. Nothing is deleted."
+          checked={enabled}
+          onChange={(on) => void setStarEnabled(on)}
+        />
+      </div>
+      {stars.length === 0 && enabled ? (
+        <p className="pult-settings-footnote">
+          Pult creates your Star once it is connected to an environment.
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -280,13 +261,12 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
     if (name.trim() !== star.name) void setStarRecord(star.id, { name: name.trim() });
   };
   return (
-    <>
+    <div className="pult-settings-group">
       <div className="pult-settings-row">
         <div className="pult-settings-row-text">
           <label className="pult-settings-row-label" htmlFor={`pult-star-name-${star.id}`}>
             {several ? `Name of ${starName(star)}` : "Name"}
           </label>
-          <div className="pult-settings-row-description">Empty, your Star is called Star.</div>
         </div>
         <input
           id={`pult-star-name-${star.id}`}
@@ -314,7 +294,6 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
       <div className="pult-settings-row">
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">Tint</div>
-          <div className="pult-settings-row-description">The colour of your Star's light.</div>
         </div>
         <div className="pult-settings-swatches" role="radiogroup" aria-label="Tint">
           {TINTS.map((tint) => (
@@ -333,30 +312,33 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
       </div>
       <div className="pult-settings-row">
         <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">Instructions and folder</div>
+          <div className="pult-settings-row-label">Instructions</div>
           <div className="pult-settings-row-description">
-            Your Star reads its instructions at the start of every conversation, and keeps what it
-            needs in its folder.
+            Read at the start of every conversation.
           </div>
         </div>
-        <div className="pult-settings-row-actions">
-          <button
-            type="button"
-            className="pult-settings-button"
-            onClick={() => run("pult-shell.editStarInstructions", star.id)}
-          >
-            Edit Instructions
-          </button>
-          <button
-            type="button"
-            className="pult-settings-button"
-            onClick={() => run("pult-shell.openStarFolder", star.id)}
-          >
-            Open Star Folder
-          </button>
-        </div>
+        <button
+          type="button"
+          className="pult-settings-button"
+          onClick={() => run("pult-shell.editStarInstructions", star.id)}
+        >
+          Edit…
+        </button>
       </div>
-    </>
+      <div className="pult-settings-row">
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">Folder</div>
+          <div className="pult-settings-row-description">Where your Star keeps what it needs.</div>
+        </div>
+        <button
+          type="button"
+          className="pult-settings-button"
+          onClick={() => run("pult-shell.openStarFolder", star.id)}
+        >
+          Open
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -364,11 +346,11 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
  * The Stars' Sync (`src/stars/syncing.ts`): the origin of their repository,
  * `~/.pult/stars`, a Git URL or a repository's path on the environment,
  * written on Enter or leaving the field into every held environment's
- * repository, empty to stop syncing; Sync Now while it is set; and a line
- * per environment of when it last synced, what failed, and what waits or
- * was handed to a Star.
+ * repository, empty to stop syncing; Sync Now while it is set; a line per
+ * environment of when it last synced, what failed, and what waits or was
+ * handed to a Star; and under the group, what syncing does.
  */
-function StarSyncRow({ stars }: { stars: ReadonlyArray<Star> }) {
+function StarSyncGroup({ stars }: { stars: ReadonlyArray<Star> }) {
   useSyncExternalStore(starSyncStore.subscribe, starSyncStore.get);
   const origin = stars.find((star) => star.origin !== undefined)?.origin ?? "";
   const [typed, setTyped] = useState(origin);
@@ -410,59 +392,62 @@ function StarSyncRow({ stars }: { stars: ReadonlyArray<Star> }) {
   });
   const first = stars[0];
   return (
-    <div className="pult-settings-row">
-      <div className="pult-settings-row-text">
-        <label className="pult-settings-row-label" htmlFor="pult-star-origin">
-          Sync
-        </label>
-        <div className="pult-settings-row-description">
-          A Git repository your Stars sync with, every Star in one: Pult commits after each
-          conversation, then pushes, and pulls on connecting and before a Star wakes. Empty, it only
-          commits.
-        </div>
-        {lines.map((line) => (
-          <div
-            key={line.text}
-            className={line.error ? "pult-settings-row-error" : "pult-settings-row-description"}
-          >
-            {line.text}
+    <>
+      <div className="pult-settings-group">
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <label className="pult-settings-row-label" htmlFor="pult-star-origin">
+              Sync
+            </label>
+            {lines.map((line) => (
+              <div
+                key={line.text}
+                className={line.error ? "pult-settings-row-error" : "pult-settings-row-description"}
+              >
+                {line.text}
+              </div>
+            ))}
           </div>
-        ))}
+          <div className="pult-settings-row-actions">
+            <input
+              id="pult-star-origin"
+              className="pult-settings-input pult-settings-input-origin"
+              type="text"
+              placeholder="git@host:you/star.git"
+              spellCheck={false}
+              value={editing ? typed : origin}
+              onFocus={() => {
+                setTyped(origin);
+                setEditing(true);
+              }}
+              onChange={(event) => setTyped(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") {
+                  cancelled.current = true;
+                  setTyped(origin);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+            {origin === "" ? null : (
+              <button
+                type="button"
+                className="pult-settings-button"
+                onClick={() => first !== undefined && void syncStar(first.id)}
+              >
+                Sync Now
+              </button>
+            )}
+          </div>
+        </div>
       </div>
-      <div className="pult-settings-row-actions">
-        <input
-          id="pult-star-origin"
-          className="pult-settings-input"
-          type="text"
-          placeholder="git@host:you/star.git"
-          spellCheck={false}
-          value={editing ? typed : origin}
-          onFocus={() => {
-            setTyped(origin);
-            setEditing(true);
-          }}
-          onChange={(event) => setTyped(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              cancelled.current = true;
-              setTyped(origin);
-              event.currentTarget.blur();
-            }
-          }}
-        />
-        {origin === "" ? null : (
-          <button
-            type="button"
-            className="pult-settings-button"
-            onClick={() => first !== undefined && void syncStar(first.id)}
-          >
-            Sync Now
-          </button>
-        )}
-      </div>
-    </div>
+      <p className="pult-settings-footnote">
+        A Git repository your Stars sync with: Pult commits after each conversation, then pushes,
+        and pulls before a Star wakes. Empty, it only commits.
+      </p>
+    </>
   );
 }
 
@@ -483,20 +468,21 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
   return (
     <section className="pult-settings-section">
       <h2>Appearance</h2>
-      <SegmentedRow
-        label="Colour scheme"
-        description="Light and Dark use VS Code's preferred light and dark themes; System follows the operating system."
-        choices={COLOR_SCHEMES.map(({ scheme, label }) => ({ value: scheme, label }))}
-        current={current}
-        onChoose={(scheme) => void setColorScheme(scheme)}
-      />
+      <div className="pult-settings-group">
+        <SegmentedRow
+          label="Colour scheme"
+          choices={COLOR_SCHEMES.map(({ scheme, label }) => ({ value: scheme, label }))}
+          current={current}
+          onChoose={(scheme) => void setColorScheme(scheme)}
+        />
+      </div>
     </section>
   );
 }
 
 /**
  * The usage limits' Weekend (`pult.limits.weekend`, `src/limits/weekend.ts`):
- * a button per day, Monday first, pressed while the day is a weekend day,
+ * a round button per day, Monday first, pressed while the day is a weekend day,
  * which the Limits shelf's pace counts no time on; Saturday and Sunday by
  * default, none for a pace by the calendar.
  */
@@ -506,34 +492,37 @@ function LimitsSection() {
   return (
     <section className="pult-settings-section">
       <h2>Limits</h2>
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">Weekend</div>
-          <div className="pult-settings-row-description">
-            The days you do not work: a limit's pace counts no time on them, so a weekly limit is
-            paced over your working days. None, every day counts.
+      <div className="pult-settings-group">
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <div className="pult-settings-row-label">Weekend</div>
+            <div className="pult-settings-row-description">
+              A limit's pace counts no time on these days.
+            </div>
           </div>
-        </div>
-        <div className="pult-settings-segments" role="group" aria-label="Weekend">
-          {DAYS.map((day) => {
-            const pressed = days.includes(day);
-            return (
-              <button
-                key={day}
-                type="button"
-                className="pult-settings-segment"
-                aria-pressed={pressed}
-                title={day.charAt(0).toUpperCase() + day.slice(1)}
-                onClick={() =>
-                  void setLimitsWeekend(
-                    pressed ? days.filter((other) => other !== day) : [...days, day],
-                  )
-                }
-              >
-                {day.charAt(0).toUpperCase() + day.slice(1, 3)}
-              </button>
-            );
-          })}
+          <div className="pult-settings-days" role="group" aria-label="Weekend">
+            {DAYS.map((day) => {
+              const pressed = days.includes(day);
+              const name = day.charAt(0).toUpperCase() + day.slice(1);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  className="pult-settings-day"
+                  aria-pressed={pressed}
+                  aria-label={name}
+                  title={name}
+                  onClick={() =>
+                    void setLimitsWeekend(
+                      pressed ? days.filter((other) => other !== day) : [...days, day],
+                    )
+                  }
+                >
+                  {name.charAt(0)}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
@@ -542,37 +531,14 @@ function LimitsSection() {
 
 type ModeChoice = Awaited<ReturnType<typeof modeChoice>>;
 
-/**
- * The mode, Pult or VS Code (`src/mode.ts`), one button each, the current
- * one pressed; the palette's Switch to VS Code Mode and Switch to Pult Mode
- * are the same setting.
- */
-function ModeSection({ mode }: { mode: ModeChoice }) {
-  const current = useSyncExternalStore(mode.onDidChange, mode.current);
-  return (
-    <section className="pult-settings-section">
-      <h2>Mode</h2>
-      <SegmentedRow
-        label="Layout"
-        description="Pult's own layout hides and rearranges much of VS Code; VS Code mode shows it all, for an extension that needs it."
-        choices={MODES.map(({ mode: choice, label }) => ({ value: choice, label }))}
-        current={current}
-        onChoose={(choice) => void setMode(choice)}
-      />
-    </section>
-  );
-}
-
 /** A setting's row of one button per choice, the current one pressed. */
 function SegmentedRow<Value extends string>({
   label,
-  description,
   choices,
   current,
   onChoose,
 }: {
   label: string;
-  description: string;
   choices: ReadonlyArray<{ readonly value: Value; readonly label: string }>;
   current: Value;
   onChoose: (value: Value) => void;
@@ -581,7 +547,6 @@ function SegmentedRow<Value extends string>({
     <div className="pult-settings-row">
       <div className="pult-settings-row-text">
         <div className="pult-settings-row-label">{label}</div>
-        <div className="pult-settings-row-description">{description}</div>
       </div>
       <div className="pult-settings-segments" role="group" aria-label={label}>
         {choices.map((choice) => (
@@ -600,14 +565,47 @@ function SegmentedRow<Value extends string>({
   );
 }
 
+/** A setting's row with a switch, on or off. */
+function SwitchRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="pult-settings-row">
+      <div className="pult-settings-row-text">
+        <div className="pult-settings-row-label">{label}</div>
+        <div className="pult-settings-row-description">{description}</div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        className="pult-settings-switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+      />
+    </div>
+  );
+}
+
 /**
- * The workbench's Manage menu, which the stock activity bar's gear would
+ * VS Code: the mode (`src/mode.ts`), a switch, on in VS Code mode, the
+ * setting the palette's Switch to VS Code Mode and Switch to Pult Mode set;
+ * and the workbench's Manage menu, which the stock activity bar's gear would
  * show; the shell hides that bar, its own gear opening this page
  * (`src/panel/rows.tsx`): one button opening the menu as the context menu
  * the stock gear opens, so VS Code's settings editor, keyboard
  * shortcuts, profiles, themes and extensions stay a click away.
  */
-function VSCodeSection() {
+function VSCodeSection({ mode }: { mode: ModeChoice }) {
+  const current = useSyncExternalStore(mode.onDidChange, mode.current);
   const button = useRef<HTMLButtonElement>(null);
   const showManageMenu = async () => {
     const anchor = button.current;
@@ -626,15 +624,19 @@ function VSCodeSection() {
   return (
     <section className="pult-settings-section">
       <h2>VS Code</h2>
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">VS Code settings</div>
-          <div className="pult-settings-row-description">
-            The workbench's own settings, keyboard shortcuts, profiles, themes and extensions, as
-            its Manage menu offers them.
+      <div className="pult-settings-group">
+        <SwitchRow
+          label="VS Code mode"
+          description="Show all of VS Code's interface, for an extension that needs it."
+          checked={current === "vscode"}
+          onChange={(on) => void setMode(on ? "vscode" : "pult")}
+        />
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <div className="pult-settings-row-label">
+              Settings, shortcuts, themes and extensions
+            </div>
           </div>
-        </div>
-        <div className="pult-settings-row-actions">
           <button
             ref={button}
             type="button"

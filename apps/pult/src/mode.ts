@@ -26,7 +26,7 @@ import { writeUserValue } from "./settings/userSetting.ts";
  */
 const MODE = "pult.mode";
 
-export const MODES = [
+const MODES = [
   { mode: "pult", label: "Pult" },
   { mode: "vscode", label: "VS Code" },
 ] as const;
