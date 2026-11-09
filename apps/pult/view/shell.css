@@ -191,7 +191,6 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 /* The icon buttons on the right, the shell's included (`pult-bar-button`
    in its src/style.css), one size, their icons 14px, one radius; send and
    stop the same size, send on the colour the others show on hover. */
-.pult-composer-bar [data-chat-composer-slot-item="meter"] button,
 .pult-composer-bar > [data-chat-composer-slot-item="actions"] button {
   width: var(--pult-bar-button-size);
   height: var(--pult-bar-button-size);
@@ -256,10 +255,6 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   order: 6;
 }
 
-.pult-composer-bar > [data-chat-composer-slot-item="meter"] {
-  order: 7;
-}
-
 .pult-composer-bar > [data-chat-composer-slot-item="access"] {
   order: 8;
 }
@@ -296,22 +291,6 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
-}
-
-/* The context window meter's arc, orange once the context is heavy and red
-   once it nears full (`contextLevel` in upstream's `ComposerFooterControls.tsx`). */
-.pult-composer-bar
-  > [data-chat-composer-slot-item="meter"][data-level="heavy"]
-  svg
-  circle:last-child {
-  stroke: var(--warning);
-}
-
-.pult-composer-bar
-  > [data-chat-composer-slot-item="meter"][data-level="full"]
-  svg
-  circle:last-child {
-  stroke: var(--color-error);
 }
 
 /* A notice in the bar: its icon and title, how many more, then its actions. */

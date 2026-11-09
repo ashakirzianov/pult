@@ -16,7 +16,4 @@ export const STUBS: Readonly<Record<string, string>> = {
   "../web/src/components/chat/PanelLayoutControls.tsx": "view/panelLayoutControls.tsx",
   // The provider registry without the provider packages, which the page leaves out.
   "../web/src/components/settings/providerDriverMeta.ts": "view/stubs/providerDriverMeta.ts",
-  // Client settings with the context window meter always on: Pult has no
-  // settings page to turn it on.
-  "../web/src/localApi.ts": "view/stubs/localApi.ts",
 };
