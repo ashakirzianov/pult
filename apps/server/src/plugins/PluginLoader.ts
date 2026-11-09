@@ -32,69 +32,69 @@ const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export class PluginNotFoundError extends Schema.TaggedError<PluginNotFoundError>()(
   "PluginNotFoundError",
-  { name: Schema.String },
+  { plugin: Schema.String },
 ) {
   override get message(): string {
-    return `No plugin named "${this.name}" is installed.`;
+    return `No plugin named "${this.plugin}" is installed.`;
   }
 }
 
 export class PluginBuildNotFoundError extends Schema.TaggedError<PluginBuildNotFoundError>()(
   "PluginBuildNotFoundError",
-  { name: Schema.String, build: Schema.String },
+  { plugin: Schema.String, build: Schema.String },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" has no build "${this.build}".`;
+    return `Plugin "${this.plugin}" has no build "${this.build}".`;
   }
 }
 
 export class PluginImportError extends Schema.TaggedError<PluginImportError>()(
   "PluginImportError",
-  { name: Schema.String, build: Schema.String, cause: Schema.Defect() },
+  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" build "${this.build}" failed to import.`;
+    return `Plugin "${this.plugin}" build "${this.build}" failed to import.`;
   }
 }
 
 export class PluginIdentityError extends Schema.TaggedError<PluginIdentityError>()(
   "PluginIdentityError",
-  { name: Schema.String, build: Schema.String },
+  { plugin: Schema.String, build: Schema.String },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" build "${this.build}" does not share the host's modules: it must re-export identity from ${HOST_SPECIFIER} and leave that specifier external.`;
+    return `Plugin "${this.plugin}" build "${this.build}" does not share the host's modules: it must re-export identity from ${HOST_SPECIFIER} and leave that specifier external.`;
   }
 }
 
 export class PluginBuildMismatchError extends Schema.TaggedError<PluginBuildMismatchError>()(
   "PluginBuildMismatchError",
   {
-    name: Schema.String,
+    plugin: Schema.String,
     build: Schema.String,
     builtFor: Schema.String,
     serverBuild: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" build "${this.build}" was built for ${this.builtFor}; this server is ${this.serverBuild}.`;
+    return `Plugin "${this.plugin}" build "${this.build}" was built for ${this.builtFor}; this server is ${this.serverBuild}.`;
   }
 }
 
 export class PluginActivateError extends Schema.TaggedError<PluginActivateError>()(
   "PluginActivateError",
-  { name: Schema.String, build: Schema.String, cause: Schema.Defect() },
+  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" build "${this.build}" failed to activate.`;
+    return `Plugin "${this.plugin}" build "${this.build}" failed to activate.`;
   }
 }
 
 export class PluginCurrentLinkError extends Schema.TaggedError<PluginCurrentLinkError>()(
   "PluginCurrentLinkError",
-  { name: Schema.String, build: Schema.String, cause: Schema.Defect() },
+  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin "${this.name}" build "${this.build}" activated, but its current link could not be written; the build was closed again.`;
+    return `Plugin "${this.plugin}" build "${this.build}" activated, but its current link could not be written; the build was closed again.`;
   }
 }
 
@@ -316,21 +316,21 @@ const make = Effect.gen(function* () {
       !SEGMENT_PATTERN.test(build) ||
       !(yield* fs.exists(mainPath).pipe(Effect.orElseSucceed(() => false)))
     ) {
-      return yield* new PluginBuildNotFoundError({ name, build });
+      return yield* new PluginBuildNotFoundError({ plugin: name, build });
     }
     // A fresh URL each time, so re-importing the same build id bypasses the module cache.
     importCount += 1;
     const url = `${NodeURL.pathToFileURL(mainPath).href}?load=${importCount}`;
     const module = yield* Effect.tryPromise({
       try: () => import(url) as Promise<PluginModule>,
-      catch: (cause) => new PluginImportError({ name, build, cause }),
+      catch: (cause) => new PluginImportError({ plugin: name, build, cause }),
     });
     if (module.identity !== hostIdentity) {
-      return yield* new PluginIdentityError({ name, build });
+      return yield* new PluginIdentityError({ plugin: name, build });
     }
     if (!isServerBuild(module.builtFor) || !isCompatibleBuild(module.builtFor)) {
       return yield* new PluginBuildMismatchError({
-        name,
+        plugin: name,
         build,
         builtFor: isServerBuild(module.builtFor)
           ? describeBuild(module.builtFor)
@@ -341,7 +341,7 @@ const make = Effect.gen(function* () {
     const activate = module.activate;
     if (typeof activate !== "function") {
       return yield* new PluginActivateError({
-        name,
+        plugin: name,
         build,
         cause: new Error("main.mjs does not export activate"),
       });
@@ -362,7 +362,9 @@ const make = Effect.gen(function* () {
     yield* runActivate(activate as (host: PluginHost) => unknown, host, scope).pipe(
       Effect.catchCause((cause) =>
         Scope.close(scope, Exit.void).pipe(
-          Effect.andThen(new PluginActivateError({ name, build, cause: Cause.squash(cause) })),
+          Effect.andThen(
+            new PluginActivateError({ plugin: name, build, cause: Cause.squash(cause) }),
+          ),
         ),
       ),
     );
@@ -387,7 +389,9 @@ const make = Effect.gen(function* () {
     (effect, name, build) =>
       effect.pipe(
         Effect.catchCause((cause) =>
-          Effect.fail(new PluginCurrentLinkError({ name, build, cause: Cause.squash(cause) })),
+          Effect.fail(
+            new PluginCurrentLinkError({ plugin: name, build, cause: Cause.squash(cause) }),
+          ),
         ),
       ),
   );
@@ -424,7 +428,7 @@ const make = Effect.gen(function* () {
             !SEGMENT_PATTERN.test(name) ||
             !(yield* restore(isDirectory(path.join(pluginsDir, name))))
           ) {
-            return yield* new PluginNotFoundError({ name });
+            return yield* new PluginNotFoundError({ plugin: name });
           }
           // A request naming a build that does not exist is a 404, not a failed plugin.
           const running = yield* restore(loadBuild(name, build)).pipe(
