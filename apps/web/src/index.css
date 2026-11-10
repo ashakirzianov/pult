@@ -2516,6 +2516,10 @@ code {
 .ProseMirror[data-caret-at-citation] {
   caret-color: transparent;
 }
+/* The comment's field, entered from the bar, keeps its own caret. */
+.ProseMirror[data-caret-at-citation] [data-citation-comment-input] {
+  caret-color: auto;
+}
 .ProseMirror:focus [data-citation-caret] [data-composer-citation-chip]::before {
   content: "";
   position: absolute;
