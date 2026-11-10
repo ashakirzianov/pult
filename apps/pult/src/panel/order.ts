@@ -1,11 +1,9 @@
 import type { ProjectDraft } from "../../view/drafts.ts";
 import { scopedKey, type ShelfName, type ShellThread } from "../threads/store.ts";
 
-/**
- * The Pult tab's shelves that close, in the panel's order, which the tray
- * lists their icons in while they are closed (`TrayShelves.tsx`).
- */
-export const CLOSABLE_SHELVES = [
+/** The Pult tab's shelves, every one closable, in the panel's default order. */
+export const PANEL_SHELVES = [
+  "stars",
   "explorer",
   "inbox",
   "working",
@@ -14,7 +12,62 @@ export const CLOSABLE_SHELVES = [
   "limits",
 ] as const;
 
-export type ClosableShelf = (typeof CLOSABLE_SHELVES)[number];
+export type PanelShelf = (typeof PANEL_SHELVES)[number];
+
+/** The top shelves: the leading run of them in the panel's order sticks to its top (`lowerShelves`). */
+const TOP_SHELVES: ReadonlySet<PanelShelf> = new Set(["stars", "explorer", "inbox"]);
+
+/**
+ * Where each shelf is: in the panel's open shelves, top to bottom, or the
+ * tray's closed ones, left to right; each shelf in exactly one. Opening or
+ * closing a shelf appends it to the end of the other (`openIn`, `closeIn`).
+ */
+export interface ShelfOrder {
+  readonly open: ReadonlyArray<PanelShelf>;
+  readonly closed: ReadonlyArray<PanelShelf>;
+}
+
+export const DEFAULT_SHELF_ORDER: ShelfOrder = { open: PANEL_SHELVES, closed: [] };
+
+/** The order with `shelf` opened, at the panel's bottom; an open one stays where it is. */
+export function openIn(order: ShelfOrder, shelf: PanelShelf): ShelfOrder {
+  if (order.open.includes(shelf)) return order;
+  return { open: [...order.open, shelf], closed: order.closed.filter((each) => each !== shelf) };
+}
+
+/** The order with `shelf` closed, at the tray's end, or at `at` among the closed; a closed one stays where it is. */
+export function closeIn(
+  order: ShelfOrder,
+  shelf: PanelShelf,
+  at: number = order.closed.length,
+): ShelfOrder {
+  if (order.closed.includes(shelf)) return order;
+  return {
+    open: order.open.filter((each) => each !== shelf),
+    closed: order.closed.toSpliced(at, 0, shelf),
+  };
+}
+
+/** A stored order, or null when it is not one: every shelf exactly once across the two lists. */
+export function parseShelfOrder(stored: unknown): ShelfOrder | null {
+  if (typeof stored !== "object" || stored === null) return null;
+  const { open, closed } = stored as Record<string, unknown>;
+  if (!Array.isArray(open) || !Array.isArray(closed)) return null;
+  const all: unknown[] = [...open, ...closed];
+  const complete =
+    all.length === PANEL_SHELVES.length && PANEL_SHELVES.every((shelf) => all.includes(shelf));
+  return complete ? { open: open as PanelShelf[], closed: closed as PanelShelf[] } : null;
+}
+
+/**
+ * The open shelves after the leading run of top shelves, which stick to the
+ * panel's bottom: the first of them that renders takes the free space above
+ * it (`panel.css`), so an empty one, left out, does not take it.
+ */
+export function lowerShelves(open: ReadonlyArray<PanelShelf>): ReadonlyArray<PanelShelf> {
+  const run = open.findIndex((shelf) => !TOP_SHELVES.has(shelf));
+  return run === -1 ? [] : open.slice(run);
+}
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */
 export const SETTLED_TAIL_INITIAL_COUNT = 10;
@@ -127,7 +180,7 @@ export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThr
 
 /** What the panel shows, as `jumpTargets` reads it. */
 export interface PanelRows<File extends FileRef, Thread extends ThreadRef = ShellThread> {
-  /** The Stars' cards, first, by their Stars' ids; none while Show Star is off. */
+  /** The Stars' cards, by their Stars' ids; none while Show Star is off. */
   readonly stars: ReadonlyArray<string>;
   readonly environmentIds: ReadonlyArray<string>;
   /** The Explorer shelf's open files. */
@@ -138,8 +191,8 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly threads: ReadonlyArray<Thread>;
   /** The key of the selected card: a thread's, its root's for a subagent, or a draft's. */
   readonly selection: string | undefined;
-  /** The shelves closed, whose rows none is reached. */
-  readonly closed: ReadonlySet<ClosableShelf>;
+  /** The open shelves, in the panel's order; a closed one's rows none is reached. */
+  readonly open: ReadonlyArray<PanelShelf>;
   /** How many settled threads the settled shelf's tail shows. */
   readonly settledCount: number;
 }
@@ -147,51 +200,50 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
 /**
  * The panel's rows Cmd+1 to Cmd+9 reach, top to bottom as the panel shows
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
- * rows: the Stars' cards first, then the Explorer shelf's open files, its
- * environments' rows left out, then the cards, Inbox's drafts and threads,
- * and the Working, Snoozed and Settled shelves'; a closed shelf reaches
- * none. The Limits shelf's
- * rows, last, are none: they select nothing.
+ * rows: shelf by shelf in the open shelves' order, a closed shelf reaching
+ * none; the Stars' cards, the Explorer shelf's open files, its environments'
+ * rows left out, and the cards, Inbox's drafts and threads and the Working,
+ * Snoozed and Settled shelves', the threads none while no environment is held.
+ * The Limits shelf's rows are none: they select nothing.
  */
 export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
   panel: PanelRows<File, Thread>,
 ): JumpTarget<File, Thread>[] {
-  const stars = panel.stars.map((starId): JumpTarget<File, Thread> => ({
-    kind: "star",
-    key: starKey(starId),
-    starId,
-  }));
-  const open = (shelf: ClosableShelf) => !panel.closed.has(shelf);
-  const files = [
-    ...stars,
-    ...(open("explorer") ? explorerEntries(panel.environmentIds, panel.files) : []).flatMap(
-      (entry): JumpTarget<File, Thread>[] =>
-        entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : [],
-    ),
-  ];
-  if (panel.environmentIds.length === 0) return files;
   const on = (...shelves: ReadonlyArray<ShelfName>) =>
-    panel.threads.filter((thread) => thread.shelf !== null && shelves.includes(thread.shelf));
+    panel.environmentIds.length === 0
+      ? []
+      : panel.threads.filter((thread) => thread.shelf !== null && shelves.includes(thread.shelf));
   const threadTarget = (thread: Thread): JumpTarget<File, Thread> => ({
     kind: "thread",
     key: keyOf(thread),
     thread,
   });
-  const inbox: JumpTarget<File, Thread>[] = [
-    ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
-      kind: "draft",
-      key: draftKey(draft),
-      draft,
-    })),
-    ...on("pinned", "active").map(threadTarget),
-  ];
-  return [
-    ...files,
-    ...(open("inbox") ? inbox : []),
-    ...(open("working") ? on("working").map(threadTarget) : []),
-    ...(open("snoozed") ? on("snoozed").map(threadTarget) : []),
-    ...(open("settled")
-      ? settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget)
-      : []),
-  ];
+  const rows = (shelf: PanelShelf): JumpTarget<File, Thread>[] => {
+    switch (shelf) {
+      case "stars":
+        return panel.stars.map((starId) => ({ kind: "star", key: starKey(starId), starId }));
+      case "explorer":
+        return explorerEntries(panel.environmentIds, panel.files).flatMap(
+          (entry): JumpTarget<File, Thread>[] =>
+            entry.kind === "file" ? [{ kind: "file", key: entry.key, file: entry.file }] : [],
+        );
+      case "inbox":
+        return [
+          ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
+            kind: "draft",
+            key: draftKey(draft),
+            draft,
+          })),
+          ...on("pinned", "active").map(threadTarget),
+        ];
+      case "working":
+      case "snoozed":
+        return on(shelf).map(threadTarget);
+      case "settled":
+        return settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget);
+      case "limits":
+        return [];
+    }
+  };
+  return panel.open.flatMap(rows);
 }

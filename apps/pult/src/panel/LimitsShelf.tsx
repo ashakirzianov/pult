@@ -12,7 +12,7 @@ import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts
 import { limitsShowAll, setLimitsShowAll } from "../limits/shelf.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
-import { closedShelves, closeShelf, ShelfHeader, useReveal } from "./shelves.tsx";
+import { closeShelf, ShelfHeader, useReveal } from "./shelves.tsx";
 
 const refreshAction = toAction({
   id: "pult-shell.refreshUsageLimits",
@@ -21,7 +21,7 @@ const refreshAction = toAction({
 });
 
 /**
- * The Limits shelf, the Pult tab's last (xaxis `pult/issues/provider-limits-page`):
+ * The Limits shelf (xaxis `pult/issues/provider-limits-page`):
  * the provider accounts' usage windows with something spent, under its
  * header with the count of warning windows while any warns, open until closed, when its icon
  * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows
@@ -32,18 +32,24 @@ const refreshAction = toAction({
  * click. `now` is the panel's minute clock, which the pace moves with, but
  * on the weekend (`pult.limits.weekend`, `paceShare`).
  */
-export function LimitsShelf({ now }: { now: number }) {
+export function LimitsShelf({
+  now,
+  lower,
+}: {
+  now: number;
+  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
+  lower: boolean;
+}) {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
   const showAll = useSyncExternalStore(limitsShowAll.subscribe, limitsShowAll.get);
   const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
-  const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has("limits");
   const element = useRef<HTMLLIElement>(null);
   useReveal("limits", element);
   const shelf = limitsShelf(limits.accounts, now, showAll, weekend);
-  if (closed || shelf === null) return null;
+  if (shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
-    <li ref={element} className="pult-shelf pult-shelf-limits">
+    <li ref={element} className={`pult-shelf pult-shelf-limits${lower ? " pult-shelf-lower" : ""}`}>
       <ShelfHeader
         shelf="limits"
         label="Limits"

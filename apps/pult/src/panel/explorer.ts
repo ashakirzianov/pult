@@ -50,7 +50,7 @@ import {
   type ThreadSelection,
 } from "../threads/selection.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
-import { closeShelf, openShelf } from "./shelves.tsx";
+import { closeShelf, openShelf, shelfOrder } from "./shelves.tsx";
 
 /** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
 export const PANEL_ID = "pult.panel";
@@ -129,10 +129,13 @@ let provisional: { dispose(): void } | undefined;
  * The Explorer shelf's tray icon: the shelf opened, and the Explorer tab at
  * every environment's folder with it; the shelf closed again if the sidebar
  * switches from the tab while the Explorer workspace has no open file, so a
- * look at the folders leaves the panel as it was.
+ * look at the folders leaves the panel and the tray as they were, its icon
+ * back in its place.
  */
 export async function openExplorerShelf(): Promise<void> {
   provisional?.dispose();
+  // Its place in the tray, which only its icon there opens.
+  const at = shelfOrder.get().closed.indexOf("explorer");
   openShelf("explorer");
   await exploreEnvironment(undefined);
   const panes = await getService(IPaneCompositePartService);
@@ -140,7 +143,8 @@ export async function openExplorerShelf(): Promise<void> {
     if (panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === EXPLORER_ID)
       return;
     wait.dispose();
-    if (openExplorerFiles.get().files.length === 0) closeShelf("explorer");
+    if (openExplorerFiles.get().files.length === 0)
+      closeShelf("explorer", at === -1 ? undefined : at);
   });
   const wait = {
     dispose() {

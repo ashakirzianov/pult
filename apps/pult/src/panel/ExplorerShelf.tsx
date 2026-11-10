@@ -14,14 +14,14 @@ import { exploredEnvironment, exploreEnvironment } from "./explorer.ts";
 import { explorerHighlight } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { explorerEntries } from "./order.ts";
-import { closedShelves, ShelfHeader, useReveal } from "./shelves.tsx";
+import { ShelfHeader, useReveal } from "./shelves.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
 /**
- * The Explorer shelf, the panel's first: the Explorer workspace, files opened
+ * The Explorer shelf: the Explorer workspace, files opened
  * under no thread, under its header with no count, open until closed, when
  * its icon goes to the tray (`TrayShelves.tsx`). A row per held environment, selecting the workspace with the Explorer tab at
  * its folder above its projects (`pult-shell.exploreEnvironment`), its open files under it,
@@ -36,14 +36,20 @@ function run(command: string, ...args: unknown[]): void {
  * environment held, the header is that environment's row, its name and
  * icon, its files nested under it (`explorerEntries`).
  */
-export function ExplorerShelf({ environments }: { environments: ReadonlyArray<ShellEnvironment> }) {
+export function ExplorerShelf({
+  environments,
+  lower,
+}: {
+  environments: ReadonlyArray<ShellEnvironment>;
+  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
+  lower: boolean;
+}) {
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   useSyncExternalStore(exploredEnvironment.subscribe, exploredEnvironment.get);
   useSyncExternalStore(onDidSelectThread, explorerSelected);
-  const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has("explorer");
   const element = useRef<HTMLLIElement>(null);
   useReveal("explorer", element);
-  if (closed || (environments.length === 0 && files.length === 0)) return null;
+  if (environments.length === 0 && files.length === 0) return null;
   // Read on a change of the selection, the files or the environment explored, each of which re-renders the shelf.
   const highlighted = explorerHighlight();
   const names = new Map(environments.map((environment) => [environment.id, environment.name]));
@@ -54,7 +60,10 @@ export function ExplorerShelf({ environments }: { environments: ReadonlyArray<Sh
     files,
   );
   return (
-    <li ref={element} className="pult-shelf pult-shelf-explorer">
+    <li
+      ref={element}
+      className={`pult-shelf pult-shelf-explorer${lower ? " pult-shelf-lower" : ""}`}
+    >
       <ShelfHeader
         shelf="explorer"
         label={only === undefined ? "Explorer" : only.name}

@@ -4,11 +4,16 @@ import * as NodeTest from "node:test";
 
 import type { ShelfName } from "../threads/store.ts";
 import {
-  type ClosableShelf,
+  closeIn,
+  DEFAULT_SHELF_ORDER,
   draftCards,
   explorerEntries,
   jumpTargets,
+  lowerShelves,
+  openIn,
+  PANEL_SHELVES,
   type PanelRows,
+  parseShelfOrder,
 } from "./order.ts";
 
 const file = (environmentId: string, path: string) => ({
@@ -29,15 +34,6 @@ const draft = (projectId: string, environmentId = "env") => ({
   createdAt: "2026-11-02T00:00:00.000Z",
 });
 
-const ALL_CLOSED: ReadonlySet<ClosableShelf> = new Set([
-  "explorer",
-  "inbox",
-  "working",
-  "snoozed",
-  "settled",
-  "limits",
-]);
-
 function panel(
   overrides: Partial<PanelRows<ReturnType<typeof file>, ReturnType<typeof thread>>> = {},
 ) {
@@ -48,7 +44,7 @@ function panel(
     drafts: [],
     threads: [],
     selection: undefined,
-    closed: new Set<ClosableShelf>(),
+    open: PANEL_SHELVES,
     settledCount: 10,
     ...overrides,
   };
@@ -89,21 +85,17 @@ NodeTest.describe("jumpTargets", () => {
     },
   );
 
-  NodeTest.test(
-    "reaches the Stars' cards first, above the Explorer's files, whatever the shelves",
-    () => {
-      const targets = jumpTargets(
-        panel({
-          stars: ["one"],
-          files: [file("env", "/a.ts")],
-          threads: [thread("active", "active")],
-          closed: ALL_CLOSED,
-          selection: "env/active",
-        }),
-      );
-      NodeAssert.deepEqual(keys(targets), ["star:one"]);
-    },
-  );
+  NodeTest.test("reaches the shelves' rows in the open shelves' order", () => {
+    const targets = jumpTargets(
+      panel({
+        stars: ["one"],
+        files: [file("env", "/a.ts")],
+        threads: [thread("active", "active"), thread("working", "working")],
+        open: ["working", "explorer", "stars", "limits"],
+      }),
+    );
+    NodeAssert.deepEqual(keys(targets), ["env/working", "pult://env/a.ts", "star:one"]);
+  });
 
   NodeTest.test("reaches no row of a closed shelf, not even the selected one", () => {
     const threads = [
@@ -114,16 +106,19 @@ NodeTest.describe("jumpTargets", () => {
     ];
     const files = [file("env", "/a.ts")];
     NodeAssert.deepEqual(
-      keys(jumpTargets(panel({ files, threads, closed: ALL_CLOSED, selection: "env/active" }))),
+      keys(
+        jumpTargets(panel({ stars: ["one"], files, threads, open: [], selection: "env/active" })),
+      ),
       [],
     );
     NodeAssert.deepEqual(
       keys(
         jumpTargets(
           panel({
+            stars: ["one"],
             files,
             threads,
-            closed: new Set(["working", "settled"]),
+            open: ["explorer", "inbox", "snoozed", "limits"],
             selection: "env/working",
           }),
         ),
@@ -154,6 +149,64 @@ NodeTest.describe("jumpTargets", () => {
     );
     NodeAssert.deepEqual(keys(targets), ["pult://gone/a.ts"]);
   });
+});
+
+NodeTest.describe("shelf order", () => {
+  NodeTest.test(
+    "appends a closed shelf to the tray's end and a reopened one to the panel's",
+    () => {
+      const closed = closeIn(closeIn(DEFAULT_SHELF_ORDER, "working"), "stars");
+      NodeAssert.deepEqual(closed, {
+        open: ["explorer", "inbox", "snoozed", "settled", "limits"],
+        closed: ["working", "stars"],
+      });
+      NodeAssert.deepEqual(openIn(closed, "working"), {
+        open: ["explorer", "inbox", "snoozed", "settled", "limits", "working"],
+        closed: ["stars"],
+      });
+    },
+  );
+
+  NodeTest.test("keeps a shelf already where it is asked to go in its place", () => {
+    const order = closeIn(DEFAULT_SHELF_ORDER, "inbox");
+    NodeAssert.equal(openIn(order, "explorer"), order);
+    NodeAssert.equal(closeIn(order, "inbox"), order);
+  });
+
+  NodeTest.test("closes a shelf at a given place in the tray", () => {
+    const order = closeIn(closeIn(DEFAULT_SHELF_ORDER, "working"), "stars");
+    NodeAssert.deepEqual(closeIn(order, "explorer", 0).closed, ["explorer", "working", "stars"]);
+  });
+
+  NodeTest.test("reads back a stored order, and nothing that misses or repeats a shelf", () => {
+    const order = closeIn(DEFAULT_SHELF_ORDER, "settled");
+    NodeAssert.deepEqual(parseShelfOrder(JSON.parse(JSON.stringify(order))), order);
+    NodeAssert.equal(parseShelfOrder({ open: ["inbox"], closed: [] }), null);
+    NodeAssert.equal(
+      parseShelfOrder({ open: [...PANEL_SHELVES.slice(1), "inbox"], closed: [] }),
+      null,
+    );
+    NodeAssert.equal(parseShelfOrder("stars"), null);
+  });
+});
+
+NodeTest.describe("lowerShelves", () => {
+  NodeTest.test("are the open shelves after the leading run of top shelves", () => {
+    NodeAssert.deepEqual(lowerShelves(PANEL_SHELVES), ["working", "snoozed", "settled", "limits"]);
+    NodeAssert.deepEqual(lowerShelves(["explorer", "working", "stars", "limits"]), [
+      "working",
+      "stars",
+      "limits",
+    ]);
+  });
+
+  NodeTest.test(
+    "are every open shelf while no top one leads, none while only top ones are open",
+    () => {
+      NodeAssert.deepEqual(lowerShelves(["limits", "inbox"]), ["limits", "inbox"]);
+      NodeAssert.deepEqual(lowerShelves(["inbox", "stars"]), []);
+    },
+  );
 });
 
 NodeTest.describe("draftCards", () => {

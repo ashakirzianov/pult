@@ -40,12 +40,14 @@ import {
   draftCards as draftCardsOf,
   draftKey,
   keyOf,
+  lowerShelves,
+  type PanelShelf,
   SETTLED_TAIL_INITIAL_COUNT,
   SETTLED_TAIL_PAGE_COUNT,
   settledTail,
   starKey,
 } from "./order.ts";
-import { closedShelves, ShelfHeader, useReveal } from "./shelves.tsx";
+import { SHELF_ICONS, ShelfHeader, shelfOrder, useReveal } from "./shelves.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -115,21 +117,24 @@ function subagentsByRoot(
 }
 
 /**
- * The Pult tab's view, under the sidebar's title row: every held
- * environment's threads as cards, in the store's order, which is upstream's:
- * pinned and active under Inbox, then the Working, Snoozed and
- * Settled shelves, each open until closed, when its icon goes to the tray
- * (`TrayShelves.tsx`), and left out while it holds nothing. While the page
- * holds several environments, each card names its
- * own. The selected card expands with its details and its subagents; a
- * subagent has no card, so while one is selected its root's card is the
- * expanded one. The Stars' cards come first, under no header, while Show
- * Star is on (`StarCard.tsx`, `src/stars/`); a Star's threads have no card
- * of their own. The Explorer shelf comes next (`ExplorerShelf.tsx`), and
- * Inbox's first cards are the projects' drafts of new threads that hold
- * something (`drafts.ts`), newest first, and the selected draft. Cmd+1 to
- * Cmd+9 jump to its rows in this order (`order.ts`, `jump.ts`). The Limits
- * shelf comes last (`LimitsShelf.tsx`), its rows no jump targets.
+ * The Pult tab's view, under the sidebar's title row: its shelves in the
+ * order they were opened (`shelfOrder`, `shelves.tsx`), each left out while
+ * it holds nothing and, closed, its icon in the tray (`TrayShelves.tsx`).
+ * The leading run of top shelves (Stars, Explorer, Inbox) sticks to the
+ * panel's top, and the rest to its bottom (`lowerShelves`), the panel's
+ * notice, Not connected or No threads, between. The Stars' shelf holds the
+ * Stars' cards, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
+ * Star's threads have no card of their own. The Explorer shelf is the
+ * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
+ * are cards, in the store's order, which is upstream's: pinned and active
+ * under Inbox, whose first cards are the projects' drafts of new threads
+ * that hold something (`drafts.ts`), newest first, and the selected draft;
+ * then the Working, Snoozed and Settled shelves. While the page holds
+ * several environments, each card names its own. The selected card expands
+ * with its details and its subagents; a subagent has no card, so while one
+ * is selected its root's card is the expanded one. The Limits shelf is the
+ * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
+ * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`).
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -205,95 +210,132 @@ export function PanelView() {
       now={now}
     />
   );
+  const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  // The Stars' shelf is no shelf at all while Show Star is off.
+  const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
+  const lower = new Set(lowerShelves(shown));
+  const shelf = (name: PanelShelf): React.ReactNode => {
+    switch (name) {
+      case "stars":
+        return (
+          <Shelf key={name} name={name} lower={lower.has(name)} empty={stars.length === 0}>
+            {stars.map(starCard)}
+          </Shelf>
+        );
+      case "explorer":
+        return (
+          <ExplorerShelf key={name} environments={state.environments} lower={lower.has(name)} />
+        );
+      case "inbox":
+        return (
+          <Shelf
+            key={name}
+            name={name}
+            lower={lower.has(name)}
+            empty={listed.length === 0 && draftCards.length === 0}
+          >
+            {draftCards.map(draftCard)}
+            {listed.map(card)}
+          </Shelf>
+        );
+      case "working":
+      case "snoozed": {
+        const threads = name === "working" ? working : snoozed;
+        return (
+          <Shelf
+            key={name}
+            name={name}
+            lower={lower.has(name)}
+            count={threads.length}
+            empty={threads.length === 0}
+          >
+            {threads.map(card)}
+          </Shelf>
+        );
+      }
+      case "settled":
+        return (
+          <Shelf
+            key={name}
+            name={name}
+            lower={lower.has(name)}
+            count={state.settled.count}
+            empty={settled.length === 0 && state.settled.count === 0}
+          >
+            <SettledTail
+              threads={settled}
+              shelf={state.settled}
+              selection={selectedCard}
+              render={card}
+            />
+          </Shelf>
+        );
+      case "limits":
+        return <LimitsShelf key={name} now={now} lower={lower.has(name)} />;
+    }
+  };
+  // What the panel says while it has no thread to show, under the shelves at its top.
+  const notice =
+    state.environments.length === 0 ? (
+      <li key="notice" className="pult-panel-empty">
+        <p>Not connected.</p>
+        <button
+          type="button"
+          className="pult-panel-button"
+          onClick={() => run("pult-shell.connect")}
+        >
+          Connect to Environment
+        </button>
+      </li>
+    ) : state.threads.length === 0 && draftCards.length === 0 ? (
+      <li key="notice" className="pult-panel-empty">
+        No threads in {state.environments.map((environment) => environment.label).join(", ")}.
+      </li>
+    ) : null;
+  const top = shown.length - lower.size;
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards">
-        {starsShown ? stars.map(starCard) : null}
-        <ExplorerShelf environments={state.environments} />
-        {state.environments.length === 0 ? (
-          <li className="pult-panel-empty">
-            <p>Not connected.</p>
-            <button
-              type="button"
-              className="pult-panel-button"
-              onClick={() => run("pult-shell.connect")}
-            >
-              Connect to Environment
-            </button>
-          </li>
-        ) : (
-          <>
-            <Shelf
-              name="inbox"
-              label="Inbox"
-              empty={listed.length === 0 && draftCards.length === 0}
-            >
-              {draftCards.map(draftCard)}
-              {listed.map(card)}
-            </Shelf>
-            {state.threads.length === 0 && draftCards.length === 0 ? (
-              <li className="pult-panel-empty">
-                No threads in{" "}
-                {state.environments.map((environment) => environment.label).join(", ")}.
-              </li>
-            ) : null}
-          </>
-        )}
-        <Shelf name="working" label="Working" count={working.length} empty={working.length === 0}>
-          {working.map(card)}
-        </Shelf>
-        <Shelf name="snoozed" label="Snoozed" count={snoozed.length} empty={snoozed.length === 0}>
-          {snoozed.map(card)}
-        </Shelf>
-        <Shelf
-          name="settled"
-          label="Settled"
-          count={state.settled.count}
-          empty={settled.length === 0 && state.settled.count === 0}
-        >
-          <SettledTail
-            threads={settled}
-            shelf={state.settled}
-            selection={selectedCard}
-            render={card}
-          />
-        </Shelf>
-        <LimitsShelf now={now} />
+        {/* One keyed list, so a shelf joining or leaving the top run keeps its state. */}
+        {[...shown.slice(0, top).map(shelf), notice, ...shown.slice(top).map(shelf)]}
       </ul>
     </div>
   );
 }
 
 /**
- * Inbox, Working, Snoozed or Settled under its header with its count
- * (`count`, none for Inbox, Settled's every settled thread, where it holds
+ * Stars, Inbox, Working, Snoozed or Settled under its header with its count
+ * (`count`, none for Stars and Inbox, Settled's every settled thread, where it holds
  * more than it lists), Inbox's draft cards first among its
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
  * in the tray (`TrayShelves.tsx`), which is highlighted while the shelf
- * holds the selected card. Closed or not, it persists in localStorage
+ * holds the selected card. Where it is persists in localStorage
  * (`shelves.tsx`).
  */
 function Shelf({
   name,
-  label,
+  lower,
   count,
   empty,
   children,
 }: {
-  name: "inbox" | "working" | "snoozed" | "settled";
-  label: string;
+  name: "stars" | "inbox" | "working" | "snoozed" | "settled";
+  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
+  lower: boolean;
   count?: number;
   empty: boolean;
   children: React.ReactNode;
 }) {
-  const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get).has(name);
   const element = useRef<HTMLLIElement>(null);
   // Mounted while empty too, so a reveal asked of an empty shelf is answered now, not when a card lands.
   useReveal(name, element);
-  if (closed || empty) return null;
+  if (empty) return null;
   return (
-    <li ref={element} className={`pult-shelf pult-shelf-${name}`}>
-      <ShelfHeader shelf={name} label={label} count={count} />
+    <li
+      ref={element}
+      className={`pult-shelf pult-shelf-${name}${lower ? " pult-shelf-lower" : ""}`}
+    >
+      <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} />
       <ul className="pult-shelf-cards">{children}</ul>
     </li>
   );

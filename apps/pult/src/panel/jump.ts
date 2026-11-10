@@ -33,7 +33,7 @@ import {
   SETTLED_TAIL_INITIAL_COUNT,
   starKey,
 } from "./order.ts";
-import { closedShelves } from "./shelves.tsx";
+import { shelfOrder } from "./shelves.tsx";
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft's (`draftKey`), a Star's (`starKey`), `explorer` for the Explorer workspace, or nothing. */
 export function selectionSnapshot(): string | undefined {
@@ -83,7 +83,7 @@ function currentTargets(): JumpTarget<URI>[] {
     drafts: draftCards(projectDrafts.get(), selectedDraft(), new Set(environmentIds), isStarDraft),
     threads,
     selection: selectedCardKey(),
-    closed: closedShelves.get(),
+    open: shelfOrder.get().open,
     settledCount,
   });
 }
@@ -172,7 +172,7 @@ function followJumpKeys(): void {
   threadStore.subscribe(refreshHints);
   onDidSelectThread(refreshHints);
   openExplorerFiles.subscribe(refreshHints);
-  closedShelves.subscribe(refreshHints);
+  shelfOrder.subscribe(refreshHints);
   starStore.subscribe(refreshHints);
   starEnabled.subscribe(refreshHints);
 }
@@ -194,7 +194,7 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
 
 /**
  * Cmd+1 to Cmd+9 (Ctrl off the Mac), upstream's thread jumps: the left
- * panel's Nth row (`jumpTargets`), a Star, an Explorer file, a draft or a thread,
+ * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft or a thread,
  * whether or not the panel shows (`followJumpKeys`). Each is a command too,
  * `pult-shell.jump.1` to `.9`, for another binding; not in the palette,
  * where Pult: Open Thread… is. Registered before the workbench starts.

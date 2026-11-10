@@ -7,65 +7,100 @@ import {
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { type RefObject, useEffect, useSyncExternalStore } from "react";
 
-import { CLOSABLE_SHELVES, type ClosableShelf } from "./order.ts";
+import {
+  closeIn,
+  DEFAULT_SHELF_ORDER,
+  openIn,
+  PANEL_SHELVES,
+  type PanelShelf,
+  parseShelfOrder,
+  type ShelfOrder,
+} from "./order.ts";
 
-/** Each closable shelf's label and codicon, its header's and its tray icon's (`TrayShelves.tsx`). */
-export const SHELF_ICONS: Record<ClosableShelf, { readonly label: string; readonly icon: string }> =
-  {
-    explorer: { label: "Explorer", icon: "files" },
-    inbox: { label: "Inbox", icon: "inbox" },
-    working: { label: "Working", icon: "pulse" },
-    snoozed: { label: "Snoozed", icon: "bell-slash" },
-    settled: { label: "Settled", icon: "check" },
-    limits: { label: "Limits", icon: "dashboard" },
-  };
+/** Each shelf's label and codicon, its header's and its tray icon's (`TrayShelves.tsx`). */
+export const SHELF_ICONS: Record<PanelShelf, { readonly label: string; readonly icon: string }> = {
+  stars: { label: "Stars", icon: "star-empty" },
+  explorer: { label: "Explorer", icon: "files" },
+  inbox: { label: "Inbox", icon: "inbox" },
+  working: { label: "Working", icon: "pulse" },
+  snoozed: { label: "Snoozed", icon: "bell-slash" },
+  settled: { label: "Settled", icon: "check" },
+  limits: { label: "Limits", icon: "dashboard" },
+};
 
-/** Where a shelf keeps whether it is closed, as upstream keeps its shelves' state. */
-const closedKey = (shelf: ClosableShelf) => `pult-shell.panel.${shelf}-closed`;
+/** Where the shelves' order is kept, as upstream keeps its shelves' state. */
+const ORDER_KEY = "pult-shell.panel.shelves";
+/** Where each shelf kept whether it was closed before the order, read once as the first closed list. */
+const legacyClosedKey = (shelf: PanelShelf) => `pult-shell.panel.${shelf}-closed`;
 
-let closed: ReadonlySet<ClosableShelf> = new Set(
-  CLOSABLE_SHELVES.filter((shelf) => localStorage.getItem(closedKey(shelf)) === "true"),
-);
+function loadOrder(): ShelfOrder {
+  const stored = localStorage.getItem(ORDER_KEY);
+  if (stored !== null) {
+    const order = parseShelfOrder(parseJson(stored));
+    if (order !== null) return order;
+    console.error(`Pult: ${ORDER_KEY} holds no shelf order; the panel starts from its default.`);
+    return DEFAULT_SHELF_ORDER;
+  }
+  const order = PANEL_SHELVES.reduce(
+    (each, shelf) =>
+      localStorage.getItem(legacyClosedKey(shelf)) === "true" ? closeIn(each, shelf) : each,
+    DEFAULT_SHELF_ORDER,
+  );
+  for (const shelf of PANEL_SHELVES) localStorage.removeItem(legacyClosedKey(shelf));
+  return order;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+let order = loadOrder();
 /** The latest ask to bring an opened shelf into view, numbered so a shelf answers each once. */
-let reveal: { readonly shelf: ClosableShelf; readonly serial: number } | null = null;
+let reveal: { readonly shelf: PanelShelf; readonly serial: number } | null = null;
 let revealed = 0;
 const listeners = new Set<() => void>();
 
-function notify(): void {
+function update(next: ShelfOrder): void {
+  if (next !== order) {
+    order = next;
+    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+  }
   for (const listener of listeners) listener();
 }
 
 /**
- * The closed shelves of the Pult tab, kept in localStorage, each open until
- * closed: a closed shelf leaves the panel, its icon in the tray
- * (`TrayShelves.tsx`), and its rows the jumps (`jump.ts`).
+ * The Pult tab's shelves in their two lists, kept in localStorage: the open
+ * ones in the panel's order, top to bottom, and the closed ones in the tray's
+ * (`TrayShelves.tsx`), left to right, whose rows none of the jumps reach
+ * (`jump.ts`). Opening a shelf puts it at the panel's bottom, closing one
+ * puts it at the tray's right end.
  */
-export const closedShelves = {
-  get: () => closed,
+export const shelfOrder = {
+  get: () => order,
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
 };
 
-export function closeShelf(shelf: ClosableShelf): void {
-  if (closed.has(shelf)) return;
-  closed = new Set([...closed, shelf]);
-  localStorage.setItem(closedKey(shelf), "true");
-  notify();
+/** Closes the shelf, its icon at the tray's right end, or at `at` among the closed (`openExplorerShelf`'s undoing). */
+export function closeShelf(shelf: PanelShelf, at?: number): void {
+  update(closeIn(order, shelf, at));
 }
 
-/** Opens the shelf, from its tray icon or a command, and brings it into view (`useReveal`). */
-export function openShelf(shelf: ClosableShelf): void {
-  closed = new Set([...closed].filter((each) => each !== shelf));
-  localStorage.removeItem(closedKey(shelf));
+/** Opens the shelf at the panel's bottom, from its tray icon or a command, an open one kept in place, and brings it into view (`useReveal`). */
+export function openShelf(shelf: PanelShelf): void {
   reveal = { shelf, serial: (reveal?.serial ?? 0) + 1 };
-  notify();
+  update(openIn(order, shelf));
 }
 
 /** Scrolls the shelf's `element` into view once for each `openShelf` of it. */
-export function useReveal(shelf: ClosableShelf, element: RefObject<HTMLElement | null>): void {
-  const asked = useSyncExternalStore(closedShelves.subscribe, () => reveal);
+export function useReveal(shelf: PanelShelf, element: RefObject<HTMLElement | null>): void {
+  const asked = useSyncExternalStore(shelfOrder.subscribe, () => reveal);
   useEffect(() => {
     if (asked?.shelf !== shelf || asked.serial === revealed) return;
     revealed = asked.serial;
@@ -74,7 +109,7 @@ export function useReveal(shelf: ClosableShelf, element: RefObject<HTMLElement |
 }
 
 /**
- * A closable shelf's header: its label, its count when one is given, its
+ * A shelf's header: its label, its count when one is given, its
  * `actions` and Close, shown on hover or keyboard focus; its right-click its
  * `menu`, then Close Shelf. `title` is its tooltip. Closing runs `onClose`,
  * which closes the shelf by default. `icon`, a codicon, leads the label, the
@@ -95,7 +130,7 @@ export function ShelfHeader({
   openTitle,
   selected = false,
 }: {
-  shelf: ClosableShelf;
+  shelf: PanelShelf;
   label: string;
   count?: number;
   title?: string;

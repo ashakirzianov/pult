@@ -3,14 +3,16 @@ import { useSyncExternalStore } from "react";
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
+import { starStore } from "../stars/model.ts";
+import { starEnabled } from "../stars/settings.ts";
 import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { isStarDraft, projectDrafts } from "./drafts.ts";
-import { CLOSABLE_SHELVES, type ClosableShelf, draftCards, draftKey, keyOf } from "./order.ts";
+import { draftCards, draftKey, keyOf, type PanelShelf, starKey } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
-import { closedShelves, openShelf, SHELF_ICONS } from "./shelves.tsx";
+import { openShelf, SHELF_ICONS, shelfOrder } from "./shelves.tsx";
 
 /** What a closed shelf's icon tells: its count as a badge, if any; whether it holds nothing; whether it holds the selected card; and its tooltip. */
 interface ShelfIcon {
@@ -25,18 +27,24 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * The closed shelves' icons at the tray's left end, in the panel's
- * order (`CLOSABLE_SHELVES`); a click opens the shelf on the Pult tab and
- * brings it into view, the Explorer shelf's the Explorer tab with it,
- * provisionally (`openExplorerShelf`). Each carries its shelf's count as a badge in the
- * accent colour, as Source Control's tab does, but Settled, whose count is in
- * its tooltip, and Limits, whose badge is the count of warning windows, none
- * while nothing warns; dimmed with no badge while the shelf holds nothing;
- * highlighted as the open tab is while the shelf holds the selected card, the
- * Explorer shelf while the Explorer workspace is selected.
+ * The closed shelves' icons from the tray's left end, in the order they
+ * were closed, the last closed rightmost (`shelfOrder`), the Stars' none
+ * while Show Star is off; a click opens the shelf at the bottom of the Pult
+ * tab and brings it into view, the Explorer shelf's the Explorer tab with
+ * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
+ * a badge in the accent colour, as Source Control's tab does, but Stars,
+ * which has none yet, Settled, whose count is in its tooltip, and Limits,
+ * whose badge is the count of warning windows, none while nothing warns;
+ * dimmed with no badge while the shelf holds nothing; highlighted as the
+ * open tab is while the shelf holds the selected card, the Stars' while a
+ * Star is selected, the Explorer shelf's while the Explorer workspace is.
  */
 export function TrayShelves() {
-  const closed = useSyncExternalStore(closedShelves.subscribe, closedShelves.get);
+  const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
+  const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
+  // The Stars' shelf is no shelf at all while Show Star is off.
+  const closed = closedShelves.filter((shelf) => shelf !== "stars" || starsShown);
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
@@ -44,7 +52,7 @@ export function TrayShelves() {
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  if (closed.size === 0) return null;
+  if (closed.length === 0) return null;
   // Read on the selection's change, which re-renders the tray.
   const selectedCard = selectedCardKey();
   const drafts = draftCards(
@@ -56,9 +64,17 @@ export function TrayShelves() {
   const on = (shelf: ShelfName) => state.threads.filter((thread) => thread.shelf === shelf);
   const holdsSelected = (shelf: ShelfName) =>
     on(shelf).some((thread) => keyOf(thread) === selectedCard);
-  const icon = (shelf: ClosableShelf): ShelfIcon => {
+  const icon = (shelf: PanelShelf): ShelfIcon => {
     const { label } = SHELF_ICONS[shelf];
     switch (shelf) {
+      case "stars":
+        // No count until the Stars have asks.
+        return {
+          badge: undefined,
+          empty: stars.length === 0,
+          selected: stars.some((star) => starKey(star.id) === selection),
+          title: label,
+        };
       case "explorer":
         return {
           badge: undefined,
@@ -110,7 +126,7 @@ export function TrayShelves() {
   };
   return (
     <div className="pult-panel-tabs pult-tray-shelves" aria-label="Closed shelves">
-      {CLOSABLE_SHELVES.filter((shelf) => closed.has(shelf)).map((shelf) => {
+      {closed.map((shelf) => {
         const { badge, empty, selected, title } = icon(shelf);
         return (
           <button
