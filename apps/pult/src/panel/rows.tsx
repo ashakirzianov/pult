@@ -91,18 +91,18 @@ function PanelHeader() {
 
 /**
  * The left panel's bottom row, the tray: every icon in it is something not
- * showing, which a click shows. The tabs at its left end (`PanelTabs.tsx`;
- * in Pult's mode Source Control's alone, while its tab is not open), the
- * closed shelves' icons beside the gear (`TrayShelves.tsx`), so the tabs
- * coming and going move none of them, and rightmost the gear, which opens
- * the Pult settings page.
+ * showing, which a click shows. The closed shelves' icons at its left end
+ * (`TrayShelves.tsx`), the tabs beside the gear (`PanelTabs.tsx`; in Pult's
+ * mode Source Control's alone, while its tab is not open), so the tabs
+ * coming and going move none of the shelves', and rightmost the gear, which
+ * opens the Pult settings page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
   return (
     <>
-      <PanelTabs store={store} />
-      <span className="pult-panel-row-spacer" />
       <TrayShelves />
+      <span className="pult-panel-row-spacer" />
+      <PanelTabs store={store} />
       <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>
   );

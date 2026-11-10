@@ -133,7 +133,7 @@ export async function panelTabStore() {
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
 /**
- * The left panel's tabs, at its tray's left end (`rows.tsx`): a button per
+ * The left panel's tabs, in its tray beside the gear (`rows.tsx`): a button per
  * sidebar tab, the open one on the background the others take on hover, in
  * place of VS Code's activity bar, which the shell hides
  * (`workbench.activityBar.location`), since at the sidebar's top or bottom

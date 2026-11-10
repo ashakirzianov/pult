@@ -25,7 +25,7 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * The closed shelves' icons in the tray, beside the gear, in the panel's
+ * The closed shelves' icons at the tray's left end, in the panel's
  * order (`CLOSABLE_SHELVES`); a click opens the shelf on the Pult tab and
  * brings it into view, the Explorer shelf's the Explorer tab with it,
  * provisionally (`openExplorerShelf`). Each carries its shelf's count as a badge in the

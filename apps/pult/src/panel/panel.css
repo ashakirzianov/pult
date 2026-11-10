@@ -906,10 +906,12 @@
   text-transform: uppercase;
 }
 
-/* The closed shelves' icons (src/panel/TrayShelves.tsx), beside the gear; dimmed while the shelf holds nothing. */
-.pult-tray-shelves {
+/* The tabs (src/panel/PanelTabs.tsx), beside the gear. */
+.pult-panel-tray > .pult-panel-tabs[role="tablist"] {
   margin-right: 2px;
 }
+
+/* The closed shelves' icons (src/panel/TrayShelves.tsx), at the tray's left end; dimmed while the shelf holds nothing. */
 
 .pult-tray-shelf-empty {
   opacity: 0.5;
