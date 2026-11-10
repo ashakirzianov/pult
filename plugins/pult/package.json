@@ -1,0 +1,17 @@
+{
+  "name": "pult-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pult's server plugin, compiled into the server (apps/server/src/plugins/bundled.ts).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "effect-tsgo tsrs --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

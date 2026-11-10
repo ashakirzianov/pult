@@ -7,6 +7,8 @@ packages:
   - infra/*
   - oxlint-plugin-t3code
   - packages/*
+  # Pult's server plugin, compiled into the server (apps/server/src/plugins/bundled.ts).
+  - plugins/*
   - scripts
 
 # Successor to onlyBuiltDependencies/ignoredBuiltDependencies (pnpm 11+).

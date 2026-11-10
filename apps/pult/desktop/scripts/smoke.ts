@@ -3,8 +3,9 @@
  * modelled on upstream's `scripts/smoke-desktop-app.ts`: mounts Pult.app's
  * dmg, launches the app against a temporary `T3CODE_HOME` seeded with
  * upstream's fixture database, and passes once the page is connected to the
- * app's own server (`html[data-pult-local="connected"]`) and the fixture's
- * thread is in the panel. A build whose server or page cannot start fails here,
+ * app's own server (`html[data-pult-local="connected"]`), the fixture's
+ * thread is in the panel, and the server lists its bundled `pult` plugin as
+ * loaded. A build whose server, plugin or page cannot start fails here,
  * before it is published.
  *
  *   node apps/pult/desktop/scripts/smoke.ts --dmg <Pult-x.y.z-arm64.dmg> [--artifacts-dir <dir>]
@@ -27,6 +28,12 @@ const root = NodePath.resolve(import.meta.dirname, "../../../..");
 const FIXTURE_DB = NodePath.join(root, "scripts/fixtures/desktop-launch/statev2.sqlite");
 const THREAD_TITLE = "Release launch check";
 const STEP_TIMEOUT_MS = 90_000;
+
+/** The part of upstream's `window.desktopBridge` the plugin check reads. */
+interface LocalServerBridge {
+  getLocalEnvironmentBootstraps(): ReadonlyArray<{ id: string; httpBaseUrl: string | null }>;
+  getLocalEnvironmentBearerToken(): Promise<string>;
+}
 
 const { values } = NodeUtil.parseArgs({
   options: { dmg: { type: "string" }, "artifacts-dir": { type: "string" } },
@@ -87,7 +94,28 @@ try {
     .locator(".pult-card-title", { hasText: THREAD_TITLE })
     .first()
     .waitFor({ timeout: STEP_TIMEOUT_MS });
-  console.log("Pult smoke test passed: the server started, the page connected, the thread shows.");
+  step = "listing the server's plugins";
+  const local = await page.evaluate(async () => {
+    const bridge = (window as unknown as { desktopBridge: LocalServerBridge }).desktopBridge;
+    const primary = bridge.getLocalEnvironmentBootstraps().find((entry) => entry.id === "primary");
+    return {
+      httpBaseUrl: primary?.httpBaseUrl,
+      token: await bridge.getLocalEnvironmentBearerToken(),
+    };
+  });
+  if (!local.httpBaseUrl) throw new Error("The app reports no URL for its own server.");
+  const response = await fetch(new URL("/api/plugins", local.httpBaseUrl), {
+    headers: { authorization: `Bearer ${local.token}` },
+  });
+  if (!response.ok) throw new Error(`GET /api/plugins answered ${response.status}.`);
+  const plugins = (await response.json()) as ReadonlyArray<{ name: string; status: string }>;
+  const pult = plugins.find((plugin) => plugin.name === "pult");
+  if (pult?.status !== "loaded") {
+    throw new Error(`The server lists the pult plugin as ${JSON.stringify(pult ?? "absent")}.`);
+  }
+  console.log(
+    "Pult smoke test passed: the server started with its plugin, the page connected, the thread shows.",
+  );
 } catch (error) {
   console.error(`Pult smoke test failed while ${step}.`);
   console.error(error instanceof Error ? error.message : error);

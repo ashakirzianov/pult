@@ -463,6 +463,26 @@ export default defineConfig({
         },
       },
       {
+        // Pult's plugin takes the server's modules and Effect only through its host entry
+        // (docs/internals/plugins.md, Bundled plugins); its tests may reach the loader.
+        files: ["plugins/pult/src/**"],
+        excludeFiles: ["plugins/pult/src/host.ts", "plugins/pult/src/**/*.test.ts"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            {
+              paths: RESTRICTED_IMPORT_PATHS,
+              patterns: [
+                {
+                  group: ["effect", "effect/*", "@effect/*", "**/apps/server/**"],
+                  message: "Import the server's modules and Effect from the plugin's ./host.ts.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
         files: ["apps/mobile/src/**"],
         rules: {
           "t3code/no-mobile-uniwind-theme-escape-hatches": "error",
