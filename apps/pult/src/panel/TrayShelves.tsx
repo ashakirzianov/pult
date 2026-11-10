@@ -72,7 +72,12 @@ export function TrayShelves() {
         return {
           badge: undefined,
           empty: stars.length === 0,
-          selected: stars.some((star) => starKey(star.id) === selection),
+          // As its card in the panel: with the Star, or with one of its conversation's subagents.
+          selected: stars.some(
+            (star) =>
+              starKey(star.id) === selection ||
+              (star.current !== null && keyOf(star.current) === selectedCard),
+          ),
           title: label,
         };
       case "explorer":

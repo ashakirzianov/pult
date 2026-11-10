@@ -46,6 +46,7 @@ function loadOrder(): ShelfOrder {
       localStorage.getItem(legacyClosedKey(shelf)) === "true" ? closeIn(each, shelf) : each,
     DEFAULT_SHELF_ORDER,
   );
+  localStorage.setItem(ORDER_KEY, JSON.stringify(order));
   for (const shelf of PANEL_SHELVES) localStorage.removeItem(legacyClosedKey(shelf));
   return order;
 }

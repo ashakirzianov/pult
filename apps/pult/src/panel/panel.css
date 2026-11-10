@@ -34,11 +34,6 @@
   flex: none;
 }
 
-/* The cards' margins, which a column does not collapse, as a list's would. */
-.pult-panel-cards > .pult-card + .pult-card {
-  margin-top: 0;
-}
-
 .pult-panel-empty {
   padding: 8px 6px;
   color: var(--vscode-descriptionForeground);
