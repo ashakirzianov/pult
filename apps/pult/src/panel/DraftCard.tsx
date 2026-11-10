@@ -6,7 +6,7 @@ import { JumpHint } from "./JumpHint.tsx";
 import { draftKey } from "./order.ts";
 
 /**
- * A project's draft of a new thread, Ready's first cards: a thread card's
+ * A project's draft of a new thread, Inbox's first cards: a thread card's
  * look, the project's icon and name, its `environment`'s label beside them
  * while there are several, with a pen where a thread's status sits, then
  * its `preview`, the prompt's first line, or "New thread" for an empty one.

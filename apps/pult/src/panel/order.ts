@@ -7,7 +7,7 @@ import { scopedKey, type ShelfName, type ShellThread } from "../threads/store.ts
  */
 export const CLOSABLE_SHELVES = [
   "explorer",
-  "ready",
+  "inbox",
   "working",
   "snoozed",
   "settled",
@@ -82,7 +82,7 @@ export function explorerEntries<File extends FileRef>(
 }
 
 /**
- * Ready's draft cards: the drafts of held environments with something in
+ * Inbox's draft cards: the drafts of held environments with something in
  * them, newest first, and the `selected` one even while empty, first; none
  * of a Star's project (`isStars`), whose draft is the Star's own.
  */
@@ -132,7 +132,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly environmentIds: ReadonlyArray<string>;
   /** The Explorer shelf's open files. */
   readonly files: ReadonlyArray<File>;
-  /** Ready's draft cards (`draftCards`). */
+  /** Inbox's draft cards (`draftCards`). */
   readonly drafts: ReadonlyArray<ProjectDraft>;
   /** The store's threads, in its order. */
   readonly threads: ReadonlyArray<Thread>;
@@ -148,7 +148,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * The panel's rows Cmd+1 to Cmd+9 reach, top to bottom as the panel shows
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
  * rows: the Stars' cards first, then the Explorer shelf's open files, its
- * environments' rows left out, then the cards, Ready's drafts and threads,
+ * environments' rows left out, then the cards, Inbox's drafts and threads,
  * and the Working, Snoozed and Settled shelves'; a closed shelf reaches
  * none. The Limits shelf's
  * rows, last, are none: they select nothing.
@@ -177,7 +177,7 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     key: keyOf(thread),
     thread,
   });
-  const ready: JumpTarget<File, Thread>[] = [
+  const inbox: JumpTarget<File, Thread>[] = [
     ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
       kind: "draft",
       key: draftKey(draft),
@@ -187,7 +187,7 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
   ];
   return [
     ...files,
-    ...(open("ready") ? ready : []),
+    ...(open("inbox") ? inbox : []),
     ...(open("working") ? on("working").map(threadTarget) : []),
     ...(open("snoozed") ? on("snoozed").map(threadTarget) : []),
     ...(open("settled")

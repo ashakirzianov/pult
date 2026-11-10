@@ -31,7 +31,7 @@ const draft = (projectId: string, environmentId = "env") => ({
 
 const ALL_CLOSED: ReadonlySet<ClosableShelf> = new Set([
   "explorer",
-  "ready",
+  "inbox",
   "working",
   "snoozed",
   "settled",

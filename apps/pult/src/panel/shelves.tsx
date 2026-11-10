@@ -13,7 +13,7 @@ import { CLOSABLE_SHELVES, type ClosableShelf } from "./order.ts";
 export const SHELF_ICONS: Record<ClosableShelf, { readonly label: string; readonly icon: string }> =
   {
     explorer: { label: "Explorer", icon: "files" },
-    ready: { label: "Ready", icon: "inbox" },
+    inbox: { label: "Inbox", icon: "inbox" },
     working: { label: "Working", icon: "pulse" },
     snoozed: { label: "Snoozed", icon: "bell-slash" },
     settled: { label: "Settled", icon: "check" },

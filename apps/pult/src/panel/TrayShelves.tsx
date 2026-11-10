@@ -66,7 +66,7 @@ export function TrayShelves() {
           selected: selection === "explorer",
           title: label,
         };
-      case "ready": {
+      case "inbox": {
         // Its cards: the drafts', then the pinned and active threads'.
         const threads = [...on("pinned"), ...on("active")];
         const count = drafts.length + threads.length;

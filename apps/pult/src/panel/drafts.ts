@@ -43,7 +43,7 @@ export function isStarDraft(draft: Pick<ProjectDraft, "environmentId" | "project
   return isStarRoot(threadStore.project(draft.environmentId, draft.projectId)?.root);
 }
 
-/** The projects' unsent drafts, for Ready's draft cards. */
+/** The projects' unsent drafts, for Inbox's draft cards. */
 export const projectDrafts = lazyList<ReadonlyArray<ProjectDraft>>(
   [],
   (module) => module.projectDrafts,

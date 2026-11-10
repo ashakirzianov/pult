@@ -117,7 +117,7 @@ function subagentsByRoot(
 /**
  * The Pult tab's view, under the sidebar's title row: every held
  * environment's threads as cards, in the store's order, which is upstream's:
- * pinned and active under Ready, then the Working, Snoozed and
+ * pinned and active under Inbox, then the Working, Snoozed and
  * Settled shelves, each open until closed, when its icon goes to the tray
  * (`TrayShelves.tsx`), and left out while it holds nothing. While the page
  * holds several environments, each card names its
@@ -126,7 +126,7 @@ function subagentsByRoot(
  * expanded one. The Stars' cards come first, under no header, while Show
  * Star is on (`StarCard.tsx`, `src/stars/`); a Star's threads have no card
  * of their own. The Explorer shelf comes next (`ExplorerShelf.tsx`), and
- * Ready's first cards are the projects' drafts of new threads that hold
+ * Inbox's first cards are the projects' drafts of new threads that hold
  * something (`drafts.ts`), newest first, and the selected draft. Cmd+1 to
  * Cmd+9 jump to its rows in this order (`order.ts`, `jump.ts`). The Limits
  * shelf comes last (`LimitsShelf.tsx`), its rows no jump targets.
@@ -224,8 +224,8 @@ export function PanelView() {
         ) : (
           <>
             <Shelf
-              name="ready"
-              label="Ready"
+              name="inbox"
+              label="Inbox"
               empty={listed.length === 0 && draftCards.length === 0}
             >
               {draftCards.map(draftCard)}
@@ -265,9 +265,9 @@ export function PanelView() {
 }
 
 /**
- * Ready, Working, Snoozed or Settled under its header with its count
- * (`count`, none for Ready, Settled's every settled thread, where it holds
- * more than it lists), Ready's draft cards first among its
+ * Inbox, Working, Snoozed or Settled under its header with its count
+ * (`count`, none for Inbox, Settled's every settled thread, where it holds
+ * more than it lists), Inbox's draft cards first among its
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
  * in the tray (`TrayShelves.tsx`), which is highlighted while the shelf
  * holds the selected card. Closed or not, it persists in localStorage
@@ -280,7 +280,7 @@ function Shelf({
   empty,
   children,
 }: {
-  name: "ready" | "working" | "snoozed" | "settled";
+  name: "inbox" | "working" | "snoozed" | "settled";
   label: string;
   count?: number;
   empty: boolean;

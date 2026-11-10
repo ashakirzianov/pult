@@ -348,7 +348,7 @@
   font-size: 14px;
 }
 
-/* A shelf (Explorer, Ready, Working, Snoozed, Settled, Limits): its header, label, count and Close, then its rows. */
+/* A shelf (Explorer, Inbox, Working, Snoozed, Settled, Limits): its header, label, count and Close, then its rows. */
 .pult-shelf {
   margin-top: 6px;
 }
@@ -357,7 +357,7 @@
   margin-top: 0;
 }
 
-/* The first shelf below Ready (Working, Snoozed, Settled or Limits) takes the room Ready
+/* The first shelf below Inbox (Working, Snoozed, Settled or Limits) takes the room Inbox
    leaves, as upstream's lower shelves sit at its sidebar's bottom; the rest follow it. */
 .pult-panel-cards
   > :is(.pult-shelf-working, .pult-shelf-snoozed, .pult-shelf-settled, .pult-shelf-limits):not(
