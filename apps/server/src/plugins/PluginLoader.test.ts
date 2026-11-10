@@ -89,11 +89,36 @@ const readCurrent = (name: string) =>
     return path.basename(yield* fs.readLink(path.join(yield* pluginsDir, name, "current")));
   });
 
-/** Builds the loader (which loads every `current`) and keeps it alive for the test's scope. */
-const startLoader = Effect.gen(function* () {
-  const context = yield* Layer.build(PluginLoader.layer);
-  return Context.get(context, PluginLoader.PluginLoader);
-});
+/**
+ * Builds the loader (which activates the bundled plugins and loads every `current`)
+ * and keeps it alive for the test's scope.
+ */
+const startLoaderWith = (bundled: PluginLoader.BundledPlugins) =>
+  Effect.gen(function* () {
+    const context = yield* Layer.build(PluginLoader.layer(bundled));
+    return Context.get(context, PluginLoader.PluginLoader);
+  });
+const startLoader = startLoaderWith({});
+
+/** A bundled plugin serving its build id, or failing its activation with `failure`. */
+const bundledPlugin =
+  (name: string, failure?: string): PluginLoader.BundledPlugins[string] =>
+  () =>
+    Promise.resolve({
+      activate: (host: PluginLoader.PluginHost) =>
+        Effect.gen(function* () {
+          events().push(`activate ${name} ${host.build}`);
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              events().push(`dispose ${name} ${host.build}`);
+            }),
+          );
+          if (failure !== undefined) return yield* Effect.fail(failure);
+          yield* host.serve((_request, path) =>
+            Effect.succeed(HttpServerResponse.text(`${host.build} ${path}`)),
+          );
+        }),
+    });
 
 const toolDescription = (name: string) =>
   Effect.map(
@@ -312,4 +337,62 @@ it.effect("reload of an unknown plugin or build fails without touching anything"
       expect((yield* loader.list)[0]?.status).toBe("loaded");
     }),
   ),
+);
+
+it.effect("a bundled plugin activates at startup as build bundled, over its installed folder", () =>
+  Effect.gen(function* () {
+    events().length = 0;
+    // An installed build under a bundled name is ignored.
+    yield* writeBuild("gamma", "b1", pluginSource("gamma", "b1"));
+    yield* pointCurrent("gamma", "b1");
+    const loader = yield* startLoaderWith({ gamma: bundledPlugin("gamma") });
+
+    const listed = yield* loader.list;
+    expect(listed.map(({ name, build, status }) => ({ name, build, status }))).toEqual([
+      { name: "gamma", build: "bundled", status: "loaded" },
+    ]);
+    expect(events()).toEqual(["activate gamma bundled"]);
+    expect(
+      yield* answerOf("gamma", "/ping").pipe(
+        Effect.provideService(PluginLoader.PluginLoader, loader),
+      ),
+    ).toBe("bundled /ping");
+  }).pipe(Effect.scoped, Effect.provide(layerBase)),
+);
+
+it.effect("a bundled plugin that fails to activate is listed as failed and the rest load", () =>
+  Effect.gen(function* () {
+    events().length = 0;
+    yield* writeBuild("alpha", "b1", pluginSource("alpha", "b1"));
+    yield* pointCurrent("alpha", "b1");
+    const loader = yield* startLoaderWith({ gamma: bundledPlugin("gamma", "boom") });
+
+    const listed = yield* loader.list;
+    expect(listed.map(({ name, build, status }) => ({ name, build, status }))).toEqual([
+      { name: "alpha", build: "b1", status: "loaded" },
+      { name: "gamma", build: undefined, status: "failed" },
+    ]);
+    expect(listed[1]?.error).toContain("boom");
+    expect(events()).toEqual([
+      "activate gamma bundled",
+      "dispose gamma bundled",
+      "activate alpha b1",
+    ]);
+    expect(loader.route("gamma")).toBeUndefined();
+  }).pipe(Effect.scoped, Effect.provide(layerBase)),
+);
+
+it.effect("a bundled plugin refuses a reload and keeps running", () =>
+  Effect.gen(function* () {
+    events().length = 0;
+    yield* writeBuild("gamma", "b1", pluginSource("gamma", "b1"));
+    const loader = yield* startLoaderWith({ gamma: bundledPlugin("gamma") });
+
+    const failure = yield* Effect.flip(loader.reload("gamma", "b1"));
+    expect(failure._tag).toBe("PluginNotReloadableError");
+    expect(events()).toEqual(["activate gamma bundled"]);
+    const [status] = yield* loader.list;
+    expect(status?.build).toBe("bundled");
+    expect(status?.status).toBe("loaded");
+  }).pipe(Effect.scoped, Effect.provide(layerBase)),
 );

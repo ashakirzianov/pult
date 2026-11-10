@@ -18,6 +18,7 @@ import {
   failEnvironmentInternal,
   failEnvironmentScopeRequired,
 } from "../auth/http.ts";
+import { bundledPlugins } from "./bundled.ts";
 import * as PluginLoader from "./PluginLoader.ts";
 
 const authenticate = Effect.fn("plugins.authenticate")(function* (scope: AuthEnvironmentScope) {
@@ -130,5 +131,5 @@ export const layerRoutes = (loader: PluginLoader.PluginLoader["Service"]) =>
   Layer.mergeAll(layerList(loader), layerReload(loader), layerPluginRoutes(loader));
 
 export const layer = Layer.unwrap(Effect.map(PluginLoader.PluginLoader, layerRoutes)).pipe(
-  Layer.provide(PluginLoader.layer),
+  Layer.provide(PluginLoader.layer(bundledPlugins)),
 );

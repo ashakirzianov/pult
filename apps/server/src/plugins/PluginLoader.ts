@@ -1,7 +1,8 @@
 /**
- * Loads in-process plugins from `<baseDir>/plugins/<name>/builds/<build>/main.mjs`
- * and swaps them on request: a reload imports the new build first, points
- * `current` at it on success, then closes the old build's scope. See docs/internals/plugins.md.
+ * Loads in-process plugins: the bundled ones compiled into the server, and the installed
+ * ones from `<baseDir>/plugins/<name>/builds/<build>/main.mjs`, which it swaps on request:
+ * a reload imports the new build first, points `current` at it on success, then closes
+ * the old build's scope. See docs/internals/plugins.md.
  */
 import * as NodeModule from "node:module";
 import * as NodeURL from "node:url";
@@ -36,6 +37,15 @@ export class PluginNotFoundError extends Schema.TaggedError<PluginNotFoundError>
 ) {
   override get message(): string {
     return `No plugin named "${this.plugin}" is installed.`;
+  }
+}
+
+export class PluginNotReloadableError extends Schema.TaggedError<PluginNotReloadableError>()(
+  "PluginNotReloadableError",
+  { plugin: Schema.String },
+) {
+  override get message(): string {
+    return `Plugin "${this.plugin}" is compiled into the server; it changes only with the server's build.`;
   }
 }
 
@@ -107,7 +117,7 @@ export type PluginLoadError =
   | PluginCurrentLinkError;
 
 /** The error with its underlying cause, for the reload answer and the status list. */
-export const describeLoadError = (error: PluginLoadError): string =>
+export const describeLoadError = (error: PluginLoadError | PluginNotReloadableError): string =>
   "cause" in error ? `${error.message} ${describeCause(error.cause)}` : error.message;
 
 const describeCause = (cause: unknown): string =>
@@ -155,6 +165,18 @@ interface PluginModule {
   readonly activate?: unknown;
 }
 
+/** The build id a bundled plugin is listed with. */
+const BUNDLED_BUILD = "bundled";
+
+/**
+ * Plugins compiled into the server, by name: each imports its module, which
+ * shares the server's module graph and commit, so the identity and build checks
+ * are skipped. A bundled name is never reloaded, and `<baseDir>/plugins/<name>` is ignored.
+ */
+export type BundledPlugins = Readonly<
+  Record<string, () => Promise<{ readonly activate: (host: PluginHost) => unknown }>>
+>;
+
 interface RunningBuild {
   readonly build: string;
   readonly scope: Scope.Closeable;
@@ -175,7 +197,10 @@ export class PluginLoader extends Context.Service<
     readonly reload: (
       name: string,
       build: string,
-    ) => Effect.Effect<PluginStatus, PluginNotFoundError | PluginLoadError>;
+    ) => Effect.Effect<
+      PluginStatus,
+      PluginNotFoundError | PluginNotReloadableError | PluginLoadError
+    >;
     /** The route handler of the plugin's running build, if it registered one. */
     readonly route: (name: string) => PluginRouteHandler | undefined;
   }
@@ -229,7 +254,7 @@ const registerHostResolution = (hostModuleUrl: string) => {
   });
 };
 
-const make = Effect.gen(function* () {
+const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) {
   const config = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -280,11 +305,13 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     );
 
+  const isBundled = (name: string) => Object.hasOwn(bundled, name);
+
   const installedNames = fs.readDirectory(pluginsDir).pipe(
     Effect.orElseSucceed((): ReadonlyArray<string> => []),
     Effect.flatMap((entries) =>
       Effect.filter(
-        entries.filter((entry) => SEGMENT_PATTERN.test(entry)),
+        entries.filter((entry) => SEGMENT_PATTERN.test(entry) && !isBundled(entry)),
         (entry) => isDirectory(path.join(pluginsDir, entry)),
       ),
     ),
@@ -346,6 +373,15 @@ const make = Effect.gen(function* () {
         cause: new Error("main.mjs does not export activate"),
       });
     }
+    return yield* activateBuild(name, build, activate as (host: PluginHost) => unknown);
+  });
+
+  /** Activates a build in a scope of its own, closed again if activation fails. */
+  const activateBuild = Effect.fn("PluginLoader.activateBuild")(function* (
+    name: string,
+    build: string,
+    activate: (host: PluginHost) => unknown,
+  ) {
     const scope = yield* Scope.make();
     // The route stays with this build until swapIn publishes it, so a build that
     // serves and then fails never displaces the running build's handler.
@@ -359,7 +395,7 @@ const make = Effect.gen(function* () {
           route = handler;
         }),
     };
-    yield* runActivate(activate as (host: PluginHost) => unknown, host, scope).pipe(
+    yield* runActivate(activate, host, scope).pipe(
       Effect.catchCause((cause) =>
         Scope.close(scope, Exit.void).pipe(
           Effect.andThen(
@@ -424,6 +460,9 @@ const make = Effect.gen(function* () {
     mutex.withPermits(1)(
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
+          if (isBundled(name)) {
+            return yield* new PluginNotReloadableError({ plugin: name });
+          }
           if (
             !SEGMENT_PATTERN.test(name) ||
             !(yield* restore(isDirectory(path.join(pluginsDir, name))))
@@ -465,11 +504,29 @@ const make = Effect.gen(function* () {
     (effect) => Effect.ignore(effect),
   );
 
+  const loadBundled = Effect.fn("PluginLoader.loadBundled")(
+    function* (name: string, load: BundledPlugins[string]) {
+      const module = yield* Effect.tryPromise({
+        try: load,
+        catch: (cause) => new PluginImportError({ plugin: name, build: BUNDLED_BUILD, cause }),
+      });
+      yield* swapIn(name, yield* activateBuild(name, BUNDLED_BUILD, module.activate));
+    },
+    (effect, name) =>
+      effect.pipe(
+        Effect.tapError((error) => noteFailure(name, error)),
+        Effect.ignore,
+      ),
+  );
+
   const list = Effect.gen(function* () {
     const names = new Set([...(yield* installedNames), ...records.keys()]);
     return [...names].sort().map(status);
   });
 
+  yield* Effect.forEach(Object.entries(bundled), ([name, load]) => loadBundled(name, load), {
+    discard: true,
+  });
   yield* Effect.forEach(yield* installedNames, loadCurrent, { discard: true });
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
@@ -483,4 +540,5 @@ const make = Effect.gen(function* () {
   return PluginLoader.of({ list, reload, route: (name) => records.get(name)?.running?.route });
 });
 
-export const layer = Layer.effect(PluginLoader, make);
+/** The loader over `bundled`, the plugins compiled into the server (`bundled.ts`); tests pass their own. */
+export const layer = (bundled: BundledPlugins) => Layer.effect(PluginLoader, make(bundled));

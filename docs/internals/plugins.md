@@ -2,7 +2,11 @@
 
 A plugin is code the server imports into its own process and runs with its own services: fully trusted, no manifest, no capabilities, no consent, and no UI. The decisions behind that shape are in the Plugins area of xaxis `pult/decisions`. The loader is [`PluginLoader.ts`](../../apps/server/src/plugins/PluginLoader.ts), the HTTP surface [`plugins/http.ts`](../../apps/server/src/plugins/http.ts), and the sample [`examples/plugins/hello`](../../examples/plugins/hello/main.mjs).
 
-## Layout
+## Bundled plugins
+
+A plugin that must change in step with the server ships inside it. [`bundled.ts`](../../apps/server/src/plugins/bundled.ts) lists them by name, each a dynamic import of a workspace package's `activate` (Pult's is `plugins/pult`), and the pack inlines them into the server's bundle. At startup the loader activates each through the same activation an installed build gets, listed as build `bundled`; it skips the identity and build checks, which one module graph and one commit make true by construction. An activation that fails lists the plugin as `failed`, and the server runs on. A bundled plugin is not reloadable (`reload` answers `409`), and `<home>/plugins/<name>` under its name is ignored. A bundled plugin imports the server's modules by relative path to `src/pluginHost.ts`, so it needs no resolve hook, and `apps/server`'s typecheck follows that import into it: an upstream merge that breaks what the plugin uses fails there.
+
+## Layout of an installed plugin
 
 ```
 <home>/plugins/<name>/
