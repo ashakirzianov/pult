@@ -6,14 +6,24 @@
  */
 export * as Cause from "effect/Cause";
 export * as Context from "effect/Context";
+// The Pult plugin's Stars: the sleep rule and the transcripts read the records' times.
+export * as DateTime from "effect/DateTime";
 export * as Effect from "effect/Effect";
 export * as Exit from "effect/Exit";
+// The Pult plugin's Stars: their folders, records and transcripts.
+export * as FileSystem from "effect/FileSystem";
 export * as Fiber from "effect/Fiber";
 export * as Layer from "effect/Layer";
 export * as Option from "effect/Option";
+// The Pult plugin's Stars: their folders, records and transcripts.
+export * as Path from "effect/Path";
 export * as Result from "effect/Result";
 export * as Schema from "effect/Schema";
 export * as Scope from "effect/Scope";
+// The Pult plugin's Stars: a lock per server for creation and upkeep, and one per Star.
+export * as Semaphore from "effect/Semaphore";
+// The Pult plugin's Stars: ids for new Stars, their projects and commands.
+export * as SecureRandom from "effect/crypto/SecureRandom";
 export * as Stream from "effect/Stream";
 export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 // A plugin registers its tools straight on the server's McpServer, by design: it is fully
@@ -26,6 +36,12 @@ export * as ServerConfig from "./config.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
 export * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
+// The Pult plugin's Stars: projects found, created, adopted and titled.
+export * as ProjectService from "./project/ProjectService.ts";
+// The Pult plugin's Stars: the pass that puts conversations to sleep, once a minute.
+export * as Scheduler from "./scheduling/Scheduler.ts";
+// The Pult plugin's Stars: the transcripts' folder and label.
+export * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";
 
