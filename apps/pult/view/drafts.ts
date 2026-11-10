@@ -162,6 +162,32 @@ export function composerHasContent(target: ComposerTarget): boolean {
   return composer !== null && composerDraftHasUserContent(composer);
 }
 
+/**
+ * Whether the composer holds what `moveComposerText` moves, text (its
+ * context references aside), images or files; null for a project's draft
+ * the store does not hold.
+ */
+export function composerHoldsText(target: ComposerTarget): boolean | null {
+  const key = composerKey(target);
+  if (key === null) return null;
+  const composer = useComposerDraftStore.getState().getComposerDraft(key);
+  return (
+    composer !== null &&
+    (replaceComposerContextReferences(composer.prompt, () => "").trim().length > 0 ||
+      composer.images.length > 0 ||
+      composer.files.length > 0)
+  );
+}
+
+/** Moves a composer's text, images and files into another's, in place of its text, by the store's mover; its contexts, annotations and review comments stay. */
+export function moveComposerText(from: ComposerTarget, to: ComposerTarget): void {
+  const fromKey = composerKey(from);
+  const toKey = composerKey(to);
+  if (fromKey === null || toKey === null)
+    throw new Error("A project's draft the composer store does not hold has nothing to move.");
+  useComposerDraftStore.getState().moveComposerPromptAndImages(fromKey, toKey);
+}
+
 /** Calls `listener` on every change of the composer store. */
 export function onDidChangeComposers(listener: () => void): () => void {
   return useComposerDraftStore.subscribe(listener);
