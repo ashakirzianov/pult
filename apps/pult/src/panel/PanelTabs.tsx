@@ -30,7 +30,7 @@ interface PanelTab {
 }
 
 /**
- * The sidebar's view containers as the left panel's tray lists them:
+ * The sidebar's view containers as the left panel lists them:
  * those with a view to show, the user's unpinned ones left out unless open,
  * in their order, each with its title, icon, whether it is open and its
  * number badge (Source Control's count). Any container counts, an
@@ -132,49 +132,64 @@ export async function panelTabStore() {
 
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
+/** A tab's button: its icon, or its title where it has none, and its badge. */
+function TabButton({ tab, store, role }: { tab: PanelTab; store: PanelTabStore; role?: "tab" }) {
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-selected={role === undefined ? undefined : tab.active}
+      aria-label={tab.title}
+      title={tab.title}
+      data-container={tab.id}
+      className={`pult-panel-tab${tab.active ? " pult-panel-tab-active" : ""}`}
+      onClick={() => store.open(tab.id)}
+    >
+      {tab.icon === undefined ? (
+        <span className="pult-panel-tab-label">{tab.title}</span>
+      ) : "className" in tab.icon ? (
+        <i className={tab.icon.className} aria-hidden />
+      ) : (
+        <i
+          className="pult-panel-tab-image"
+          style={{ maskImage: `url("${tab.icon.url}")` }}
+          aria-hidden
+        />
+      )}
+      {tab.badge === undefined ? null : <span className="pult-panel-tab-badge">{tab.badge}</span>}
+    </button>
+  );
+}
+
 /**
- * The left panel's tabs, in its tray beside the gear (`rows.tsx`): a button per
- * sidebar tab, the open one on the background the others take on hover, in
- * place of VS Code's activity bar, which the shell hides
- * (`workbench.activityBar.location`), since at the sidebar's top or bottom
- * it brings the workbench's title bar with it. In Pult's mode the tray shows
- * Source Control's alone, and only while its tab is not open (`style.css`):
- * every tab's Close goes back to the Pult tab, and the Explorer shelf's rows
- * lead to the Explorer tab. Source Control's opens on every checkout's
- * changes, its filter dropped. VS Code's mode shows them all.
+ * The left panel's tabs, in its tray in VS Code's mode alone (`rows.tsx`,
+ * `style.css`): a button per sidebar tab, the open one on the background the
+ * others take on hover, in place of VS Code's activity bar, which the shell
+ * hides (`workbench.activityBar.location`), since at the sidebar's top or
+ * bottom it brings the workbench's title bar with it. Pult's mode has
+ * Source Control's button in the header instead (`SourceControlButton`).
  */
 export function PanelTabs({ store }: { store: PanelTabStore }) {
   const tabs = useSyncExternalStore(store.subscribe, store.get);
   return (
     <div className="pult-panel-tabs" role="tablist" aria-label="Panel tabs">
       {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={tab.active}
-          aria-label={tab.title}
-          title={tab.title}
-          data-container={tab.id}
-          className={`pult-panel-tab${tab.active ? " pult-panel-tab-active" : ""}`}
-          onClick={() => store.open(tab.id)}
-        >
-          {tab.icon === undefined ? (
-            <span className="pult-panel-tab-label">{tab.title}</span>
-          ) : "className" in tab.icon ? (
-            <i className={tab.icon.className} aria-hidden />
-          ) : (
-            <i
-              className="pult-panel-tab-image"
-              style={{ maskImage: `url("${tab.icon.url}")` }}
-              aria-hidden
-            />
-          )}
-          {tab.badge === undefined ? null : (
-            <span className="pult-panel-tab-badge">{tab.badge}</span>
-          )}
-        </button>
+        <TabButton key={tab.id} tab={tab} store={store} role="tab" />
       ))}
     </div>
   );
+}
+
+/**
+ * Source Control's button in the Pult tab's header, in Pult's mode alone
+ * (`style.css`), with its count as a badge: it opens the tab on every
+ * checkout's changes, its filter dropped. Every other tab's Close goes back
+ * to the Pult tab, and the Explorer shelf's rows lead to the Explorer tab,
+ * so no other tab has a button.
+ */
+export function SourceControlButton({ store }: { store: PanelTabStore }) {
+  const tab = useSyncExternalStore(store.subscribe, store.get).find(
+    (each) => each.id === SCM_CONTAINER,
+  );
+  return tab === undefined ? null : <TabButton tab={tab} store={store} />;
 }
