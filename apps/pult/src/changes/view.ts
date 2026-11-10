@@ -608,8 +608,10 @@ type Services = {
  * checkout, shown or not, so Source Control's badge counts them all: each
  * as the store brings it, when a thread on it finishes a run or a file
  * under it changes, and all when the window regains focus; what it shows on
- * showing and on "Pult: Refresh Changes". The badge is VS Code's, the files
- * of the source controls shown, so a filter's alone while one narrows. Each
+ * showing and on "Pult: Refresh Changes". The badge is VS Code's, the sum
+ * of the shown source controls' counts, so a filter's alone while one
+ * narrows, each count its checkout's uncommitted changes alone, a branch's
+ * committed ones listed but not counted, as the git extension counts. Each
  * checkout shown has a message box and a Commit button, which commit its
  * whole working tree through the server (`commit`), but under a turn.
  */
@@ -959,7 +961,8 @@ class ChangesView {
           entryTurn === undefined && entry.shown?.kind === kind ? entry.shown.changes : [];
         group.set(changes.map((change) => new ChangeResource(group, change, open)));
       }
-      provider.changed(entryTurn?.changes.length ?? entry.shown?.changes.length ?? 0);
+      // The badge counts what is left to commit, under a turn too.
+      provider.changed(entry.shown?.kind === "working-tree" ? entry.shown.changes.length : 0);
     }
     const previous = this.decorated;
     this.decorated = decorated;
