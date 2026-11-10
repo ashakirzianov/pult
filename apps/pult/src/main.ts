@@ -43,6 +43,7 @@ import { registerPanel } from "./panel/view.tsx";
 import { registerColorSchemeCommand } from "./settings/colorScheme.ts";
 import { startSpelling } from "./spelling/index.ts";
 import { registerSettingsPane } from "./settings/pane.tsx";
+import { startPluginAbout } from "./stars/about.ts";
 import { registerStarCommands } from "./stars/commands.ts";
 import { startStarConversations } from "./stars/conversations.ts";
 import { startStarSync } from "./stars/syncing.ts";
@@ -82,6 +83,7 @@ startConnection();
 // Before the workbench initialises, so the explorer restores its `pult:` folders on the page's provider.
 registerPultFiles();
 startThreadModel();
+startPluginAbout();
 startStars();
 startStarConversations();
 startStarSync();

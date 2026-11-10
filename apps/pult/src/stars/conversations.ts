@@ -11,9 +11,11 @@ import { environmentServer } from "../files/server.ts";
 import { threadsWithUnsentMessages } from "../panel/drafts.ts";
 import { settleQuietly } from "../threads/park.ts";
 import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
+import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
 import { refreshTranscript } from "./foldState.ts";
 import { readWholeProjection } from "./history.ts";
 import { forgetTranscriptEnd, rereadStars, starStore } from "./model.ts";
+import { STARS_FEATURE } from "./plugin.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { asleepBy, type Wakefulness, wakefulness } from "./sleep.ts";
 import { afterStarTranscript } from "./syncing.ts";
@@ -104,6 +106,12 @@ async function hasUnsentMessage(
   });
 }
 
+/** Whether the page keeps the environment's Stars' conversations: not where its Pult plugin does, or may, so the two never both keep one server. */
+function pageKeeps(environmentId: string): boolean {
+  const features = pluginFeatures(environmentId);
+  return features !== undefined && !features.has(STARS_FEATURE);
+}
+
 const sameInstant = (left: string | undefined, right: string) =>
   left !== undefined && Date.parse(left) === Date.parse(right);
 
@@ -125,7 +133,9 @@ const sameInstant = (left: string | undefined, right: string) =>
  * for its settlement and its folder lists it. A server without thread
  * settlement keeps its Star awake. Held awake too while a thread below the
  * conversation works, or its composer holds an unsent message. Nothing runs
- * while Show Star is off.
+ * while Show Star is off, nor on an environment whose Pult plugin keeps its
+ * Stars (`about` lists `stars`, xaxis `pult/design-durable-agent-sleep`) or
+ * whose `about` is not read yet on this connect.
  */
 class StarConversations {
   private readonly evaluations = new Map<string, Evaluation>();
@@ -143,6 +153,7 @@ class StarConversations {
     threadStore.subscribe(() => this.update());
     starStore.subscribe(() => this.update());
     starEnabled.subscribe(() => this.update());
+    onDidChangePluginFeatures(() => this.update());
     // Loads the composer store, without the rest of the view, and looks again as a composer fills or empties.
     threadsWithUnsentMessages.subscribe(() => this.update());
     this.update();
@@ -159,6 +170,7 @@ class StarConversations {
     const unsent = threadsWithUnsentMessages.get();
     for (const star of starStore.get()) {
       for (const thread of conversationsOf(star.homes, threads)) {
+        if (!pageKeeps(thread.environmentId)) continue;
         const key = scopedKey(thread.environmentId, thread.id);
         if (thread.settled) {
           const retry = this.keep(star.homes, thread, now);
@@ -235,7 +247,8 @@ class StarConversations {
       const settled = projection.thread.settledOverride === "settled";
       // Asked at the last moment of the store itself, loaded by now if it was not yet.
       const unsent = await hasUnsentMessage(thread);
-      if (!settled && !unsent && asleepBy(state, Date.now())) await settleQuietly(thread);
+      if (!settled && !unsent && asleepBy(state, Date.now()) && pageKeeps(thread.environmentId))
+        await settleQuietly(thread);
       // Asleep, by this page or another: the store brings the settlement, and with it the transcript.
       if (settled || (!unsent && asleepBy(state, Date.now()))) evaluation.wakefulness = undefined;
     } catch (error) {
