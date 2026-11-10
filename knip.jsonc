@@ -105,7 +105,7 @@
     },
     "apps/pult": {
       // The page's build swaps these in for apps/web's modules by path (view/stubs.ts), the
-      // tests run under node --test, and scripts/drive.ts runs directly.
+      // tests run under node --test, and scripts/drive.ts and scripts/perf.ts run directly.
       "entry": [
         "view/connectionRuntime.ts!",
         "view/panelLayoutControls.tsx!",
@@ -113,6 +113,7 @@
         "src/**/*.test.ts",
         "view/**/*.test.ts",
         "scripts/drive.ts",
+        "scripts/perf.ts",
       ],
       "ignoreIssues": {
         // A stub exports what the apps/web module it replaces exports.
