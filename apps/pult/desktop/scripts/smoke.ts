@@ -5,7 +5,7 @@
  * upstream's fixture database, and passes once the page is connected to the
  * app's own server (`html[data-pult-local="connected"]`), the fixture's
  * thread is in the panel, and the server lists its bundled `pult` plugin as
- * loaded. A build whose server, plugin or page cannot start fails here,
+ * loaded, its `about` listing `stars`. A build whose server, plugin or page cannot start fails here,
  * before it is published.
  *
  *   node apps/pult/desktop/scripts/smoke.ts --dmg <Pult-x.y.z-arm64.dmg> [--artifacts-dir <dir>]
@@ -113,8 +113,17 @@ try {
   if (pult?.status !== "loaded") {
     throw new Error(`The server lists the pult plugin as ${JSON.stringify(pult ?? "absent")}.`);
   }
+  step = "asking the plugin what it does";
+  const about = await fetch(new URL("/api/plugins/pult/about", local.httpBaseUrl), {
+    headers: { authorization: `Bearer ${local.token}` },
+  });
+  if (!about.ok) throw new Error(`GET /api/plugins/pult/about answered ${about.status}.`);
+  const { features } = (await about.json()) as { features?: ReadonlyArray<string> };
+  if (!features?.includes("stars")) {
+    throw new Error(`The pult plugin's about lists ${JSON.stringify(features)}, without stars.`);
+  }
   console.log(
-    "Pult smoke test passed: the server started with its plugin, the page connected, the thread shows.",
+    "Pult smoke test passed: the server started with its plugin keeping the Stars, the page connected, the thread shows.",
   );
 } catch (error) {
   console.error(`Pult smoke test failed while ${step}.`);
