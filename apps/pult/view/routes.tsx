@@ -26,6 +26,9 @@ type ElsewhereSearch = Readonly<Record<string, unknown>>;
 
 const anySearch = (search: Record<string, unknown>): ElsewhereSearch => search;
 
+/** Where a view rests while no element mounts it: a route that renders nothing, the thread layout unmounted. */
+export const RESTING_PATH = "/resting";
+
 /** A router over the thread routes, in memory, starting at `initialPath`. */
 export function makeThreadRouter(input: {
   readonly root: () => ReactNode;
@@ -54,6 +57,12 @@ export function makeThreadRouter(input: {
     component: () => null,
   });
 
+  const restingRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: RESTING_PATH,
+    component: () => null,
+  });
+
   // The fork's pages the thread view links to, so its links land somewhere; the
   // app sends the view back from them. The links typecheck against apps/web's
   // router, which registers itself with the router's types.
@@ -78,6 +87,7 @@ export function makeThreadRouter(input: {
 
   const routeTree = rootRoute.addChildren([
     threadLayout.addChildren([landingRoute, threadRoute, draftRoute]),
+    restingRoute,
     pullRequestsRoute,
     projectRoute,
     ...settingsRoutes,

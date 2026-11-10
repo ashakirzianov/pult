@@ -1,7 +1,10 @@
 // The app around upstream's thread view in Pult's shell: one thread, or one
 // project's draft, per pane, on the shell's connection. A draft follows itself
 // into the thread it creates; a navigation to another thread or a new one
-// opens it in the shell.
+// opens it in the shell. The view outlives its panes: one React root and one
+// router for the panes and one for the composer strip, moved into whichever
+// element mounts it and sent to that element's target, as upstream's app
+// goes from thread to thread in one ChatView.
 import {
   type AnyRouter,
   Outlet,
@@ -43,7 +46,7 @@ import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
 import { draftKey, heldDraft, isPromotion } from "./drafts.ts";
-import { makeThreadRouter } from "./routes.tsx";
+import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
 
@@ -52,8 +55,14 @@ type ViewTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
+/** What a view shows: its mount's target, or nothing while no element mounts it. */
+type Shown = ViewTarget | { readonly kind: "none" };
+
+const NOTHING: Shown = { kind: "none" };
+
 /** Where `target` is in the view's routes; a draft without a draft yet is the landing, which starts one. */
-function targetPath(target: ViewTarget): string {
+function targetPath(target: Shown): string {
+  if (target.kind === "none") return RESTING_PATH;
   // Encoded: the router decodes path parameters, and an id may itself hold an escape (`command%3Amcp…`).
   if (target.kind === "thread") {
     return `/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
@@ -62,19 +71,27 @@ function targetPath(target: ViewTarget): string {
   return draftId === null ? "/" : `/draft/${encodeURIComponent(draftId)}`;
 }
 
+/** How long a navigation a mount started may take before the view follows the router again, whatever it resolves. */
+const HEADING_MS = 2000;
+
 /**
- * One mounted view and its target, which a draft's promotion turns into the
- * thread it created, live for the components that render by it.
+ * A view's target and what its mount adds to it, live for the components
+ * that render by them: a mount shows a target, a draft's promotion turns
+ * it into the thread it created.
  */
-function makeMount(
-  initial: ViewTarget,
-  onPromoted: (environmentId: string, threadId: string) => void,
-) {
-  let target = initial;
+function makeMount() {
+  let target = NOTHING;
+  let onPromoted = (_environmentId: string, _threadId: string) => {};
+  let additions = NO_ADDITIONS;
+  let headingSince: number | undefined;
+  let again = 0;
   const listeners = new Set<() => void>();
-  if (target.kind === "thread") closeThreadPanel(target.environmentId, target.threadId);
+  const changed = () => {
+    for (const listener of listeners) listener();
+  };
   return {
     target: () => target,
+    additions: () => additions,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
@@ -82,13 +99,53 @@ function makeMount(
       };
     },
     home: () => targetPath(target),
+    /** The view is `next`'s from now on, with what its mount adds; the caller sends the router there. */
+    show(
+      next: Shown,
+      promoted: (environmentId: string, threadId: string) => void,
+      options: MountOptions,
+    ) {
+      target = next;
+      onPromoted = promoted;
+      const draftHero = options.draftHero ?? true;
+      const placeholder = options.placeholder ?? null;
+      // The same object for the same additions: a new one renders every reader of them again.
+      if (
+        additions.header !== options.timelineHeader ||
+        additions.draftModel !== options.draftModel ||
+        additions.composer.draftHero !== draftHero ||
+        additions.composer.placeholder !== placeholder
+      )
+        additions = {
+          header: options.timelineHeader,
+          draftModel: options.draftModel,
+          composer: { draftHero, placeholder },
+        };
+      if (next.kind === "thread") closeThreadPanel(next.environmentId, next.threadId);
+      changed();
+    },
+    /** The router is on its way to the target: what it resolves before it arrives is the previous target's. */
+    head() {
+      headingSince = performance.now();
+    },
+    heading: () => headingSince !== undefined && performance.now() - headingSince < HEADING_MS,
+    arrive() {
+      headingSince = undefined;
+    },
+    /** How many times the view was shown its own target again, each of which mounts the route's content anew. */
+    again: () => again,
+    /** The target it shows, in a new element: its content mounts again there, as upstream's mount restores it. */
+    remount() {
+      again += 1;
+      changed();
+    },
     /** The draft became `threadId` on `environmentId`'s server: the view is that thread's from now on. */
     promote(environmentId: string, threadId: string) {
       if (target.kind !== "draft") return;
       localStorage.removeItem(draftKey(target.environmentId, target.projectId));
       target = { kind: "thread", environmentId, threadId };
       closeThreadPanel(environmentId, threadId);
-      for (const listener of listeners) listener();
+      changed();
       onPromoted(environmentId, threadId);
     },
   };
@@ -101,12 +158,18 @@ type Mount = ReturnType<typeof makeMount>;
  * creates. Any other thread the view went to opens in the shell, and so does
  * a draft of another project, or any draft reached from a thread (upstream's
  * New thread on branch, send and new), remembered as its project's draft
- * first so the shell's draft takes it up.
+ * first so the shell's draft takes it up. While the router heads for a
+ * target a mount just showed, what it resolves on the way is the previous
+ * target's and is not followed; `arrived` is told once it is there.
  */
-function followNavigation(router: AnyRouter, mount: Mount) {
+function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) {
   const target = mount.target();
   const shown = resolveThreadRouteTarget(router.state.matches.at(-1)?.params ?? {});
   const goHome = () => void router.navigate({ to: mount.home(), replace: true });
+  const arrive = () => {
+    mount.arrive();
+    arrived();
+  };
   if (shown?.kind === "server") {
     const { environmentId, threadId } = shown.threadRef;
     if (
@@ -114,7 +177,8 @@ function followNavigation(router: AnyRouter, mount: Mount) {
       threadId === target.threadId &&
       environmentId === target.environmentId
     )
-      return;
+      return arrive();
+    if (mount.heading()) return;
     if (target.kind === "draft" && isPromotion(target, environmentId, threadId)) {
       mount.promote(environmentId, threadId);
       return;
@@ -136,15 +200,18 @@ function followNavigation(router: AnyRouter, mount: Mount) {
         localStorage.setItem(draftKey(target.environmentId, target.projectId), shown.draftId);
         // The draft's details panel stays closed too, keyed by the thread id the draft holds.
         closeThreadPanel(session.environmentId, session.threadId);
-        return;
+        return arrive();
       }
+      if (mount.heading()) return;
       localStorage.setItem(draftKey(session.environmentId, session.projectId), shown.draftId);
       threadViewHost().openDraft(session.environmentId, session.projectId);
     }
+    if (mount.heading()) return;
     goHome();
     return;
   }
-  if (router.state.location.pathname === mount.home()) return;
+  if (router.state.location.pathname === mount.home()) return arrive();
+  if (mount.heading()) return;
   toastManager.add({
     type: "info",
     title: "Not in Pult yet",
@@ -238,27 +305,23 @@ function DraftModel({
   return null;
 }
 
-function useTarget(mount: Mount): ViewTarget {
+function useTarget(mount: Mount): Shown {
   return useSyncExternalStore(mount.subscribe, mount.target);
 }
 
-function makeRoot(
-  mount: Mount,
-  bar: HTMLElement,
-  composerOnly: boolean,
-  header: MountOptions["timelineHeader"],
-  draftModel: MountOptions["draftModel"],
-) {
+function makeRoot(mount: Mount, bar: HTMLElement, composerOnly: boolean, arrived: () => void) {
   function NavigationFollower() {
     const router = useRouter();
     useEffect(
-      () => router.subscribe("onResolved", () => followNavigation(router, mount)),
+      () => router.subscribe("onResolved", () => followNavigation(router, mount, arrived)),
       [router],
     );
     return null;
   }
   return function Root() {
     const target = useTarget(mount);
+    const { header, draftModel } = useSyncExternalStore(mount.subscribe, mount.additions);
+    const again = useSyncExternalStore(mount.subscribe, mount.again);
     // A composer-only mount leaves the page-wide shortcuts and the activity to the pane's view, as upstream's background thread does.
     return (
       <BackgroundThreadContext value={composerOnly}>
@@ -280,7 +343,8 @@ function makeRoot(
             )}
             <ConfirmDialogHost />
             <CustomSnoozeDialogHost />
-            <SidebarProvider defaultOpen={false}>
+            {/* Keyed: a view moved to a new element with its target unchanged mounts its content again, since a moved scroller forgets where it stood. */}
+            <SidebarProvider key={again} defaultOpen={false}>
               <Outlet />
             </SidebarProvider>
             {/* Into the element the timeline's header places, which keeps it across the list's own remounts. */}
@@ -327,8 +391,14 @@ function DraftStart({
 function makeLanding(mount: Mount) {
   return function Landing() {
     const target = useTarget(mount);
+    if (target.kind === "none") return null;
     return target.kind === "draft" ? (
-      <DraftStart environmentId={target.environmentId} projectId={target.projectId} />
+      // Keyed: a view going from one project's draft to another's starts the other's.
+      <DraftStart
+        key={draftKey(target.environmentId, target.projectId)}
+        environmentId={target.environmentId}
+        projectId={target.projectId}
+      />
     ) : (
       <Notice>This thread is not available. It may have been deleted.</Notice>
     );
@@ -367,14 +437,152 @@ export interface MountOptions {
   readonly draftModel?: ShellValue<unknown>;
 }
 
+/** What a mount adds to its view, as the view's providers take it. */
+interface Additions {
+  readonly header: MountOptions["timelineHeader"];
+  readonly draftModel: MountOptions["draftModel"];
+  readonly composer: {
+    readonly draftHero: boolean;
+    readonly placeholder: ShellValue<string> | null;
+  };
+}
+
+const NO_ADDITIONS: Additions = {
+  header: undefined,
+  draftModel: undefined,
+  composer: { draftHero: true, placeholder: null },
+};
+
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
 const composerBarEntries: ComposerControlsSlotEntries = {
   Notices: ComposerBarNotices,
   Host: ComposerBarHost,
 };
 
+/** The view's providers around its router, with what the mount showing it adds. */
+function ViewProviders({
+  mount,
+  bar,
+  router,
+}: {
+  readonly mount: Mount;
+  readonly bar: HTMLElement;
+  readonly router: ReturnType<typeof makeThreadRouter>;
+}) {
+  const additions = useSyncExternalStore(mount.subscribe, mount.additions);
+  return (
+    <AppAtomRegistryProvider>
+      <ComposerControlsSlot value={bar}>
+        <ComposerControlsSlotEntries value={composerBarEntries}>
+          <ShellComposerOptions value={additions.composer}>
+            <TimelineHeaderSlot value={additions.header?.element ?? null}>
+              <RouterProvider router={router} />
+            </TimelineHeaderSlot>
+          </ShellComposerOptions>
+        </ComposerControlsSlotEntries>
+      </ComposerControlsSlot>
+    </AppAtomRegistryProvider>
+  );
+}
+
+/** How long a view no element mounts keeps its thread rendered, for the next mount to take it on from there: a switch's next pane mounts within it. */
+const REST_AFTER_MS = 500;
+/** How long a view sent from one target to another stays unpainted at most, waiting for the router to arrive. */
+const REVEAL_AFTER_MS = 400;
+
 /**
- * Mounts the view above the pane's composer bar: the thread's settings
+ * A view: upstream's app in a React root and a router of its own, kept for
+ * the page's life, since a router's listeners on the document never leave
+ * and a new root mounts everything under it again. Its elements go into
+ * whichever element mounts it, and out again when that mount is disposed;
+ * the view then keeps its thread rendered a moment and, taken by no other
+ * mount, rests on an empty route, its ChatView unmounted, so nothing of a
+ * thread runs unseen.
+ */
+function makeView(composerOnly: boolean) {
+  const mount = makeMount();
+  const bar = document.createElement("div");
+  bar.className = "pult-composer-bar";
+  const main = document.createElement("div");
+  main.className = "pult-thread-main";
+  let revealing: ReturnType<typeof setTimeout> | undefined;
+  const conceal = (concealed: boolean) => {
+    clearTimeout(revealing);
+    main.style.opacity = bar.style.opacity = concealed ? "0" : "";
+    if (concealed) revealing = setTimeout(() => conceal(false), REVEAL_AFTER_MS);
+  };
+  const root = createRoot(main);
+  let navigable: AnyRouter | undefined;
+  let resting: ReturnType<typeof setTimeout> | undefined;
+  /** To the mount's target: the router starts there, and goes there from then on. */
+  const go = () => {
+    if (navigable !== undefined) {
+      mount.head();
+      return void navigable.navigate({ to: mount.home(), replace: true });
+    }
+    const router = makeThreadRouter({
+      root: makeRoot(mount, bar, composerOnly, () => conceal(false)),
+      landing: makeLanding(mount),
+      initialPath: mount.home(),
+    });
+    navigable = router;
+    root.render(
+      <StrictMode>
+        <ViewProviders mount={mount} bar={bar} router={router} />
+      </StrictMode>,
+    );
+  };
+  return {
+    bar,
+    /** Into `element`, showing `target`: mounted again, for the target it still shows, else on its way there, unpainted until it arrives. */
+    enter(
+      element: HTMLElement,
+      target: ViewTarget,
+      onPromoted: (environmentId: string, threadId: string) => void,
+      options: MountOptions,
+    ) {
+      clearTimeout(resting);
+      const from = mount.home();
+      const rested = mount.target().kind === "none";
+      mount.show(target, onPromoted, options);
+      const stays = mount.home() === from;
+      if (!stays && !rested) conceal(true);
+      element.append(main, bar);
+      if (stays) mount.remount();
+      else go();
+    },
+    /** Out of its element, to rest unless another mount takes it first. */
+    leave() {
+      main.remove();
+      bar.remove();
+      resting = setTimeout(() => {
+        conceal(false);
+        mount.show(NOTHING, () => {}, {});
+        go();
+      }, REST_AFTER_MS);
+    },
+    follow(environmentId: string, threadId: string) {
+      if (mount.target().kind !== "draft") return;
+      mount.promote(environmentId, threadId);
+      go();
+    },
+    /** Gone for good: a second view of its kind, once the first is back at rest. */
+    discard() {
+      clearTimeout(resting);
+      clearTimeout(revealing);
+      root.unmount();
+    },
+  };
+}
+
+type View = ReturnType<typeof makeView>;
+
+/** The views no element mounts, one per kind at most: the next mount of the kind takes it. */
+const atRest: { pane?: View; composer?: View } = {};
+
+/**
+ * Mounts the view of its kind, the one at rest or a new one, above the
+ * pane's composer bar: the thread's settings
  * (model, reasoning, mode, attachments, a draft's environment and branch)
  * and its notices render there, out of the composer, which keeps the
  * message and its send button (`ComposerControlsSlot`), and so does the
@@ -387,51 +595,22 @@ function mountView(
   composerOnly = false,
   options: MountOptions = {},
 ): MountedView {
-  const mount = makeMount(target, onPromoted);
-  const bar = document.createElement("div");
-  bar.className = "pult-composer-bar";
-  const router = makeThreadRouter({
-    root: makeRoot(mount, bar, composerOnly, options.timelineHeader, options.draftModel),
-    landing: makeLanding(mount),
-    initialPath: mount.home(),
-  });
+  const kind = composerOnly ? "composer" : "pane";
+  const view = atRest[kind] ?? makeView(composerOnly);
+  delete atRest[kind];
   element.classList.add("pult-thread-view");
   element.classList.toggle("pult-composer-only", composerOnly);
-  const main = document.createElement("div");
-  main.className = "pult-thread-main";
-  element.append(main, bar);
-  const root = createRoot(main);
-  const composerOptions = {
-    draftHero: options.draftHero ?? true,
-    placeholder: options.placeholder ?? null,
-  };
-  root.render(
-    <StrictMode>
-      <AppAtomRegistryProvider>
-        <ComposerControlsSlot value={bar}>
-          <ComposerControlsSlotEntries value={composerBarEntries}>
-            <ShellComposerOptions value={composerOptions}>
-              <TimelineHeaderSlot value={options.timelineHeader?.element ?? null}>
-                <RouterProvider router={router} />
-              </TimelineHeaderSlot>
-            </ShellComposerOptions>
-          </ComposerControlsSlotEntries>
-        </ComposerControlsSlot>
-      </AppAtomRegistryProvider>
-    </StrictMode>,
-  );
-  const navigable: AnyRouter = router;
+  view.enter(element, target, onPromoted, options);
+  let disposed = false;
   return {
-    bar,
-    follow: (environmentId, threadId) => {
-      if (mount.target().kind !== "draft") return;
-      mount.promote(environmentId, threadId);
-      void navigable.navigate({ to: mount.home(), replace: true });
-    },
+    bar: view.bar,
+    follow: view.follow,
     dispose: () => {
-      root.unmount();
-      main.remove();
-      bar.remove();
+      if (disposed) return;
+      disposed = true;
+      view.leave();
+      if (atRest[kind] === undefined) atRest[kind] = view;
+      else view.discard();
     },
   };
 }
