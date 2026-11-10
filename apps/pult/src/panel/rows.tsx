@@ -21,9 +21,7 @@ import { createRoot } from "react-dom/client";
 
 import logoUrl from "../../assets/pult/logo-color.svg";
 import { PANEL_ID } from "./explorer.ts";
-import { modeChoice } from "../mode.ts";
-import { panelTabStore, PanelTabs, type PanelTabStore, SourceControlButton } from "./PanelTabs.tsx";
-import { closedShelves } from "./shelves.tsx";
+import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 import { TrayShelves } from "./TrayShelves.tsx";
 
 /** The tray's height, the sidebar's title's, and the thread view's bar's (`--pult-bar-height`), so their icons share a line. */
@@ -72,12 +70,10 @@ function RowButton({ title, icon, command }: { title: string; icon: string; comm
 /**
  * The left panel's header: room for the desktop's traffic lights
  * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
- * Pult's logo and, at its right end, Source Control's button in Pult's mode
- * (`PanelTabs.tsx`), the gear, which opens the Pult settings page, and
- * rightmost New Thread. In the desktop it drags the window, its buttons
- * excepted.
+ * Pult's logo and, rightmost, New Thread. In the desktop it drags the
+ * window, its buttons excepted.
  */
-function PanelHeader({ store }: { store: PanelTabStore }) {
+function PanelHeader() {
   return (
     <>
       <span className="pult-panel-header-lights" />
@@ -88,8 +84,6 @@ function PanelHeader({ store }: { store: PanelTabStore }) {
       />
       <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
       <span className="pult-panel-row-spacer" />
-      <SourceControlButton store={store} />
-      <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
       <RowButton title="New Thread" icon="add" command="pult-shell.newThread" />
     </>
   );
@@ -98,9 +92,9 @@ function PanelHeader({ store }: { store: PanelTabStore }) {
 /**
  * The left panel's bottom row, the tray: every icon in it is something not
  * showing, which a click shows. The closed shelves' icons at its left end
- * (`TrayShelves.tsx`) and, in VS Code's mode alone, the tabs at its right
- * (`PanelTabs.tsx`). With nothing to show, no shelf closed in Pult's mode,
- * the tray leaves the panel (`startPanelRows`).
+ * (`TrayShelves.tsx`), in VS Code's mode the tabs beside the gear
+ * (`PanelTabs.tsx`), and rightmost the gear, which opens the Pult settings
+ * page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
   return (
@@ -108,6 +102,7 @@ function Tray({ store }: { store: PanelTabStore }) {
       <TrayShelves />
       <span className="pult-panel-row-spacer" />
       <PanelTabs store={store} />
+      <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>
   );
 }
@@ -121,8 +116,7 @@ function Tray({ store }: { store: PanelTabStore }) {
  * in the desktop the title drags the window. Below the part, the tray
  * (`Tray`), a view added to the layout's
  * grid with the grid's own `addView` and shown with the part, so a
- * collapsed panel leaves no column behind, while it has an icon to show: a
- * closed shelf's, or in VS Code's mode the tabs'. While the panel is collapsed,
+ * collapsed panel leaves no column behind. While the panel is collapsed,
  * Expand Panel sits at the window's top-left over the room the top-left
  * editor group's tabs row leaves it (`src/style.css`). Collapsing or
  * expanding saves the workbench's state at once, so the next start keeps it,
@@ -130,12 +124,10 @@ function Tray({ store }: { store: PanelTabStore }) {
  * once the workbench is up.
  */
 export async function startPanelRows(): Promise<void> {
-  const [layout, panes, storage, mode, tabs] = await Promise.all([
+  const [layout, panes, storage] = await Promise.all([
     getService(IWorkbenchLayoutService),
     getService(IPaneCompositePartService),
     getService(IStorageService),
-    modeChoice(),
-    panelTabStore(),
   ]);
   const { workbenchGrid, sideBarPartView } = layout as unknown as Partial<LayoutGrid>;
   const title = sideBarPartView?.element.querySelector<HTMLElement>(":scope > .composite.title");
@@ -150,7 +142,7 @@ export async function startPanelRows(): Promise<void> {
   const header = document.createElement("div");
   header.className = "pult-panel-header";
   title.append(header);
-  createRoot(header).render(<PanelHeader store={tabs} />);
+  createRoot(header).render(<PanelHeader />);
   // Ahead of the part's own listener on the title, which opens the menu.
   title.addEventListener(
     "contextmenu",
@@ -164,7 +156,7 @@ export async function startPanelRows(): Promise<void> {
 
   const tray = rowView("pult-panel-tray");
   workbenchGrid.addView(tray, ROW_HEIGHT, sideBarPartView, Direction.Down);
-  createRoot(tray.element).render(<Tray store={tabs} />);
+  createRoot(tray.element).render(<Tray store={await panelTabStore()} />);
 
   const expand = document.createElement("div");
   expand.className = "pult-panel-expand";
@@ -182,11 +174,7 @@ export async function startPanelRows(): Promise<void> {
       HEADER_IN_TITLE,
       panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === PANEL_ID,
     );
-    workbenchGrid.setViewVisible(
-      tray,
-      layout.isVisible(Parts.SIDEBAR_PART) &&
-        (closedShelves.get().size > 0 || mode.current() === "vscode"),
-    );
+    workbenchGrid.setViewVisible(tray, layout.isVisible(Parts.SIDEBAR_PART));
   };
   const expandToWidth = keepPanelWidth(layout, storage, sideBarPartView);
   layout.onDidChangePartVisibility((event) => {
@@ -199,8 +187,6 @@ export async function startPanelRows(): Promise<void> {
   });
   panes.onDidPaneCompositeOpen(follow);
   panes.onDidPaneCompositeClose(follow);
-  closedShelves.subscribe(follow);
-  mode.onDidChange(follow);
   follow();
 }
 

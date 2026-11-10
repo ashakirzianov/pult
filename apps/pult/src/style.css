@@ -334,10 +334,9 @@ body.pult-dragging .pult-browser-host webview {
   display: none;
 }
 
-/* The left panel's tabs: in the default mode Source Control's button in the header alone
-   (src/panel/PanelTabs.tsx), every other tab's Close going back to the Pult tab and the Explorer
-   shelf's rows leading to the Explorer tab; in VS Code mode a button per tab in the tray. */
-.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tray > .pult-panel-tabs[role="tablist"],
-.monaco-workbench.pult-mode-vscode .pult-panel-header > .pult-panel-tab {
+/* The tabs' buttons in the left panel's tray (src/panel/PanelTabs.tsx): every tab's Close goes back
+   to the Pult tab, the Explorer shelf's rows lead to the Explorer tab, and a thread's Source Control
+   button, in its composer bar, to the changes view. */
+.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tabs[role="tablist"] {
   display: none;
 }

@@ -1757,7 +1757,7 @@ export async function changesState() {
  * `pult-shell.showChanges <environmentId|null> <threadId|null> <path|null> [turn]`,
  * "Pult: Show Thread Changes" (`pult-shell.showThreadChanges`, the selected
  * thread's), "Pult: Show All Changes" (`pult-shell.showAllChanges`, also the
- * card's clear mark and the left panel's Source Control tab), "Pult: Refresh
+ * card's clear mark and, in VS Code mode, the left panel's Source Control tab), "Pult: Refresh
  * Changes" (`pult-shell.refreshChanges`, also in the Source Control view's
  * title), "Pult: Commit" (`pult-shell.commit [checkoutKey]`, also each
  * checkout's Commit button and Cmd+Enter in its message box), "Pult: Commit

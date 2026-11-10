@@ -906,9 +906,9 @@
   text-transform: uppercase;
 }
 
-/* Source Control's button in the header (src/panel/PanelTabs.tsx), in the colour of the buttons beside it. */
-.pult-panel-header > .pult-panel-tab {
-  color: inherit;
+/* The tabs (src/panel/PanelTabs.tsx), beside the gear. */
+.pult-panel-tray > .pult-panel-tabs[role="tablist"] {
+  margin-right: 2px;
 }
 
 /* The closed shelves' icons (src/panel/TrayShelves.tsx), at the tray's left end; dimmed while the shelf holds nothing. */
