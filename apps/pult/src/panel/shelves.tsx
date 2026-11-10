@@ -9,6 +9,17 @@ import { type RefObject, useEffect, useSyncExternalStore } from "react";
 
 import { CLOSABLE_SHELVES, type ClosableShelf } from "./order.ts";
 
+/** Each closable shelf's label and codicon, its header's and its tray icon's (`TrayShelves.tsx`). */
+export const SHELF_ICONS: Record<ClosableShelf, { readonly label: string; readonly icon: string }> =
+  {
+    explorer: { label: "Explorer", icon: "files" },
+    ready: { label: "Ready", icon: "inbox" },
+    working: { label: "Working", icon: "pulse" },
+    snoozed: { label: "Snoozed", icon: "bell-slash" },
+    settled: { label: "Settled", icon: "check" },
+    limits: { label: "Limits", icon: "dashboard" },
+  };
+
 /** Where a shelf keeps whether it is closed, as upstream keeps its shelves' state. */
 const closedKey = (shelf: ClosableShelf) => `pult-shell.panel.${shelf}-closed`;
 
@@ -66,7 +77,8 @@ export function useReveal(shelf: ClosableShelf, element: RefObject<HTMLElement |
  * A closable shelf's header: its label, its count when one is given, its
  * `actions` and Close, shown on hover or keyboard focus; its right-click its
  * `menu`, then Close Shelf. `title` is its tooltip. Closing runs `onClose`,
- * which closes the shelf by default. `icon`, a codicon, leads the label. With `onOpen`, the label is a button
+ * which closes the shelf by default. `icon`, a codicon, leads the label, the
+ * shelf's tray icon (`SHELF_ICONS`) by default. With `onOpen`, the label is a button
  * running it, `openTitle` its tooltip, highlighted while `selected`: the
  * Explorer shelf's, opening the Explorer tab.
  */
@@ -78,7 +90,7 @@ export function ShelfHeader({
   actions = null,
   menu = [],
   onClose = () => closeShelf(shelf),
-  icon,
+  icon = SHELF_ICONS[shelf].icon,
   onOpen,
   openTitle,
   selected = false,
@@ -90,7 +102,7 @@ export function ShelfHeader({
   actions?: React.ReactNode;
   menu?: ReadonlyArray<IAction>;
   onClose?: () => void;
-  /** A codicon before the label. */
+  /** A codicon before the label, the shelf's own by default. */
   icon?: string;
   onOpen?: () => void;
   openTitle?: string;
@@ -98,7 +110,7 @@ export function ShelfHeader({
 }) {
   const heading = (
     <>
-      {icon !== undefined ? <i className={`codicon codicon-${icon}`} aria-hidden /> : null}
+      <i className={`codicon codicon-${icon} pult-shelf-icon`} aria-hidden />
       <span className="pult-shelf-label">{label}</span>
       {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
     </>

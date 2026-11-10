@@ -418,8 +418,8 @@
   cursor: pointer;
 }
 
-/* A single environment's icon, its label where the environment row's is, over the nested files' (`.pult-explorer-entry-nested`). */
-.pult-shelf-open > .codicon {
+/* A shelf's icon, its label where the environment row's is, over the nested files' (`.pult-explorer-entry-nested`). */
+.pult-shelf-header .pult-shelf-icon {
   flex: none;
   margin-right: -3px;
   font-size: 13px;

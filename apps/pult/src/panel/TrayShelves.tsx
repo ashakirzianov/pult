@@ -10,16 +10,7 @@ import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { isStarDraft, projectDrafts } from "./drafts.ts";
 import { CLOSABLE_SHELVES, type ClosableShelf, draftCards, draftKey, keyOf } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
-import { closedShelves, openShelf } from "./shelves.tsx";
-
-const ICONS: Record<ClosableShelf, { readonly label: string; readonly icon: string }> = {
-  explorer: { label: "Explorer", icon: "files" },
-  ready: { label: "Ready", icon: "inbox" },
-  working: { label: "Working", icon: "pulse" },
-  snoozed: { label: "Snoozed", icon: "bell-slash" },
-  settled: { label: "Settled", icon: "check" },
-  limits: { label: "Limits", icon: "dashboard" },
-};
+import { closedShelves, openShelf, SHELF_ICONS } from "./shelves.tsx";
 
 /** What a closed shelf's icon tells: its count as a badge, if any; whether it holds nothing; whether it holds the selected card; and its tooltip. */
 interface ShelfIcon {
@@ -66,7 +57,7 @@ export function TrayShelves() {
   const holdsSelected = (shelf: ShelfName) =>
     on(shelf).some((thread) => keyOf(thread) === selectedCard);
   const icon = (shelf: ClosableShelf): ShelfIcon => {
-    const { label } = ICONS[shelf];
+    const { label } = SHELF_ICONS[shelf];
     switch (shelf) {
       case "explorer":
         return {
@@ -126,7 +117,7 @@ export function TrayShelves() {
             key={shelf}
             type="button"
             title={title}
-            aria-label={`Open the ${ICONS[shelf].label} shelf`}
+            aria-label={`Open the ${SHELF_ICONS[shelf].label} shelf`}
             className={`pult-panel-tab${selected ? " pult-panel-tab-active" : ""}${empty ? " pult-tray-shelf-empty" : ""}`}
             onClick={() =>
               void (shelf === "explorer"
@@ -134,7 +125,7 @@ export function TrayShelves() {
                 : showThreads().then(() => openShelf(shelf)))
             }
           >
-            <i className={`codicon codicon-${ICONS[shelf].icon}`} aria-hidden />
+            <i className={`codicon codicon-${SHELF_ICONS[shelf].icon}`} aria-hidden />
             {badge === undefined ? null : <span className="pult-panel-tab-badge">{badge}</span>}
           </button>
         );
