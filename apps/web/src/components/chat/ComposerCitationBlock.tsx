@@ -115,18 +115,18 @@ export function enterComposerCitationByKey(view: EditorView, event: KeyboardEven
   const atBar = citationCaret(doc, $from.pos) !== null;
   if (event.key === "Backspace" || event.key === "Delete") {
     const back = event.key === "Backspace";
-    // From the start of the line under a block, Backspace first goes to the bar below it, taking
-    // the line along if it is empty; the next one enters the comment.
-    if (back && !atBar && $from.parentOffset === 0 && citationBehind(view, $from) !== null) {
-      const end = $from.before(1) - 1;
-      const tr =
-        $from.parent.content.size === 0
-          ? view.state.tr.delete($from.before(1), $from.after(1))
-          : view.state.tr;
-      view.dispatch(tr.setSelection(TextSelection.create(tr.doc, end)).scrollIntoView());
+    const pos = back ? citationBehind(view, $from) : citationAhead(view, $from);
+    // From the edge of the line beside a block's, the key first goes to the bar on that side,
+    // taking the line along if it is empty; the next one enters the comment.
+    const atLineEdge = $from.parentOffset === (back ? 0 : $from.parent.content.size);
+    if (pos !== null && !atBar && atLineEdge) {
+      const empty = $from.parent.content.size === 0;
+      const tr = empty ? view.state.tr.delete($from.before(1), $from.after(1)) : view.state.tr;
+      const bar = back ? $from.before(1) - 1 : (empty ? $from.before(1) : $from.after(1)) + 1;
+      const caret = TextSelection.create(tr.doc, canonicalCaret(tr.doc, bar));
+      view.dispatch(tr.setSelection(caret).scrollIntoView());
       return handled();
     }
-    const pos = back ? citationBehind(view, $from) : citationAhead(view, $from);
     if (pos !== null && focusCitationComment(view, pos, back ? "end" : "start")) return handled();
     if (!atBar) return false;
     // Deleting the line break on the bar's side would join the block's line to the next one.
