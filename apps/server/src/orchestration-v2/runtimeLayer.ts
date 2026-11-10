@@ -402,6 +402,7 @@ export const layerProduction = Layer.mergeAll(
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(
   Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
-  Layer.provide(Scheduler.layer),
+  // Merged out so the server's plugins register on the same scheduler: the Pult plugin's Stars pass.
+  Layer.provideMerge(Scheduler.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );
