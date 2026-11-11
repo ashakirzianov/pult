@@ -48,7 +48,12 @@ export function StarSchedules({ star, now }: { star: Star; now: number }) {
         onToggle={() => setExpanded(!expanded)}
         status={
           firing === false ? (
-            <span className="pult-card-status pult-schedules-off">not run on this environment</span>
+            <span
+              className="pult-card-status pult-schedules-off"
+              title="This environment's server fires no schedules: its schedules-off is set."
+            >
+              not run on this environment
+            </span>
           ) : null
         }
       />
