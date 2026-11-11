@@ -25,6 +25,7 @@ import {
   ThreadManagementService,
 } from "../host.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
+import { type Ask, askName, askOf, ASKS_DIRECTORY } from "./asks.ts";
 import {
   AGENTS_FILE,
   CONVERSATIONS_DIRECTORY,
@@ -87,6 +88,8 @@ export interface StarsView {
       } | null;
       readonly asleepSince: string;
       readonly conversations: ReadonlyArray<string>;
+      /** By name. */
+      readonly asks: ReadonlyArray<Ask>;
     }
   >;
 }
@@ -453,6 +456,28 @@ export const make = Effect.gen(function* () {
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
 
+  /** Every `.md` file of the Star's asks, read as asked; one that fails to read counts under its name, logged. */
+  const asksOf = Effect.fn("Stars.asksOf")(function* (star: Star) {
+    const folder = path.join(star.root, ASKS_DIRECTORY);
+    if (!(yield* fs.exists(folder))) return [];
+    const names = (yield* fs.readDirectory(folder)).flatMap((file) => {
+      const name = askName(file);
+      return name === undefined ? [] : [name];
+    });
+    return yield* Effect.forEach(names.toSorted(), (name) => {
+      const file = path.join(folder, `${name}.md`);
+      return fs.readFileString(file).pipe(
+        Effect.catchCause((cause) =>
+          Effect.as(
+            Effect.logWarning("Could not read a Star's ask.", { starId: star.id, file, cause }),
+            undefined,
+          ),
+        ),
+        Effect.map((text) => askOf(name, file, text)),
+      );
+    });
+  });
+
   const view = Effect.gen(function* () {
     const hidden = (yield* projects.listShells())
       .filter((project) => isStarRoot(project.workspaceRoot))
@@ -481,6 +506,7 @@ export const make = Effect.gen(function* () {
           conversation,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
           conversations: yield* transcriptNames(star),
+          asks: yield* asksOf(star),
         };
       }),
     );

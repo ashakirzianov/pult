@@ -410,3 +410,34 @@ describe("a Star's request to sleep", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+describe("asks", () => {
+  it.effect(
+    "are the .md files of .pult/asks by name, an empty one and an unreadable one titled by it",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.asks, []);
+
+        const folder = h.path.join(star.root, ".pult/asks");
+        yield* h.write(h.path.join(folder, "rust-backend.md"), "# Rust backend\n\nWhich crate?\n");
+        yield* h.write(h.path.join(folder, "empty.md"), "");
+        yield* h.write(h.path.join(folder, "notes.txt"), "no ask");
+        // A link to nowhere: listed, and failing to read.
+        yield* h.fs.symlink(h.path.join(h.tmp, "nowhere.md"), h.path.join(folder, "lost.md"));
+
+        const askAt = (name: string) => h.path.join(folder, `${name}.md`);
+        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.asks, [
+          { name: "empty", title: "empty", text: "", path: askAt("empty") },
+          { name: "lost", title: "lost", text: "", path: askAt("lost") },
+          {
+            name: "rust-backend",
+            title: "Rust backend",
+            text: "# Rust backend\n\nWhich crate?\n",
+            path: askAt("rust-backend"),
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+});

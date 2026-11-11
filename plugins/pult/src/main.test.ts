@@ -90,7 +90,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     expect(yield* send("GET", "/about", "reader")).toEqual({
       status: 200,
-      body: { features: ["stars", "star-messages", "star-sleep-request"] },
+      body: { features: ["stars", "star-messages", "star-sleep-request", "star-asks"] },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
       status: 200,

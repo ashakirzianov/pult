@@ -14,7 +14,12 @@ import * as Stars from "./stars/stars.ts";
  * What this build does, one name per feature the page relies on; the page
  * reads it on each connect, and anything but this JSON means no plugin.
  */
-const features: ReadonlyArray<string> = ["stars", "star-messages", "star-sleep-request"];
+const features: ReadonlyArray<string> = [
+  "stars",
+  "star-messages",
+  "star-sleep-request",
+  "star-asks",
+];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
   const deliverTo = yield* Delivery.make;
