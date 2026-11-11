@@ -24,7 +24,6 @@ import {
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { isStarRoot } from "../stars/record.ts";
 import {
   scopedKey,
   type ShellProject,
@@ -258,14 +257,16 @@ export interface EnvironmentShell {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly projects: ReadonlyArray<OrchestrationProjectShell>;
   readonly features: ThreadFeatures;
+  /** The projects it draws as no project, its Pult plugin's (`src/stars/hidden.ts`). */
+  readonly hidden: ReadonlySet<string>;
 }
 
-/** Whether `thread` is a Star's, its project's root a Star's folder: the Star's conversation, on no shelf (`src/stars/`). */
+/** Whether `thread` is of a hidden project, a Star's: its conversation, on no shelf (`src/stars/`). */
 export function isStarThread(
   thread: Pick<EnvironmentThreadShell, "projectId">,
-  projects: ReadonlyArray<Pick<OrchestrationProjectShell, "id" | "workspaceRoot">>,
+  hidden: ReadonlySet<string>,
 ): boolean {
-  return isStarRoot(projects.find((project) => project.id === thread.projectId)?.workspaceRoot);
+  return hidden.has(thread.projectId);
 }
 
 /**
@@ -292,8 +293,11 @@ export function shellThreads(
       ),
     ),
   );
+  const hidden = new Map(
+    environments.map((environment) => [environment.environmentId, environment.hidden]),
+  );
   const inStar = (thread: EnvironmentThreadShell) =>
-    isStarRoot(byId.get(scopedKey(thread.environmentId, thread.projectId))?.workspaceRoot);
+    hidden.get(thread.environmentId)?.has(thread.projectId) === true;
   const shelves = shelve(
     threads.filter((thread) => !inStar(thread)),
     now,

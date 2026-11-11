@@ -149,7 +149,7 @@ export const HANDOFF_TITLE = "Reconcile the Stars' repository";
  */
 export async function handoffThreadId(input: {
   readonly environmentId: string;
-  /** The repository's root, `~/.pult/stars`. */
+  /** The repository's root, the environment's Stars directory. */
   readonly root: string;
   readonly branch: string;
   readonly head: string | null;

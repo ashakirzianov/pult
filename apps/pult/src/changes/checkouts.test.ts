@@ -27,21 +27,26 @@ const thread = (
   branch,
 });
 
+const none = () => false;
+
 NodeTest.describe("checkoutsOf", () => {
   NodeTest.test("lists each project's root and each worktree once, across environments", () => {
-    const checkouts = checkoutsOf({
-      projects: [
-        project("a", "pult", "/repos/pult"),
-        project("b", "pult", "/repos/pult"),
-        project("a", "none", null),
-      ],
-      threads: [
-        thread("a", "pult", "/repos/pult", "/repos/pult"),
-        thread("a", "pult", "/repos/pult", "/wt/pult-1/", "fix"),
-        thread("a", "pult", "/repos/pult", "/wt/pult-1", "fix"),
-        thread("a", "pult", "/repos/pult", "/wt/pult-2", null),
-      ],
-    });
+    const checkouts = checkoutsOf(
+      {
+        projects: [
+          project("a", "pult", "/repos/pult"),
+          project("b", "pult", "/repos/pult"),
+          project("a", "none", null),
+        ],
+        threads: [
+          thread("a", "pult", "/repos/pult", "/repos/pult"),
+          thread("a", "pult", "/repos/pult", "/wt/pult-1/", "fix"),
+          thread("a", "pult", "/repos/pult", "/wt/pult-1", "fix"),
+          thread("a", "pult", "/repos/pult", "/wt/pult-2", null),
+        ],
+      },
+      none,
+    );
     NodeAssert.deepEqual(
       checkouts.map((checkout) => [checkout.environmentId, checkout.root, checkoutName(checkout)]),
       [
@@ -53,20 +58,29 @@ NodeTest.describe("checkoutsOf", () => {
     );
   });
 
-  NodeTest.test("leaves a Star's folder out", () => {
+  NodeTest.test("leaves a hidden project's folder out, a Star's", () => {
     const star = "/Users/a/.pult/stars/star";
-    const checkouts = checkoutsOf({
-      projects: [project("a", "star", star)],
-      threads: [thread("a", "star", star, star)],
-    });
-    NodeAssert.deepEqual(checkouts, []);
+    const checkouts = checkoutsOf(
+      {
+        projects: [project("a", "star", star), project("b", "star", star)],
+        threads: [thread("a", "star", star, star)],
+      },
+      (environmentId, projectId) => environmentId === "a" && projectId === "star",
+    );
+    NodeAssert.deepEqual(
+      checkouts.map((checkout) => [checkout.environmentId, checkout.root]),
+      [["b", star]],
+    );
   });
 
   NodeTest.test("takes a project's root from its thread when the environment lists none", () => {
-    const checkouts = checkoutsOf({
-      projects: [],
-      threads: [thread("a", "solo", "/repos/solo", "/repos/solo/")],
-    });
+    const checkouts = checkoutsOf(
+      {
+        projects: [],
+        threads: [thread("a", "solo", "/repos/solo", "/repos/solo/")],
+      },
+      none,
+    );
     NodeAssert.deepEqual(
       checkouts.map((checkout) => [checkout.root, checkout.worktree]),
       [["/repos/solo", null]],

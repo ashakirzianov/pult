@@ -9,16 +9,18 @@ import { runOperation } from "../threads/park.ts";
 import { threadStore } from "../threads/store.ts";
 import { starGit } from "./git.ts";
 import {
+  type FoundTranscripts,
+  onDidFindStarTranscripts,
   rereadStars,
   setStarFields,
   starById,
-  starFoldersRead,
   starOfProject,
   starRepository,
+  starsRead,
   starStore,
 } from "./model.ts";
-import { type RecordFields, STARS_DIRECTORY } from "./record.ts";
-import { conversationsOf, type Star, type StarHome } from "./stars.ts";
+import { readStarTranscript } from "./plugin.ts";
+import { conversationsOf, type Star } from "./stars.ts";
 import {
   commitMessages,
   HANDOFF_TITLE,
@@ -29,6 +31,9 @@ import {
   refusedByGit,
   syncPlan,
 } from "./sync.ts";
+
+/** What of a Star's record the page changes: Name and Tint. */
+type RecordFields = { readonly name?: string; readonly tint?: string };
 
 /** How long a pull before a sleeping Star wakes stands before another occasion pulls again. */
 const WAKE_PULL_INTERVAL_MS = 60_000;
@@ -98,10 +103,11 @@ const threadExists = (environmentId: string, threadId: string) =>
 /**
  * The Stars' sync (xaxis `pult/issues/star-sync`,
  * `pult/issues/star-folder-layout`): each environment's Stars live in one
- * repository, `~/.pult/stars`, which the page makes one where it is not
- * and commits on the occasions it sees, one at a time per environment: in
- * full once per connect while every Star there sleeps, after each
- * transcript the page writes, on Sync Star and for a change of a record;
+ * repository, the environment's Stars directory, as its Pult plugin names
+ * it, which the page makes one where it is not and commits on the occasions
+ * it sees, one at a time per environment: in full once per connect while
+ * every Star there sleeps, when a transcript the plugin wrote appears in a
+ * Star's answer, on Sync Star and for a change of a record;
  * with an origin (its `.git/config`'s, the one place it is kept) each full
  * occasion fetches, pulls and pushes too, and a sleeping Star's draft
  * written in pulls alone. A failure is told and tried again on the next
@@ -125,6 +131,7 @@ class StarSync {
     });
     starStore.subscribe(() => this.update());
     threadStore.subscribe(() => this.update());
+    onDidFindStarTranscripts((found) => void this.afterTranscripts(found));
     // A sleeping Star's draft written in: it is about to wake there.
     projectDrafts.subscribe(() => {
       for (const draft of projectDrafts.get()) {
@@ -170,7 +177,7 @@ class StarSync {
    * they sleep is known once the environment's threads are in.
    */
   private update(): void {
-    if (connection.connecting || !starFoldersRead()) return;
+    if (connection.connecting || !starsRead()) return;
     for (const environment of connection.environments) {
       const environmentId = environment.environmentId;
       if (!ready(environmentId) || this.connected.has(environmentId)) continue;
@@ -268,28 +275,34 @@ class StarSync {
       });
   }
 
-  /** After a transcript the page wrote into a home: its conversation's commit, and a push where the repository syncs. */
-  afterTranscript(
-    home: StarHome,
-    conversation: { readonly title: string; readonly settledAt: string | null },
-  ): void {
-    const star = starStore
-      .get()
-      .find((each) =>
-        each.homes.some(
-          (candidate) =>
-            candidate.environmentId === home.environmentId && candidate.root === home.root,
-        ),
-      );
-    void this.run(home.environmentId, {
+  /**
+   * After transcripts the plugin wrote into a home appeared in its answer:
+   * their conversation's commit, named by the newest one's title and end as
+   * its transcript route reads them, and a push where the repository syncs.
+   * Until sync moves to the plugin, a transcript waits for a page to commit
+   * it (`star-sync`).
+   */
+  private async afterTranscripts({ environmentId, starId, names }: FoundTranscripts) {
+    const newest = names.at(-1);
+    const credential = connection.credential(environmentId);
+    const transcript =
+      newest === undefined || credential === undefined
+        ? undefined
+        : await readStarTranscript(credential, starId, newest).catch((error: unknown) => {
+            console.warn(
+              `[pult-shell] could not read the Star's conversation ${newest} for its commit: ${errorMessage(error)}`,
+            );
+            return undefined;
+          });
+    await this.run(environmentId, {
       kind: "full",
       message: () =>
         commitMessages.conversation(
-          conversation.title,
-          conversation.settledAt ?? new Date().toISOString(),
+          transcript?.title ?? newest ?? "",
+          transcript?.ended ?? new Date().toISOString(),
         ),
       manual: false,
-      ...(star === undefined ? {} : { starId: star.id }),
+      starId,
     });
   }
 
@@ -356,7 +369,8 @@ class StarSync {
       if (occasion.record !== undefined) {
         const { starId, changes } = occasion.record;
         const home = starById(starId)?.homes.find((each) => each.environmentId === environmentId);
-        if (home === undefined || !(await setStarFields(starId, changes, [home]))) return false;
+        if (home === undefined || !(await setStarFields(starId, changes, environmentId)))
+          return false;
       }
       if (plan.commit) await git.stacked(repository.root, "commit", occasion.message(name), null);
       if (plan.push) {
@@ -408,7 +422,7 @@ class StarSync {
     const star = stars.find((each) => each.id === occasion.starId) ?? stars[0];
     const home = star?.homes.find((each) => each.environmentId === environmentId);
     const what = `Your Stars' repository${onWhich(environmentId)} has diverged from its origin`;
-    if (star === undefined || home?.projectId == null) return false;
+    if (star === undefined || home === undefined) return false;
     const branch = status.branch ?? "HEAD";
     const threadId = await handoffThreadId({
       environmentId,
@@ -440,11 +454,11 @@ class StarSync {
       conversations.find((thread) => thread.environmentId === environmentId) ?? conversations[0];
     if (model === undefined) {
       this.change(environmentId, {
-        note: `${what}; reconcile it with git in ~/${STARS_DIRECTORY}.`,
+        note: `${what}; reconcile it with git in ${root}.`,
       });
       await notify(
         "error",
-        `${what}, and your Star has had no conversation to wake with; reconcile it with git in ~/${STARS_DIRECTORY}.`,
+        `${what}, and your Star has had no conversation to wake with; reconcile it with git in ${root}.`,
       );
       return false;
     }
@@ -457,7 +471,7 @@ class StarSync {
     const { modelSelection, runtimeMode, interactionMode } = projection.thread;
     const text = handoffMessage({
       environmentName: environmentName(environmentId),
-      repository: `~/${STARS_DIRECTORY}`,
+      repository: root,
       branch,
       uncommitted: status.uncommitted,
     });
@@ -514,7 +528,3 @@ export const setStarRecord = (starId: string, changes: RecordFields) =>
   sync.setRecord(starId, changes);
 export const syncStar = (starId: string) => sync.syncNow(starId);
 export const starRepositorySync = (environmentId: string) => sync.repository(environmentId);
-export const afterStarTranscript = (
-  home: StarHome,
-  conversation: { readonly title: string; readonly settledAt: string | null },
-) => sync.afterTranscript(home, conversation);

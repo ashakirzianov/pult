@@ -2,7 +2,6 @@
 // so `node --test src/changes/checkouts.test.ts` can run it.
 import type { ReviewDiffPreviewSource, ReviewDiffPreviewSourceKind } from "@t3tools/contracts";
 
-import { isStarRoot } from "../stars/record.ts";
 import type { ShellProject, ShellThread } from "../threads/store.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 
@@ -30,22 +29,25 @@ function trimSlash(path: string): string {
  * Every checkout of the held environments, once each: the projects' roots,
  * then the threads' worktrees, in the store's order; a thread whose project
  * the store lists no root for brings its project's root, as it knows it.
- * A Star's folder is none.
+ * A hidden project's, a Star's folder, is none (`src/stars/hidden.ts`).
  */
-export function checkoutsOf(state: {
-  readonly projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "name" | "root">>;
-  readonly threads: ReadonlyArray<
-    Pick<
-      ShellThread,
-      "environmentId" | "projectId" | "projectName" | "projectRoot" | "checkoutRoot" | "branch"
-    >
-  >;
-}): Checkout[] {
+export function checkoutsOf(
+  state: {
+    readonly projects: ReadonlyArray<Pick<ShellProject, "environmentId" | "id" | "name" | "root">>;
+    readonly threads: ReadonlyArray<
+      Pick<
+        ShellThread,
+        "environmentId" | "projectId" | "projectName" | "projectRoot" | "checkoutRoot" | "branch"
+      >
+    >;
+  },
+  hidden: (environmentId: string, projectId: string) => boolean,
+): Checkout[] {
   const checkouts = new Map<string, Checkout>();
   const add = (checkout: Checkout) => {
     const key = checkoutKey(checkout.environmentId, checkout.root);
     // A Star's folder is no project of the user's (`src/stars/`).
-    if (!checkouts.has(key) && !isStarRoot(checkout.root))
+    if (!checkouts.has(key) && !hidden(checkout.environmentId, checkout.projectId))
       checkouts.set(key, { ...checkout, root: trimSlash(checkout.root) });
   };
   for (const project of state.projects) {

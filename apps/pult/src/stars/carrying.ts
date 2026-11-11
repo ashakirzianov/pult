@@ -2,10 +2,8 @@
 // page's Stars, threads and composers.
 import type * as Drafts from "../../view/drafts.ts";
 import { scopedKey, threadStore } from "../threads/store.ts";
-import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
 import { carryInto } from "./carry.ts";
 import { starStore, starTarget } from "./model.ts";
-import { STARS_FEATURE } from "./plugin.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { conversationsOf } from "./stars.ts";
 
@@ -33,23 +31,18 @@ function look(): void {
 }
 
 /**
- * Whenever a Star's tab shows its draft on an environment whose Pult plugin
- * keeps its Stars, and the composer of a conversation of that home that has
- * ended holds text, moves the text into the draft (`carryInto`): a state
- * looked at on every change, so text stranded while no page was open is
- * carried on the next look. The page holds a Star awake over unsent text
- * where it keeps the Star itself (`conversations.ts`).
+ * Whenever a Star's tab shows its draft and the composer of a conversation
+ * of that home that has ended holds text, moves the text into the draft
+ * (`carryInto`): a state looked at on every change, so text stranded while
+ * no page was open is carried on the next look. Unsent text holds no Star
+ * awake: its plugin puts it to sleep regardless (`star-sleep`).
  */
 function carry(drafts: typeof Drafts): void {
   if (!starSettingKnown() || !starEnabled.get()) return;
   const threads = threadStore.get().threads;
   for (const star of starStore.get()) {
     const target = starTarget(star);
-    if (
-      target?.kind !== "draft" ||
-      pluginFeatures(target.environmentId)?.has(STARS_FEATURE) !== true
-    )
-      continue;
+    if (target?.kind !== "draft") continue;
     const homes = star.homes.filter(
       (home) => home.environmentId === target.environmentId && home.projectId === target.projectId,
     );
@@ -97,12 +90,11 @@ function carry(drafts: typeof Drafts): void {
   }
 }
 
-/** Starts carrying unsent text into the Stars' drafts, after the Stars' model, on the page's thread model and its plugins' `about`. */
+/** Starts carrying unsent text into the Stars' drafts, after the Stars' model, on the page's thread model. */
 export function startUnsentCarry(): void {
   threadStore.subscribe(look);
   starStore.subscribe(look);
   starEnabled.subscribe(look);
-  onDidChangePluginFeatures(look);
   // The composer store without the rest of the view, as the panel loads it.
   void import("../../view/drafts.ts").then((module) => {
     drafts = module;

@@ -79,6 +79,7 @@ import {
   type ThreadSelection,
 } from "../threads/selection.ts";
 import { threadProjectIcon } from "../threads/projectIcon.ts";
+import { isHiddenProject } from "../stars/hidden.ts";
 import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
 import { setChangesCard, mountChangesCard } from "./card.tsx";
 import {
@@ -762,7 +763,7 @@ class ChangesView {
   /** The store's checkouts kept, new ones read while the view shows them, and a checkout read again when a thread on it finishes a run. */
   private syncStore(): void {
     const state = threadStore.get();
-    const checkouts = checkoutsOf(state);
+    const checkouts = checkoutsOf(state, isHiddenProject);
     const keys = new Set(
       checkouts.map((checkout) => checkoutKey(checkout.environmentId, checkout.root)),
     );

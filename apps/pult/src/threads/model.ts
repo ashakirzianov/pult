@@ -29,7 +29,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { connection, environmentName } from "../connection/index.ts";
 import { OlderSettledThreads } from "./olderSettled.ts";
-import { isStarRoot } from "../stars/record.ts";
+import { hiddenProjects, onDidChangeHiddenProjects } from "../stars/hidden.ts";
 import {
   type EnvironmentShell,
   isStarThread,
@@ -118,6 +118,7 @@ class ThreadsModel {
 
   start(): void {
     this.inboxReturns.subscribe(() => this.publish());
+    onDidChangeHiddenProjects(() => this.publish());
     connection.onDidChange(() => this.followEnvironments());
     this.followEnvironments();
   }
@@ -209,14 +210,15 @@ class ThreadsModel {
     this.publish();
   }
 
-  /** Into the store: the environments as the connection stands, each one's projects, and its threads once its features are in. */
+  /** Into the store: the environments as the connection stands, each one's projects, and its threads once its features and the projects it hides are in (`src/stars/hidden.ts`), so a Star's threads never flash as cards. */
   private publish(): void {
     const environments = connection.environments.flatMap((environment) => {
       const followed = this.followed.get(environment.environmentId);
       return followed === undefined ? [] : [{ environment, followed }];
     });
-    const loaded = environments.flatMap(({ environment, followed }): Array<EnvironmentShell> =>
-      followed.held === null || followed.features === null
+    const loaded = environments.flatMap(({ environment, followed }): Array<EnvironmentShell> => {
+      const hidden = hiddenProjects(environment.environmentId);
+      return followed.held === null || followed.features === null || hidden === undefined
         ? []
         : [
             {
@@ -224,9 +226,10 @@ class ThreadsModel {
               threads: followed.held.threads,
               projects: followed.held.snapshot.projects,
               features: followed.features,
+              hidden,
             },
-          ],
-    );
+          ];
+    });
     const now = new Date().toISOString();
     const threads = shellThreads(
       loaded,
@@ -234,7 +237,10 @@ class ThreadsModel {
       this.inboxReturns.observe(loaded.flatMap((environment) => environment.threads)),
     );
     const settled = this.settled(
-      environments.map(({ followed }) => followed),
+      environments.flatMap(({ environment, followed }) => {
+        const hidden = hiddenProjects(environment.environmentId);
+        return hidden === undefined ? [] : [{ ...followed, hidden }];
+      }),
       now,
       threads.filter((thread) => thread.shelf === "settled").length,
     );
@@ -245,7 +251,10 @@ class ThreadsModel {
         name: environmentName(environment, connection.environments),
         phase: environment.phase,
         features: followed.features ?? NO_THREAD_FEATURES,
-        loaded: followed.held !== null && followed.features !== null,
+        loaded:
+          followed.held !== null &&
+          followed.features !== null &&
+          hiddenProjects(environment.environmentId) !== undefined,
       })),
       threads,
       settled,
@@ -264,17 +273,20 @@ class ThreadsModel {
    * listed ones and every environment's older ones not read yet; and the pages to read while
    * fewer threads are listed than the shelf shows (`wantedOlderSettledPages`), which reads them.
    */
-  private settled(followed: ReadonlyArray<Followed>, now: string, listed: number) {
+  private settled(
+    followed: ReadonlyArray<Followed & { readonly hidden: ReadonlySet<string> }>,
+    now: string,
+    listed: number,
+  ) {
     // The Stars' threads are on no shelf, the settled ones among them.
-    const held = followed.flatMap(({ held, features, olderSettled }) =>
+    const held = followed.flatMap(({ held, features, olderSettled, hidden }) =>
       held === null || features === null
         ? []
         : [
             {
-              threads: held.threads.filter(
-                (thread) => !isStarThread(thread, held.snapshot.projects),
-              ),
+              threads: held.threads.filter((thread) => !isStarThread(thread, hidden)),
               projects: held.snapshot.projects,
+              hidden,
               features,
               olderSettled,
             },
@@ -320,8 +332,8 @@ class ThreadsModel {
     const unloaded = unloadedOlderSettledCount({
       olderSettled: (environmentId) => shelf.get(environmentId)?.older ?? null,
       // An environment with a Star counts the older settled threads of its other projects alone.
-      scopes: held.map(({ olderSettled, projects }) => {
-        const shown = projects.filter((project) => !isStarRoot(project.workspaceRoot));
+      scopes: held.map(({ olderSettled, projects, hidden }) => {
+        const shown = projects.filter((project) => !hidden.has(project.id));
         return {
           environmentId: EnvironmentId.make(olderSettled.environmentId),
           projectIds: shown.length === projects.length ? null : shown.map((project) => project.id),

@@ -14,7 +14,7 @@ import {
   transcriptReading,
 } from "./foldState.ts";
 import { starById, starStore } from "./model.ts";
-import { foldHome, type StarHome } from "./stars.ts";
+import { drawnHome, type StarHome } from "./stars.ts";
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
 
@@ -114,15 +114,17 @@ function useAnchoredHeight() {
 }
 
 function Conversation({
+  starId,
   home,
   name,
   environmentName,
 }: {
+  starId: string;
   home: StarHome;
   name: string;
   environmentName: string | undefined;
 }) {
-  const reading = transcriptReading(home.environmentId, home.root, name);
+  const reading = transcriptReading(home.environmentId, starId, name);
   if (reading === undefined || reading.status === "loading")
     return <p className="pult-star-fold-note">Reading the conversation…</p>;
   if (reading.status === "failed")
@@ -131,7 +133,7 @@ function Conversation({
         Pult could not read this conversation: {reading.message}
       </p>
     );
-  const { transcript, truncated } = reading;
+  const { transcript } = reading;
   return (
     <>
       {transcript.partial ? (
@@ -145,9 +147,6 @@ function Conversation({
         environmentId={home.environmentId}
         cwd={home.root}
       />
-      {truncated ? (
-        <p className="pult-star-fold-note">The rest of this conversation is in its file, {name}.</p>
-      ) : null}
       <ConversationDivider
         label={`Fell asleep ${clock(transcript.ended)}`.trim()}
         detail={environmentName}
@@ -158,9 +157,10 @@ function Conversation({
 
 /**
  * The fold of a Star's earlier conversations, at the top of its timeline
- * (xaxis `pult/issues/star-sleep`): the transcripts of the environment its
- * conversation runs on, or ran on last (`foldHome`), never live threads.
- * Collapsed, "Earlier conversations · N", the folder's listing alone, and
+ * (xaxis `pult/issues/star-sleep`): the transcripts of the home it is drawn
+ * from (`drawnHome`), never live threads, their names from the Pult plugin's
+ * `stars` route and each one read from its transcript route (`foldState.ts`).
+ * Collapsed, "Earlier conversations · N", the names alone, and
  * nothing at 0; open, its newest transcript right above the live view, each
  * conversation followed by its divider, "Fell asleep 14:32", with the
  * environment's name while the page holds several, and Show more above,
@@ -171,18 +171,18 @@ export default function StarFold({ starId }: { starId: string }) {
   const star = useSyncExternalStore(starStore.subscribe, () => starById(starId));
   useSyncExternalStore(foldStore.subscribe, foldStore.version);
   const anchor = useAnchoredHeight();
-  const home = star === undefined ? undefined : foldHome(star);
+  const home = star === undefined ? undefined : drawnHome(star);
   // Named while the page holds several environments.
   const environmentName = useSyncExternalStore(subscribeToThreads, () =>
     home === undefined ? undefined : threadStore.distinguishing(home.environmentId),
   );
-  const names = home?.transcripts ?? [];
+  const names = home?.conversations ?? [];
   const view = foldView(starId);
   // Oldest first, the newest right above the live view.
   const shown = view.open ? names.slice(-view.shown) : [];
   useEffect(() => {
     if (home !== undefined)
-      for (const name of shown) readTranscript(home.environmentId, home.root, name);
+      for (const name of shown) readTranscript(home.environmentId, starId, name);
   });
   if (home === undefined || names.length === 0) return null;
   return (
@@ -206,7 +206,13 @@ export default function StarFold({ starId }: { starId: string }) {
         </button>
       ) : null}
       {shown.map((name) => (
-        <Conversation key={name} home={home} name={name} environmentName={environmentName} />
+        <Conversation
+          key={name}
+          starId={starId}
+          home={home}
+          name={name}
+          environmentName={environmentName}
+        />
       ))}
     </div>
   );

@@ -1,10 +1,10 @@
-import { environmentServer } from "../files/server.ts";
-import { parseTranscript, type Transcript, transcriptsFolder } from "./transcript.ts";
+import { connection } from "../connection/index.ts";
+import { readStarTranscript, type Transcript } from "./plugin.ts";
 
-/** A transcript as the fold has it: being read, read (`truncated` when the file is longer than the server reads at once), or not. */
+/** A transcript as the fold has it: being read, read, or not. */
 export type TranscriptReading =
   | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly transcript: Transcript; readonly truncated: boolean }
+  | { readonly status: "ready"; readonly transcript: Transcript }
   | { readonly status: "failed"; readonly message: string };
 
 /** A Star's fold: open or not, and how many of its newest transcripts it shows while open. */
@@ -34,9 +34,10 @@ function errorMessage(error: unknown): string {
 /**
  * The folds of the Stars' tabs (`fold.tsx`), kept for the page's session
  * apart from the view, which mounts again as a Star's conversation changes:
- * each Star's fold, and the transcripts read, by home and name, each read
- * once and again only when the page rewrites it. For `useSyncExternalStore`,
- * a version that moves on every change.
+ * each Star's fold, and the transcripts read from the Pult plugin's route,
+ * by environment, Star and name, each read once and again when the Star's
+ * conversation there ends, which may rewrite it. For
+ * `useSyncExternalStore`, a version that moves on every change.
  */
 export const foldStore = {
   version: () => version,
@@ -60,46 +61,47 @@ export function showOlder(starId: string): void {
   changed();
 }
 
-const keyOf = (environmentId: string, root: string, name: string) =>
-  `${environmentId}\n${root}\n${name}`;
+const keyOf = (environmentId: string, starId: string, name: string) =>
+  JSON.stringify([environmentId, starId, name]);
 
-export const transcriptReading = (environmentId: string, root: string, name: string) =>
-  readings.get(keyOf(environmentId, root, name));
+export const transcriptReading = (environmentId: string, starId: string, name: string) =>
+  readings.get(keyOf(environmentId, starId, name));
 
-async function read(environmentId: string, root: string, name: string): Promise<TranscriptReading> {
+async function read(
+  environmentId: string,
+  starId: string,
+  name: string,
+): Promise<TranscriptReading> {
   try {
-    const file = await environmentServer(environmentId).readFile({
-      cwd: root,
-      relativePath: `${transcriptsFolder(environmentId)}/${name}`,
-    });
-    const transcript = parseTranscript(file.contents);
-    return transcript === undefined
-      ? { status: "failed", message: "It is not a transcript." }
-      : { status: "ready", transcript, truncated: file.truncated };
+    const credential = connection.credential(environmentId);
+    if (credential === undefined) throw new Error("the page holds no bearer for its environment");
+    return { status: "ready", transcript: await readStarTranscript(credential, starId, name) };
   } catch (error) {
     return { status: "failed", message: errorMessage(error) };
   }
 }
 
-/** Reads the transcript `name` of the Star's home on `environmentId` at `root`, once. */
-export function readTranscript(environmentId: string, root: string, name: string): void {
-  const key = keyOf(environmentId, root, name);
+/** Reads the transcript `name` of the Star on `environmentId`, once. */
+export function readTranscript(environmentId: string, starId: string, name: string): void {
+  const key = keyOf(environmentId, starId, name);
   if (readings.has(key)) return;
   readings.set(key, { status: "loading" });
   changed();
-  void read(environmentId, root, name).then((reading) => {
+  void read(environmentId, starId, name).then((reading) => {
     readings.set(key, reading);
     changed();
   });
 }
 
-/** Reads a transcript the fold has read again, after the page rewrote it, the old one shown meanwhile. */
-export function refreshTranscript(environmentId: string, root: string, name: string): void {
-  const key = keyOf(environmentId, root, name);
-  if (readings.get(key)?.status !== "ready") return;
-  void read(environmentId, root, name).then((reading) => {
-    if (reading.status !== "ready") return;
-    readings.set(key, reading);
-    changed();
-  });
+/** Reads again every transcript of the Star on `environmentId` the fold has read, as one may have been rewritten; the old ones shown meanwhile. */
+export function refreshTranscripts(environmentId: string, starId: string): void {
+  for (const [key, reading] of readings) {
+    const [environment, star, name] = JSON.parse(key) as [string, string, string];
+    if (environment !== environmentId || star !== starId || reading.status !== "ready") continue;
+    void read(environmentId, starId, name).then((next) => {
+      if (next.status !== "ready") return;
+      readings.set(key, next);
+      changed();
+    });
+  }
 }

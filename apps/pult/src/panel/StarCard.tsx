@@ -7,7 +7,7 @@ import { flatStar } from "../stars/flat/star.ts";
 import "../stars/flat/star.css";
 import type { StarLook } from "../stars/look.ts";
 import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
-import { asleepSince, type Star, starName } from "../stars/stars.ts";
+import { type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
@@ -141,7 +141,7 @@ function StarStatus({ star, now }: { star: Star; now: number }) {
   }
   if (star.state === "awake")
     return <span className="pult-card-status pult-star-awake">Awake</span>;
-  const since = age(asleepSince(star), now);
+  const since = age(star.asleepSince, now);
   return (
     <span className="pult-card-status pult-star-asleep">
       Asleep{since === "" ? "" : ` · ${since}`}

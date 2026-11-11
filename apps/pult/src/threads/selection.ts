@@ -31,7 +31,7 @@ import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/se
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { SettingsInput } from "../settings/pane.tsx";
-import { isStarRoot } from "../stars/record.ts";
+import { isHiddenProject } from "../stars/hidden.ts";
 import { starById, starOfProject, starOfThread, starTarget } from "../stars/model.ts";
 import { HasStarContext, pickStar } from "../stars/commands.ts";
 import { starEnabled } from "../stars/settings.ts";
@@ -813,7 +813,7 @@ function registerNewThreadCommand(): void {
           );
         // A Star's project is no project of the user's (`src/stars/`).
         const sorted = projects
-          .filter((project) => !isStarRoot(project.root))
+          .filter((project) => !isHiddenProject(project.environmentId, project.id))
           .toSorted(
             (left, right) =>
               isCurrent(right) - isCurrent(left) || left.name.localeCompare(right.name),

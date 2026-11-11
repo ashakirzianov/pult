@@ -13,7 +13,7 @@ import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "~/components/chat/T
 import { TimelineSystemDivider } from "~/components/chat/TimelineSystemDivider";
 import { cn } from "~/lib/utils";
 
-/** One entry of a transcript, as `src/stars/transcript.ts` reads it back. */
+/** One entry of a transcript, as the Pult plugin's transcript route serves it (`src/stars/plugin.ts`). */
 export interface TranscriptEntry {
   readonly kind: "user" | "star" | "tool";
   readonly at: string;

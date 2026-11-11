@@ -30,7 +30,7 @@ import { connection } from "../connection/index.ts";
 import { nextAfterParking, type ParkActions, parkActions, parseCustomSnooze } from "./parking.ts";
 import { NO_THREAD_FEATURES } from "./presentation.ts";
 import { starStore } from "../stars/model.ts";
-import { isStarRoot } from "../stars/record.ts";
+import { isHiddenProject } from "../stars/hidden.ts";
 import { onDidSelectThread, selectedThread, selectionTarget, selectThread } from "./selection.ts";
 import { scopedKey, type ShellThread, type ThreadFeatures, threadStore } from "./store.ts";
 
@@ -201,14 +201,6 @@ async function park(target: ThreadRef, wake?: string): Promise<void> {
 }
 
 export const settleThread = (target: ThreadRef) => park(target);
-/**
- * Settles a thread on the page's own account, with no notification and no
- * move of the selection, its server refusing one that is not at rest: a Star
- * falling asleep (`src/stars/conversations.ts`). Settling a settled thread
- * keeps its settlement.
- */
-export const settleQuietly = (target: ThreadRef) =>
-  run(target, Operations.settleThread({ threadId: ThreadId.make(target.id) }));
 /** Runs one of upstream's operations on the environment's live session, as the thread commands run theirs: a Star's handoff starting its conversation (`src/stars/syncing.ts`). */
 export const runOperation = <A, E>(
   environmentId: string,
@@ -253,7 +245,7 @@ async function copyThreadLink(target: ThreadRef): Promise<void> {
  */
 function threadParkActions(target: ShellThread): ParkActions {
   const features = threadStore.environment(target.environmentId)?.features ?? NO_THREAD_FEATURES;
-  if (target.parentId === null && isStarRoot(target.projectRoot)) {
+  if (target.parentId === null && isHiddenProject(target.environmentId, target.projectId)) {
     return {
       settle: features.settlement && !target.settled,
       unsettle: false,

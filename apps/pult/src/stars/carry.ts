@@ -1,8 +1,8 @@
 // Unsent text carried into a sleeping Star's draft (xaxis
 // `pult/design-durable-agent-sleep`, Unsent text), apart from the workbench
-// so `node --test src/stars/carry.test.ts` can run it. Where the server's
-// plugin puts a Star to sleep, text typed under its conversation holds
-// nothing, so the page carries it into the draft the Star's tab then shows.
+// so `node --test src/stars/carry.test.ts` can run it. The server's plugin
+// puts a Star to sleep whatever its composer holds, so the page carries text
+// typed under its conversation into the draft the Star's tab then shows.
 
 /** A composer as the carry reads it: whether it holds what the composer store's mover moves, text, images or files. */
 export interface EndedComposer {

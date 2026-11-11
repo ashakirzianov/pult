@@ -52,6 +52,8 @@ const subagentOf = (root: string) => ({
   },
 });
 
+const NO_HIDDEN: ReadonlySet<string> = new Set();
+
 NodeTest.describe("shelve", () => {
   NodeTest.test(
     "puts a thread on one shelf: snoozed, then settled, then pinned, then active",
@@ -237,6 +239,7 @@ NodeTest.describe("shellThreads", () => {
             ],
             projects: [],
             features: ALL,
+            hidden: NO_HIDDEN,
           },
         ],
         NOW,
@@ -265,6 +268,7 @@ NodeTest.describe("shellThreads", () => {
           threads: [thread("t", { latestRunId: RunId.make("run"), status: "idle" })],
           projects: [],
           features: ALL,
+          hidden: NO_HIDDEN,
         },
       ],
       NOW,
@@ -300,6 +304,7 @@ NodeTest.describe("shellThreads", () => {
             ],
             projects: [],
             features: ALL,
+            hidden: NO_HIDDEN,
           },
         ],
         NOW,
@@ -327,6 +332,7 @@ NodeTest.describe("shellThreads", () => {
           ],
           projects: [],
           features: ALL,
+          hidden: NO_HIDDEN,
         },
       ],
       NOW,
@@ -345,7 +351,8 @@ NodeTest.describe("shellThreads", () => {
     const star = {
       ...v2Project,
       id: ProjectId.make("star"),
-      workspaceRoot: "/Users/a/.pult/stars/star",
+      // Hidden by the plugin's list, wherever its folder is.
+      workspaceRoot: "/Users/a/star",
     };
     const asleep = {
       projectId: star.id,
@@ -363,6 +370,7 @@ NodeTest.describe("shellThreads", () => {
           ],
           projects: [v2Project, star],
           features: ALL,
+          hidden: new Set([star.id]),
         },
       ],
       NOW,
@@ -384,12 +392,19 @@ NodeTest.describe("shellThreads", () => {
       const settled = { settledOverride: "settled" as const };
       const threads = shellThreads(
         [
-          { environmentId: "env", threads: [thread("same", settled)], projects: [], features: ALL },
+          {
+            environmentId: "env",
+            threads: [thread("same", settled)],
+            projects: [],
+            features: ALL,
+            hidden: NO_HIDDEN,
+          },
           {
             environmentId: "other",
             threads: [thread("same", settled, "other")],
             projects: [],
             features: NO_THREAD_FEATURES,
+            hidden: NO_HIDDEN,
           },
         ],
         NOW,

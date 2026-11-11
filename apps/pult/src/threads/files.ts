@@ -13,6 +13,7 @@ import { baseName, namesEnvironment, parentOf, toHostPath } from "../files/paths
 import { type Candidate, resolveThreadPath } from "../files/resolve.ts";
 import { environmentServer } from "../files/server.ts";
 import { pultResource, whenListed } from "../files/workspace.ts";
+import { isHiddenProject } from "../stars/hidden.ts";
 import { threadStore } from "./store.ts";
 
 /** As many entries as Go to File asks each root for. */
@@ -55,10 +56,13 @@ export async function openThreadFile(
     path,
     checkoutRoot: thread.checkoutRoot ?? thread.projectRoot,
     projectId: thread.projectId,
-    checkouts: checkoutsOf({
-      projects: ofEnvironment(state.projects),
-      threads: ofEnvironment(state.threads),
-    }),
+    checkouts: checkoutsOf(
+      {
+        projects: ofEnvironment(state.projects),
+        threads: ofEnvironment(state.threads),
+      },
+      isHiddenProject,
+    ),
     exists: (candidate) => files.exists(pultResource(environmentId, candidate)).catch(() => false),
     search: async (checkout, key) => {
       const { entries } = await environmentServer(environmentId).searchEntries({

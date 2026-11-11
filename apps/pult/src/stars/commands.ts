@@ -19,13 +19,12 @@ import { pultResource } from "../files/workspace.ts";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { canCreateStarOn, createStar, primaryHome, starById, starStore } from "./model.ts";
-import { INSTRUCTIONS_FILE } from "./record.ts";
 import { type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions and Open Star Folder are offered then. */
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
-/** Whether a held environment has no Star: Create Star is offered then. */
+/** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
 
 /** The Star `starId` names, or with none the page's one, or one picked in the shell's quick input while it holds several. */
@@ -48,15 +47,7 @@ export async function pickStar(
   return picked?.star;
 }
 
-/** The `pult:` URI of a path under the home's folder. */
-function homeResource(home: NonNullable<ReturnType<typeof primaryHome>>, path = "") {
-  return pultResource(
-    home.environmentId,
-    toUriPath(path === "" ? home.root : `${home.root.replace(/[/\\]+$/, "")}/${path}`),
-  );
-}
-
-/** The Star's own `instructions.md`, which its `AGENTS.md` loads, as a tab among the selection's, from the home that stands for it. */
+/** The Star's own `instructions.md`, which its `AGENTS.md` loads, as a tab among the selection's, from the home that stands for it, where its plugin says it is. */
 async function editStarInstructions(star: Star): Promise<void> {
   const home = primaryHome(star);
   if (home === undefined)
@@ -65,7 +56,10 @@ async function editStarInstructions(star: Star): Promise<void> {
     );
   await (
     await getService(IEditorService)
-  ).openEditor({ resource: homeResource(home, INSTRUCTIONS_FILE), options: { pinned: true } });
+  ).openEditor({
+    resource: pultResource(home.environmentId, toUriPath(home.instructions)),
+    options: { pinned: true },
+  });
 }
 
 /**
@@ -83,14 +77,18 @@ async function openStarFolder(star: Star): Promise<void> {
   if (selectedStar() === star.id)
     return void (await commands.executeCommand("pult-shell.openThreadExplorer"));
   await commands.executeCommand("pult-shell.openEnvironmentExplorer");
-  await commands.executeCommand("revealInExplorer", homeResource(home));
+  await commands.executeCommand(
+    "revealInExplorer",
+    pultResource(home.environmentId, toUriPath(home.root)),
+  );
 }
 
 /**
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
- * [environmentId]`, while a held environment has none, picked among them
- * while there are several; while the page's Stars sync, their repository
- * cloned there from its origin), Edit Star Instructions
+ * [environmentId]`, a new Star on any held environment whose Pult plugin
+ * serves Stars, picked among them while there are several; while the
+ * page's Stars sync, their repository cloned there from its origin, where
+ * none is), Edit Star Instructions
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`) and Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
@@ -113,18 +111,26 @@ export function registerStarCommands(): void {
       }
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
-        // Stars that sync are cloned there, each a second home, rather than a new Star made beside them.
-        const origin = starStore.get().find((star) => star.origin !== undefined)?.origin;
-        if (typeof environmentId === "string") return createStar(environmentId, origin);
+        // Stars that sync are cloned to an environment holding none, each a second home there, rather than a new Star made beside them.
+        const create = (environmentId: string) => {
+          const holds = starStore
+            .get()
+            .some((star) => star.homes.some((home) => home.environmentId === environmentId));
+          const origin = holds
+            ? undefined
+            : starStore.get().find((star) => star.origin !== undefined)?.origin;
+          return createStar(environmentId, origin);
+        };
+        if (typeof environmentId === "string") return create(environmentId);
         const candidates = connection.environments.filter((environment) =>
           canCreateStarOn(environment.environmentId),
         );
         if (candidates.length === 0)
           return void (await getService(INotificationService)).info(
-            "Every connected environment has a Star.",
+            "No connected environment's server keeps Stars.",
           );
         const picked = await pickEnvironment(candidates, "Create a Star on an environment");
-        if (picked !== undefined) await createStar(picked.environmentId, origin);
+        if (picked !== undefined) await create(picked.environmentId);
       }
     },
   );

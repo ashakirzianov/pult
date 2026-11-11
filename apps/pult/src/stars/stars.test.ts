@@ -2,37 +2,34 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
-import { newRecord } from "./record.ts";
+import type { RouteStar, StarsAnswer } from "./plugin.ts";
 import {
-  asleepSince,
   creationTarget,
-  earlierConversations,
+  drawnHome,
   type EnvironmentReading,
-  foldersToAdopt,
   findStarOfThread,
+  newTranscripts,
   starsOf,
   wakeHome,
 } from "./stars.ts";
 
-const record = (id: string) => newRecord(id, "2026-11-01T00:00:00.000Z");
-const folder = (
-  environmentId: string,
-  id: string,
-  root = "/home/a/.pult/stars/star",
-  transcripts: ReadonlyArray<string> = [],
-) => ({
-  environmentId,
-  root,
-  record: record(id),
-  transcripts,
+const CREATED = "2026-11-01T00:00:00.000Z";
+
+const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar => ({
+  id,
+  name: "",
+  tint: "amber",
+  created: CREATED,
+  root: `/Users/a/.pult/stars/${id}`,
+  projectId: "star-project",
+  instructions: `/Users/a/.pult/stars/${id}/instructions.md`,
+  conversation: null,
+  asleepSince: CREATED,
+  conversations: [],
+  ...overrides,
 });
-const names = (count: number) =>
-  Array.from({ length: count }, (_, index) => `2026-11-0${index + 1}T10-00-00Z-t${index}.md`);
-const project = (
-  environmentId: string,
-  id: string,
-  root: string | null = "/home/a/.pult/stars/star",
-) => ({ environmentId, id, root });
+const answer = (stars: ReadonlyArray<RouteStar>, hidden: ReadonlyArray<string> = []) =>
+  ({ directory: "/Users/a/.pult/stars", hidden, stars }) satisfies StarsAnswer;
 const thread = (
   environmentId: string,
   id: string,
@@ -57,129 +54,145 @@ const thread = (
   ageFrom: createdAt,
   ...overrides,
 });
+const current = (threadId: string) => ({ threadId, sleeps: { at: "2026-11-05T00:00:00.000Z" } });
 
 NodeTest.describe("starsOf", () => {
   NodeTest.test(
-    "merges the folders that carry one id into one Star with a home on each environment",
+    "merges one id on several environments into one Star with a home on each, named by its first",
     () => {
       const stars = starsOf(
         [
-          folder("a", "one"),
-          folder("b", "one", "/Users/b/.pult/stars/star/"),
-          folder("b", "two", "/Users/b/.pult/stars/other"),
+          {
+            environmentId: "a",
+            answer: answer([routeStar("one", { name: "Vega" })]),
+            origin: "git@x:s",
+          },
+          {
+            environmentId: "b",
+            answer: answer([routeStar("one", { name: "Other", projectId: "p" }), routeStar("two")]),
+          },
         ],
-        [project("a", "star-project"), project("b", "p", "/Users/b/.pult/stars/star")],
         [],
       );
       NodeAssert.deepEqual(
-        stars.map((star) => star.id),
-        ["one", "two"],
-      );
-      NodeAssert.deepEqual(
-        stars[0]?.homes.map((home) => [home.environmentId, home.projectId]),
+        stars.map((star) => [star.id, star.name]),
         [
-          ["a", "star-project"],
-          ["b", "p"],
+          ["one", "Vega"],
+          ["two", ""],
         ],
       );
-      NodeAssert.equal(stars[1]?.homes[0]?.projectId, null);
-    },
-  );
-
-  NodeTest.test(
-    "takes the newest open root thread across the homes as the current conversation",
-    () => {
-      const threads = [
-        thread("a", "old", "2026-11-01T00:00:00.000Z"),
-        thread("b", "newest-settled", "2026-11-03T00:00:00.000Z", { settled: true }),
-        thread("b", "open", "2026-11-02T00:00:00.000Z"),
-        thread("b", "subagent", "2026-11-04T00:00:00.000Z", { parentId: "open" }),
-        thread("a", "elsewhere", "2026-11-05T00:00:00.000Z", { projectId: "other" }),
-      ];
-      const [star] = starsOf(
-        [folder("a", "one"), folder("b", "one")],
-        [project("a", "star-project"), project("b", "star-project")],
-        threads,
+      NodeAssert.deepEqual(
+        stars[0]?.homes.map((home) => [home.environmentId, home.projectId, home.origin]),
+        [
+          ["a", "star-project", "git@x:s"],
+          ["b", "p", undefined],
+        ],
       );
-      NodeAssert.equal(star?.current?.id, "open");
-      NodeAssert.equal(star?.latest?.id, "newest-settled");
-      NodeAssert.equal(star?.state, "awake");
+      NodeAssert.equal(stars[0]?.origin, "git@x:s");
     },
   );
 
+  NodeTest.test("takes the live row of the conversation a home's plugin names as current", () => {
+    const threads = [
+      thread("a", "older", "2026-11-01T00:00:00.000Z"),
+      thread("b", "newer", "2026-11-02T00:00:00.000Z", { working: true }),
+      thread("b", "unnamed", "2026-11-03T00:00:00.000Z"),
+    ];
+    const [star] = starsOf(
+      [
+        {
+          environmentId: "a",
+          answer: answer([routeStar("one", { conversation: current("older") })]),
+        },
+        {
+          environmentId: "b",
+          answer: answer([routeStar("one", { conversation: current("newer") })]),
+        },
+      ],
+      threads,
+    );
+    NodeAssert.equal(star?.current?.id, "newer");
+    NodeAssert.equal(star?.state, "working");
+  });
+
   NodeTest.test(
-    "is asleep with no open root thread, and working while its current conversation's run is on",
+    "is asleep where the plugin names no conversation, or the page has seen it settle or holds no row of it",
     () => {
-      const projects = [project("a", "star-project")];
+      const asleep = (
+        conversation: RouteStar["conversation"],
+        threads: ReturnType<typeof thread>[],
+      ) =>
+        starsOf(
+          [{ environmentId: "a", answer: answer([routeStar("one", { conversation })]) }],
+          threads,
+        )[0];
+      NodeAssert.equal(asleep(null, [thread("a", "t", CREATED)])?.state, "asleep");
       NodeAssert.equal(
-        starsOf([folder("a", "one")], projects, [
-          thread("a", "t", "2026-11-01T00:00:00.000Z", { settled: true }),
-        ])[0]?.state,
-        "asleep",
+        asleep(current("t"), [thread("a", "t", CREATED, { settled: true })])?.current,
+        null,
       );
-      NodeAssert.equal(
-        starsOf([folder("a", "one")], projects, [
-          thread("a", "t", "2026-11-01T00:00:00.000Z", { working: true }),
-        ])[0]?.state,
-        "working",
-      );
+      NodeAssert.equal(asleep(current("t"), [])?.state, "asleep");
+      NodeAssert.equal(asleep(current("t"), [thread("a", "t", CREATED)])?.state, "awake");
     },
   );
 
-  NodeTest.test(
-    "has slept since its last conversation's end, else its newest transcript's end or else start, else its creation",
-    () => {
-      const projects = [project("a", "star-project")];
-      const threads = [
-        thread("a", "older-ended-later", "2026-11-01T00:00:00.000Z", {
-          settled: true,
-          settledAt: "2026-11-03T09:00:00.000Z",
-        }),
-        thread("a", "newer", "2026-11-02T00:00:00.000Z", {
-          settled: true,
-          settledAt: "2026-11-02T09:00:00.000Z",
-        }),
-      ];
-      const [ended] = starsOf([folder("a", "one", undefined, names(2))], projects, threads);
-      NodeAssert.equal(ended && asleepSince(ended), "2026-11-03T09:00:00.000Z");
-      const [transcribed] = starsOf(
-        [{ ...folder("a", "one", undefined, names(2)), newestEnded: "2026-11-02T11:30:00.000Z" }],
-        projects,
-        [],
-      );
-      NodeAssert.equal(transcribed && asleepSince(transcribed), "2026-11-02T11:30:00.000Z");
-      const [listed] = starsOf([folder("a", "one", undefined, names(2))], projects, []);
-      NodeAssert.equal(listed && asleepSince(listed), "2026-11-02T10:00:00.000Z");
-      const [fresh] = starsOf([folder("a", "one")], projects, []);
-      NodeAssert.equal(fresh && asleepSince(fresh), "2026-11-01T00:00:00.000Z");
-    },
-  );
+  NodeTest.test("has slept since the latest of its homes' sleeps", () => {
+    const [star] = starsOf(
+      [
+        {
+          environmentId: "a",
+          answer: answer([routeStar("one", { asleepSince: "2026-11-03T09:00:00.000Z" })]),
+        },
+        {
+          environmentId: "b",
+          answer: answer([routeStar("one", { asleepSince: "2026-11-02T09:00:00.000Z" })]),
+        },
+      ],
+      [],
+    );
+    NodeAssert.equal(star?.asleepSince, "2026-11-03T09:00:00.000Z");
+  });
 });
 
 NodeTest.describe("a Star's places", () => {
-  const projects = [project("a", "star-project"), project("b", "star-project")];
-  const threads = [thread("b", "last", "2026-11-02T00:00:00.000Z", { settled: true })];
   const [star] = starsOf(
-    [folder("a", "one", undefined, names(3)), folder("b", "one", undefined, names(5))],
-    projects,
-    threads,
+    [
+      {
+        environmentId: "a",
+        answer: answer([
+          routeStar("one", { asleepSince: "2026-11-02T00:00:00.000Z", conversations: ["x.md"] }),
+        ]),
+      },
+      {
+        environmentId: "b",
+        answer: answer([
+          routeStar("one", {
+            asleepSince: "2026-11-03T00:00:00.000Z",
+            conversations: ["y.md", "z.md"],
+          }),
+        ]),
+      },
+    ],
+    [],
   );
 
-  NodeTest.test("wakes in its latest conversation's home, else its first held one", () => {
+  NodeTest.test(
+    "is drawn from its current conversation's home, else the one that slept last",
+    () => {
+      NodeAssert.equal(star && drawnHome(star)?.environmentId, "b");
+      NodeAssert.deepEqual(star && drawnHome(star)?.conversations, ["y.md", "z.md"]);
+      const awake = star && { ...star, current: thread("a", "t", CREATED) };
+      NodeAssert.equal(awake && drawnHome(awake)?.environmentId, "a");
+    },
+  );
+
+  NodeTest.test("wakes in the home it is drawn from, else its first held one", () => {
     NodeAssert.equal(star && wakeHome(star, () => true)?.environmentId, "b");
     NodeAssert.equal(
       star && wakeHome(star, (environmentId) => environmentId === "a")?.environmentId,
       "a",
     );
     NodeAssert.equal(star && wakeHome(star, () => false), undefined);
-  });
-
-  NodeTest.test("counts the earlier conversations of the environment that ran last", () => {
-    NodeAssert.equal(star && earlierConversations(star), 5);
-    NodeAssert.equal(
-      earlierConversations({ homes: star?.homes ?? [], current: null, latest: null }),
-      0,
-    );
   });
 
   NodeTest.test("owns the root threads of its homes' projects, not their subagents", () => {
@@ -202,17 +215,23 @@ NodeTest.describe("a Star's places", () => {
   });
 });
 
-NodeTest.describe("foldersToAdopt", () => {
-  NodeTest.test("adopts a folder with no project, once its environment's projects are in", () => {
-    const folders = [folder("a", "one"), folder("b", "two"), folder("c", "three")];
-    const adopted = foldersToAdopt(
-      folders,
-      [project("a", "p")],
-      (environmentId) => environmentId !== "c",
-    );
+NodeTest.describe("newTranscripts", () => {
+  NodeTest.test("names the transcripts a Star's answer gained since the earlier one", () => {
+    const earlier = answer([routeStar("one", { conversations: ["a.md"] }), routeStar("two")]);
+    const next = answer([
+      routeStar("one", { conversations: ["a.md", "b.md", "c.md"] }),
+      routeStar("two"),
+      routeStar("three", { conversations: ["d.md"] }),
+    ]);
+    NodeAssert.deepEqual(newTranscripts(earlier, next), [
+      { starId: "one", names: ["b.md", "c.md"] },
+    ]);
+  });
+
+  NodeTest.test("names none on the first answer, which the sync on connect commits", () => {
     NodeAssert.deepEqual(
-      adopted.map((each) => each.environmentId),
-      ["b"],
+      newTranscripts(undefined, answer([routeStar("one", { conversations: ["a.md"] })])),
+      [],
     );
   });
 });
@@ -253,6 +272,7 @@ NodeTest.describe("creationTarget", () => {
       decide([reading("a", { phase: "offline", read: "failed" }), reading("b"), reading("c")]),
       "b",
     );
+    NodeAssert.equal(decide([reading("a", { read: "none" }), reading("b")]), "b");
     NodeAssert.equal(decide([reading("a", { attempted: true }), reading("b")]), "b");
   });
 
@@ -270,29 +290,27 @@ NodeTest.describe("creationTarget", () => {
   );
 
   NodeTest.test(
-    "creates nothing while a Star is held, Show Star is off, or every environment was tried",
+    "creates nothing while a Star is held, Show Star is off, every environment was tried, or none has the plugin",
     () => {
       NodeAssert.equal(decide([reading("a")], { stars: 1 }), undefined);
+      NodeAssert.equal(decide([reading("a", { read: "none" })]), undefined);
       NodeAssert.equal(decide([reading("a")], { enabled: false }), undefined);
       NodeAssert.equal(decide([reading("a", { attempted: true })]), undefined);
     },
   );
 
   NodeTest.test(
-    "creates nothing while a ready environment's folder failed to read, since it may hold the Star",
+    "creates nothing while a ready environment's Stars failed to read, since it may hold the Star",
     () => {
       NodeAssert.equal(decide([reading("a", { read: "failed" }), reading("b")]), undefined);
       NodeAssert.equal(decide([reading("a"), reading("b", { read: "failed" })]), undefined);
     },
   );
 
-  NodeTest.test(
-    "creates nothing on another environment after a creation failed, was refused or lost a race",
-    () => {
-      NodeAssert.equal(
-        decide([reading("a", { attempted: true }), reading("b")], { halted: true }),
-        undefined,
-      );
-    },
-  );
+  NodeTest.test("creates nothing on another environment after a creation failed", () => {
+    NodeAssert.equal(
+      decide([reading("a", { attempted: true }), reading("b")], { halted: true }),
+      undefined,
+    );
+  });
 });
