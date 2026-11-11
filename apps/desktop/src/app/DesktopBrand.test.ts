@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   brandAboutVersion,
+  brandClientLabel,
   brandDisabledFeatures,
   brandReleaseUrl,
   brandServerEnvironment,
@@ -25,6 +26,15 @@ describe("DesktopBrand", () => {
     expect(brandReleaseUrl("0.0.1", brand)).toBe(
       "https://github.com/owner/fork/releases/tag/fork-v0.0.1",
     );
+  });
+
+  it("names the app's own session of its local server after the brand", () => {
+    expect(brandClientLabel()).toBe("T3 Code Desktop");
+    const brand = {
+      ...T3CODE_DESKTOP_BRAND,
+      baseName: { production: "Fork", development: "Fork Host" },
+    };
+    expect(brandClientLabel(brand)).toBe("Fork Desktop");
   });
 
   it("leaves the server's environment alone under T3 Code's brand", () => {

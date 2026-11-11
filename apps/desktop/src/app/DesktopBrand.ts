@@ -163,6 +163,11 @@ export function brandReleaseUrl(version: string, brand: DesktopBrand = desktopBr
   return `${brand.releases.page}/tag/${brand.releases.tagPrefix}${version}`;
 }
 
+/** What the app's own session of its local server is called among that server's clients. */
+export function brandClientLabel(brand: DesktopBrand = desktopBrand): string {
+  return `${brand.baseName.production} Desktop`;
+}
+
 /**
  * What a brand changes in the environment the supervised server inherits:
  * its telemetry default, whether it installs updates at rest, and the brand's
