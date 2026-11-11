@@ -155,7 +155,8 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     // Pult: tags at creation, so a Star's threads are never seen untagged.
     tags: Schema.optional(
       Schema.Array(ThreadTag).annotate({
-        description: "Tags for the new thread, set as it is created.",
+        description:
+          "Tags for the new thread, set as it is created: each matched by exact spelling, at most 64 characters on one line; the user sees them and may remove them.",
       }),
     ),
     /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */

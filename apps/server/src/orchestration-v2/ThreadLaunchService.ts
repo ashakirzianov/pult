@@ -858,7 +858,7 @@ const make = Effect.gen(function* () {
         ),
       );
       // Pult: only thread.create stores tags, so a reused thread would drop them.
-      if (input.reuseExistingThread === true && input.tags !== undefined) {
+      if (input.reuseExistingThread === true && (input.tags?.length ?? 0) > 0) {
         return yield* mapError(input, "update-thread")("A reused thread cannot take tags.");
       }
       if (input.reuseExistingThread === true && input.threadId === undefined) {
