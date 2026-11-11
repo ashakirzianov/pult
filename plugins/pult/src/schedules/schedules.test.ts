@@ -6,7 +6,7 @@ import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
 
-import { DateTime, Effect, FileSystem, Layer, Path, ServerConfig } from "../host.ts";
+import { DateTime, Effect, FileSystem, Layer, Option, Path, ServerConfig } from "../host.ts";
 import type { Deliver, Delivered, Delivery } from "../stars/deliver.ts";
 import type { Star, StarsView } from "../stars/stars.ts";
 import { fakeServer } from "../stars/testing.ts";
@@ -22,107 +22,116 @@ Time for the standup.
 /**
  * One Star over a fake server, and the schedules over a fake `deliver` that launches a message
  * the first time its key is seen and replays it after; `pass` runs the source as the tick would.
+ * The schedules see the file system as `fileSystem` makes it of the real one.
  */
-const harness = Effect.gen(function* () {
-  yield* TestClock.setTime(Date.parse("2026-11-10T08:00:00Z"));
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const server = yield* fakeServer;
-  const root = path.join(server.directory, "star");
-  yield* fs.makeDirectory(root, { recursive: true });
-  const star: Star = {
-    id: "star-1",
-    name: "",
-    tint: "amber",
-    created: "2026-11-01T00:00:00.000Z",
-    root,
-    projectId: ProjectId.make("project-1"),
-  };
-  const deliveries: Delivery[] = [];
-  const keys = new Set<string>();
-  const behaviour: { fail: string | undefined } = { fail: undefined };
-  const deliver: Deliver = (delivery) =>
-    Effect.suspend(() => {
-      deliveries.push(delivery);
-      if (behaviour.fail !== undefined)
-        return Effect.fail(
-          new OrchestratorMcpFailure({ code: "thread_not_found", message: behaviour.fail }),
+const harnessWith = (
+  fileSystem: (fs: FileSystem.FileSystem) => FileSystem.FileSystem = (fs) => fs,
+) =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2026-11-10T08:00:00Z"));
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const server = yield* fakeServer;
+    const root = path.join(server.directory, "star");
+    yield* fs.makeDirectory(root, { recursive: true });
+    const star: Star = {
+      id: "star-1",
+      name: "",
+      tint: "amber",
+      created: "2026-11-01T00:00:00.000Z",
+      root,
+      projectId: ProjectId.make("project-1"),
+    };
+    const deliveries: Delivery[] = [];
+    const keys = new Set<string>();
+    const behaviour: { fail: string | undefined } = { fail: undefined };
+    const deliver: Deliver = (delivery) =>
+      Effect.suspend(() => {
+        deliveries.push(delivery);
+        if (behaviour.fail !== undefined)
+          return Effect.fail(
+            new OrchestratorMcpFailure({ code: "thread_not_found", message: behaviour.fail }),
+          );
+        const replayed = keys.has(delivery.key);
+        keys.add(delivery.key);
+        return Effect.succeed<Delivered>(
+          replayed
+            ? { outcome: "replayed", threadId: null }
+            : { outcome: "launched", threadId: ThreadId.make(`thread-${keys.size}`) },
         );
-      const replayed = keys.has(delivery.key);
-      keys.add(delivery.key);
-      return Effect.succeed<Delivered>(
-        replayed
-          ? { outcome: "replayed", threadId: null }
-          : { outcome: "launched", threadId: ThreadId.make(`thread-${keys.size}`) },
-      );
-    });
-  const schedules = yield* Schedules.make(
-    { directory: server.directory, list: Effect.succeed([star]) },
-    deliver,
-  ).pipe(Effect.provide(server.layer));
-  const config = yield* ServerConfig.ServerConfig.pipe(Effect.provide(server.layer));
-
-  const pass = server.runSource("pult-schedules");
-  const clock = (iso: string) => TestClock.setTime(Date.parse(iso));
-  const scheduleFile = (name: string) => path.join(root, ".pult", "schedules", `${name}.md`);
-  /** Writes the schedule as of `changed`, its modification time. */
-  const write = (name: string, text: string, changed: string) =>
-    Effect.gen(function* () {
-      const file = scheduleFile(name);
-      yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-      yield* fs.writeFileString(file, text);
-      // A number would be read as seconds.
-      const at = DateTime.toDate(DateTime.makeUnsafe(changed));
-      yield* fs.utimes(file, at, at);
-    });
-  const runFile = (name: string, due: string) => path.join(root, ".pult", "runs", name, due);
-  const records = (name: string) =>
-    Effect.gen(function* () {
-      const folder = path.join(root, ".pult", "runs", name);
-      return (yield* fs.exists(folder)) ? (yield* fs.readDirectory(folder)).toSorted() : [];
-    });
-  const starView: StarsView["stars"][number] = {
-    ...star,
-    instructions: path.join(root, "instructions.md"),
-    conversation: null,
-    asleepSince: star.created,
-    conversations: [],
-    asks: [],
-  };
-  const view = Effect.map(
-    schedules.withSchedules({ directory: server.directory, hidden: [], stars: [starView] }),
-    (each) => each.stars[0]?.schedules ?? [],
-  );
-  /** A batch from the watch of the Stars directory, handed to the plugin's subscriber. */
-  const changed = (paths: ReadonlyArray<string>, truncated = false) =>
-    Effect.gen(function* () {
-      const watch = server.watches.at(-1);
-      if (watch === undefined) return yield* Effect.die(new Error("no watch"));
-      yield* Queue.offer(watch.queue, {
-        changes: paths.map((each) => ({ path: each, kind: "changed" as const })),
-        truncated,
       });
-      yield* Effect.yieldNow;
-    });
-  return {
-    ...server,
-    fs,
-    path,
-    star,
-    deliveries,
-    behaviour,
-    schedules,
-    config,
-    pass,
-    clock,
-    write,
-    scheduleFile,
-    runFile,
-    records,
-    view,
-    changed,
-  };
-}).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
+    const schedules = yield* Schedules.make(
+      { directory: server.directory, list: Effect.succeed([star]) },
+      deliver,
+    ).pipe(
+      Effect.provide(server.layer),
+      Effect.provideService(FileSystem.FileSystem, fileSystem(fs)),
+    );
+    const config = yield* ServerConfig.ServerConfig.pipe(Effect.provide(server.layer));
+
+    const pass = server.runSource("pult-schedules");
+    const clock = (iso: string) => TestClock.setTime(Date.parse(iso));
+    const scheduleFile = (name: string) => path.join(root, ".pult", "schedules", `${name}.md`);
+    /** Writes the schedule as of `changed`, its modification time. */
+    const write = (name: string, text: string, changed: string) =>
+      Effect.gen(function* () {
+        const file = scheduleFile(name);
+        yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+        yield* fs.writeFileString(file, text);
+        // A number would be read as seconds.
+        const at = DateTime.toDate(DateTime.makeUnsafe(changed));
+        yield* fs.utimes(file, at, at);
+      });
+    const runFile = (name: string, due: string) => path.join(root, ".pult", "runs", name, due);
+    const records = (name: string) =>
+      Effect.gen(function* () {
+        const folder = path.join(root, ".pult", "runs", name);
+        return (yield* fs.exists(folder)) ? (yield* fs.readDirectory(folder)).toSorted() : [];
+      });
+    const starView: StarsView["stars"][number] = {
+      ...star,
+      instructions: path.join(root, "instructions.md"),
+      conversation: null,
+      asleepSince: star.created,
+      conversations: [],
+      asks: [],
+    };
+    const view = Effect.map(
+      schedules.withSchedules({ directory: server.directory, hidden: [], stars: [starView] }),
+      (each) => each.stars[0]?.schedules ?? [],
+    );
+    /** A batch from the watch of the Stars directory, handed to the plugin's subscriber. */
+    const changed = (paths: ReadonlyArray<string>, truncated = false) =>
+      Effect.gen(function* () {
+        const watch = server.watches.at(-1);
+        if (watch === undefined) return yield* Effect.die(new Error("no watch"));
+        yield* Queue.offer(watch.queue, {
+          changes: paths.map((each) => ({ path: each, kind: "changed" as const })),
+          truncated,
+        });
+        yield* Effect.yieldNow;
+      });
+    return {
+      ...server,
+      fs,
+      path,
+      star,
+      deliveries,
+      behaviour,
+      schedules,
+      config,
+      pass,
+      clock,
+      write,
+      scheduleFile,
+      runFile,
+      records,
+      view,
+      changed,
+    };
+  }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
+
+const harness = harnessWith();
 
 describe("namesSchedules", () => {
   it("is a Star's folder, its .pult, its schedules and its record, and nothing else", () => {
@@ -394,6 +403,33 @@ describe("the pass", () => {
           ["standup", "every day 09:00", null],
         ],
       );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("makes a file with no modification time a problem, its floor unknown", () =>
+    Effect.gen(function* () {
+      const h = yield* harnessWith((fs) => ({
+        ...fs,
+        stat: (file) =>
+          Effect.map(fs.stat(file), (info) =>
+            file.endsWith("timeless.md") ? { ...info, mtime: Option.none() } : info,
+          ),
+      }));
+      yield* h.write("timeless", STANDUP, "2026-11-10T08:00:00Z");
+      yield* h.clock("2026-11-10T09:00:01Z");
+      yield* h.pass;
+      assert.deepStrictEqual(yield* h.records("timeless"), []);
+      assert.deepStrictEqual(
+        h.deliveries.map((each) => each.from),
+        ["Pult, about schedule timeless"],
+      );
+      const [timeless] = yield* h.view;
+      assert.deepInclude(timeless, {
+        rule: null,
+        next: null,
+        problem:
+          "the file system gives it no modification time, which its first run is counted from",
+      });
     }).pipe(Effect.scoped),
   );
 

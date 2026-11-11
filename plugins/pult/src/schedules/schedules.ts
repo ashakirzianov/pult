@@ -188,24 +188,31 @@ export const make = Effect.fn("Schedules.make")(function* (
     const filePath = path.join(folder, file);
     const runsFolder = path.join(runs, name);
     /** A file that will not run: no run is due, and `problem` says why. */
-    const problem =
+    const problem = (text: string, why: string): ReadonlyArray<ScheduleFile> => [
+      {
+        name,
+        path: filePath,
+        text,
+        floor: Number.POSITIVE_INFINITY,
+        parsed: { ok: false, problem: why },
+        runs: new Set(),
+        last: null,
+      },
+    ];
+    const failed =
       (text: string, why: string) =>
-      <E>(cause: Cause.Cause<E>): Effect.Effect<ReadonlyArray<ScheduleFile>> =>
-        Effect.succeed([
-          {
-            name,
-            path: filePath,
-            text,
-            floor: Number.POSITIVE_INFINITY,
-            parsed: { ok: false, problem: `${why}: ${messageOf(Cause.squash(cause))}` },
-            runs: new Set(),
-            last: null,
-          },
-        ]);
+      <E>(cause: Cause.Cause<E>) =>
+        Effect.succeed(problem(text, `${why}: ${messageOf(Cause.squash(cause))}`));
     return yield* Effect.gen(function* () {
       const info = yield* fs.stat(filePath);
       if (info.type !== "File") return [];
       const text = yield* fs.readFileString(filePath);
+      if (Option.isNone(info.mtime))
+        return problem(
+          text,
+          "the file system gives it no modification time, which its first run is counted from",
+        );
+      const floor = minuteOf(info.mtime.value.getTime());
       return yield* Effect.gen(function* () {
         const runFiles = (yield* fs.exists(runsFolder))
           ? (yield* fs.readDirectory(runsFolder)).filter(isRunFileName).toSorted()
@@ -215,13 +222,12 @@ export const make = Effect.fn("Schedules.make")(function* (
           newest === undefined
             ? null
             : (parseLastRun(yield* fs.readFileString(path.join(runsFolder, newest))) ?? null);
-        const changed = Option.match(info.mtime, { onNone: () => 0, onSome: (at) => at.getTime() });
         return [
           {
             name,
             path: filePath,
             text,
-            floor: minuteOf(changed),
+            floor,
             parsed: parseSchedule(name, text),
             runs: new Set(runFiles),
             last,
@@ -230,10 +236,10 @@ export const make = Effect.fn("Schedules.make")(function* (
       }).pipe(
         Effect.catchCauseIf(
           notInterrupted,
-          problem(text, `its runs, \`${RUNS_DIRECTORY}/${name}\`, could not be read`),
+          failed(text, `its runs, \`${RUNS_DIRECTORY}/${name}\`, could not be read`),
         ),
       );
-    }).pipe(Effect.catchCauseIf(notInterrupted, problem("", "it could not be read")));
+    }).pipe(Effect.catchCauseIf(notInterrupted, failed("", "it could not be read")));
   });
 
   /** Every Star's schedule files; a Star whose folder fails to list has none, logged. */
