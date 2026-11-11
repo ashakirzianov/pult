@@ -1,7 +1,7 @@
 /* How far in from the panel's edges its outermost glyphs sit: the shelves' icons, the tray's and
    the header's first and last. The buttons around them reach 5px past the glyph (26px around 16px). */
 .monaco-workbench {
-  --pult-panel-inset: 8px;
+  --pult-panel-inset: 12px;
 }
 
 /* The left panel (src/panel), themed on the workbench's sidebar colours. Its own box model, as the shell's UI
