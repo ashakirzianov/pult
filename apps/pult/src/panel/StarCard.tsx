@@ -1,5 +1,5 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
-import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
+import { Separator, toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
@@ -7,6 +7,7 @@ import { flatStar } from "../stars/flat/star.ts";
 import "../stars/flat/star.css";
 import type { StarLook } from "../stars/look.ts";
 import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
+import { canSleepStar } from "../stars/model.ts";
 import { drawnHome, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
@@ -20,12 +21,26 @@ function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
-/** The card's context menu: Edit Star Instructions and Open Star Folder; a Star has no New Conversation, writing to it wakes it. */
+/**
+ * The card's context menu: Refresh Context while the Star can be put to
+ * sleep by hand (`canSleepStar`), its next message then waking it in a
+ * fresh conversation, then Edit Star Instructions and Open Star Folder.
+ */
 async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promise<void> {
   const menus = await getService(IContextMenuService);
   menus.showContextMenu({
     getAnchor: () => anchor,
     getActions: () => [
+      ...(canSleepStar(star)
+        ? [
+            toAction({
+              id: "pult-shell.refreshContext",
+              label: "Refresh Context",
+              run: () => run("pult-shell.refreshContext", star.id),
+            }),
+            new Separator(),
+          ]
+        : []),
       toAction({
         id: "pult-shell.editStarInstructions",
         label: "Edit Star Instructions",

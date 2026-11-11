@@ -11,6 +11,9 @@ export const STARS_FEATURE = "stars";
 /** The plugin's feature of firing the Stars' schedules: listed only where the server fires them, none under its `schedules-off`. */
 export const SCHEDULES_FEATURE = "star-schedules";
 
+/** The plugin's feature of putting a Star to sleep by hand, Refresh Context: `POST stars/<id>/sleep`, offered only where `about` lists it. */
+export const SLEEP_FEATURE = "star-sleep";
+
 const PLUGIN_PATH = "/api/plugins/pult";
 
 /** How long a read may take before the server reads as having no plugin, or no Stars: the environment's cards wait on both. */
@@ -350,6 +353,22 @@ export const writeStarRecord = (
   id: string,
   fields: { readonly name?: string; readonly tint?: string },
 ) => ask(credential, "POST", starPath(id), decodeStar, fields);
+
+/** What Refresh Context answers: the Star's conversation put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
+export type SleepAnswer =
+  | { readonly slept: true }
+  | { readonly slept: false; readonly heldBy: string };
+
+const sleepAnswer = (body: unknown): SleepAnswer => {
+  if (isFields(body) && body.slept === true) return { slept: true };
+  if (isFields(body) && body.slept === false && typeof body.heldBy === "string")
+    return { slept: false, heldBy: body.heldBy };
+  return fail("sleep", "{ slept: true } or { slept: false, heldBy }");
+};
+
+/** Puts the Star's current conversation to sleep now, unless something holds it; a Star asleep already is refused. */
+export const sleepStarOn = (credential: Credential, id: string) =>
+  ask(credential, "POST", `${starPath(id)}/sleep`, sleepAnswer, {});
 
 /** One transcript of the Star on this environment, parsed. */
 export const readStarTranscript = (credential: Credential, id: string, name: string) =>

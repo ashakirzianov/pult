@@ -12,6 +12,7 @@ import {
   readAbout,
   readStars,
   readStarTranscript,
+  sleepStarOn,
 } from "./plugin.ts";
 
 NodeTest.describe("decodeAbout", () => {
@@ -326,6 +327,28 @@ NodeTest.describe("the Stars' routes", () => {
       "http://127.0.0.1:3773/api/plugins/pult/stars/s1/conversations/2026-11-01T10-00-00Z-t0.md",
     );
     NodeAssert.ok(read.result instanceof PluginAnswerError);
+  });
+
+  NodeTest.test("asks a Star to sleep, reading the hold that refused it", async () => {
+    const slept = await askOver(
+      () => json({ slept: true }),
+      () => sleepStarOn(credential, "s1"),
+    );
+    NodeAssert.deepEqual(
+      slept.asked.map((each) => [each.method, each.url]),
+      [["POST", "http://127.0.0.1:3773/api/plugins/pult/stars/s1/sleep"]],
+    );
+    NodeAssert.deepEqual(slept.result, { slept: true });
+    const held = await askOver(
+      () => json({ slept: false, heldBy: "subagent" }),
+      () => sleepStarOn(credential, "s1"),
+    );
+    NodeAssert.deepEqual(held.result, { slept: false, heldBy: "subagent" });
+    const misshapen = await askOver(
+      () => json({ slept: false }),
+      () => sleepStarOn(credential, "s1"),
+    );
+    NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
   });
 
   NodeTest.test("tells the plugin's refusal, and an answer that is no JSON", async () => {

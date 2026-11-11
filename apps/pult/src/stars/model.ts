@@ -21,6 +21,8 @@ import {
   PluginAnswerError,
   writeStarRecord,
   readStars,
+  SLEEP_FEATURE,
+  sleepStarOn,
   STARS_FEATURE,
   type StarsAnswer,
   upkeepStars,
@@ -29,11 +31,14 @@ import { starEnabled, starSettingKnown } from "./settings.ts";
 import { originOf } from "./sync.ts";
 import {
   creationTarget,
+  drawnHome,
   type EnvironmentAnswer,
   findStarOfProject,
   findStarOfThread,
   newTranscripts,
   type Star,
+  type StarHome,
+  starName,
   starsOf,
   wakeHome,
 } from "./stars.ts";
@@ -89,6 +94,38 @@ function errorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error)
     return String(error.message);
   return String(error);
+}
+
+/** What holds a Star awake, as the plugin names it, in words. */
+function holdText(heldBy: string): string {
+  switch (heldBy) {
+    case "run":
+      return "it is working";
+    case "queued":
+      return "a message waits for its turn";
+    case "subagent":
+      return "a thread below it still works";
+    case "request":
+      return "it waits for your answer";
+    default:
+      return `held by ${heldBy}`;
+  }
+}
+
+/**
+ * The home whose current conversation Refresh Context ends: the Star awake,
+ * not working, in a conversation its home's plugin reads with a deadline,
+ * no hold, on an environment whose plugin lists `star-sleep`.
+ */
+function sleepableHome(star: Star): StarHome | undefined {
+  if (star.state !== "awake" || star.current === null) return undefined;
+  const home = drawnHome(star);
+  return home !== undefined &&
+    home.conversation?.threadId === star.current.id &&
+    "at" in home.conversation.sleeps &&
+    pluginFeatures(home.environmentId)?.has(SLEEP_FEATURE) === true
+    ? home
+    : undefined;
 }
 
 /** The environments told answering in another shape, each once per page session. */
@@ -533,6 +570,27 @@ class StarsModel {
   }
 
   /**
+   * Refresh Context: puts the Star's current conversation to sleep through
+   * its home's plugin (`POST /stars/<id>/sleep`), which looks again under
+   * the Star's lock; a hold that appeared since, or a failure, notifies.
+   */
+  async sleep(star: Star): Promise<void> {
+    const notifications = await getService(INotificationService);
+    const home = sleepableHome(star);
+    if (home === undefined)
+      return notifications.info(`${starName(star)} has no conversation to end now.`);
+    try {
+      const answer = await sleepStarOn(this.credential(home.environmentId), star.id);
+      if (!answer.slept)
+        notifications.info(`${starName(star)} stays awake: ${holdText(answer.heldBy)}.`);
+    } catch (error) {
+      notifications.error(`Pult could not refresh your Star's context: ${errorMessage(error)}`);
+    } finally {
+      await this.read(home.environmentId);
+    }
+  }
+
+  /**
    * Writes Name or Tint into the Star's record on the environment, through
    * its plugin (`POST /stars/<id>`), which retitles its project too; a
    * failure notifies. Whether it took. `syncing.ts` (`setStarRecord`) runs
@@ -594,6 +652,10 @@ export const setStarFields = (
   changes: { readonly name?: string; readonly tint?: string },
   environmentId: string,
 ) => model.setFields(starId, changes, environmentId);
+/** Whether Refresh Context is offered for the Star: awake, unheld, its home's plugin listing `star-sleep`. */
+export const canSleepStar = (star: Star) => sleepableHome(star) !== undefined;
+/** Refresh Context: ends the Star's current conversation, its next message waking it in a fresh one. */
+export const sleepStar = (star: Star) => model.sleep(star);
 /** Calls `listener` with the transcripts that appeared in a home since the page's earlier answer for it. */
 export const onDidFindStarTranscripts = (listener: (found: FoundTranscripts) => void) =>
   model.onDidFindTranscripts(listener);

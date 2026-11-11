@@ -18,7 +18,16 @@ import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
-import { canCreateStarOn, createStar, primaryHome, starById, starStore } from "./model.ts";
+import { onDidChangePluginFeatures } from "./about.ts";
+import {
+  canCreateStarOn,
+  canSleepStar,
+  createStar,
+  primaryHome,
+  sleepStar,
+  starById,
+  starStore,
+} from "./model.ts";
 import { drawnHome, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
@@ -26,6 +35,8 @@ import { syncStar } from "./syncing.ts";
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 /** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
+/** Whether a Star can be put to sleep by hand (`canSleepStar`): Refresh Context is offered then. */
+const CanSleepStarContext = new RawContextKey<boolean>("pult.canRefreshContext", false);
 
 /** The Star `starId` names, or with none the page's one, or one picked in the shell's quick input while it holds several. */
 export async function pickStar(
@@ -187,8 +198,10 @@ async function openStarFolder(star: Star): Promise<void> {
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
  * Open Star Ask… (`pult-shell.openStarAsk [starId] [name]`, the card's ask
- * rows) and Sync Star (`pult-shell.syncStar
- * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
+ * rows), Sync Star (`pult-shell.syncStar
+ * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
+ * [starId]`, the Star's current conversation put to sleep, offered only
+ * while `canSleepStar`), each on the page's Star, picked while it holds
  * several. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
@@ -335,17 +348,50 @@ export function registerStarCommands(): void {
       }
     },
   );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.refreshContext",
+          title: { value: "Refresh Context", original: "Refresh Context" },
+          category,
+          f1: true,
+          precondition: CanSleepStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown): Promise<void> {
+        const quickInput = accessor.get(IQuickInputService);
+        const sleepable = starStore.get().filter(canSleepStar);
+        const star =
+          typeof starId === "string"
+            ? starById(starId)
+            : sleepable.length <= 1
+              ? sleepable[0]
+              : (
+                  await quickInput.pick(
+                    sleepable.map((each) => ({ star: each, label: starName(each) })),
+                    { placeHolder: "Refresh a Star's context" },
+                  )
+                )?.star;
+        if (star !== undefined) await sleepStar(star);
+      }
+    },
+  );
   void getService(IContextKeyService).then((contextKeys) => {
     const hasStar = HasStarContext.bindTo(contextKeys);
     const canCreate = CanCreateStarContext.bindTo(contextKeys);
+    const canSleep = CanSleepStarContext.bindTo(contextKeys);
     const update = () => {
       hasStar.set(starStore.get().length > 0);
       canCreate.set(
         connection.environments.some((environment) => canCreateStarOn(environment.environmentId)),
       );
+      canSleep.set(starStore.get().some(canSleepStar));
     };
     starStore.subscribe(update);
     connection.onDidChange(update);
+    onDidChangePluginFeatures(update);
     update();
   });
 }
