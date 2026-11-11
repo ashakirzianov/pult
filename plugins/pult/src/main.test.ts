@@ -10,6 +10,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   RunId,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as TestClock from "effect/testing/TestClock";
@@ -334,11 +335,27 @@ it.effect(
       const unknown = yield* call(scopeOf({ thread: "worker" }), { star: "nobody", message: "x" });
       expect(unknown).toMatchObject({ isError: true, body: { code: "invalid_request" } });
       expect(unknown.body.message).toContain('"Vega" (vega-id)');
-      // The Star's own conversation, a client outside a thread, a read-only client.
+      // The Star's conversation with the user hands something to its work conversation.
       own.shell = { ...own.shell, settledOverride: null, settledAt: null };
       expect(
-        yield* refusal(scopeOf({ thread: "star-thread" }), { star: "vega-id", message: "x" }),
-      ).toBe("invalid_request");
+        (yield* call(scopeOf({ thread: "star-thread" }), { star: "vega-id", message: "Build it." }))
+          .body,
+      ).toMatchObject({ outcome: "queued", threadId: "launched-1" });
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "launched-1",
+        text: "[From your conversation with the user, to your work conversation]\n\nBuild it.",
+        senderThreadId: "star-thread",
+      });
+      // Its work conversation, a client outside a thread, a read-only client.
+      const workThread = server.threads.byId(ThreadId.make("launched-1"))!;
+      expect(workThread.shell.tags).toEqual(["pult:work"]);
+      workThread.shell = { ...workThread.shell, activeRunId: RunId.make("work-run") };
+      const ownWork = yield* call(scopeOf({ thread: "launched-1" }), {
+        star: "vega-id",
+        message: "x",
+      });
+      expect(ownWork).toMatchObject({ isError: true, body: { code: "invalid_request" } });
+      expect(ownWork.body.message).toContain("own work conversation");
       expect(
         yield* refusal(scopeOf({ client: "full-access" }), { star: "vega-id", message: "x" }),
       ).toBe("thread_credential_required");
