@@ -62,30 +62,38 @@ const PHASES: Record<ShellEnvironment["phase"], string> = {
 };
 
 /**
- * Every environment the page holds, in the order they were connected, each
- * with its server's host, how its connection stands and why when it is not
- * ready, and Disconnect, Pair Device while it is ready and Retry while it is
- * not, then its pairing links and clients; then Connect to Environment,
- * the group's last row, which adds one, and in Pult.app its local server and
- * that server's network access, a group of their own. The palette's Pult: Connect to Environment, Disconnect, Retry
- * Connection and Pair Device are the same commands.
+ * The environments, a group each, so what sits under an environment's row
+ * reads as its own: in Pult.app its own server first (`src/desktop/localServer.ts`),
+ * held or not, then the others the page holds, in the order they were
+ * connected, then Connect to Environment, a group of its own, which adds one.
+ * The palette's Pult: Connect to Environment, Disconnect, Retry Connection,
+ * Pair Device and Turn On and Turn Off Local Server are the same commands.
  */
 function EnvironmentsSection() {
   const environments = useSyncExternalStore(
     (listener) => connection.onDidChange(listener),
     () => connection.environments,
   );
+  const localServer = localServerEnabled();
+  const local = connection.localEnvironment;
   return (
     <section className="pult-settings-section">
       <h2>Environments</h2>
-      <div className="pult-settings-group">
-        {environments.map((environment) => (
-          <EnvironmentRow
+      {localServer === undefined ? null : local === undefined ? (
+        <LocalServerGroup enabled={localServer} />
+      ) : (
+        <EnvironmentGroup environment={local} environments={environments} local />
+      )}
+      {environments
+        .filter((environment) => environment.environmentId !== local?.environmentId)
+        .map((environment) => (
+          <EnvironmentGroup
             key={environment.environmentId}
             environment={environment}
             environments={environments}
           />
         ))}
+      <div className="pult-settings-group">
         <button
           type="button"
           className="pult-settings-row pult-settings-add"
@@ -98,24 +106,29 @@ function EnvironmentsSection() {
       {environments.length === 0 ? (
         <p className="pult-settings-footnote">Pult is not connected to an environment.</p>
       ) : null}
-      <LocalServerGroup />
     </section>
   );
 }
 
 /**
- * An environment's row, a dot in its phase's colour before its name, Pair
- * Device while it is ready, and under it the
- * pairing link Pair Device minted, until it expires and, once the
- * environment's access is known, while it is still outstanding, then that access,
- * followed while the row shows (`EnvironmentAccess.tsx`).
+ * An environment's group: its row, a dot in its phase's colour before its
+ * name, its host, how its connection stands and why when it is not ready,
+ * Pair Device while it is ready and Retry while it is not, and Disconnect;
+ * under it the pairing link Pair Device minted, until it expires and, once the
+ * environment's access is known, while it is still outstanding, then that
+ * access, followed while the group shows (`EnvironmentAccess.tsx`). `local`,
+ * Pult.app's own server: This computer in its row, the local server's switch
+ * in Disconnect's place, since off is how the app lets go of it, and under the
+ * row whether other devices reach it.
  */
-function EnvironmentRow({
+function EnvironmentGroup({
   environment,
   environments,
+  local = false,
 }: {
   environment: ShellEnvironment;
   environments: ReadonlyArray<ShellEnvironment>;
+  local?: boolean;
 }) {
   const { environmentId } = environment;
   const [access, setAccess] = useState<AccessState>();
@@ -126,7 +139,7 @@ function EnvironmentRow({
     (access?._tag !== "snapshot" ||
       access.snapshot.pairingLinks.some((link) => link.id === pairing.id));
   return (
-    <>
+    <div className="pult-settings-group">
       <div className="pult-settings-row">
         <span className="pult-settings-dot" data-phase={environment.phase} aria-hidden />
         <div className="pult-settings-row-text">
@@ -134,7 +147,7 @@ function EnvironmentRow({
             {environmentName(environment, environments)}
           </div>
           <div className="pult-settings-row-description">
-            {[hostOf(environment), PHASES[environment.phase]]
+            {[local ? "This computer" : undefined, hostOf(environment), PHASES[environment.phase]]
               .filter((part) => part !== undefined)
               .join(" · ")}
           </div>
@@ -160,52 +173,82 @@ function EnvironmentRow({
               Retry
             </button>
           )}
-          <button
-            type="button"
-            className="pult-settings-button"
-            onClick={() => run("pult-shell.disconnect", environmentId)}
-          >
-            Disconnect
-          </button>
+          {local ? (
+            <LocalServerSwitch enabled />
+          ) : (
+            <button
+              type="button"
+              className="pult-settings-button"
+              onClick={() => run("pult-shell.disconnect", environmentId)}
+            >
+              Disconnect
+            </button>
+          )}
         </div>
       </div>
       {outstanding ? <PairingCard key={pairing.id} pairing={pairing} /> : null}
+      {local ? <ReachableRow /> : null}
       <AuthorizedClients environmentId={environmentId} access={access} />
-    </>
+    </div>
   );
 }
 
 /**
- * In Pult.app, its local server (`src/desktop/localServer.ts`), as the app
- * started, and with it on, whether other devices reach it
- * (`src/desktop/serverExposure.ts`), which a pairing link of it needs; a
- * change of either asks, then relaunches the app. The palette's Turn On and
- * Turn Off Local Server set the first.
+ * In Pult.app, its own server while the page holds no environment of it: off,
+ * as the app started, or on and not connected. The switch is the one its
+ * environment's row carries once the page holds it.
  */
-function LocalServerGroup() {
-  const enabled = localServerEnabled();
-  const exposure = useSyncExternalStore(serverExposure.subscribe, serverExposure.get);
-  if (enabled === undefined) return null;
+function LocalServerGroup({ enabled }: { enabled: boolean }) {
   return (
-    <>
-      <div className="pult-settings-group">
-        <SwitchRow
-          label="Local server"
-          description="Run a server on this computer."
-          checked={enabled}
-          onChange={(on) => void setLocalServerEnabled(on)}
-        />
-        {exposure === undefined ? null : (
-          <SwitchRow
-            label="Reachable from other devices"
-            description="Devices on your network can connect to this computer's server."
-            checked={exposure === "network-accessible"}
-            onChange={(on) => void setNetworkAccess(on)}
-          />
-        )}
+    <div className="pult-settings-group">
+      <div className="pult-settings-row">
+        <span className="pult-settings-dot" data-phase={enabled ? undefined : "off"} aria-hidden />
+        <div className="pult-settings-row-text">
+          <div className="pult-settings-row-label">This computer</div>
+          <div className="pult-settings-row-description">
+            {enabled ? "Not connected" : "Off. Turn on to run agents on this computer."}
+          </div>
+        </div>
+        <LocalServerSwitch enabled={enabled} />
       </div>
-      <p className="pult-settings-footnote">A change restarts Pult.</p>
-    </>
+    </div>
+  );
+}
+
+/** Pult.app's local server, on or off as the app started; a change asks, then relaunches the app. */
+function LocalServerSwitch({ enabled }: { enabled: boolean }) {
+  return (
+    <Switch
+      label="Local server"
+      title={enabled ? "Turn Off Local Server…" : "Turn On Local Server…"}
+      checked={enabled}
+      onChange={(on) => void setLocalServerEnabled(on)}
+    />
+  );
+}
+
+/**
+ * Under Pult.app's own server's row, whether other devices reach it
+ * (`src/desktop/serverExposure.ts`), which a pairing link of it needs; a
+ * change asks, then relaunches the app.
+ */
+function ReachableRow() {
+  const exposure = useSyncExternalStore(serverExposure.subscribe, serverExposure.get);
+  if (exposure === undefined) return null;
+  return (
+    <div className="pult-settings-row pult-settings-subrow">
+      <div className="pult-settings-row-text">
+        <div className="pult-settings-row-label">Reachable from other devices</div>
+        <div className="pult-settings-row-description">
+          Devices on your network can connect to this computer's server.
+        </div>
+      </div>
+      <Switch
+        label="Reachable from other devices"
+        checked={exposure === "network-accessible"}
+        onChange={(on) => void setNetworkAccess(on)}
+      />
+    </div>
   );
 }
 
@@ -583,15 +626,33 @@ function SwitchRow({
         <div className="pult-settings-row-label">{label}</div>
         <div className="pult-settings-row-description">{description}</div>
       </div>
-      <button
-        type="button"
-        role="switch"
-        className="pult-settings-switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-      />
+      <Switch label={label} checked={checked} onChange={onChange} />
     </div>
+  );
+}
+
+/** A switch, named by `label`; `title` says what it does where no label beside it does. */
+function Switch({
+  label,
+  title,
+  checked,
+  onChange,
+}: {
+  label: string;
+  title?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="pult-settings-switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={title}
+      onClick={() => onChange(!checked)}
+    />
   );
 }
 

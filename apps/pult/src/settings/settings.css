@@ -87,7 +87,8 @@
   background: var(--pult-settings-hairline);
 }
 
-/* Under an environment's row (EnvironmentAccess.tsx): its pairing links and clients, inset past the row's dot. */
+/* Under an environment's row, inset past its dot: whether other devices reach Pult.app's own server, then the
+   environment's pairing links and clients (EnvironmentAccess.tsx). */
 .pult-settings-subrow {
   min-height: 34px;
   padding: 5px 12px 5px 32px;
@@ -96,6 +97,30 @@
 
 .pult-settings-group > * + .pult-settings-subrow::before {
   left: 32px;
+}
+
+/* What an environment's pairing links and clients are, over them: a hairline above it as a row's, none under it. */
+.pult-settings-caption {
+  position: relative;
+  margin: 0;
+  padding: 9px 12px 1px 32px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.pult-settings-caption::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 32px;
+  height: 1px;
+  background: var(--pult-settings-hairline);
+}
+
+.pult-settings-group > .pult-settings-caption + .pult-settings-subrow::before {
+  content: none;
 }
 
 .pult-settings-row-text {
@@ -125,6 +150,7 @@
   display: flex;
   flex-shrink: 1;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
@@ -141,6 +167,11 @@
 
 .pult-settings-dot[data-phase="ready"] {
   background: var(--vscode-charts-green);
+}
+
+/* Pult.app's own server, turned off. */
+.pult-settings-dot[data-phase="off"] {
+  background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
 }
 
 .pult-settings-dot[data-phase="offline"],

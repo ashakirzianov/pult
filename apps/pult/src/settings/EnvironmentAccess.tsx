@@ -8,7 +8,7 @@ import { type AccessState, revokeClient, revokePairingLink } from "../connection
 import { dismissPairing, type Pairing } from "../connection/pairDevice.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 
-// Under an environment's row of the settings page (xaxis
+// Under an environment's row of the settings page, in its group (xaxis
 // `pult/issues/pair-device`): the pairing link Pair Device minted, and the
 // environment's outstanding pairing links and authorized clients.
 
@@ -145,11 +145,13 @@ function QrCodeSvg({ value }: { value: string }) {
 }
 
 /**
- * The environment's outstanding pairing links (label, expiry, Revoke) and
- * authorized clients (label or device, last connected, Revoke, this page's
- * own marked and not revocable here), newest first, as its access stream
- * stands, each a row of the environments' group, inset under the
- * environment's; why it cannot be read, when it cannot.
+ * What may connect to the environment, under a caption saying so, since a
+ * client's row reads like an environment's without one: its outstanding
+ * pairing links (label, expiry, Revoke) and authorized clients (label or
+ * device, last connected, Revoke, this page's own marked This Pult and not
+ * revocable here), newest first, as its access stream stands, each a row of
+ * the environment's group, inset under its row; why it cannot be read, when
+ * it cannot.
  */
 export function AuthorizedClients({
   environmentId,
@@ -178,6 +180,9 @@ export function AuthorizedClients({
   );
   return (
     <>
+      {links.length + sessions.length === 0 ? null : (
+        <h3 className="pult-settings-caption">Apps and devices with access</h3>
+      )}
       {links.map((link) => (
         <PairingLinkRow key={link.id} environmentId={environmentId} link={link} />
       ))}
@@ -227,7 +232,7 @@ function ClientRow({
   const label =
     client.label ?? ([client.os, client.browser].filter(Boolean).join(" · ") || session.subject);
   const seen = session.current
-    ? "This page"
+    ? "This Pult"
     : session.connected
       ? "Connected"
       : session.lastConnectedAt === null
