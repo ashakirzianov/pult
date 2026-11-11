@@ -182,7 +182,10 @@ body.pult-dragging .pult-browser-host webview {
   .editor-group-container:not(.part.editor .split-view-view:not(:first-child) *)
   > .title
   > .tabs-and-actions-container {
-  padding-left: max(39px, calc(var(--pult-traffic-lights, 0px) + 30px));
+  padding-left: max(
+    calc(var(--pult-panel-inset) + 23px),
+    calc(var(--pult-traffic-lights, 0px) + 30px)
+  );
 }
 
 /* Source Control's "No changes." (src/changes/view.ts), which the workbench
