@@ -92,7 +92,14 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     expect(yield* send("GET", "/about", "reader")).toEqual({
       status: 200,
       body: {
-        features: ["stars", "star-messages", "star-sleep-request", "star-asks", "star-schedules"],
+        features: [
+          "stars",
+          "star-messages",
+          "star-sleep-request",
+          "star-sleep",
+          "star-asks",
+          "star-schedules",
+        ],
       },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
@@ -160,6 +167,11 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       status: 404,
     });
     expect((yield* send("POST", `/stars/${star.id}`, "writer", { name: 7 })).status).toBe(400);
+
+    // Refresh Context needs the write scope, and refuses a Star asleep already.
+    expect((yield* send("POST", `/stars/${star.id}/sleep`, "reader", {})).status).toBe(403);
+    expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", {})).status).toBe(409);
+    expect((yield* send("POST", "/stars/nobody/sleep", "writer", {})).status).toBe(404);
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";

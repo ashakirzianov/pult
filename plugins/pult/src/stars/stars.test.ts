@@ -413,7 +413,7 @@ describe("the pass", () => {
 describe("a Star's request to sleep", () => {
   const later = at("2026-11-10T13:30:00.000Z");
   /** A request made at 12:00:30, half way through the turn `run` fakes. */
-  const asked = (threadId: ThreadId, runId: string): Stars.SleepRequest => ({
+  const asked = (threadId: ThreadId, runId: string): Stars.StarSleepRequest => ({
     threadId,
     runId: RunId.make(runId),
     calledAt: at("2026-11-10T12:00:30.000Z"),
@@ -508,6 +508,52 @@ describe("a Star's request to sleep", () => {
       assert.deepStrictEqual(h.threads.settles, []);
       yield* h.stars.sleepNow(star, asked(before.shell.id, "before-run"));
       assert.deepStrictEqual(h.threads.settles, [before.shell.id]);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("the user's request to sleep", () => {
+  const later = at("2026-11-10T13:30:00.000Z");
+
+  it.effect("settles an awake, unheld conversation before its deadline", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const current = h.threads.add(
+        star.projectId,
+        "current",
+        { createdAt: at("2026-11-10T12:50:00.000Z"), promptCacheExpiresAt: later },
+        [run("current-run", "completed")],
+      );
+
+      assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: true });
+      assert.deepStrictEqual(h.threads.settles, [current.shell.id]);
+      assert.match(
+        yield* h.read(
+          h.path.join(star.root, ".pult/conversations/env-1/2026-11-10T12-50-00Z-current.md"),
+        ),
+        /^ended: "2026-11-10T13:00:00.000Z"$/m,
+      );
+      assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: false, asleep: true });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("refuses naming the hold where something holds the conversation awake", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const current = h.threads.add(star.projectId, "current", { promptCacheExpiresAt: later }, [
+        run("current-run", "completed"),
+      ]);
+      current.subagents = [{ status: "running" } as OrchestrationV2Subagent];
+
+      assert.deepStrictEqual(yield* h.stars.sleepByHand(star), {
+        slept: false,
+        heldBy: "subagent",
+      });
+      assert.deepStrictEqual(h.threads.settles, []);
     }).pipe(Effect.scoped),
   );
 });

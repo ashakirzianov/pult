@@ -20,6 +20,7 @@ const features: ReadonlyArray<string> = [
   "stars",
   "star-messages",
   "star-sleep-request",
+  "star-sleep",
   "star-asks",
 ];
 

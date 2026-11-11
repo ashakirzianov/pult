@@ -65,6 +65,18 @@ export const starsRoute = (
         return json(yield* stars.setRecord(star, body.value));
       }),
     );
+  // Refresh Context: the user puts the Star's current conversation to sleep, unless something holds it.
+  if (segments.length === 3 && id !== undefined && sub === "sleep" && method === "POST")
+    return answer(
+      Effect.gen(function* () {
+        const star = yield* stars.get(id);
+        if (star === undefined) return notFound;
+        const outcome = yield* stars.sleepByHand(star);
+        return "asleep" in outcome
+          ? json({ error: "The Star is asleep already: it has no conversation to end." }, 409)
+          : json(outcome);
+      }),
+    );
   if (
     segments.length === 4 &&
     id !== undefined &&
