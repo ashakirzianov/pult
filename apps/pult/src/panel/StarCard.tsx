@@ -7,12 +7,13 @@ import { flatStar } from "../stars/flat/star.ts";
 import "../stars/flat/star.css";
 import type { StarLook } from "../stars/look.ts";
 import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
-import { type Star, starName } from "../stars/stars.ts";
+import { drawnHome, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
 import { starKey } from "./order.ts";
 import { type Activity, age, Elapsed, Subagents } from "./PanelView.tsx";
+import { StarSchedules } from "./StarSchedules.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -64,7 +65,8 @@ function StarMark({ look, color }: { look: StarLook; color: string }) {
  * or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
  * expands with its current conversation's subagents, as a thread's card
- * does with its own.
+ * does with its own, then its schedules (`StarSchedules.tsx`), each list
+ * a section of the details of its own.
  */
 export function StarCard({
   star,
@@ -85,6 +87,7 @@ export function StarCard({
 }) {
   const select = () => run("pult-shell.selectStar", star.id);
   const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
+  const hasSchedules = (drawnHome(star)?.schedules.length ?? 0) > 0;
   return (
     <li className={`pult-card pult-card-star${selected ? " pult-card-selected" : ""}`}>
       <div
@@ -116,14 +119,17 @@ export function StarCard({
         </span>
         <JumpHint rowKey={starKey(star.id)} />
       </div>
-      {selected && subagents.length > 0 ? (
+      {selected && (subagents.length > 0 || hasSchedules) ? (
         <div className="pult-card-details">
-          <Subagents
-            subagents={subagents}
-            activities={activities}
-            selection={selection}
-            now={now}
-          />
+          {subagents.length > 0 ? (
+            <Subagents
+              subagents={subagents}
+              activities={activities}
+              selection={selection}
+              now={now}
+            />
+          ) : null}
+          <StarSchedules star={star} now={now} />
         </div>
       ) : null}
     </li>

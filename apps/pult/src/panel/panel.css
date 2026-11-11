@@ -610,6 +610,114 @@
   list-style: none;
 }
 
+/* A selected Star's schedules (src/panel/StarSchedules.tsx): the subagents' header and rows, a row two lines. */
+.pult-card-schedules {
+  margin: 0 0 8px;
+}
+
+.pult-card-schedules .pult-shelf-header {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.pult-card-schedules-warning .pult-shelf-label,
+.pult-card-schedules-warning .pult-shelf-count {
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.pult-schedules-off {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.pult-schedules-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pult-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pult-schedule:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pult-schedule:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.pult-schedule-spent {
+  opacity: 0.55;
+}
+
+.pult-schedule-head,
+.pult-schedule-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pult-schedule-head .codicon {
+  flex: none;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-schedule-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-schedule-next {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* The second line sits under the name, past the clock's slot. */
+.pult-schedule-line {
+  padding-left: 18px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-schedule-rule {
+  flex: none;
+}
+
+.pult-schedule-rule + .pult-schedule-last::before {
+  content: "· ";
+}
+
+.pult-schedule-last {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-schedule-last-warning {
+  color: var(--vscode-editorWarning-foreground);
+}
+
 /* A stock view's filter (src/panel/filterCard.tsx), the Explorer tab's and
    Source Control's, a card of the shell's own before the view's tree, the
    body laid out as a column so the tree takes what is left, and is laid out

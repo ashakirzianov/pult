@@ -19,10 +19,10 @@ import { pultResource } from "../files/workspace.ts";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { canCreateStarOn, createStar, primaryHome, starById, starStore } from "./model.ts";
-import { type Star, starName } from "./stars.ts";
+import { drawnHome, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
-/** Whether the page holds a Star: Open Star, Edit Star Instructions and Open Star Folder are offered then. */
+/** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder and Open Star Schedule are offered then. */
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 /** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
@@ -63,6 +63,50 @@ async function editStarInstructions(star: Star): Promise<void> {
 }
 
 /**
+ * A schedule's file of the Star's as a tab among the selection's, from the
+ * home it is drawn from, as its card lists them: `name`'s, or one picked
+ * among them.
+ */
+async function openStarSchedule(
+  quickInput: IQuickInputService,
+  star: Star,
+  name: unknown,
+): Promise<void> {
+  const notifications = await getService(INotificationService);
+  const home = drawnHome(star);
+  if (home === undefined || connection.environment(home.environmentId) === undefined)
+    return notifications.info("Pult is not connected to your Star's environment.");
+  const schedules = home.schedules;
+  if (typeof name !== "string" && schedules.length === 0)
+    return notifications.info(`${starName(star)} has no schedules.`);
+  const schedule =
+    typeof name === "string"
+      ? schedules.find((each) => each.name === name)
+      : schedules.length === 1
+        ? schedules[0]
+        : (
+            await quickInput.pick(
+              schedules.map((each) => ({
+                schedule: each,
+                label: each.name,
+                description: each.rule ?? "not a schedule",
+              })),
+              { placeHolder: "Open a schedule of the Star's" },
+            )
+          )?.schedule;
+  if (schedule === undefined) {
+    if (typeof name === "string") notifications.info(`${starName(star)} has no schedule ${name}.`);
+    return;
+  }
+  await (
+    await getService(IEditorService)
+  ).openEditor({
+    resource: pultResource(home.environmentId, toUriPath(schedule.path)),
+    options: { pinned: true },
+  });
+}
+
+/**
  * The Explorer tab at the Star's folder: narrowed to it while the Star is
  * selected, as its composer bar's Explorer narrows, else the environments'
  * folders with the Star's revealed, leaving the selection as it is.
@@ -90,7 +134,9 @@ async function openStarFolder(star: Star): Promise<void> {
  * page's Stars sync, their repository cloned there from its origin, where
  * none is), Edit Star Instructions
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
- * (`pult-shell.openStarFolder [starId]`) and Sync Star (`pult-shell.syncStar
+ * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
+ * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows)
+ * and Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
  * several. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
@@ -175,6 +221,25 @@ export function registerStarCommands(): void {
           "Open a Star's folder",
         );
         if (star !== undefined) await openStarFolder(star);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.openStarSchedule",
+          title: { value: "Open Star Schedule…", original: "Open Star Schedule…" },
+          category,
+          f1: true,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown, name?: unknown): Promise<void> {
+        const quickInput = accessor.get(IQuickInputService);
+        const star = await pickStar(quickInput, starId, "Open a Star's schedule");
+        if (star !== undefined) await openStarSchedule(quickInput, star, name);
       }
     },
   );
