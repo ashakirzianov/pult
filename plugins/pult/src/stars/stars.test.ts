@@ -219,6 +219,13 @@ describe("upkeep", () => {
         /^name: "Vega"\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
       );
       assert.strictEqual(h.projects.shells[0]?.title, "Vega");
+
+      // A record that names another Star by now fails, and is left as it was.
+      const other = record("other-id", "Other");
+      yield* h.write(file, other);
+      const refused = yield* Effect.flip(h.stars.setRecord(star, { name: "Lyra" }));
+      assert.deepStrictEqual([refused._tag, refused.operation], ["StarsError", "write-record"]);
+      assert.strictEqual(yield* h.read(file), other);
     }).pipe(Effect.scoped),
   );
 });

@@ -67,7 +67,7 @@ export const make = Effect.gen(function* () {
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
 
-  return (stars: Stars["Service"]): Deliver =>
+  return (stars: Stars): Deliver =>
     Effect.fn("Stars.deliver")(function* ({ star, text, from, key, sender }: Delivery) {
       yield* startup.awaitCommandReady.pipe(Effect.mapError(failed));
       const limit = sender === "plugin" ? undefined : yield* DispatchModeLimit.DispatchModeLimit;

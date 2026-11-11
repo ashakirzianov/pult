@@ -10,7 +10,6 @@ import {
 } from "@t3tools/contracts";
 
 import {
-  Context,
   DateTime,
   Effect,
   FileSystem,
@@ -92,7 +91,7 @@ export interface StarsView {
 }
 
 export class StarsError extends Schema.TaggedError<StarsError>()("StarsError", {
-  operation: Schema.Literals(["find", "create", "keep-up", "write-record", "look", "read"]),
+  operation: Schema.Literals(["find", "create", "write-record", "look", "read"]),
   starId: Schema.optional(Schema.String),
   cause: Schema.Defect(),
 }) {
@@ -101,30 +100,27 @@ export class StarsError extends Schema.TaggedError<StarsError>()("StarsError", {
   }
 }
 
-export class Stars extends Context.Service<
-  Stars,
-  {
-    readonly directory: string;
-    readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
-    readonly get: (id: string) => Effect.Effect<Star | undefined, StarsError>;
-    /** The Star whose conversation the thread is: a root thread of its project. */
-    readonly ofThread: (threadId: ThreadId) => Effect.Effect<Star | undefined, StarsError>;
-    /** Under the Star's lock, once the Star is looked at. */
-    readonly withConversation: <A, E, R>(
-      star: Star,
-      use: (conversations: Conversations) => Effect.Effect<A, E, R>,
-    ) => Effect.Effect<A, E | StarsError, R>;
-    readonly view: Effect.Effect<StarsView, StarsError>;
-    readonly transcript: (
-      star: Star,
-      name: string,
-    ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
-    /** A Star in a fresh folder; with `ifNone`, the one there while the server has any. */
-    readonly create: (options: { readonly ifNone: boolean }) => Effect.Effect<Star, StarsError>;
-    readonly upkeep: Effect.Effect<void>;
-    readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
-  }
->()("pult-plugin/stars/stars") {}
+export interface Stars {
+  readonly directory: string;
+  readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
+  readonly get: (id: string) => Effect.Effect<Star | undefined, StarsError>;
+  /** The Star whose conversation the thread is: a root thread of its project. */
+  readonly ofThread: (threadId: ThreadId) => Effect.Effect<Star | undefined, StarsError>;
+  /** Under the Star's lock, once the Star is looked at. */
+  readonly withConversation: <A, E, R>(
+    star: Star,
+    use: (conversations: Conversations) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | StarsError, R>;
+  readonly view: Effect.Effect<StarsView, StarsError>;
+  readonly transcript: (
+    star: Star,
+    name: string,
+  ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
+  /** A Star in a fresh folder; with `ifNone`, the one there while the server has any. */
+  readonly create: (options: { readonly ifNone: boolean }) => Effect.Effect<Star, StarsError>;
+  readonly upkeep: Effect.Effect<void>;
+  readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
+}
 
 /** `.pult/stars` beside the server's home, or under its state for a dev run on the default home. */
 export function starsDirectory(
@@ -406,7 +402,7 @@ export const make = Effect.gen(function* () {
       last: Effect.map(settledConversations(star, 1), (settled) => settled[0] ?? null),
     });
 
-  const withConversation: Stars["Service"]["withConversation"] = (star, use) =>
+  const withConversation: Stars["withConversation"] = (star, use) =>
     lockOf(star).withPermits(1)(
       Effect.gen(function* () {
         const conversations = yield* look(star).pipe(
@@ -531,10 +527,14 @@ export const make = Effect.gen(function* () {
       const file = path.join(star.root, RECORD_FILE);
       const text = yield* fs.readFileString(file);
       const written = withRecordFields(text, fields);
-      if (written !== text) yield* fs.writeFileString(file, written);
       const record = parseRecord(written);
       if (record?.id !== star.id)
-        return yield* Effect.die(new Error("The record no longer names this Star."));
+        return yield* new StarsError({
+          operation: "write-record",
+          starId: star.id,
+          cause: "The record no longer names this Star.",
+        });
+      if (written !== text) yield* fs.writeFileString(file, written);
       const project = yield* projects.getShell(star.projectId);
       if (project._tag === "Some" && project.value.title !== starName(record))
         yield* projects.update({
@@ -545,9 +545,10 @@ export const make = Effect.gen(function* () {
       return starOf(record, star.root, star.projectId);
     },
     (effect, star) =>
-      Effect.mapError(
-        effect,
-        (cause) => new StarsError({ operation: "write-record", starId: star.id, cause }),
+      Effect.mapError(effect, (cause) =>
+        isStarsError(cause)
+          ? cause
+          : new StarsError({ operation: "write-record", starId: star.id, cause }),
       ),
     (effect, star) => lockOf(star).withPermits(1)(effect),
   );
@@ -569,7 +570,7 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("Stars.pass"));
   yield* scheduler.register("pult-stars", pass);
 
-  return Stars.of({
+  return {
     directory,
     list,
     get,
@@ -580,5 +581,5 @@ export const make = Effect.gen(function* () {
     create,
     upkeep,
     setRecord,
-  });
+  } satisfies Stars;
 });

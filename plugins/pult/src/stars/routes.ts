@@ -20,7 +20,7 @@ const bodyOf = <A>(
 
 /** The routes' answers, by method and path below `/stars`; undefined for a path of no route. */
 export const starsRoute = (
-  stars: Stars["Service"],
+  stars: Stars,
   request: HttpServerRequest.HttpServerRequest,
   path: string,
 ): Effect.Effect<HttpServerResponse.HttpServerResponse> | undefined => {

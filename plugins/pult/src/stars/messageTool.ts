@@ -56,10 +56,7 @@ const refused = (message: string) =>
 const named = (star: Star) => `"${starName(star)}" (${star.id})`;
 
 /** The tool's registration, to build in the plugin's activation once everything else is up. */
-export const make = Effect.fn("PultTools.make")(function* (
-  stars: Stars["Service"],
-  deliver: Deliver,
-) {
+export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver: Deliver) {
   const projects = yield* ProjectService.ProjectService;
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const newKey = (yield* SecureRandom.SecureRandom).uuidV4();
