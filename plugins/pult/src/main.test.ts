@@ -129,6 +129,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           id: star.id,
           instructions: `${star.root}/instructions.md`,
           conversation: null,
+          work: null,
           conversations: [],
         },
       ],
@@ -312,7 +313,7 @@ it.effect(
         },
       });
       expect(server.threads.messages[0]).toMatchObject({
-        text: '[From thread worker "Worker" in project "Repo"]\n\nDone.',
+        text: '[From thread worker "Worker" in project "Repo", to your work conversation]\n\nDone.',
         senderThreadId: "worker",
         creationSource: "mcp",
         // The wrapper's limits, the caller's own modes.

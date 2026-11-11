@@ -1,7 +1,7 @@
-// The Stars of this server (xaxis `pult/design-durable-agent-sleep`): found on demand from the
-// project store and the record files, created and kept up in their folders, their conversations
-// put to sleep and their transcripts written once a minute and before a Star's conversation is
-// handed to anyone. The plugin persists nothing.
+// The Stars of this server (xaxis `pult/design-durable-agent-sleep`, `pult/issues/star-multiple-threads.md`):
+// found on demand from the store and the record files, kept up in their folders, their two kinds of
+// conversation, the user's and the work one tagged `pult:work`, put to sleep and transcribed once a
+// minute and before one is handed to anyone. The plugin persists nothing.
 import {
   CommandId,
   linkOriginIsFenced,
@@ -61,6 +61,20 @@ const PASS_INTERVAL_MS = 60_000;
 const TRANSCRIPTS_KEPT = 10;
 /** Later than any settlement: the first page of settled threads starts below it. */
 const NEWEST_SETTLED = "9999-12-31T23:59:59.999Z";
+/** How many settled threads one page of the search for a kind's latest reads at least. */
+const SETTLED_PAGE = 25;
+
+/** The tag of a Star's work conversation: the plugin launches the thread with it, and nothing else sets it. */
+export const WORK_TAG = "pult:work";
+
+/** Which of a Star's conversations: the one with the user, or its work conversation. */
+export type ConversationKind = "user" | "work";
+
+/** A conversation's kind, by its tag alone. */
+const kindOf = (thread: Pick<OrchestrationV2ThreadShell, "tags">): ConversationKind =>
+  thread.tags?.includes(WORK_TAG) === true ? "work" : "user";
+
+const otherKind = (kind: ConversationKind): ConversationKind => (kind === "user" ? "work" : "user");
 
 export interface Star {
   readonly id: string;
@@ -71,10 +85,20 @@ export interface Star {
   readonly projectId: ProjectId;
 }
 
-/** What `withConversation` hands its use: the open conversation created last, and the conversation settled last. */
+/**
+ * What `withConversation` hands its use, for the kind it names: that kind's open conversation
+ * created last, and the one a wake takes its model and modes from, the newest of that kind, open
+ * or ended, else of the other kind.
+ */
 export interface Conversations {
   readonly current: OrchestrationV2ThreadShell | null;
-  readonly last: OrchestrationV2ThreadShell | null;
+  readonly newest: OrchestrationV2ThreadShell | null;
+}
+
+/** A conversation as the view serves it: its thread, and its deadline or what holds it. */
+export interface ConversationView {
+  readonly threadId: ThreadId;
+  readonly sleeps: { readonly at: string } | { readonly heldBy: string };
 }
 
 /** What a page draws, as `GET /stars` serves it. */
@@ -84,10 +108,10 @@ export interface StarsView {
   readonly stars: ReadonlyArray<
     Star & {
       readonly instructions: string;
-      readonly conversation: {
-        readonly threadId: ThreadId;
-        readonly sleeps: { readonly at: string } | { readonly heldBy: string };
-      } | null;
+      /** The current conversation with the user; `asleepSince` and `conversations` are of that kind too. */
+      readonly conversation: ConversationView | null;
+      /** The current work conversation. */
+      readonly work: ConversationView | null;
       readonly asleepSince: string;
       readonly conversations: ReadonlyArray<string>;
       /** By name. */
@@ -132,16 +156,22 @@ export interface Stars {
   readonly directory: string;
   readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
   readonly get: (id: string) => Effect.Effect<Star | undefined, StarsError>;
-  /** The Star whose conversation the thread is: a root thread of its project no fenced link started. */
-  readonly ofThread: (threadId: ThreadId) => Effect.Effect<Star | undefined, StarsError>;
-  /** Under the Star's lock, once the Star is looked at. */
+  /** The Star whose conversation the thread is, a root thread of its project no fenced link started, and its kind. */
+  readonly ofThread: (
+    threadId: ThreadId,
+  ) => Effect.Effect<
+    { readonly star: Star; readonly kind: ConversationKind } | undefined,
+    StarsError
+  >;
+  /** Under the Star's lock, once the Star is looked at: the conversations of the kind `to` names. */
   readonly withConversation: <A, E, R>(
     star: Star,
+    to: ConversationKind,
     use: (conversations: Conversations) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StarsError, R>;
   /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects the request's run as the latest. */
   readonly sleepNow: (star: Star, request: StarSleepRequest) => Effect.Effect<void>;
-  /** The user's request, Refresh Context: the look under the Star's lock with its current conversation's deadline taken as passed, every hold applying. */
+  /** The user's request, Refresh Context: the look under the Star's lock with its current conversation with the user's deadline taken as passed, every hold applying. */
   readonly sleepByHand: (star: Star) => Effect.Effect<SleepByHand, StarsError>;
   readonly view: Effect.Effect<StarsView, StarsError>;
   readonly transcript: (
@@ -353,20 +383,22 @@ export const make = Effect.gen(function* () {
           ),
     );
 
-  /** The project's latest settled conversations, the latest first. */
+  /** The project's latest settled conversations, of `kind` where it names one, the latest first. */
   const settledConversations = Effect.fn("Stars.settledConversations")(function* (
     star: Star,
     count: number,
+    kind?: ConversationKind,
   ) {
     const roots: OrchestrationV2ThreadShell[] = [];
     let before: { readonly settledAt: string; readonly threadId?: ThreadId } = {
       settledAt: NEWEST_SETTLED,
     };
+    const limit = Math.max(count, SETTLED_PAGE);
     while (roots.length < count) {
       const page = yield* threads.listOlderSettledThreads({
         before,
         projectIds: [star.projectId],
-        limit: count,
+        limit,
       });
       if (page.threadIds.length === 0) break;
       const snapshot = yield* threads.getShellSnapshot({ threadIds: page.threadIds });
@@ -374,9 +406,13 @@ export const make = Effect.gen(function* () {
         const shell = snapshot.threads.find((thread) => thread.id === id);
         return shell === undefined ? [] : [shell];
       });
-      roots.push(...shells.filter(isConversation));
+      roots.push(
+        ...shells.filter(
+          (shell) => isConversation(shell) && (kind === undefined || kindOf(shell) === kind),
+        ),
+      );
       const oldest = shells.at(-1);
-      if (page.threadIds.length < count || oldest?.settledAt == null) break;
+      if (page.threadIds.length < limit || oldest?.settledAt == null) break;
       before = { settledAt: DateTime.formatIso(oldest.settledAt), threadId: oldest.id };
     }
     return roots.slice(0, count);
@@ -484,17 +520,28 @@ export const make = Effect.gen(function* () {
     return requested === undefined ? undefined : yield* requested;
   });
 
-  const conversationsNow = (star: Star) =>
-    Effect.all({
-      current: Effect.map(openConversations(star), (open) => open[0] ?? null),
-      last: Effect.map(settledConversations(star, 1), (settled) => settled[0] ?? null),
-    });
+  const conversationsOf = Effect.fn("Stars.conversationsOf")(function* (
+    star: Star,
+    to: ConversationKind,
+  ) {
+    const open = yield* openConversations(star);
+    const newestOf = (kind: ConversationKind) => {
+      const current = open.find((thread) => kindOf(thread) === kind);
+      return current === undefined
+        ? Effect.map(settledConversations(star, 1, kind), (settled) => settled[0] ?? null)
+        : Effect.succeed(current);
+    };
+    return {
+      current: open.find((thread) => kindOf(thread) === to) ?? null,
+      newest: (yield* newestOf(to)) ?? (yield* newestOf(otherKind(to))),
+    } satisfies Conversations;
+  });
 
-  const withConversation: Stars["withConversation"] = (star, use) =>
+  const withConversation: Stars["withConversation"] = (star, to, use) =>
     lockOf(star).withPermits(1)(
       Effect.gen(function* () {
         const conversations = yield* look(star).pipe(
-          Effect.andThen(conversationsNow(star)),
+          Effect.andThen(conversationsOf(star, to)),
           Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
         );
         return yield* use(conversations);
@@ -515,7 +562,9 @@ export const make = Effect.gen(function* () {
     lockOf(star)
       .withPermits(1)(
         Effect.gen(function* () {
-          const current = (yield* openConversations(star))[0];
+          const current = (yield* openConversations(star)).find(
+            (thread) => kindOf(thread) === "user",
+          );
           if (current === undefined) return { slept: false, asleep: true } as const;
           const outcome = yield* look(star, { threadId: current.id });
           // A conversation no longer open was settled by someone since the read: asleep all the same.
@@ -536,7 +585,8 @@ export const make = Effect.gen(function* () {
       .getThreadShell(threadId)
       .pipe(Effect.mapError((cause) => new StarsError({ operation: "find", cause })));
     if (shell === null || !isConversation(shell)) return undefined;
-    return (yield* list).find((star) => star.projectId === shell.projectId);
+    const star = (yield* list).find((each) => each.projectId === shell.projectId);
+    return star === undefined ? undefined : { star, kind: kindOf(shell) };
   });
 
   const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (star: Star) {
@@ -587,26 +637,25 @@ export const make = Effect.gen(function* () {
       .map((project) => project.id);
     const stars = yield* Effect.forEach(yield* list, (star) =>
       Effect.gen(function* () {
-        const { current, last } = yield* conversationsNow(star);
-        const conversation =
-          current === null
-            ? null
-            : {
-                threadId: current.id,
-                sleeps: sleepsOf(
-                  wakefulness(
-                    yield* threads.getProjectThreadRecords(
-                      { projectId: star.projectId, threadId: current.id },
-                      ["runs", "providerTurns", "runtimeRequests", "subagents"],
-                    ),
-                    current.promptCacheExpiresAt,
-                  ),
-                ),
-              };
+        const open = yield* openConversations(star);
+        const served = Effect.fn("Stars.served")(function* (kind: ConversationKind) {
+          const current = open.find((thread) => kindOf(thread) === kind);
+          if (current === undefined) return null;
+          const records = yield* threads.getProjectThreadRecords(
+            { projectId: star.projectId, threadId: current.id },
+            ["runs", "providerTurns", "runtimeRequests", "subagents"],
+          );
+          return {
+            threadId: current.id,
+            sleeps: sleepsOf(wakefulness(records, current.promptCacheExpiresAt)),
+          } satisfies ConversationView;
+        });
+        const last = (yield* settledConversations(star, 1, "user"))[0];
         return {
           ...star,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
-          conversation,
+          conversation: yield* served("user"),
+          work: yield* served("work"),
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
           conversations: yield* transcriptNames(star),
           asks: yield* asksOf(star),

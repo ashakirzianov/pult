@@ -92,6 +92,7 @@ const harnessWith = (
       ...star,
       instructions: path.join(root, "instructions.md"),
       conversation: null,
+      work: null,
       asleepSince: star.created,
       conversations: [],
       asks: [],
@@ -170,6 +171,7 @@ describe("the pass", () => {
           text: "Time for the standup.",
           from: "schedule standup, due 2026-11-10 09:00 UTC",
           key: "schedule:standup:2026-11-10T09:00:00.000Z",
+          to: "user",
           sender: "plugin",
         },
       ]);
@@ -344,6 +346,8 @@ describe("the pass", () => {
       assert.strictEqual(h.deliveries.length, 1);
       const [told] = h.deliveries;
       assert.strictEqual(told?.from, "Pult, about schedule standup");
+      // Pult's own notice goes to the work conversation.
+      assert.strictEqual(told?.to, "work");
       assert.strictEqual(
         told?.text,
         "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date and every. Fix the file or delete it; Pult tells you once per content.",

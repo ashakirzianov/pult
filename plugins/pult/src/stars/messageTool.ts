@@ -93,7 +93,7 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
           : `No Star has the id "${input.star}" on this server. Its Stars: ${known.map(named).join(", ")}.`,
       );
     }
-    const own = yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable));
+    const own = (yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable)))?.star;
     if (own?.id === star.id)
       return yield* refused(
         `This thread is Star ${named(star)}'s own conversation; a message to itself later is a schedule.`,
@@ -108,6 +108,7 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
       star,
       text: input.message,
       from,
+      to: "work",
       key,
       sender: { thread: threadId },
     });

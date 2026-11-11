@@ -90,7 +90,7 @@ export const make = Effect.fn("PultTools.makeSleep")(function* (stars: Stars) {
     const invocation = yield* McpInvocationContext.McpInvocationContext;
     const caller = yield* McpInvocationContext.requireThreadScope(invocation, "Falling asleep");
     const threadId = caller.thread.threadId;
-    const star = yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable));
+    const star = (yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable)))?.star;
     if (star === undefined)
       return yield* refused(
         "pult_star_sleep is for a Star's own conversation, and this thread is none: nothing was done.",

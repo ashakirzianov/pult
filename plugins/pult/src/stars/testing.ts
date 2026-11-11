@@ -346,6 +346,7 @@ function fakeLaunches(threads: ReturnType<typeof fakeThreads>) {
               createdAt: yield* DateTime.now,
               createdBy: input.createdBy,
               creationSource: input.creationSource,
+              ...(input.tags === undefined ? {} : { tags: [...input.tags] }),
             })
           : threads.byId(known)!;
       threadOf.set(input.commandId, thread.shell.id);

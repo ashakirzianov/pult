@@ -1,7 +1,7 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
 import { DispatchModeLimit, Effect, Exit, Layer } from "../host.ts";
@@ -11,6 +11,7 @@ import { at, fakeServer, run } from "./testing.ts";
 
 const worker = ThreadId.make("worker");
 const fullAccess = { runtimeMode: "full-access", interactionMode: "default" } as const;
+const work = { tags: [Stars.WORK_TAG] } satisfies Partial<OrchestrationV2ThreadShell>;
 
 /** One Star over a fake server, and `deliver` as the plugin builds it. */
 const harness = Effect.gen(function* () {
@@ -19,37 +20,48 @@ const harness = Effect.gen(function* () {
   const stars = yield* Stars.make.pipe(Effect.provide(server.layer));
   const deliver = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(stars);
   const star = yield* stars.create({ ifNone: true });
-  /** The conversation that last ended, an hour ago. */
-  const ended = () =>
-    server.threads.add(star.projectId, "ended", {
+  /** A conversation that ended an hour ago; the user's unless `shell` tags it. */
+  const ended = (id = "ended", shell: Partial<OrchestrationV2ThreadShell> = {}) =>
+    server.threads.add(star.projectId, id, {
       createdAt: at("2026-11-10T11:00:00.000Z"),
       settledOverride: "settled",
       settledAt: at("2026-11-10T12:00:00.000Z"),
       runtimeMode: "auto",
       interactionMode: "default",
+      ...shell,
     });
-  /** An open conversation, its cache warm. */
-  const open = (runs = [run("open-run", "completed")]) =>
+  /** An open conversation, its cache warm; the user's unless `shell` tags it. */
+  const open = (
+    runs = [run("open-run", "completed")],
+    id = "open",
+    shell: Partial<OrchestrationV2ThreadShell> = {},
+  ) =>
     server.threads.add(
       star.projectId,
-      "open",
+      id,
       {
         createdAt: at("2026-11-10T12:50:00.000Z"),
         promptCacheExpiresAt: at("2026-11-10T13:30:00.000Z"),
         runtimeMode: "auto",
+        ...shell,
       },
       runs,
     );
-  const fromPlugin = (key: string, text = "Hello") =>
-    deliver({ star, text, from: 'schedule "standup"', key, sender: "plugin" });
-  /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits. */
+  const fromPlugin = (key: string, text = "Hello", to: Stars.ConversationKind = "user") =>
+    deliver({ star, text, from: 'schedule "standup"', to, key, sender: "plugin" });
+  /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits; to work, as the tool sends. */
   const fromThread = (
     key: string,
     limit: { runtimeMode: "auto" | "full-access"; interactionMode: "default" },
   ) =>
-    deliver({ star, text: "Done.", from: "thread worker", key, sender: { thread: worker } }).pipe(
-      Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit),
-    );
+    deliver({
+      star,
+      text: "Done.",
+      from: "thread worker",
+      to: "work",
+      key,
+      sender: { thread: worker },
+    }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit));
   return { ...server, star, deliver, ended, open, fromPlugin, fromThread };
 }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
 
@@ -78,6 +90,7 @@ describe("deliver", () => {
           runtimeMode: launch?.runtimeMode,
           interactionMode: launch?.interactionMode,
           workspaceStrategy: launch?.workspaceStrategy,
+          tags: launch?.tags,
         },
         {
           projectId: h.star.projectId,
@@ -87,6 +100,8 @@ describe("deliver", () => {
           runtimeMode: "auto",
           interactionMode: "default",
           workspaceStrategy: { type: "root" },
+          // The conversation with the user carries no tag.
+          tags: undefined,
         },
       );
       // From the plugin: a server message, no sender thread, no ceiling.
@@ -101,7 +116,7 @@ describe("deliver", () => {
         },
         {
           threadId: ThreadId.make("launched-1"),
-          text: '[From schedule "standup"]\n\nTime for the standup.',
+          text: '[From schedule "standup", to your conversation with the user]\n\nTime for the standup.',
           senderThreadId: undefined,
           createdBy: "agent",
           creationSource: "server",
@@ -114,7 +129,7 @@ describe("deliver", () => {
     Effect.gen(function* () {
       const h = yield* harness;
       h.ended();
-      const open = h.open();
+      const open = h.open(undefined, "work-open", work);
       assert.deepStrictEqual(yield* h.fromThread("k1", fullAccess), {
         outcome: "started",
         threadId: open.shell.id,
@@ -135,12 +150,80 @@ describe("deliver", () => {
           limit: message?.limit,
         },
         {
-          text: "[From thread worker]\n\nDone.",
+          text: "[From thread worker, to your work conversation]\n\nDone.",
           senderThreadId: worker,
           createdBy: "agent",
           creationSource: "mcp",
           limit: fullAccess,
         },
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "leaves the user's conversation untouched by a worker's message, whether it is idle or running",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const user = h.open();
+        // Idle: the message wakes a work thread, tagged, at the user's conversation's model and modes.
+        assert.deepStrictEqual(yield* h.fromThread("k1", fullAccess), {
+          outcome: "launched",
+          threadId: ThreadId.make("launched-1"),
+        });
+        const [launch] = h.launches.launches;
+        assert.deepStrictEqual(
+          {
+            tags: launch?.tags,
+            modelSelection: launch?.modelSelection,
+            runtimeMode: launch?.runtimeMode,
+          },
+          {
+            tags: [Stars.WORK_TAG],
+            modelSelection: user.shell.modelSelection,
+            runtimeMode: "auto",
+          },
+        );
+        assert.deepStrictEqual(
+          user.runs.map((each) => each.id),
+          ["open-run"],
+        );
+        // Running: the next one queues into the work thread.
+        user.runs = [{ ...run("user-run", "running"), ordinal: 1 }];
+        assert.deepStrictEqual(yield* h.fromThread("k2", fullAccess), {
+          outcome: "queued",
+          threadId: ThreadId.make("launched-1"),
+        });
+        assert.strictEqual(h.launches.launches.length, 1);
+        assert.deepStrictEqual(
+          h.threads.messages.map((each) => each.threadId),
+          [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
+        );
+        assert.deepStrictEqual(
+          user.runs.map((each) => each.id),
+          ["user-run"],
+        );
+        assert.strictEqual(user.shell.settledOverride, null);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("wakes each kind at the newest conversation of its kind, else of the other", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended("work-ended", { ...work, runtimeMode: "full-access", interactionMode: "plan" });
+      // The user's ended later; the work conversation's model and modes are still its own kind's.
+      h.ended("user-ended", {
+        createdAt: at("2026-11-10T11:30:00.000Z"),
+        settledAt: at("2026-11-10T12:30:00.000Z"),
+      });
+      yield* h.fromPlugin("k1", "To work.", "work");
+      yield* h.fromPlugin("k2", "To the user.", "user");
+      assert.deepStrictEqual(
+        h.launches.launches.map((each) => [each.runtimeMode, each.interactionMode, each.tags]),
+        [
+          ["full-access", "plan", [Stars.WORK_TAG]],
+          ["auto", "default", undefined],
+        ],
       );
     }).pipe(Effect.scoped),
   );
@@ -154,6 +237,26 @@ describe("deliver", () => {
       });
       assert.deepStrictEqual(both.map((each) => each.outcome).toSorted(), ["launched", "queued"]);
       assert.strictEqual(h.launches.launches.length, 1);
+      assert.deepStrictEqual(
+        both.map((each) => each.threadId),
+        [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("wakes one work thread for two workers' messages at once", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended();
+      const both = yield* Effect.all(
+        [h.fromThread("k1", fullAccess), h.fromThread("k2", fullAccess)],
+        { concurrency: "unbounded" },
+      );
+      assert.deepStrictEqual(both.map((each) => each.outcome).toSorted(), ["launched", "queued"]);
+      assert.deepStrictEqual(
+        h.launches.launches.map((each) => each.tags),
+        [[Stars.WORK_TAG]],
+      );
       assert.deepStrictEqual(
         both.map((each) => each.threadId),
         [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
@@ -200,7 +303,7 @@ describe("deliver", () => {
         "runtime_mode_escalation_denied",
       );
       assert.strictEqual(h.launches.launches.length, 0);
-      const open = h.open();
+      const open = h.open(undefined, "work-open", work);
       open.shell = { ...open.shell, runtimeMode: "full-access" };
       assert.strictEqual(
         failureCode(yield* Effect.exit(h.fromThread("k2", narrow))),
@@ -208,7 +311,7 @@ describe("deliver", () => {
       );
       assert.strictEqual(h.threads.messages.length, 0);
       // The plugin has no ceiling.
-      assert.strictEqual((yield* h.fromPlugin("k3")).outcome, "started");
+      assert.strictEqual((yield* h.fromPlugin("k3", "Hello", "work")).outcome, "started");
     }).pipe(Effect.scoped),
   );
 
@@ -217,7 +320,14 @@ describe("deliver", () => {
       const h = yield* harness;
       assert.strictEqual(failureCode(yield* Effect.exit(h.fromPlugin("k1"))), "thread_not_found");
       const outside = yield* Effect.exit(
-        h.deliver({ star: h.star, text: "x", from: "y", key: "k2", sender: { thread: worker } }),
+        h.deliver({
+          star: h.star,
+          text: "x",
+          from: "y",
+          to: "work",
+          key: "k2",
+          sender: { thread: worker },
+        }),
       );
       assert.isTrue(Exit.isFailure(outside) && outside.cause.reasons[0]?._tag === "Die");
     }).pipe(Effect.scoped),

@@ -278,6 +278,8 @@ export const make = Effect.fn("Schedules.make")(function* (
       text: schedule.text,
       from: `schedule ${schedule.name}, due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`,
       key: `schedule:${schedule.name}:${iso(due)}`,
+      // A schedule's own `to` is not read yet: every one is for the conversation with the user.
+      to: "user",
       sender: "plugin",
     }).pipe(
       Effect.map((delivered) => ({
@@ -337,6 +339,8 @@ export const make = Effect.fn("Schedules.make")(function* (
       text: `\`${SCHEDULES_DIRECTORY}/${file.name}.md\` will not run: ${why}. Fix the file or delete it; Pult tells you once per content.`,
       from: `Pult, about schedule ${file.name}`,
       key,
+      // Pult's own notice, which no user is waiting on.
+      to: "work",
       sender: "plugin",
     }).pipe(
       Effect.catchCauseIf(notInterrupted, (cause) =>
