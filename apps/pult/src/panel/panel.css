@@ -143,10 +143,6 @@
   outline-offset: -1px;
 }
 
-.pult-card-actions .codicon {
-  font-size: 12px;
-}
-
 .pult-card-selected,
 .pult-card-selected:hover {
   background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
@@ -171,7 +167,6 @@
 
 /* A codicon in the icon's place: the filter's card for an environment's folder. */
 .codicon.pult-card-icon {
-  font-size: 14px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -203,10 +198,6 @@
   background: color-mix(in srgb, var(--vscode-descriptionForeground) 14%, transparent);
 }
 
-.pult-card-pin.codicon {
-  font-size: 12px;
-}
-
 /* A thread whose composer holds an unsent message: the status strip's composer dot (src/status/status.css). */
 .pult-card-unsent {
   flex: none;
@@ -222,10 +213,6 @@
   gap: 3px;
   flex: none;
   font-variant-numeric: tabular-nums;
-}
-
-.pult-card-status .codicon {
-  font-size: 12px;
 }
 
 .pult-card-status-working {
@@ -382,10 +369,6 @@
   cursor: default;
 }
 
-.pult-panel-button .codicon {
-  font-size: 14px;
-}
-
 /* A shelf (Stars, Explorer, Inbox, Working, Snoozed, Settled, Limits): its header, label, count and Close, then its rows. */
 .pult-shelf {
   margin-top: 6px;
@@ -458,7 +441,6 @@
 .pult-shelf-header .pult-shelf-icon {
   flex: none;
   margin-right: -3px;
-  font-size: 13px;
 }
 
 .pult-shelf-header-closable:has(.pult-shelf-open:hover) {
@@ -507,10 +489,6 @@
   outline-offset: -1px;
 }
 
-.pult-shelf-action .codicon {
-  font-size: 14px;
-}
-
 /* The workbench rings every focused button in its parts; in the panel, only keyboard focus shows. */
 .pult-panel button:focus:not(:focus-visible) {
   outline: none;
@@ -546,7 +524,6 @@
 
 .pult-shelf-header .codicon {
   flex: none;
-  font-size: 12px;
 }
 
 .pult-shelf-cards {
@@ -597,7 +574,6 @@
 
 .pult-subagent .codicon {
   flex: none;
-  font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -706,7 +682,6 @@
 
 .pult-schedule-head .codicon {
   flex: none;
-  font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -806,7 +781,6 @@
 
 .pult-view-card-detail .codicon {
   flex: none;
-  font-size: 12px;
 }
 
 .pult-view-card-detail > span {
@@ -826,7 +800,6 @@
   padding: 0;
   border: none;
   border-radius: 4px;
-  font-size: 14px;
   color: var(--vscode-icon-foreground, inherit);
   background: none;
   cursor: pointer;
@@ -913,7 +886,6 @@
 
 .pult-explorer-entry .codicon {
   flex: none;
-  font-size: 13px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -1053,10 +1025,6 @@
 
 .pult-panel-tab {
   color: var(--vscode-activityBarTop-inactiveForeground, var(--vscode-descriptionForeground));
-}
-
-.pult-panel-tab .codicon {
-  font-size: 16px;
 }
 
 .pult-panel-tab-image {
