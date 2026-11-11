@@ -1,7 +1,7 @@
 // The projects' drafts the shell remembers, and the threads whose composer
-// holds an unsent message, for the left panel's cards: the composer store's,
-// which the panel reaches through this module alone, so it need not load the
-// whole view.
+// holds an unsent message, for the left panel's cards and the Stars' carry of
+// unsent text: the composer store's, which the panel reaches through this
+// module alone, so it need not load the whole view.
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -30,6 +30,30 @@ export function heldDraft(environmentId: string, projectId: string): DraftId | n
   return session !== null && session.projectId === projectId && session.promotedTo == null
     ? draftId
     : null;
+}
+
+/** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
+export function isPromotion(
+  draft: { readonly environmentId: string; readonly projectId: string },
+  environmentId: string,
+  threadId: string,
+): boolean {
+  const draftId = localStorage.getItem(
+    draftKey(draft.environmentId, draft.projectId),
+  ) as DraftId | null;
+  if (draftId === null) return false;
+  const store = useComposerDraftStore.getState();
+  const session = store.getDraftSession(draftId);
+  const redirect = store.getPromotedDraftRedirect(draftId);
+  return (
+    // Finalized, the draft is gone from the store but for the redirect its route follows.
+    (redirect?.environmentId === environmentId && redirect.threadId === threadId) ||
+    session?.threadId === threadId ||
+    session?.promotedTo?.threadId === threadId ||
+    store.getDraftIdByRef(
+      scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(threadId)),
+    ) === draftId
+  );
 }
 
 /** A project's unsent draft, as its card shows it. */

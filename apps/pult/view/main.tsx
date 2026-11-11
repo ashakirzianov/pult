@@ -18,6 +18,7 @@ import { subscribeDraftThreadPromotion } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { environmentThreadShells } from "~/state/threads";
 import { startBrowserHost } from "./browserHost.tsx";
+import { isPromotion } from "./drafts.ts";
 import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import {
   closePreviewSession,
@@ -30,7 +31,6 @@ import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./P
 import { routeRightPanel } from "./rightPanel.ts";
 import { toggleTerminal } from "./terminal.ts";
 import {
-  isPromotion,
   type MountedView,
   type MountOptions,
   mountComposerView,
@@ -149,11 +149,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     mountDraft: mountDraftView,
     mountComposer: mountComposerView,
     draftCreates: (draftEnvironmentId, projectId, environmentId, threadId) =>
-      isPromotion(
-        { kind: "draft", environmentId: draftEnvironmentId, projectId },
-        environmentId,
-        threadId,
-      ),
+      isPromotion({ environmentId: draftEnvironmentId, projectId }, environmentId, threadId),
     mountPreview,
     previewSessions,
     followPreviewSessions,

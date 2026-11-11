@@ -27,14 +27,14 @@ import { ShellComposerOptions, type ShellValue } from "~/components/chat/ShellCo
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
-import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
-import { draftKey, heldDraft } from "./drafts.ts";
+import { draftKey, heldDraft, isPromotion } from "./drafts.ts";
 import { makeThreadRouter } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
@@ -43,30 +43,6 @@ import { closeThreadPanel } from "./rightPanel.ts";
 type ViewTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
-
-/** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
-export function isPromotion(
-  draft: Extract<ViewTarget, { kind: "draft" }>,
-  environmentId: string,
-  threadId: string,
-): boolean {
-  const draftId = localStorage.getItem(
-    draftKey(draft.environmentId, draft.projectId),
-  ) as DraftId | null;
-  if (draftId === null) return false;
-  const store = useComposerDraftStore.getState();
-  const session = store.getDraftSession(draftId);
-  const redirect = store.getPromotedDraftRedirect(draftId);
-  return (
-    // Finalized, the draft is gone from the store but for the redirect its route follows.
-    (redirect?.environmentId === environmentId && redirect.threadId === threadId) ||
-    session?.threadId === threadId ||
-    session?.promotedTo?.threadId === threadId ||
-    store.getDraftIdByRef(
-      scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(threadId)),
-    ) === draftId
-  );
-}
 
 /** Where `target` is in the view's routes; a draft without a draft yet is the landing, which starts one. */
 function targetPath(target: ViewTarget): string {
