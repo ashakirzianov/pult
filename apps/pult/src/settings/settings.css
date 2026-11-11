@@ -113,8 +113,23 @@
   font-weight: 500;
 }
 
+/* The first of them close under Devices, which reads as their name, no line between. */
+.pult-settings-group > .pult-settings-devices {
+  min-height: 0;
+  padding-top: 8px;
+  padding-bottom: 0;
+}
+
+.pult-settings-devices .pult-settings-icon-button {
+  margin-block: -2px;
+}
+
 .pult-settings-group > .pult-settings-devices + .pult-settings-subrow::before {
   content: none;
+}
+
+.pult-settings-devices + .pult-settings-pairing {
+  margin-top: 8px;
 }
 
 .pult-settings-row-text {
