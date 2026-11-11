@@ -382,6 +382,13 @@ it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is re
       createWorkspaceRootIfMissing: true,
     });
     server.threads.add(repo.id, "worker", { activeRunId: RunId.make("worker-run") });
+    // A thread a link paired below full access launched into the Star's project.
+    const fenced = server.threads.add(star.projectId, "fenced", {
+      ...later,
+      createdAt: at("2026-11-10T12:55:00.000Z"),
+      activeRunId: RunId.make("fenced-run"),
+      linkOrigin: { sessionId: "link-1", label: "Laptop", access: "read-only" },
+    });
     // A Star's conversation with no turn on, whose background subagent still holds the credential.
     const idle = server.threads.add(star.projectId, "idle", {
       ...later,
@@ -400,6 +407,7 @@ it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is re
     };
     expect(yield* call(scopeOf({ thread: "worker" }))).toMatchObject(noStar);
     expect(yield* call(scopeOf({ thread: below.shell.id }))).toMatchObject(noStar);
+    expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toMatchObject(noStar);
     expect(yield* call(scopeOf({ thread: idle.shell.id }))).toMatchObject({
       refused: "invalid_request",
       why: expect.stringContaining("no turn on"),

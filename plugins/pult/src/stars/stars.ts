@@ -4,6 +4,7 @@
 // handed to anyone. The plugin persists nothing.
 import {
   CommandId,
+  linkOriginIsFenced,
   type OrchestrationV2ThreadShell,
   ProjectId,
   type RunId,
@@ -69,7 +70,7 @@ export interface Star {
   readonly projectId: ProjectId;
 }
 
-/** What `withConversation` hands its use: the open root thread created last, and the root thread settled last. */
+/** What `withConversation` hands its use: the open conversation created last, and the conversation settled last. */
 export interface Conversations {
   readonly current: OrchestrationV2ThreadShell | null;
   readonly last: OrchestrationV2ThreadShell | null;
@@ -115,7 +116,7 @@ export interface Stars {
   readonly directory: string;
   readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
   readonly get: (id: string) => Effect.Effect<Star | undefined, StarsError>;
-  /** The Star whose conversation the thread is: a root thread of its project. */
+  /** The Star whose conversation the thread is: a root thread of its project no fenced link started. */
   readonly ofThread: (threadId: ThreadId) => Effect.Effect<Star | undefined, StarsError>;
   /** Under the Star's lock, once the Star is looked at. */
   readonly withConversation: <A, E, R>(
@@ -148,7 +149,14 @@ export function starsDirectory(
 
 const isStarsError = Schema.is(StarsError);
 
-const isRoot = (thread: OrchestrationV2ThreadShell) => thread.lineage.parentThreadId === null;
+/**
+ * A conversation of the Star whose project the thread is in: a root thread no fenced link started.
+ * A link paired below full access may launch threads into any project, but it may change only its
+ * own work (`McpLinkOrigin`), so such a thread is left alone: never current, settled or transcribed.
+ */
+const isConversation = (thread: OrchestrationV2ThreadShell) =>
+  thread.lineage.parentThreadId === null &&
+  (thread.linkOrigin === undefined || !linkOriginIsFenced(thread.linkOrigin));
 
 const instant = (iso: string | undefined) => {
   const parsed = iso === undefined ? undefined : DateTime.make(iso);
@@ -301,14 +309,14 @@ export const make = Effect.gen(function* () {
       threads.getShellSnapshot({ projectId: star.projectId, unsettledOnly: true }),
       (snapshot) =>
         snapshot.threads
-          .filter(isRoot)
+          .filter(isConversation)
           .toSorted(
             (left, right) =>
               DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
           ),
     );
 
-  /** The project's latest settled root threads, the latest first. */
+  /** The project's latest settled conversations, the latest first. */
   const settledConversations = Effect.fn("Stars.settledConversations")(function* (
     star: Star,
     count: number,
@@ -329,7 +337,7 @@ export const make = Effect.gen(function* () {
         const shell = snapshot.threads.find((thread) => thread.id === id);
         return shell === undefined ? [] : [shell];
       });
-      roots.push(...shells.filter(isRoot));
+      roots.push(...shells.filter(isConversation));
       const oldest = shells.at(-1);
       if (page.threadIds.length < count || oldest?.settledAt == null) break;
       before = { settledAt: DateTime.formatIso(oldest.settledAt), threadId: oldest.id };
@@ -407,7 +415,7 @@ export const make = Effect.gen(function* () {
     yield* fs.writeFileString(file, contents);
   });
 
-  /** Sleep for each open root thread past its deadline, then the transcripts of the latest settled, oldest first; each failure logged. */
+  /** Sleep for each open conversation past its deadline, then the transcripts of the latest settled, oldest first; each failure logged. */
   const look = Effect.fn("Stars.look")(function* (star: Star, request?: SleepRequest) {
     for (const thread of yield* openConversations(star))
       yield* sleepIfDue(star, thread, thread.id === request?.threadId ? request : undefined).pipe(
@@ -462,7 +470,7 @@ export const make = Effect.gen(function* () {
     const shell = yield* threads
       .getThreadShell(threadId)
       .pipe(Effect.mapError((cause) => new StarsError({ operation: "find", cause })));
-    if (shell === null || !isRoot(shell)) return undefined;
+    if (shell === null || !isConversation(shell)) return undefined;
     return (yield* list).find((star) => star.projectId === shell.projectId);
   });
 

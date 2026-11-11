@@ -339,6 +339,56 @@ describe("the pass", () => {
       assert.strictEqual(yield* h.stars.ofThread(ThreadId.make("fork")), undefined);
     }).pipe(Effect.scoped),
   );
+  it.effect("leaves alone a root thread a link paired below full access started", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      h.threads.add(star.projectId, "ended", {
+        createdAt: at("2026-11-10T08:00:00.000Z"),
+        settledOverride: "settled",
+        settledAt: at("2026-11-10T09:00:00.000Z"),
+      });
+      // A full-access link is not fenced: its thread is the Star's conversation.
+      const open = h.threads.add(star.projectId, "open", {
+        createdAt: at("2026-11-10T12:00:00.000Z"),
+        promptCacheExpiresAt: at("2026-11-10T13:20:00.000Z"),
+        linkOrigin: { sessionId: "link-full", label: "Desk", access: "full-access" },
+      });
+      // Newer than either, one due and one settled since; an origin stamped before access was recorded stays fenced.
+      const fenced = h.threads.add(
+        star.projectId,
+        "fenced",
+        {
+          createdAt: at("2026-11-10T12:30:00.000Z"),
+          promptCacheExpiresAt: at("2026-11-10T12:40:00.000Z"),
+          linkOrigin: { sessionId: "link-1", label: "Laptop", access: "auto" },
+        },
+        [run("fenced-run", "completed")],
+      );
+      const fencedEnded = h.threads.add(star.projectId, "fenced-ended", {
+        createdAt: at("2026-11-10T10:00:00.000Z"),
+        settledOverride: "settled",
+        settledAt: at("2026-11-10T11:00:00.000Z"),
+        linkOrigin: { sessionId: "link-2", label: "Phone" },
+      });
+
+      yield* h.runPass;
+      assert.deepStrictEqual(h.threads.settles, []);
+      assert.deepStrictEqual(
+        yield* h.fs.readDirectory(h.path.join(star.root, ".pult/conversations/env-1")),
+        ["2026-11-10T08-00-00Z-ended.md"],
+      );
+      const seen = yield* h.stars.withConversation(star, ({ current, last }) =>
+        Effect.succeed([String(current?.id), String(last?.id)]),
+      );
+      assert.deepStrictEqual(seen, [open.shell.id, "ended"]);
+      assert.strictEqual((yield* h.stars.ofThread(open.shell.id))?.id, star.id);
+      assert.strictEqual(yield* h.stars.ofThread(fenced.shell.id), undefined);
+      assert.strictEqual(yield* h.stars.ofThread(fencedEnded.shell.id), undefined);
+      assert.strictEqual((yield* h.stars.view).stars[0]?.conversation?.threadId, open.shell.id);
+    }).pipe(Effect.scoped),
+  );
 });
 
 describe("a Star's request to sleep", () => {

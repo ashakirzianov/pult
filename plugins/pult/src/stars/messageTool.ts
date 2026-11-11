@@ -81,7 +81,8 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     const scope = yield* McpInvocationContext.McpInvocationContext;
     const caller = yield* McpInvocationContext.requireThreadScope(scope, "Messaging a Star");
     const threadId = caller.thread.threadId;
-    // A Star's threads never carry a link's origin, so work a fenced link started may not reach one.
+    // Fenced work may change only its own link's threads, and a Star's conversation is never one:
+    // a thread a fenced link starts in a Star's project is no conversation of the Star (`Stars`).
     yield* McpLinkOrigin.assertNotLinked(yield* McpThreadAccess.loadCaller(), "message a Star");
     const star = yield* stars.get(input.star).pipe(Effect.mapError(unavailable));
     if (star === undefined) {
