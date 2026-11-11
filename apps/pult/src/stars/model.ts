@@ -40,6 +40,8 @@ import {
 
 /** How long a burst of changes under the Stars directory, or of a Star's threads, settles before the page asks again. */
 const REREAD_DELAY_MS = 300;
+/** A re-read that failed after a good answer is tried again this long after. */
+const RETRY_DELAY_MS = 30_000;
 
 /** Where the page kept which transcripts it wrote, before the plugin wrote them: cleared at startup. */
 const RETIRED_TRANSCRIPTS_KEY = "pult.stars.transcripts";
@@ -301,6 +303,13 @@ class StarsModel {
         console.warn(
           `[pult-shell] the Pult plugin of ${environmentId} answered its Stars in another shape, so the page shows none there: ${error.message}`,
         );
+      }
+      // A re-read that fails keeps the last answer drawn, as a reconnect does, and is tried again;
+      // a first read that fails, or an answer of another shape, shows no Star there.
+      if (reading.status === "read" && !(error instanceof PluginAnswerError)) {
+        clearTimeout(reading.timer);
+        reading.timer = setTimeout(() => void this.read(environmentId), RETRY_DELAY_MS);
+        return;
       }
       this.drop(environmentId, reading, "failed");
       this.update();
