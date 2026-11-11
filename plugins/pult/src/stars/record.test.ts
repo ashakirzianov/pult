@@ -81,6 +81,11 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "`.pult/`, apart from what is called yours above,");
   });
 
+  it("calls .pult/schedules/ the Star's, and names the runs' record", () => {
+    assert.match(AGENTS_TEXT, /^- `\.pult\/schedules\/` is yours: /m);
+    assert.include(AGENTS_TEXT, "record of the runs in `.pult/runs/`.");
+  });
+
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
