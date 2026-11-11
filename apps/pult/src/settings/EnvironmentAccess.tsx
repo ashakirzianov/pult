@@ -145,8 +145,7 @@ function QrCodeSvg({ value }: { value: string }) {
 }
 
 /**
- * What may connect to the environment, under a caption saying so, since a
- * client's row reads like an environment's without one: its outstanding
+ * What may connect to the environment: its outstanding
  * pairing links (label, expiry, Revoke) and authorized clients (label or
  * device, last connected, Revoke, this page's own marked This Pult and not
  * revocable here), newest first, as its access stream stands, each a row of
@@ -180,9 +179,6 @@ export function AuthorizedClients({
   );
   return (
     <>
-      {links.length + sessions.length === 0 ? null : (
-        <h3 className="pult-settings-caption">Apps and devices with access</h3>
-      )}
       {links.map((link) => (
         <PairingLinkRow key={link.id} environmentId={environmentId} link={link} />
       ))}

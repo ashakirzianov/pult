@@ -111,8 +111,8 @@ function EnvironmentsSection() {
 }
 
 /**
- * An environment's group: its row, a dot in its phase's colour before its
- * name, its host, how its connection stands and why when it is not ready,
+ * An environment's group: its row, the environments' icon before its name,
+ * which the rows under it have none of, its host, how its connection stands and why when it is not ready,
  * Pair Device while it is ready and Retry while it is not, and Disconnect;
  * under it the pairing link Pair Device minted, until it expires and, once the
  * environment's access is known, while it is still outstanding, then that
@@ -141,7 +141,7 @@ function EnvironmentGroup({
   return (
     <div className="pult-settings-group">
       <div className="pult-settings-row">
-        <span className="pult-settings-dot" data-phase={environment.phase} aria-hidden />
+        <EnvironmentIcon phase={environment.phase} />
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">
             {environmentName(environment, environments)}
@@ -194,6 +194,20 @@ function EnvironmentGroup({
 }
 
 /**
+ * An environment's mark, a computer, with a dot at its corner in the colour of
+ * how its connection stands: `off` for Pult.app's own server turned off, and
+ * no phase while it is on and not connected.
+ */
+function EnvironmentIcon({ phase }: { phase: ShellEnvironment["phase"] | "off" | undefined }) {
+  return (
+    <span className="pult-settings-environment" aria-hidden>
+      <i className="codicon codicon-device-desktop" />
+      <span className="pult-settings-dot" data-phase={phase} />
+    </span>
+  );
+}
+
+/**
  * In Pult.app, its own server while the page holds no environment of it: off,
  * as the app started, or on and not connected. The switch is the one its
  * environment's row carries once the page holds it.
@@ -202,7 +216,7 @@ function LocalServerGroup({ enabled }: { enabled: boolean }) {
   return (
     <div className="pult-settings-group">
       <div className="pult-settings-row">
-        <span className="pult-settings-dot" data-phase={enabled ? undefined : "off"} aria-hidden />
+        <EnvironmentIcon phase={enabled ? undefined : "off"} />
         <div className="pult-settings-row-text">
           <div className="pult-settings-row-label">This computer</div>
           <div className="pult-settings-row-description">

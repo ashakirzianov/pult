@@ -87,40 +87,16 @@
   background: var(--pult-settings-hairline);
 }
 
-/* Under an environment's row, inset past its dot: whether other devices reach Pult.app's own server, then the
+/* Under an environment's row, inset past its icon: whether other devices reach Pult.app's own server, then the
    environment's pairing links and clients (EnvironmentAccess.tsx). */
 .pult-settings-subrow {
   min-height: 34px;
-  padding: 5px 12px 5px 32px;
+  padding: 5px 12px 5px 40px;
   font-size: 12px;
 }
 
 .pult-settings-group > * + .pult-settings-subrow::before {
-  left: 32px;
-}
-
-/* What an environment's pairing links and clients are, over them: a hairline above it as a row's, none under it. */
-.pult-settings-caption {
-  position: relative;
-  margin: 0;
-  padding: 9px 12px 1px 32px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.pult-settings-caption::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 12px;
-  left: 32px;
-  height: 1px;
-  background: var(--pult-settings-hairline);
-}
-
-.pult-settings-group > .pult-settings-caption + .pult-settings-subrow::before {
-  content: none;
+  left: 40px;
 }
 
 .pult-settings-row-text {
@@ -156,13 +132,27 @@
   min-width: 0;
 }
 
-/* How an environment's connection stands: connecting until it is ready, or it is out of reach. */
-.pult-settings-dot {
+/* An environment's mark before its name, which sets its row apart from the clients' under it. */
+.pult-settings-environment {
+  position: relative;
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* At the mark's corner, ringed in the group's fill, how the environment's connection stands: connecting until it is
+   ready, or it is out of reach. */
+.pult-settings-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--vscode-editorWarning-foreground);
+  box-shadow: 0 0 0 1.5px
+    color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-editor-background));
 }
 
 .pult-settings-dot[data-phase="ready"] {
@@ -171,7 +161,7 @@
 
 /* Pult.app's own server, turned off. */
 .pult-settings-dot[data-phase="off"] {
-  background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+  background: color-mix(in srgb, var(--vscode-foreground) 30%, var(--vscode-editor-background));
 }
 
 .pult-settings-dot[data-phase="offline"],
@@ -244,9 +234,8 @@
 
 .pult-settings-add .codicon {
   flex-shrink: 0;
-  width: 8px;
-  font-size: 12px;
-  text-indent: -2px;
+  width: 16px;
+  color: var(--vscode-descriptionForeground);
 }
 
 /* A setting that is on or off. */
@@ -415,7 +404,7 @@
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  margin: 2px 12px 12px 32px;
+  margin: 2px 12px 12px 40px;
   padding: 12px;
   border-radius: 8px;
   background: var(--pult-settings-fill);
