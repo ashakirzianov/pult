@@ -372,7 +372,8 @@ describe("the pass", () => {
     Effect.gen(function* () {
       const h = yield* harness;
       yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
-      // Emacs's lock file: a symlink to nothing.
+      yield* h.fs.symlink("nowhere.md", h.scheduleFile("dangling"));
+      // Emacs's lock file, a symlink to nothing, is a dot-file and no schedule: never told.
       yield* h.fs.symlink("anton@host.1234", h.scheduleFile(".#standup"));
       yield* h.write("locked", STANDUP, "2026-11-10T08:00:00Z");
       yield* h.fs.chmod(h.scheduleFile("locked"), 0o000);
@@ -387,7 +388,7 @@ describe("the pass", () => {
       assert.deepStrictEqual(
         h.deliveries.map((each) => each.from),
         [
-          "Pult, about schedule .#standup",
+          "Pult, about schedule dangling",
           "Pult, about schedule filed",
           "Pult, about schedule locked",
           "schedule standup, due 2026-11-10 09:00 UTC",
@@ -397,7 +398,7 @@ describe("the pass", () => {
       assert.deepStrictEqual(
         view.map((each) => [each.name, each.rule, each.problem?.split(":")[0] ?? null]),
         [
-          [".#standup", null, "it could not be read"],
+          ["dangling", null, "it could not be read"],
           ["filed", null, "its runs, `.pult/runs/filed`, could not be read"],
           ["locked", null, "it could not be read"],
           ["standup", "every day 09:00", null],

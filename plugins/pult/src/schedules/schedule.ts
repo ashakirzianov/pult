@@ -60,9 +60,9 @@ export type Parsed =
   | { readonly ok: true; readonly schedule: Schedule }
   | { readonly ok: false; readonly problem: string };
 
-/** The schedule a file of the folder is, by its name without `.md`; undefined for a file that is none of the folder's. */
+/** The schedule a file of the folder is, by its name without `.md`; undefined for a file that is none of the folder's, a dot-file (an editor's lock, `.#standup.md`) included. */
 export const scheduleName = (file: string): string | undefined =>
-  file.endsWith(".md") && file.length > ".md".length ? file.slice(0, -".md".length) : undefined;
+  file.endsWith(".md") && !file.startsWith(".") ? file.slice(0, -".md".length) : undefined;
 
 const problem = (text: string): Parsed => ({ ok: false, problem: text });
 

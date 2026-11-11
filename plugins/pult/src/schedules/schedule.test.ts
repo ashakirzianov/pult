@@ -92,6 +92,8 @@ describe("scheduleName", () => {
     assert.strictEqual(scheduleName("standup.md"), "standup");
     assert.strictEqual(scheduleName("Standup.md"), "Standup");
     assert.strictEqual(scheduleName(".md"), undefined);
+    assert.strictEqual(scheduleName(".#standup.md"), undefined);
+    assert.strictEqual(scheduleName(".standup.md"), undefined);
     assert.strictEqual(scheduleName("standup.md.swp"), undefined);
     assert.strictEqual(scheduleName("notes.txt"), undefined);
   });
