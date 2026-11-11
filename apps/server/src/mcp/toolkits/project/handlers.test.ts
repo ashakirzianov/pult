@@ -370,6 +370,34 @@ it.effect("a launch retried with the same clientRequestId replays the first one"
   }),
 );
 
+// Pult: tags at creation, which a Star's threads are told apart by.
+it.effect("a launch passes its tags to the new thread, and none when it has none", () =>
+  Effect.gen(function* () {
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "auto",
+      launched,
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const launch = (tags: ReadonlyArray<string> | undefined) =>
+      toolkit
+        .handle("t3_thread_launch", {
+          title: "Fix",
+          projectId,
+          ...(tags === undefined ? {} : { tags }),
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    yield* launch(["pult:star:alpha"]);
+    yield* launch(undefined);
+    expect(launched.map((input) => input.tags)).toEqual([["pult:star:alpha"], undefined]);
+  }),
+);
+
 it.effect("a launch key of any length or content gives a short id and never a defect", () =>
   Effect.gen(function* () {
     const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];

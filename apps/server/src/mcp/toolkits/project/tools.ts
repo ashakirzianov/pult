@@ -4,6 +4,7 @@ import {
   ModelSelection,
   TrimmedNonEmptyString,
   ThreadId,
+  ThreadTag,
   RunId,
   OrchestrationV2DelegatedFrom,
   OrchestrationV2RunStatus,
@@ -151,6 +152,12 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
     clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+    // Pult: tags at creation, so a Star's threads are never seen untagged.
+    tags: Schema.optional(
+      Schema.Array(ThreadTag).annotate({
+        description: "Tags for the new thread, set as it is created.",
+      }),
+    ),
     /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   }),

@@ -249,6 +249,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           ...(linkOrigin === undefined ? {} : { linkOrigin }),
           // Kept only alongside linkOrigin: thread.create drops it otherwise.
           ...(input.delegatedFrom === undefined ? {} : { delegatedFrom: input.delegatedFrom }),
+          ...(input.tags === undefined ? {} : { tags: input.tags }), // Pult: tags at creation.
         }).pipe(
           Effect.mapError((error) => {
             if (error._tag === "AttachmentClaimError") {
