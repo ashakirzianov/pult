@@ -521,10 +521,6 @@
   outline-offset: -1px;
 }
 
-.pult-shelf-snoozed .pult-shelf-header {
-  color: var(--vscode-charts-blue, #4daafc);
-}
-
 .pult-shelf-label {
   flex: none;
 }
@@ -939,13 +935,14 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* The left panel's bottom row, the tray (src/panel/rows.tsx), on the sidebar's colours, its edge continued. */
+/* The left panel's bottom row, the tray (src/panel/rows.tsx), on the sidebar's colours, its edge continued.
+   Its first and last glyphs sit 16px in from the panel's edges, where the shelves' icons start (`.pult-shelf-header`). */
 .pult-panel-tray {
   display: flex;
   align-items: center;
   box-sizing: border-box;
   height: 100%;
-  padding: 0 8px 0 6px;
+  padding: 0 11px;
   border-right: 1px solid var(--vscode-sideBar-border, transparent);
   background: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
@@ -958,7 +955,8 @@
 }
 
 /* The top row is the sidebar's title: the Pult tab's header (src/panel/rows.tsx) in place of the
-   tab's name and buttons while that tab is open, else the tab's own title, after the traffic lights. */
+   tab's name and buttons while that tab is open, else the tab's own title, after the traffic lights.
+   Its buttons' glyphs line up with the tray's (`.pult-panel-tray`). */
 .pult-panel-header {
   display: flex;
   flex: 1;
@@ -966,7 +964,7 @@
   gap: 2px;
   box-sizing: border-box;
   height: 100%;
-  padding: 0 8px;
+  padding: 0 11px;
 }
 
 .part.sidebar:not(.pult-header-in-title) > .composite.title > .pult-panel-header {
@@ -996,9 +994,11 @@
   -webkit-app-region: no-drag;
 }
 
+/* Collapse Panel 2px after the traffic lights, where Expand Panel sits (`.pult-panel-expand`), or at the padding without them. */
 .pult-panel-header-lights {
   flex: none;
-  width: max(0px, calc(var(--pult-traffic-lights, 0px) - 8px));
+  width: max(0px, calc(var(--pult-traffic-lights, 0px) - 9px));
+  margin-right: -2px;
 }
 
 .pult-panel-header-logo {
@@ -1102,12 +1102,12 @@
 .pult-panel-expand {
   position: absolute;
   top: 0;
-  left: var(--pult-traffic-lights, 0px);
+  left: 0;
   z-index: 10;
   display: flex;
   align-items: center;
   height: 35px;
-  padding-left: 2px;
+  padding-left: max(11px, calc(var(--pult-traffic-lights, 0px) + 2px));
   color: var(--vscode-foreground);
 }
 
