@@ -522,4 +522,21 @@ describe("asks", () => {
         ]);
       }).pipe(Effect.scoped),
   );
+
+  it.effect("are none where .pult/asks is a file, and the other Stars' are still served", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      const broken = yield* h.stars.create({ ifNone: true });
+      const other = yield* h.stars.create({ ifNone: false });
+      yield* h.write(h.path.join(broken.root, ".pult/asks"), "not a folder");
+      yield* h.write(h.path.join(other.root, ".pult/asks/crate.md"), "# Which crate?\n");
+
+      const asks = new Map((yield* h.stars.view).stars.map((star) => [star.id, star.asks]));
+      assert.deepStrictEqual(asks.get(broken.id), []);
+      assert.deepStrictEqual(
+        asks.get(other.id)?.map((ask) => ask.title),
+        ["Which crate?"],
+      );
+    }).pipe(Effect.scoped),
+  );
 });

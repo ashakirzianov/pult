@@ -480,11 +480,20 @@ export const make = Effect.gen(function* () {
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
 
-  /** Every `.md` file of the Star's asks, read as asked; one that fails to read counts under its name, logged. */
+  /** Every `.md` file of the Star's asks, read as asked; one that fails to read counts under its name, and a folder that fails to list as none, each logged. */
   const asksOf = Effect.fn("Stars.asksOf")(function* (star: Star) {
     const folder = path.join(star.root, ASKS_DIRECTORY);
-    if (!(yield* fs.exists(folder))) return [];
-    const names = (yield* fs.readDirectory(folder)).flatMap((file) => {
+    const files = yield* Effect.flatMap(fs.exists(folder), (there) =>
+      there ? fs.readDirectory(folder) : Effect.succeed([]),
+    ).pipe(
+      Effect.catchCause((cause) =>
+        Effect.as(
+          Effect.logWarning("Could not list a Star's asks.", { starId: star.id, folder, cause }),
+          [],
+        ),
+      ),
+    );
+    const names = files.flatMap((file) => {
       const name = askName(file);
       return name === undefined ? [] : [name];
     });
