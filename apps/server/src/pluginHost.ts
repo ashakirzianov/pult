@@ -33,8 +33,12 @@ export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 export { McpSchema, McpServer } from "effect/ai";
 
 export * as ServerConfig from "./config.ts";
+// The Pult plugin's Star messages: a thread sender's limits, checked again under the target's lock.
+export * as DispatchModeLimit from "./orchestration-v2/DispatchModeLimit.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
 export * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
+// The Pult plugin's Star messages: upstream's rule that a thread's target be no broader than it.
+export * as McpThreadAccess from "./mcp/threadAccess.ts";
 export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 // The Pult plugin's Stars: projects found, created, adopted and titled.
 export * as ProjectService from "./project/ProjectService.ts";
@@ -42,6 +46,10 @@ export * as ProjectService from "./project/ProjectService.ts";
 export * as Scheduler from "./scheduling/Scheduler.ts";
 // The Pult plugin's Stars: the transcripts' folder and label.
 export * as ServerEnvironment from "./environment/ServerEnvironment.ts";
+// The Pult plugin's Star messages: a delivery waits for startup recovery before it sends or wakes.
+export * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+// The Pult plugin's Star messages: a wake launches a Star's fresh conversation.
+export * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";
 
