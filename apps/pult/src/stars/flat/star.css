@@ -1,0 +1,189 @@
+/* The flat Star's look in each state and its motion, for the markup `star.ts` answers. It reads the colour from `color` and `--err` (the error colour) from its caller, and the settings from the custom properties `star.ts` sets on the mark. Only `transform`, `rotate` and `opacity` ever loop, and the halo's offset (`cx`) eases between states; every loop runs on an element whose parent is an SVG root, so the compositor runs it with no paint. A still inlines this stylesheet in its SVG, so it holds no markup characters. */
+.flat-star {
+  display: block;
+  position: relative;
+  overflow: visible;
+  --d: 0px;
+}
+/* The mark's SVGs, stacked in its box; in a still, nested in its SVG, which places them by their attributes. */
+.flat-star > svg {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+@keyframes flat-star-spin {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes flat-star-turn {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes flat-star-breath {
+  from {
+    transform: translateX(0px);
+  }
+  to {
+    transform: translateX(var(--breath));
+  }
+}
+@keyframes flat-star-pulse {
+  from {
+    transform: translateX(0px);
+  }
+  to {
+    transform: translateX(var(--pulse));
+  }
+}
+.flat-star .part,
+.flat-star .core,
+.flat-star .shell {
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+.flat-star .shell {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+}
+.flat-star .disc {
+  fill: currentColor;
+  transition:
+    fill 0.6s ease,
+    opacity 0.6s ease,
+    transform 0.6s cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+.flat-star .dot {
+  fill: currentColor;
+}
+.flat-star .line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.flat-star .line.faint {
+  stroke-width: 1;
+  opacity: 0.3;
+}
+.flat-star .part {
+  opacity: 0;
+}
+/* The waiting dot, and its gap: a circle in the mask over the rest of the mark, which is a `.badge` too, so it grows and fades with the dot and cuts nothing in the other states. */
+.flat-star .badge {
+  transform: scale(0);
+}
+
+/* The halo: circles the disc's size behind it, pushed off-centre by --d, each going round the centre at its own pace and pulsing a little along its offset; talking adds a faster turn and a stronger pulse to thinking's. Each circle carries its four loops, in `star.ts`'s order: its turn on `rotate`, which applies after `transform`, so round the centre; talking's extra turn on `transform`, and its breath and talking's pulse added after it, so along the offset, which is the circle's `cx`, under them all. (Two turns added up on `rotate` go wrong: Chromium adds rotations as quaternions, and a whole turn is none.) They are paused outside the working states, not removed, so the motion carries on from where it stopped. */
+.flat-star .off {
+  fill: currentColor;
+  fill-opacity: var(--halo);
+  cx: var(--d);
+  transition: cx 0.8s cubic-bezier(0.3, 1.2, 0.5, 1);
+  animation-timing-function: linear, linear, ease-in-out, ease-in-out;
+  animation-iteration-count: infinite;
+  animation-composition: replace, replace, add, add;
+  animation-play-state: paused;
+}
+.flat-star[data-state="thinking"] .off {
+  animation-play-state: running, paused, running, paused;
+}
+.flat-star[data-state="talking"] .off {
+  animation-play-state: running;
+}
+.flat-star[data-state="thinking"] {
+  --d: var(--d-thinking);
+}
+.flat-star[data-state="talking"] {
+  --d: var(--d-talking);
+}
+.flat-star[data-state="finished"] {
+  --d: var(--d-finished);
+}
+/* Hidden once faded out, so outside the states that show it the halo's circles, their loops paused, hold no compositor layers. */
+.flat-star .halo {
+  visibility: hidden;
+  transition:
+    opacity 0.6s ease,
+    visibility 0.6s;
+}
+.flat-star[data-state="thinking"] .halo,
+.flat-star[data-state="talking"] .halo {
+  opacity: 1;
+}
+.flat-star:is([data-state="thinking"], [data-state="talking"], [data-state="finished"]) .halo {
+  visibility: visible;
+}
+.flat-star[data-state="finished"] .halo {
+  opacity: 0.5;
+}
+
+/* Asleep, the disc is hollow: an outline only, smaller and dimmed; stirring is that with the brackets. */
+.flat-star[data-state="asleep"] .core {
+  transform: scale(0.8);
+  opacity: 0.55;
+}
+.flat-star[data-state="stirring"] .core {
+  transform: scale(0.8);
+  opacity: 0.85;
+}
+.flat-star[data-state="asleep"] .disc,
+.flat-star[data-state="stirring"] .disc {
+  opacity: 0;
+  transform: scale(0.3);
+}
+.flat-star[data-state="stirring"] .ears {
+  opacity: 0.85;
+  transform: scale(0.85);
+}
+.flat-star[data-state="listening"] .ears {
+  opacity: 1;
+}
+.flat-star[data-state="delegating"] .orbit {
+  opacity: 1;
+}
+.flat-star[data-state="delegating"] .sats {
+  animation: flat-star-spin 5s linear infinite;
+}
+.flat-star[data-state="waiting"] .badge {
+  opacity: 1;
+  transform: none;
+}
+
+/* Troubled: the disc as it is awake, and a still ring in the error colour around it. */
+.flat-star .ering {
+  fill: none;
+  stroke: var(--err);
+  stroke-width: var(--ring-w);
+}
+.flat-star .tring {
+  transform: scale(0.8);
+}
+.flat-star[data-state="troubled"] .tring {
+  opacity: 1;
+  transform: none;
+}
+
+/* With reduced motion, and in a still, nothing moves: every loop paused, so each circle of the halo stands where it stands at rest. */
+.flat-star.still * {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flat-star * {
+    animation-play-state: paused !important;
+    transition: none !important;
+  }
+}

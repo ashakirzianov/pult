@@ -3,9 +3,10 @@
 // coarse state, Asleep, Awake or Working, stays `stars.ts`'s: the card's
 // status and the sleep read that one.
 import { scopedKey, type ShellThread } from "../threads/store.ts";
+import type { State } from "./flat/states.ts";
 import { lineageWorks, type StarHome, threadsBelow } from "./stars.ts";
 
-/** The states `pult-star` draws a look for and Pult shows, its stills named after them (`mark.ts`). */
+/** The states `pult-star`'s mark draws, each styled by its name (`flat/star.css`). */
 export type StarLook =
   | "asleep"
   | "stirring"
@@ -17,6 +18,12 @@ export type StarLook =
   | "delegating"
   | "waiting"
   | "troubled";
+
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Holds<T extends true> = T;
+
+/** The looks are the mark's states, `pult-star`'s (`flat/states.ts`), name for name: a name only one side has fails the typecheck here. */
+export type LooksAreTheMarksStates = Holds<Same<StarLook, State>>;
 
 /** How long a Star looks finished after its current conversation's last turn ends. */
 export const FINISHED_MS = 3 * 60_000;

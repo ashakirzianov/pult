@@ -121,6 +121,8 @@
         "view/main.tsx": ["exports"],
         // The identity seam names every value the packaged app will read (pult/decisions, identity-seam).
         "src/identity.ts": ["exports", "duplicates"],
+        // pult-star's mark, copied as it is: it exports what its own page reads.
+        "src/stars/flat/*.ts": ["exports"],
       },
       // The workbench's service overrides, pinned at one version beside the ones the page imports.
       "ignoreDependencies": ["@codingame/monaco-vscode-.*"],
