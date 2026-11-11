@@ -8,10 +8,27 @@ import { flatStill } from "./flat/star.ts";
 import markCss from "./flat/star.css?raw";
 import { finishedUntil, type StarLook, starLook } from "./look.ts";
 import { starStore } from "./model.ts";
-import { tintOf } from "./record.ts";
 import type { Star } from "./stars.ts";
 
 type Scheme = "light" | "dark";
+
+/** The tints a Star takes, as `pult-star`'s Curls sketch names them, each by its hue in degrees: what the page draws and offers. */
+export const TINTS = [
+  { name: "amber", hue: 40 },
+  { name: "coral", hue: 12 },
+  { name: "rose", hue: 340 },
+  { name: "violet", hue: 275 },
+  { name: "indigo", hue: 235 },
+  { name: "sky", hue: 200 },
+  { name: "mint", hue: 155 },
+] as const;
+
+export const DEFAULT_TINT: (typeof TINTS)[number]["name"] = "amber";
+
+/** A tint by name, the default for one Pult does not know: the record's tint is written as given. */
+export function tintOf(name: string) {
+  return TINTS.find((tint) => tint.name === name) ?? TINTS[0];
+}
 
 /** The colour a Star's mark is drawn in: its tint's hue, lighter on a dark theme and deeper on a light one. */
 export function tintColor(tint: string, scheme: Scheme): string {

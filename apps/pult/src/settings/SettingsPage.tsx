@@ -11,7 +11,7 @@ import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, setMode } from "../mode.ts";
 import { starStore } from "../stars/model.ts";
-import { TINTS, tintOf } from "../stars/record.ts";
+import { TINTS, tintOf } from "../stars/mark.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { type Star, starName } from "../stars/stars.ts";
 import { threadStore } from "../threads/store.ts";
@@ -401,7 +401,7 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
 
 /**
  * The Stars' Sync (`src/stars/syncing.ts`): the origin of their repository,
- * `~/.pult/stars`, a Git URL or a repository's path on the environment,
+ * each environment's Stars directory, a Git URL or a repository's path on the environment,
  * written on Enter or leaving the field into every held environment's
  * repository, empty to stop syncing; Sync Now while it is set; a line per
  * environment of when it last synced, what failed, and what waits or was
