@@ -359,6 +359,44 @@ describe("the pass", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("makes a file that fails to read, or whose runs do, a problem of its own", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
+      // Emacs's lock file: a symlink to nothing.
+      yield* h.fs.symlink("anton@host.1234", h.scheduleFile(".#standup"));
+      yield* h.write("locked", STANDUP, "2026-11-10T08:00:00Z");
+      yield* h.fs.chmod(h.scheduleFile("locked"), 0o000);
+      yield* h.write("filed", STANDUP, "2026-11-10T08:00:00Z");
+      const filed = h.path.dirname(h.runFile("filed", "x"));
+      yield* h.fs.makeDirectory(h.path.dirname(filed), { recursive: true });
+      yield* h.fs.writeFileString(filed, "");
+      yield* h.clock("2026-11-10T09:00:01Z");
+      yield* h.pass;
+
+      assert.deepStrictEqual(yield* h.records("standup"), ["2026-11-10T09-00Z.yaml"]);
+      assert.deepStrictEqual(
+        h.deliveries.map((each) => each.from),
+        [
+          "Pult, about schedule .#standup",
+          "Pult, about schedule filed",
+          "Pult, about schedule locked",
+          "schedule standup, due 2026-11-10 09:00 UTC",
+        ],
+      );
+      const view = yield* h.view;
+      assert.deepStrictEqual(
+        view.map((each) => [each.name, each.rule, each.problem?.split(":")[0] ?? null]),
+        [
+          [".#standup", null, "it could not be read"],
+          ["filed", null, "its runs, `.pult/runs/filed`, could not be read"],
+          ["locked", null, "it could not be read"],
+          ["standup", "every day 09:00", null],
+        ],
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("fires a one-off once and leaves its file, spent; one written too late is told", () =>
     Effect.gen(function* () {
       const h = yield* harness;

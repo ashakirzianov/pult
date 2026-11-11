@@ -177,6 +177,7 @@ export const make = Effect.fn("Schedules.make")(function* (
     );
   });
 
+  /** A file of a Star's schedules; one that fails to read, or whose runs fail to, is a problem of its own. */
   const readOne = Effect.fn("Schedules.readOne")(function* (
     folder: string,
     runs: string,
@@ -185,33 +186,57 @@ export const make = Effect.fn("Schedules.make")(function* (
     const name = scheduleName(file);
     if (name === undefined) return [];
     const filePath = path.join(folder, file);
-    const info = yield* fs.stat(filePath);
-    if (info.type !== "File") return [];
-    const text = yield* fs.readFileString(filePath);
     const runsFolder = path.join(runs, name);
-    const runFiles = (yield* fs.exists(runsFolder))
-      ? (yield* fs.readDirectory(runsFolder)).filter(isRunFileName).toSorted()
-      : [];
-    const newest = runFiles.at(-1);
-    const last =
-      newest === undefined
-        ? null
-        : (parseLastRun(yield* fs.readFileString(path.join(runsFolder, newest))) ?? null);
-    const changed = Option.match(info.mtime, { onNone: () => 0, onSome: (at) => at.getTime() });
-    return [
-      {
-        name,
-        path: filePath,
-        text,
-        floor: minuteOf(changed),
-        parsed: parseSchedule(name, text),
-        runs: new Set(runFiles),
-        last,
-      } satisfies ScheduleFile,
-    ];
+    /** A file that will not run: no run is due, and `problem` says why. */
+    const problem =
+      (text: string, why: string) =>
+      <E>(cause: Cause.Cause<E>): Effect.Effect<ReadonlyArray<ScheduleFile>> =>
+        Effect.succeed([
+          {
+            name,
+            path: filePath,
+            text,
+            floor: Number.POSITIVE_INFINITY,
+            parsed: { ok: false, problem: `${why}: ${messageOf(Cause.squash(cause))}` },
+            runs: new Set(),
+            last: null,
+          },
+        ]);
+    return yield* Effect.gen(function* () {
+      const info = yield* fs.stat(filePath);
+      if (info.type !== "File") return [];
+      const text = yield* fs.readFileString(filePath);
+      return yield* Effect.gen(function* () {
+        const runFiles = (yield* fs.exists(runsFolder))
+          ? (yield* fs.readDirectory(runsFolder)).filter(isRunFileName).toSorted()
+          : [];
+        const newest = runFiles.at(-1);
+        const last =
+          newest === undefined
+            ? null
+            : (parseLastRun(yield* fs.readFileString(path.join(runsFolder, newest))) ?? null);
+        const changed = Option.match(info.mtime, { onNone: () => 0, onSome: (at) => at.getTime() });
+        return [
+          {
+            name,
+            path: filePath,
+            text,
+            floor: minuteOf(changed),
+            parsed: parseSchedule(name, text),
+            runs: new Set(runFiles),
+            last,
+          } satisfies ScheduleFile,
+        ];
+      }).pipe(
+        Effect.catchCauseIf(
+          notInterrupted,
+          problem(text, `its runs, \`${RUNS_DIRECTORY}/${name}\`, could not be read`),
+        ),
+      );
+    }).pipe(Effect.catchCauseIf(notInterrupted, problem("", "it could not be read")));
   });
 
-  /** Every Star's schedule files; a Star whose folder fails to read has none, logged. */
+  /** Every Star's schedule files; a Star whose folder fails to list has none, logged. */
   const read = Effect.gen(function* () {
     const found = yield* stars.list;
     known = yield* Effect.forEach(found, (star) =>
