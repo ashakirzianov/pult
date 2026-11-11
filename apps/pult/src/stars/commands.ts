@@ -63,9 +63,9 @@ async function editStarInstructions(star: Star): Promise<void> {
 }
 
 /**
- * A schedule's file of the Star's as a tab among the selection's, from the
- * home it is drawn from, as its card lists them: `name`'s, or one picked
- * among them.
+ * A schedule's file of the Star's as a tab among the Star's, from the home
+ * it is drawn from, as its card lists them: `name`'s, or one picked among
+ * them; the Star selected first, as Open Star Ask selects it.
  */
 async function openStarSchedule(
   quickInput: IQuickInputService,
@@ -98,6 +98,9 @@ async function openStarSchedule(
     if (typeof name === "string") notifications.info(`${starName(star)} has no schedule ${name}.`);
     return;
   }
+  await (await getService(ICommandService)).executeCommand("pult-shell.selectStar", star.id);
+  // A switch cancelled over a modified file leaves the selection as it was, so the schedule is not opened among its tabs.
+  if (selectedStar() !== star.id) return;
   await (
     await getService(IEditorService)
   ).openEditor({
