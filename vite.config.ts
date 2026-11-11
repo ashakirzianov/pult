@@ -474,7 +474,7 @@ export default defineConfig({
               paths: RESTRICTED_IMPORT_PATHS,
               patterns: [
                 {
-                  group: ["effect", "effect/*", "@effect/*", "**/apps/server/**"],
+                  group: ["effect", "effect/**", "@effect/**", "**/apps/server/**"],
                   message: "Import the server's modules and Effect from the plugin's ./host.ts.",
                 },
               ],

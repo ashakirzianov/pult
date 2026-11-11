@@ -16,7 +16,7 @@ const features: ReadonlyArray<string> = ["stars"];
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
   const stars = yield* Stars.make;
   yield* host.serve((request, path) => {
-    if (request.method === "GET" && path === "/about")
+    if ((request.method === "GET" || request.method === "HEAD") && path === "/about")
       return Effect.succeed(HttpServerResponse.jsonUnsafe({ features }));
     return (
       starsRoute(stars, request, path) ?? Effect.succeed(HttpServerResponse.empty({ status: 404 }))
