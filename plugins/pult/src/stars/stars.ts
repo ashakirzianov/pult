@@ -15,6 +15,7 @@ import {
   DateTime,
   Effect,
   FileSystem,
+  HostProcess,
   Path,
   ProjectService,
   Scheduler,
@@ -136,15 +137,34 @@ export interface Stars {
   readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
 }
 
-/** `.pult/stars` beside the server's home, or under its state for a dev run on the default home. */
+/** The Stars directory resolved to the live install's, `~/.pult/stars`, for a server whose home is not `~/.t3`. */
+export class LiveStarsRefused extends Schema.TaggedError<LiveStarsRefused>()("LiveStarsRefused", {
+  baseDir: Schema.String,
+  directory: Schema.String,
+}) {
+  override get message(): string {
+    return `Pult refuses the Stars at ${this.directory}: they are the live install's, and this server's home is ${this.baseDir}, not ~/.t3. Run it with a home that is not directly under ~.`;
+  }
+}
+
+/**
+ * `.pult/stars` beside the server's home, or under its state for a dev run on the default home.
+ * A home directly under `~` other than `~/.t3` would share the live install's Stars, so it is refused.
+ */
 export function starsDirectory(
   config: Pick<ServerConfig.ServerConfig["Service"], "baseDir" | "stateDir">,
+  home: string,
   path: Path.Path,
-): string {
-  const devOnDefaultHome = path.resolve(config.stateDir) === path.resolve(config.baseDir, "dev");
-  return devOnDefaultHome
+): Effect.Effect<string, LiveStarsRefused> {
+  const baseDir = path.resolve(config.baseDir);
+  const devOnDefaultHome = path.resolve(config.stateDir) === path.join(baseDir, "dev");
+  const directory = devOnDefaultHome
     ? path.join(config.stateDir, STARS_DIRECTORY)
-    : path.join(path.dirname(path.resolve(config.baseDir)), STARS_DIRECTORY);
+    : path.join(path.dirname(baseDir), STARS_DIRECTORY);
+  const live = path.join(path.resolve(home), STARS_DIRECTORY);
+  return directory === live && baseDir !== path.join(path.resolve(home), ".t3")
+    ? Effect.fail(new LiveStarsRefused({ baseDir, directory }))
+    : Effect.succeed(directory);
 }
 
 const isStarsError = Schema.is(StarsError);
@@ -177,7 +197,7 @@ export const make = Effect.gen(function* () {
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const scheduler = yield* Scheduler.Scheduler;
 
-  const directory = starsDirectory(config, path);
+  const directory = yield* starsDirectory(config, yield* HostProcess.HomeDirectory, path);
   const environmentId = yield* environment.getEnvironmentId;
   const serverLock = yield* Semaphore.make(1);
   const starLocks = new Map<string, Semaphore.Semaphore>();

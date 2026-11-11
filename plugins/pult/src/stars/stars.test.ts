@@ -42,14 +42,33 @@ describe("starsDirectory", () => {
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const directory = (baseDir: string, state: string) =>
-          Stars.starsDirectory({ baseDir, stateDir: path.join(baseDir, state) }, path);
-        assert.strictEqual(directory("/Users/a/.t3", "userdata"), "/Users/a/.pult/stars");
+          Stars.starsDirectory({ baseDir, stateDir: path.join(baseDir, state) }, "/Users/a", path);
+        assert.strictEqual(yield* directory("/Users/a/.t3", "userdata"), "/Users/a/.pult/stars");
         assert.strictEqual(
-          directory("/repos/pult/wt/.t3", "userdata"),
+          yield* directory("/repos/pult/wt/.t3", "userdata"),
           "/repos/pult/wt/.pult/stars",
         );
-        assert.strictEqual(directory("/Users/a/.t3", "dev"), "/Users/a/.t3/dev/.pult/stars");
+        assert.strictEqual(yield* directory("/Users/a/.t3", "dev"), "/Users/a/.t3/dev/.pult/stars");
+        assert.strictEqual(
+          yield* directory("/Users/a/scratch/.t3", "userdata"),
+          "/Users/a/scratch/.pult/stars",
+        );
       }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("refuses the live install's Stars to a home directly under ~ other than ~/.t3", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const refused = yield* Effect.flip(
+        Stars.starsDirectory(
+          { baseDir: "/Users/a/t3-scratch", stateDir: "/Users/a/t3-scratch/userdata" },
+          "/Users/a",
+          path,
+        ),
+      );
+      assert.strictEqual(refused._tag, "LiveStarsRefused");
+      assert.strictEqual(refused.directory, "/Users/a/.pult/stars");
+    }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
 

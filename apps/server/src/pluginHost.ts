@@ -36,6 +36,8 @@ export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 export { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 
 export * as ServerConfig from "./config.ts";
+// The Pult plugin's Stars: the user's home, against which the live install's Stars directory is refused to other homes.
+export * as HostProcess from "@t3tools/shared/HostProcess";
 // The Pult plugin's Star messages: a thread sender's limits, checked again under the target's lock.
 export * as DispatchModeLimit from "./orchestration-v2/DispatchModeLimit.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
