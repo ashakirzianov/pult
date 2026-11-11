@@ -26,17 +26,21 @@ export * as Semaphore from "effect/Semaphore";
 export * as SecureRandom from "effect/crypto/SecureRandom";
 export * as Stream from "effect/Stream";
 export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-// A plugin registers its tools straight on the server's McpServer, by design: it is fully
-// trusted and may read the caller from McpInvocationContext itself (McpToolAccess's
-// toolkit checks do not run for a plugin's tool).
+// A plugin declares its tools as the built-in toolkits declare theirs, with Tool and Toolkit,
+// McpToolAccess and toolkitRegistration below, so upstream's access checks run for them too.
+// McpServer stays for the loader's context and for an installed plugin built on addTool, whose
+// tools skip those checks (docs/internals/plugins.md).
 // oxlint-disable-next-line t3code/no-raw-mcp-registration -- the plugin surface re-exports it.
-export { McpSchema, McpServer } from "effect/ai";
+export { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 
 export * as ServerConfig from "./config.ts";
 // The Pult plugin's Star messages: a thread sender's limits, checked again under the target's lock.
 export * as DispatchModeLimit from "./orchestration-v2/DispatchModeLimit.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
 export * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
+// The Pult plugin's Star messages: pult_star_message is declared through the server's access wrapper.
+export * as McpToolAccess from "./mcp/McpToolAccess.ts";
+export { toolkitRegistration } from "./mcp/McpHttpServer.ts";
 // The Pult plugin's Star messages: upstream's rule that a thread's target be no broader than it.
 export * as McpThreadAccess from "./mcp/threadAccess.ts";
 export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";

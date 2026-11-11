@@ -6,16 +6,32 @@ import {
   type AuthEnvironmentScope,
   AuthOrchestrationReadScope,
   AuthSessionId,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
 } from "@t3tools/contracts";
 import * as HttpRouter from "effect/http/HttpRouter";
+import * as TestClock from "effect/testing/TestClock";
 
 // The real loader, its bundled list and its routes, which the plugin itself never imports.
 import * as EnvironmentAuth from "../../../apps/server/src/auth/EnvironmentAuth.ts";
+import * as McpHttpServer from "../../../apps/server/src/mcp/McpHttpServer.ts";
 import { bundledPlugins } from "../../../apps/server/src/plugins/bundled.ts";
 import * as PluginsHttp from "../../../apps/server/src/plugins/http.ts";
 import * as PluginLoader from "../../../apps/server/src/plugins/PluginLoader.ts";
-import { Context, Effect, FileSystem, HttpServerRequest, Layer, McpServer, Path } from "./host.ts";
-import { fakeServer } from "./stars/testing.ts";
+import {
+  Context,
+  Effect,
+  FileSystem,
+  HttpServerRequest,
+  Layer,
+  McpInvocationContext,
+  McpSchema,
+  McpServer,
+  Path,
+} from "./host.ts";
+import { at, fakeServer } from "./stars/testing.ts";
 
 const SESSIONS: Record<string, ReadonlyArray<AuthEnvironmentScope>> = {
   "Bearer reader": [AuthOrchestrationReadScope],
@@ -73,7 +89,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     expect(yield* send("GET", "/about", "reader")).toEqual({
       status: 200,
-      body: { features: ["stars"] },
+      body: { features: ["stars", "star-messages"] },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
       status: 200,
@@ -144,4 +160,155 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     expect((yield* send("GET", `/stars/nobody/conversations/${name}`, "reader")).status).toBe(404);
     expect((yield* send("POST", "/stars/upkeep", "writer")).body.stars).toHaveLength(1);
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+);
+
+const mcpClient = McpSchema.McpServerClient.of({
+  clientId: 1,
+  protocolVersion: "2025-06-18",
+  clientCapabilities: {},
+  clientInfo: { name: "pult-test", version: "1" },
+  initializePayload: {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "pult-test", version: "1" },
+  },
+  getClient: Effect.die("unused"),
+});
+
+const scopeOf = (
+  caller: { readonly thread: string } | { readonly client: "read-only" | "full-access" },
+): McpInvocationContext.McpInvocationScope => ({
+  environmentId: EnvironmentId.make("env-1"),
+  capabilities: new Set(["orchestration"]),
+  issuedAt: 0,
+  requestNamespace: "session-1",
+  thread:
+    "thread" in caller
+      ? {
+          threadId: caller.thread as never,
+          providerSessionId: "session-1",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        }
+      : undefined,
+  client:
+    "client" in caller
+      ? { sessionId: "client-1", label: "Client", access: caller.client }
+      : undefined,
+});
+
+it.effect(
+  "a thread messages a Star with pult_star_message, through the server's access checks",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const server = yield* fakeServer;
+      const context = yield* Layer.build(
+        PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+        ),
+      );
+      const [status] = (yield* Context.get(context, PluginLoader.PluginLoader).list).filter(
+        (plugin) => plugin.name === "pult",
+      );
+      expect(status).toMatchObject({ status: "loaded", error: undefined });
+      const mcp = Context.get(context, McpServer.McpServer);
+      const call = (
+        scope: McpInvocationContext.McpInvocationScope,
+        args: Record<string, unknown>,
+      ) =>
+        mcp.callTool({ name: "pult_star_message", arguments: args }).pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          Effect.map((result) => {
+            const text = result.content[0];
+            return {
+              isError: result.isError === true,
+              body: text?.type === "text" ? JSON.parse(text.text) : undefined,
+            };
+          }),
+        );
+
+      // The Star, asleep since its first conversation ended; a worker in a repository's project, mid-run.
+      const created = yield* server.projects.service.create({
+        projectId: ProjectId.make("p-repo"),
+        title: "Repo",
+        workspaceRoot: `${server.tmp}/repo`,
+        createWorkspaceRootIfMissing: true,
+      });
+      const worker = server.threads.add(created.id, "worker", {
+        title: "Worker",
+        runtimeMode: "full-access",
+        activeRunId: RunId.make("worker-run"),
+      });
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = path.join(server.directory, "star");
+      yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
+      yield* fs.writeFileString(
+        path.join(root, ".pult/star.yaml"),
+        'xaxis-kind: star\nid: "vega-id"\nname: "Vega"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n',
+      );
+      const starProject = yield* server.projects.service.create({
+        projectId: ProjectId.make("p-star"),
+        title: "Vega",
+        workspaceRoot: root,
+      });
+      const own = server.threads.add(starProject.id, "star-thread", {
+        createdAt: at("2026-11-10T11:00:00.000Z"),
+        settledOverride: "settled",
+        settledAt: at("2026-11-10T12:00:00.000Z"),
+        runtimeMode: "auto",
+        activeRunId: RunId.make("star-run"),
+      });
+
+      expect(
+        yield* call(scopeOf({ thread: "worker" }), { star: "vega-id", message: "Done." }),
+      ).toEqual({
+        isError: false,
+        body: {
+          star: { id: "vega-id", name: "Vega" },
+          outcome: "launched",
+          threadId: "launched-1",
+          link: expect.stringContaining("launched-1"),
+        },
+      });
+      expect(server.threads.messages[0]).toMatchObject({
+        text: '[From thread worker "Worker" in project "Repo"]\n\nDone.',
+        senderThreadId: "worker",
+        creationSource: "mcp",
+        // The wrapper's limits, the caller's own modes.
+        limit: { runtimeMode: "full-access", interactionMode: "default" },
+      });
+      // The same request again delivers nothing new.
+      const again = { star: "vega-id", message: "Done.", clientRequestId: "r1" };
+      expect((yield* call(scopeOf({ thread: "worker" }), again)).body.outcome).toBe("queued");
+      expect((yield* call(scopeOf({ thread: "worker" }), again)).body).toMatchObject({
+        outcome: "replayed",
+        threadId: null,
+      });
+
+      const refusal = (
+        scope: McpInvocationContext.McpInvocationScope,
+        args: Record<string, unknown>,
+      ) => Effect.map(call(scope, args), ({ isError, body }) => (isError ? body.code : undefined));
+      const unknown = yield* call(scopeOf({ thread: "worker" }), { star: "nobody", message: "x" });
+      expect(unknown).toMatchObject({ isError: true, body: { code: "invalid_request" } });
+      expect(unknown.body.message).toContain('"Vega" (vega-id)');
+      // The Star's own conversation, a client outside a thread, a read-only client.
+      own.shell = { ...own.shell, settledOverride: null, settledAt: null };
+      expect(
+        yield* refusal(scopeOf({ thread: "star-thread" }), { star: "vega-id", message: "x" }),
+      ).toBe("invalid_request");
+      expect(
+        yield* refusal(scopeOf({ client: "full-access" }), { star: "vega-id", message: "x" }),
+      ).toBe("thread_credential_required");
+      expect(
+        yield* refusal(scopeOf({ client: "read-only" }), { star: "vega-id", message: "x" }),
+      ).toBe("capability_denied");
+      // A thread narrower than the Star's conversation.
+      worker.shell = { ...worker.shell, runtimeMode: "approval-required" };
+      expect(yield* refusal(scopeOf({ thread: "worker" }), { star: "vega-id", message: "x" })).toBe(
+        "runtime_mode_escalation_denied",
+      );
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
