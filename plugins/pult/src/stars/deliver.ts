@@ -79,8 +79,8 @@ export const make = Effect.gen(function* () {
         limit === undefined ? Effect.void : McpThreadAccess.assertTargetWithinLimits(limit, target);
 
       const stored = `[From ${from}]\n\n${text}`;
-      const fields = {
-        ...(sender === "plugin" ? {} : { senderThreadId: sender.thread }),
+      const senderField = sender === "plugin" ? {} : { senderThreadId: sender.thread };
+      const creation = {
         createdBy: "agent" as const,
         creationSource: sender === "plugin" ? ("server" as const) : ("mcp" as const),
       };
@@ -111,8 +111,13 @@ export const make = Effect.gen(function* () {
             runtimeMode: last.runtimeMode,
             interactionMode: last.interactionMode,
             workspaceStrategy: { type: "root" },
-            initialMessage: { messageId: wake.messageId, text: stored, attachments: [], ...fields },
-            ...fields,
+            initialMessage: {
+              messageId: wake.messageId,
+              text: stored,
+              attachments: [],
+              ...senderField,
+            },
+            ...creation,
           })
           .pipe(
             Effect.mapError((error) =>
@@ -145,7 +150,8 @@ export const make = Effect.gen(function* () {
             text: stored,
             attachments: [],
             mode: "queue",
-            ...fields,
+            ...senderField,
+            ...creation,
           })
           .pipe(Effect.mapError(failed));
         if (sent.delivery !== "started" && sent.delivery !== "queued")

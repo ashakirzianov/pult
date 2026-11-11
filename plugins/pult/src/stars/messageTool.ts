@@ -10,6 +10,8 @@ import {
 import {
   Effect,
   McpInvocationContext,
+  McpLinkOrigin,
+  McpThreadAccess,
   McpToolAccess,
   ProjectService,
   Schema,
@@ -25,7 +27,7 @@ import type { Star, Stars } from "./stars.ts";
 
 const StarMessageTool = Tool.make("pult_star_message", {
   description:
-    "Message a Star, the user's personal agent in Pult, by its `id`. It is queued into the Star's current conversation, or wakes the Star in a fresh one, and the Star answers in its own time: the call does not wait for the answer. The Star sees which thread sent it. The Star's modes cannot be broader than yours. After an error or lost reply, retry with the same `clientRequestId`.",
+    "Message a Star, the user's personal agent in Pult, by its `id`. It is queued into the Star's current conversation, or wakes the Star in a fresh one, and the Star answers in its own time: the call does not wait for the answer. The Star sees which thread sent it. The Star's modes cannot be broader than yours. After an error or lost reply, retry with the same `clientRequestId`; a retry of a send that went through answers `replayed`, and may not name the thread (`threadId` null).",
   parameters: Schema.Struct({
     star: Schema.String.annotate({ description: "The Star's id, as its record names it." }),
     message: Schema.String.check(Schema.isMaxLength(120000)),
@@ -79,6 +81,8 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     const scope = yield* McpInvocationContext.McpInvocationContext;
     const caller = yield* McpInvocationContext.requireThreadScope(scope, "Messaging a Star");
     const threadId = caller.thread.threadId;
+    // A Star's threads never carry a link's origin, so work a fenced link started may not reach one.
+    yield* McpLinkOrigin.assertNotLinked(yield* McpThreadAccess.loadCaller(), "message a Star");
     const star = yield* stars.get(input.star).pipe(Effect.mapError(unavailable));
     if (star === undefined) {
       const known = yield* stars.list.pipe(Effect.mapError(unavailable));
@@ -122,7 +126,7 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     McpToolAccess.toLayer(PultToolkit, {
       // The Star's thread is resolved inside, under its lock, so the declaration names no thread:
       // it loads and checks the caller and provides its limits, which `deliver` holds the
-      // resolved target to with the wrapper's own helper.
+      // resolved target to with the wrapper's own helper. The link fence is the handler's own.
       pult_star_message: McpToolAccess.writesThreads(() => [], messageStar),
     }),
   );

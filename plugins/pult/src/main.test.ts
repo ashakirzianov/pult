@@ -306,6 +306,25 @@ it.effect(
       expect(
         yield* refusal(scopeOf({ client: "read-only" }), { star: "vega-id", message: "x" }),
       ).toBe("capability_denied");
+      // A thread a link paired below full access started; one paired with full access is not fenced.
+      const linked = server.threads.add(created.id, "linked", {
+        runtimeMode: "full-access",
+        activeRunId: RunId.make("linked-run"),
+        linkOrigin: { sessionId: "link-1", label: "Laptop", access: "read-only" },
+      });
+      expect(
+        yield* call(scopeOf({ thread: linked.shell.id }), { star: "vega-id", message: "x" }),
+      ).toMatchObject({
+        isError: true,
+        body: { code: "capability_denied", message: expect.stringContaining("message a Star") },
+      });
+      linked.shell = {
+        ...linked.shell,
+        linkOrigin: { sessionId: "link-1", label: "Laptop", access: "full-access" },
+      };
+      expect(
+        yield* refusal(scopeOf({ thread: linked.shell.id }), { star: "vega-id", message: "x" }),
+      ).toBeUndefined();
       // A thread narrower than the Star's conversation.
       worker.shell = { ...worker.shell, runtimeMode: "approval-required" };
       expect(yield* refusal(scopeOf({ thread: "worker" }), { star: "vega-id", message: "x" })).toBe(
