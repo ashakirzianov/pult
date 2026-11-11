@@ -89,7 +89,8 @@ export interface RouteRun {
   /** ISO instants. */
   readonly due: string;
   readonly fired: string;
-  readonly result: "started" | "queued" | "launched" | "replayed" | "failed";
+  /** `started`, `queued`, `launched`, `replayed` or `failed` today; a string, so a newer plugin's result hides no Star. */
+  readonly result: string;
   /** Why it failed; null unless it did. */
   readonly error: string | null;
   readonly thread: string | null;
@@ -206,15 +207,6 @@ const sleeps: Decode<RouteConversation["sleeps"]> = (value, at) => {
 const conversation: Decode<RouteConversation | null> = (value, at) =>
   value === null ? null : struct<RouteConversation>({ threadId: string, sleeps })(value, at);
 
-const runResult: Decode<RouteRun["result"]> = (value, at) =>
-  value === "started" ||
-  value === "queued" ||
-  value === "launched" ||
-  value === "replayed" ||
-  value === "failed"
-    ? value
-    : fail(at, "started, queued, launched, replayed or failed");
-
 const schedule = struct<RouteSchedule>({
   name: string,
   path: string,
@@ -227,7 +219,7 @@ const schedule = struct<RouteSchedule>({
     struct<RouteRun>({
       due: string,
       fired: string,
-      result: runResult,
+      result: string,
       error: nullable(string),
       thread: nullable(string),
     }),

@@ -95,7 +95,13 @@ export function scheduleRows(
     const base = {
       name: schedule.name,
       path: schedule.path,
-      next: schedule.next === null ? undefined : instantText(schedule.next, now, pageZone),
+      // A next run already past is due, firing on the home's next tick, or not at all where schedules are off.
+      next:
+        schedule.next === null
+          ? undefined
+          : Date.parse(schedule.next) <= now
+            ? "due"
+            : instantText(schedule.next, now, pageZone),
       rule,
       spent: schedule.spent,
     };

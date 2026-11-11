@@ -160,6 +160,21 @@ NodeTest.describe("decodeStars", () => {
     NodeAssert.equal(decodeStars({ ...stars, stars: [asleep] }).stars[0]?.conversation, null);
   });
 
+  NodeTest.test("takes a run result it does not know, so a newer plugin hides no Star", () => {
+    const newer = {
+      ...stars,
+      stars: [
+        {
+          ...star,
+          schedules: [
+            { ...star.schedules[0], last: { ...star.schedules[0]?.last, result: "claimed" } },
+          ],
+        },
+      ],
+    };
+    NodeAssert.equal(decodeStars(newer).stars[0]?.schedules[0]?.last?.result, "claimed");
+  });
+
   NodeTest.test("fails loudly on any other shape", () => {
     for (const body of [
       null,
@@ -176,9 +191,7 @@ NodeTest.describe("decodeStars", () => {
         stars: [
           {
             ...star,
-            schedules: [
-              { ...star.schedules[0], last: { ...star.schedules[0]?.last, result: "ok" } },
-            ],
+            schedules: [{ ...star.schedules[0], last: { ...star.schedules[0]?.last, result: 1 } }],
           },
         ],
       },

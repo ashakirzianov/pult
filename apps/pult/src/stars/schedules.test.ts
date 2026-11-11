@@ -63,6 +63,8 @@ NodeTest.describe("scheduleRows", () => {
     NodeAssert.equal(row({}).next, "tomorrow 09:00");
     NodeAssert.equal(row({}, "Europe/London").next, "tomorrow 12:00");
     NodeAssert.equal(row({ next: null }).next, undefined);
+    // A next run already past, on a home whose schedules are off or before its tick: due.
+    NodeAssert.equal(row({ next: "2026-11-01T12:00:00.000Z" }).next, "due");
   });
 
   NodeTest.test("says how the last run went, a failure's error its detail", () => {
