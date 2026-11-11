@@ -27,7 +27,7 @@ import {
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
 import {
-  isStarDraft,
+  hasNoDraftCard,
   type ProjectDraft,
   projectDrafts,
   threadsWithUnsentMessages,
@@ -165,7 +165,7 @@ export function PanelView() {
       : selection;
   // The drafts with something in them, and the selected one even while it is empty, first.
   const isSelectedDraft = (candidate: ProjectDraft) => draftKey(candidate) === selection;
-  const draftCards = draftCardsOf(drafts, draft, new Set(environments.keys()), isStarDraft);
+  const draftCards = draftCardsOf(drafts, draft, new Set(environments.keys()), hasNoDraftCard);
   const draftCard = (candidate: ProjectDraft) => (
     <DraftCard
       key={draftKey(candidate)}

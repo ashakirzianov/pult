@@ -9,7 +9,7 @@ import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
-import { isStarDraft, projectDrafts } from "./drafts.ts";
+import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
 import { draftCards, draftKey, keyOf, type PanelShelf, starKey } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
 import { openShelf, SHELF_ICONS, shelfOrder } from "./shelves.tsx";
@@ -59,7 +59,7 @@ export function TrayShelves() {
     remembered,
     selectedDraft(),
     new Set(state.environments.map((environment) => environment.id)),
-    isStarDraft,
+    hasNoDraftCard,
   );
   const on = (shelf: ShelfName) => state.threads.filter((thread) => thread.shelf === shelf);
   const holdsSelected = (shelf: ShelfName) =>

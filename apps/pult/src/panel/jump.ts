@@ -22,7 +22,7 @@ import {
   showExplorerFile,
 } from "../threads/selection.ts";
 import { isSubagent, scopedKey, threadStore } from "../threads/store.ts";
-import { isStarDraft, projectDrafts } from "./drafts.ts";
+import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
 import { exploredEnvironment } from "./explorer.ts";
 import {
   draftCards,
@@ -80,7 +80,12 @@ function currentTargets(): JumpTarget<URI>[] {
     stars: starEnabled.get() ? starStore.get().map((star) => star.id) : [],
     environmentIds,
     files: openExplorerFiles.get().files,
-    drafts: draftCards(projectDrafts.get(), selectedDraft(), new Set(environmentIds), isStarDraft),
+    drafts: draftCards(
+      projectDrafts.get(),
+      selectedDraft(),
+      new Set(environmentIds),
+      hasNoDraftCard,
+    ),
     threads,
     selection: selectedCardKey(),
     open: shelfOrder.get().open,
