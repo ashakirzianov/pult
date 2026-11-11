@@ -106,13 +106,16 @@ function carryOut(
   star: Star,
   target: Extract<StarTarget, { kind: "thread" }>,
 ): void {
+  // Keyed by the draft and the conversation, so what stuck or was told in one wake holds no later one.
+  const keyOf = (environmentId: string, projectId: string) =>
+    `${drafts.draftKey(environmentId, projectId)}|${target.environmentId}:${target.threadId}`;
   const decision = carryOutOf(
     { holds: drafts.composerHoldsText(target) === true },
     star.homes.map(({ environmentId, projectId }) => ({
       environmentId,
       projectId,
       holds:
-        !stuck.has(drafts.draftKey(environmentId, projectId)) &&
+        !stuck.has(keyOf(environmentId, projectId)) &&
         drafts.composerHoldsText({ kind: "draft", environmentId, projectId }) === true,
       createsCurrent: drafts.isPromotion(
         { environmentId, projectId },
@@ -124,7 +127,7 @@ function carryOut(
   if (decision === undefined) return;
   const { environmentId, projectId } = decision.draft;
   const from = { kind: "draft", environmentId, projectId } as const;
-  const key = drafts.draftKey(from.environmentId, from.projectId);
+  const key = keyOf(from.environmentId, from.projectId);
   if (decision.kind === "move") {
     drafts.moveComposerText(from, target);
     if (drafts.composerHoldsText(target) !== true) {
