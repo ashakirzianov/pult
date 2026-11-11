@@ -223,8 +223,27 @@ function fakeThreads() {
           .map((shell) => shell.id),
         counts: [],
       })),
-    getProjectThreadRecords: (input: { threadId: ThreadId }) =>
-      Effect.sync(() => projection(byId(input.threadId) ?? threads[0]!)),
+    /** Honours the message filters the plugin passes, as the store's query does. */
+    getProjectThreadRecords: (
+      input: { threadId: ThreadId },
+      _fields?: ReadonlyArray<string>,
+      filter?: {
+        messageRunIds?: ReadonlyArray<RunId>;
+        messageRoles?: ReadonlyArray<OrchestrationV2ConversationMessage["role"]>;
+      },
+    ) =>
+      Effect.sync(() => {
+        const records = projection(byId(input.threadId) ?? threads[0]!);
+        return {
+          ...records,
+          messages: records.messages.filter(
+            (message) =>
+              (filter?.messageRunIds === undefined ||
+                (message.runId !== null && filter.messageRunIds.includes(message.runId))) &&
+              (filter?.messageRoles === undefined || filter.messageRoles.includes(message.role)),
+          ),
+        };
+      }),
     getThreadSnapshot: (threadId: ThreadId) =>
       Effect.sync(() => ({
         schemaVersion: 1,

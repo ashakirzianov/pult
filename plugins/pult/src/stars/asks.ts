@@ -22,11 +22,3 @@ export function askTitle(name: string, text: string): string {
   const line = text.split(/\r?\n/).find((each) => each.trim() !== "");
   return line?.trim().replace(/^#+/, "").trim() || name;
 }
-
-/** The ask at `path`; `text` undefined for a file that failed to read, which counts under its name. */
-export const askOf = (name: string, path: string, text: string | undefined): Ask => ({
-  name,
-  title: askTitle(name, text ?? ""),
-  text: text ?? "",
-  path,
-});

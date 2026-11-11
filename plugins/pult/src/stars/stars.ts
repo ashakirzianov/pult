@@ -26,7 +26,7 @@ import {
   ThreadManagementService,
 } from "../host.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
-import { type Ask, askName, askOf, ASKS_DIRECTORY } from "./asks.ts";
+import { type Ask, askName, ASKS_DIRECTORY, askTitle } from "./asks.ts";
 import {
   AGENTS_FILE,
   CONVERSATIONS_DIRECTORY,
@@ -368,15 +368,7 @@ export const make = Effect.gen(function* () {
         { messageRunIds: [requested.runId], messageRoles: ["user"] },
       );
       const calledAt = DateTime.toEpochMillis(requested.calledAt);
-      if (
-        messages.some(
-          (message) =>
-            message.role === "user" &&
-            message.runId === requested.runId &&
-            DateTime.toEpochMillis(message.createdAt) >= calledAt,
-        )
-      )
-        return;
+      if (messages.some((message) => DateTime.toEpochMillis(message.createdAt) >= calledAt)) return;
     }
     // A run that began since the read refuses the settle.
     yield* threads.dispatch({
@@ -506,7 +498,12 @@ export const make = Effect.gen(function* () {
             undefined,
           ),
         ),
-        Effect.map((text) => askOf(name, file, text)),
+        Effect.map((text) => ({
+          name,
+          title: askTitle(name, text ?? ""),
+          text: text ?? "",
+          path: file,
+        })),
       );
     });
   });

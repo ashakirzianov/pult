@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { askName, askOf, askTitle } from "./asks.ts";
+import { askName, askTitle } from "./asks.ts";
 
 describe("askTitle", () => {
   const table: ReadonlyArray<readonly [text: string, title: string]> = [
@@ -29,16 +29,5 @@ describe("askName", () => {
     assert.strictEqual(askName(".md"), undefined);
     assert.strictEqual(askName("notes.txt"), undefined);
     assert.strictEqual(askName("draft.md.swp"), undefined);
-  });
-});
-
-describe("askOf", () => {
-  it("counts a file that failed to read under its name, with no text", () => {
-    assert.deepStrictEqual(askOf("lost", "/s/.pult/asks/lost.md", undefined), {
-      name: "lost",
-      title: "lost",
-      text: "",
-      path: "/s/.pult/asks/lost.md",
-    });
   });
 });
