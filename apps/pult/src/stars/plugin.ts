@@ -114,6 +114,15 @@ export interface RouteSchedule {
   readonly last: RouteRun | null;
 }
 
+/** A thing the Star needs from the user, as the plugin read its file, `.pult/asks/<name>.md`: its title the file's first line, its text the whole file. */
+export interface RouteAsk {
+  readonly name: string;
+  readonly title: string;
+  readonly text: string;
+  /** The file, a host path. */
+  readonly path: string;
+}
+
 /** A Star as `GET /stars` serves it, the fields the page draws; `root` and `instructions` are host paths. */
 export interface RouteStar extends WrittenStar {
   readonly instructions: string;
@@ -124,6 +133,8 @@ export interface RouteStar extends WrittenStar {
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules' files, by name; none from a plugin older than the schedules. */
   readonly schedules: ReadonlyArray<RouteSchedule>;
+  /** Its asks, by name; none from a plugin older than the asks. */
+  readonly asks: ReadonlyArray<RouteAsk>;
 }
 
 /** What `GET /stars` answers: the server's Stars directory (a host path), the projects a page draws as no project, and its Stars. */
@@ -187,7 +198,7 @@ const arrayOf =
       ? value.map((item: unknown, index) => each(item, `${at}[${index}]`))
       : fail(at, "an array");
 
-/** An object's fields, each decoded; other fields are let be, as a newer plugin adds them (`asks`). */
+/** An object's fields, each decoded; other fields are let be, as a newer plugin adds them. */
 const struct =
   <T extends object>(decoders: { readonly [K in keyof T]: Decode<T[K]> }): Decode<T> =>
   (value, at) => {
@@ -230,6 +241,15 @@ const schedule = struct<RouteSchedule>({
 const schedules: Decode<ReadonlyArray<RouteSchedule>> = (value, at) =>
   value === undefined ? [] : arrayOf(schedule)(value, at);
 
+/** A plugin older than the asks serves none: absent reads as none, any other shape fails. */
+const asks: Decode<ReadonlyArray<RouteAsk>> = (value, at) =>
+  value === undefined
+    ? []
+    : arrayOf(struct<RouteAsk>({ name: string, title: string, text: string, path: string }))(
+        value,
+        at,
+      );
+
 const writtenStar = struct<WrittenStar>({
   id: string,
   name: string,
@@ -251,6 +271,7 @@ const routeStar = struct<RouteStar>({
   asleepSince: string,
   conversations: arrayOf(string),
   schedules,
+  asks,
 });
 
 const starsAnswer = struct<StarsAnswer>({

@@ -4,7 +4,7 @@
 // with its homes and its current conversation's live row; and when the page
 // asks for a Star to be created.
 import type { ShellThread } from "../threads/store.ts";
-import type { RouteConversation, RouteSchedule, StarsAnswer } from "./plugin.ts";
+import type { RouteAsk, RouteConversation, RouteSchedule, StarsAnswer } from "./plugin.ts";
 
 /** A Star's home: its folder and project on one environment, as that environment's plugin serves it. */
 export interface StarHome {
@@ -24,6 +24,8 @@ export interface StarHome {
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules as this environment's plugin read them (`schedules.ts`). */
   readonly schedules: ReadonlyArray<RouteSchedule>;
+  /** Its asks as this environment's plugin read them, by name. */
+  readonly asks: ReadonlyArray<RouteAsk>;
   /** Where the environment's Stars' repository syncs, its `origin`; absent while it does not (`sync.ts`). */
   readonly origin?: string;
 }
@@ -100,8 +102,8 @@ export function conversationsOf<Thread extends StarThread>(
 const later = (left: string, right: string) => Date.parse(right) > Date.parse(left);
 
 /**
- * The home a Star is drawn from, for the fold and the card's schedules
- * (and the asks to come): the home of its current conversation, else the one
+ * The home a Star is drawn from, for the fold and the card's asks and
+ * schedules: the home of its current conversation, else the one
  * whose `asleepSince` is latest.
  */
 export function drawnHome(star: Pick<Star<StarThread>, "homes" | "current">): StarHome | undefined {
@@ -151,6 +153,7 @@ export function starsOf<Thread extends StarThread>(
         asleepSince: star.asleepSince,
         conversations: star.conversations,
         schedules: star.schedules,
+        asks: star.asks,
         ...(origin === undefined ? {} : { origin }),
       });
     }

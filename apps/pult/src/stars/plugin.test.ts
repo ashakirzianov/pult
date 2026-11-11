@@ -133,6 +133,14 @@ const star = {
       last: null,
     },
   ],
+  asks: [
+    {
+      name: "design",
+      title: "Which backend?",
+      text: "# Which backend?\n\nSee `pult/issues/backend.md`.\n",
+      path: "/Users/a/.pult/stars/star/.pult/asks/design.md",
+    },
+  ],
 };
 const stars = { directory: "/Users/a/.pult/stars", hidden: ["p1", "p2"], stars: [star] };
 
@@ -140,7 +148,7 @@ NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads the route's answer, a newer plugin's fields let be", () => {
     NodeAssert.deepEqual(decodeStars(stars), stars);
     NodeAssert.deepEqual(
-      decodeStars({ ...stars, stars: [{ ...star, asks: [] }], build: 4 }),
+      decodeStars({ ...stars, stars: [{ ...star, mood: "calm" }], build: 4 }),
       stars,
     );
   });
@@ -148,6 +156,11 @@ NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads a plugin older than the schedules as serving none", () => {
     const { schedules: _, ...older } = star;
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
+  });
+
+  NodeTest.test("reads a plugin older than the asks as serving none", () => {
+    const { asks: _, ...older } = star;
+    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.asks, []);
   });
 
   NodeTest.test("reads a conversation's hold, and a sleeping Star's none", () => {
@@ -195,6 +208,8 @@ NodeTest.describe("decodeStars", () => {
           },
         ],
       },
+      { ...stars, stars: [{ ...star, asks: {} }] },
+      { ...stars, stars: [{ ...star, asks: [{ ...star.asks[0], title: null }] }] },
       { hidden: [], stars: [] },
     ])
       NodeAssert.throws(() => decodeStars(body), PluginAnswerError, JSON.stringify(body));
