@@ -62,6 +62,7 @@ import { registerStatusCommands, startStatusBar } from "./status/index.tsx";
 import { openVsxGallery, workbenchServices } from "./services.ts";
 import { syncColorScheme } from "./theme.ts";
 import { installWorkers } from "./workers.ts";
+import { yieldWorkbenchKeys } from "./workbenchKeys.ts";
 
 installWorkers();
 registerGrammars();
@@ -102,6 +103,7 @@ registerCiteCommand();
 registerSelectThreadCommand();
 registerParkCommands();
 registerTerminalCommand();
+yieldWorkbenchKeys();
 registerChanges();
 registerPanel();
 registerLocalServerCommands();
