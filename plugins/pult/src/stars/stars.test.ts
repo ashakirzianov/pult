@@ -14,7 +14,7 @@ import { Effect, FileSystem, Layer, Path } from "../host.ts";
 import { AGENTS_TEXT, AGENTS_VERSION } from "./agents.ts";
 import { recordText } from "./record.ts";
 import * as Stars from "./stars.ts";
-import { at, fakeServer, run } from "./testing.ts";
+import { at, fakeServer, run, userMessage } from "./testing.ts";
 
 /** The Stars over a fake server; `runPass` runs the pass a minute after the last, as the scheduler's tick would. */
 const harness = Effect.gen(function* () {
@@ -343,6 +343,12 @@ describe("the pass", () => {
 
 describe("a Star's request to sleep", () => {
   const later = at("2026-11-10T13:30:00.000Z");
+  /** A request made at 12:00:30, half way through the turn `run` fakes. */
+  const asked = (threadId: ThreadId, runId: string): Stars.SleepRequest => ({
+    threadId,
+    runId: RunId.make(runId),
+    calledAt: at("2026-11-10T12:00:30.000Z"),
+  });
 
   it.effect(
     "settles the conversation before its deadline and writes the transcript in one look",
@@ -364,7 +370,7 @@ describe("a Star's request to sleep", () => {
           [run("other-run", "completed")],
         );
 
-        yield* h.stars.sleepNow(star, asks.shell.id, RunId.make("asks-run"));
+        yield* h.stars.sleepNow(star, asked(asks.shell.id, "asks-run"));
         assert.deepStrictEqual(h.threads.settles, [asks.shell.id]);
         assert.strictEqual(other.shell.settledOverride, null);
         assert.match(
@@ -401,12 +407,38 @@ describe("a Star's request to sleep", () => {
         [followed, "followed-1"],
         [delegating, "delegating-1"],
       ] as const)
-        yield* h.stars.sleepNow(star, thread.shell.id, RunId.make(runId));
+        yield* h.stars.sleepNow(star, asked(thread.shell.id, runId));
       assert.deepStrictEqual(h.threads.settles, []);
 
       delegating.subagents = [{ status: "completed" } as OrchestrationV2Subagent];
-      yield* h.stars.sleepNow(star, delegating.shell.id, RunId.make("delegating-1"));
+      yield* h.stars.sleepNow(star, asked(delegating.shell.id, "delegating-1"));
       assert.deepStrictEqual(h.threads.settles, [delegating.shell.id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("leaves it awake where a message was steered into the turn after the call", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const conversation = (id: string, steeredAt: string) => {
+        const thread = h.threads.add(star.projectId, id, { promptCacheExpiresAt: later }, [
+          run(`${id}-run`, "completed"),
+        ]);
+        // The turn's own message, then one steered into it.
+        thread.messages = [
+          userMessage(`${id}-first`, `${id}-run`, "2026-11-10T12:00:00.000Z"),
+          userMessage(`${id}-steered`, `${id}-run`, steeredAt),
+        ];
+        return thread;
+      };
+      const after = conversation("after", "2026-11-10T12:00:40.000Z");
+      const before = conversation("before", "2026-11-10T12:00:20.000Z");
+
+      yield* h.stars.sleepNow(star, asked(after.shell.id, "after-run"));
+      assert.deepStrictEqual(h.threads.settles, []);
+      yield* h.stars.sleepNow(star, asked(before.shell.id, "before-run"));
+      assert.deepStrictEqual(h.threads.settles, [before.shell.id]);
     }).pipe(Effect.scoped),
   );
 });

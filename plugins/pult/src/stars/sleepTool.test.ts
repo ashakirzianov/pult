@@ -26,6 +26,7 @@ it.effect("a request sleeps the Star once its turn completed, and not after one 
         projectId: star.projectId,
         threadId: thread.shell.id,
         runId: RunId.make(`${id}-run`),
+        calledAt: at("2026-11-10T12:00:30.000Z"),
       }).pipe(Effect.provide(server.layer));
     };
 

@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 
 import {
+  DateTime,
   Effect,
   McpInvocationContext,
   McpToolAccess,
@@ -54,13 +55,27 @@ const refused = (message: string) =>
 export const afterTurn = Effect.fn("PultTools.afterTurn")(function* (
   stars: Stars,
   star: Star,
-  turn: { readonly projectId: ProjectId; readonly threadId: ThreadId; readonly runId: RunId },
+  turn: {
+    readonly projectId: ProjectId;
+    readonly threadId: ThreadId;
+    readonly runId: RunId;
+    readonly calledAt: DateTime.Utc;
+  },
 ) {
   const threads = yield* ThreadManagementService.ThreadManagementService;
   // A restart's continuation is followed, and answered as the run that ended.
-  const ended = yield* threads.waitForThread({ ...turn, timeoutMs: TURN_WAIT_MS });
+  const ended = yield* threads.waitForThread({
+    projectId: turn.projectId,
+    threadId: turn.threadId,
+    runId: turn.runId,
+    timeoutMs: TURN_WAIT_MS,
+  });
   if (ended.timedOut || ended.run?.status !== "completed") return;
-  yield* stars.sleepNow(star, turn.threadId, ended.run.id);
+  yield* stars.sleepNow(star, {
+    threadId: turn.threadId,
+    runId: ended.run.id,
+    calledAt: turn.calledAt,
+  });
 });
 
 /** The tool's registration, to build in the plugin's activation once everything else is up. */
@@ -71,6 +86,8 @@ export const make = Effect.fn("PultTools.makeSleep")(function* (stars: Stars) {
     new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
 
   const sleepAtTurnEnd = Effect.fn("PultTools.sleepAtTurnEnd")(function* () {
+    // A message steered into this turn from now on was not read when the Star asked.
+    const calledAt = yield* DateTime.now;
     const invocation = yield* McpInvocationContext.McpInvocationContext;
     const caller = yield* McpInvocationContext.requireThreadScope(invocation, "Falling asleep");
     const threadId = caller.thread.threadId;
@@ -88,6 +105,7 @@ export const make = Effect.fn("PultTools.makeSleep")(function* (stars: Stars) {
       projectId: shell.projectId,
       threadId,
       runId: shell.activeRunId,
+      calledAt,
     }).pipe(
       Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
       Effect.catchCause((cause) =>

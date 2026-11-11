@@ -104,6 +104,13 @@ export class StarsError extends Schema.TaggedError<StarsError>()("StarsError", {
   }
 }
 
+/** A Star's own request to sleep at the end of `runId`, made at `calledAt`. */
+export interface SleepRequest {
+  readonly threadId: ThreadId;
+  readonly runId: RunId;
+  readonly calledAt: DateTime.Utc;
+}
+
 export interface Stars {
   readonly directory: string;
   readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
@@ -115,8 +122,8 @@ export interface Stars {
     star: Star,
     use: (conversations: Conversations) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StarsError, R>;
-  /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects `runId` as the latest run. */
-  readonly sleepNow: (star: Star, threadId: ThreadId, runId: RunId) => Effect.Effect<void>;
+  /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects the request's run as the latest. */
+  readonly sleepNow: (star: Star, request: SleepRequest) => Effect.Effect<void>;
   readonly view: Effect.Effect<StarsView, StarsError>;
   readonly transcript: (
     star: Star,
@@ -330,11 +337,11 @@ export const make = Effect.gen(function* () {
     return roots.slice(0, count);
   });
 
-  /** With `requested`, the Star's own request at the end of that run: the deadline is waived, the holds are not, and any run since spends it. */
+  /** With `requested`, the Star's own request at the end of its run: the deadline is waived, the holds are not, and any run since, or message steered into its run after the call, spends it. */
   const sleepIfDue = Effect.fn("Stars.sleepIfDue")(function* (
     star: Star,
     thread: OrchestrationV2ThreadShell,
-    requested: RunId | undefined,
+    requested: SleepRequest | undefined,
   ) {
     const records = yield* threads.getProjectThreadRecords(
       { projectId: star.projectId, threadId: thread.id },
@@ -342,11 +349,27 @@ export const make = Effect.gen(function* () {
     );
     const latest = records.runs.toSorted((left, right) => left.ordinal - right.ordinal).at(-1);
     const state = wakefulness(records, thread.promptCacheExpiresAt);
-    const due =
-      requested === undefined
-        ? asleepBy(state, DateTime.toEpochMillis(yield* DateTime.now))
-        : state.kind === "deadline" && latest?.id === requested;
-    if (!due) return;
+    if (requested === undefined) {
+      if (!asleepBy(state, DateTime.toEpochMillis(yield* DateTime.now))) return;
+    } else {
+      if (state.kind !== "deadline" || latest?.id !== requested.runId) return;
+      // A message steered into the run joins it and starts no run of its own.
+      const { messages } = yield* threads.getProjectThreadRecords(
+        { projectId: star.projectId, threadId: thread.id },
+        ["messages"],
+        { messageRunIds: [requested.runId], messageRoles: ["user"] },
+      );
+      const calledAt = DateTime.toEpochMillis(requested.calledAt);
+      if (
+        messages.some(
+          (message) =>
+            message.role === "user" &&
+            message.runId === requested.runId &&
+            DateTime.toEpochMillis(message.createdAt) >= calledAt,
+        )
+      )
+        return;
+    }
     // A run that began since the read refuses the settle.
     yield* threads.dispatch({
       type: "thread.settle",
@@ -385,16 +408,9 @@ export const make = Effect.gen(function* () {
   });
 
   /** Sleep for each open root thread past its deadline, then the transcripts of the latest settled, oldest first; each failure logged. */
-  const look = Effect.fn("Stars.look")(function* (
-    star: Star,
-    request?: { readonly threadId: ThreadId; readonly runId: RunId },
-  ) {
+  const look = Effect.fn("Stars.look")(function* (star: Star, request?: SleepRequest) {
     for (const thread of yield* openConversations(star))
-      yield* sleepIfDue(
-        star,
-        thread,
-        thread.id === request?.threadId ? request.runId : undefined,
-      ).pipe(
+      yield* sleepIfDue(star, thread, thread.id === request?.threadId ? request : undefined).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Could not put a Star's conversation to sleep.", {
             starId: star.id,
@@ -432,9 +448,9 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  const sleepNow: Stars["sleepNow"] = (star, threadId, runId) =>
+  const sleepNow: Stars["sleepNow"] = (star, request) =>
     lockOf(star)
-      .withPermits(1)(look(star, { threadId, runId }))
+      .withPermits(1)(look(star, request))
       .pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),

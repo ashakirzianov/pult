@@ -4,6 +4,7 @@ import {
   type CommandId,
   MessageId,
   type OrchestrationProjectShell,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
@@ -93,6 +94,8 @@ interface FakeThread {
   shell: OrchestrationV2ThreadShell;
   runs: OrchestrationV2Run[];
   subagents: OrchestrationV2Subagent[];
+  /** The conversation's messages, as the projection records them. */
+  messages: OrchestrationV2ConversationMessage[];
 }
 
 /** A message the store took, with the dispatch's fields and the mode limit it ran under. */
@@ -132,6 +135,7 @@ function fakeThreads() {
     },
     runs: thread.runs,
     subagents: thread.subagents,
+    messages: thread.messages,
   });
   /** Takes a message into the thread: a run starts where none is on, else one queues behind it. */
   const take = Effect.fn("FakeThreads.take")(function* (
@@ -279,6 +283,7 @@ function fakeThreads() {
       },
       runs,
       subagents: [],
+      messages: [],
     };
     threads.push(thread);
     return thread;
@@ -365,6 +370,26 @@ export const run = (id: string, status: OrchestrationV2Run["status"]): Orchestra
   completedAt: status === "running" ? null : at("2026-11-10T12:01:00.000Z"),
   checkpointId: null,
   contextHandoffId: null,
+});
+
+/** A user's message on `runId`, as the projection records one. */
+export const userMessage = (
+  id: string,
+  runId: string,
+  createdAt: string,
+): OrchestrationV2ConversationMessage => ({
+  createdBy: "user",
+  creationSource: "web",
+  id: MessageId.make(id),
+  threadId: v2Projection.thread.id,
+  runId: RunId.make(runId),
+  nodeId: null,
+  role: "user",
+  text: id,
+  attachments: [],
+  streaming: false,
+  createdAt: at(createdAt),
+  updatedAt: at(createdAt),
 });
 
 export const fakeServer = Effect.gen(function* () {
