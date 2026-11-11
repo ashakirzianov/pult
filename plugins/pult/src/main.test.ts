@@ -177,8 +177,8 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";
-    const file = `${star.root}/.pult/conversations/env-1/${name}`;
-    yield* fs.makeDirectory(`${star.root}/.pult/conversations/env-1`, { recursive: true });
+    const file = `${star.root}/.pult/conversations/env-1/user/${name}`;
+    yield* fs.makeDirectory(`${star.root}/.pult/conversations/env-1/user`, { recursive: true });
     yield* fs.writeFileString(
       file,
       '---\nthread: "thread-1"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 1\n---\n\n### User · 2026-11-10T12:00:00Z\n\nHello\n',

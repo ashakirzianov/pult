@@ -263,7 +263,7 @@ describe("the pass", () => {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
         const h = yield* harness;
         const star = yield* h.stars.create({ ifNone: true });
-        const folder = h.path.join(star.root, ".pult/conversations/env-1");
+        const folder = h.path.join(star.root, ".pult/conversations/env-1/user");
         // Expired an hour ago, its one run finished.
         const due = h.threads.add(
           star.projectId,
@@ -283,11 +283,17 @@ describe("the pass", () => {
           },
           [run("held-run", "running")],
         );
-        // Settled, its transcript missing.
+        // Settled, its transcript missing; and a work conversation's, in a folder of its own.
         h.threads.add(star.projectId, "ended", {
           createdAt: at("2026-11-10T09:00:00.000Z"),
           settledOverride: "settled",
           settledAt: at("2026-11-10T10:00:00.000Z"),
+        });
+        h.threads.add(star.projectId, "work-ended", {
+          createdAt: at("2026-11-10T09:30:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T10:30:00.000Z"),
+          tags: [Stars.WORK_TAG],
         });
 
         yield* h.runPass;
@@ -298,6 +304,10 @@ describe("the pass", () => {
           "2026-11-10T09-00-00Z-ended.md",
           "2026-11-10T11-00-00Z-due.md",
         ]);
+        assert.deepStrictEqual(
+          yield* h.fs.readDirectory(h.path.join(star.root, ".pult/conversations/env-1/work")),
+          ["2026-11-10T09-30-00Z-work-ended.md"],
+        );
         const dueFile = h.path.join(folder, "2026-11-10T11-00-00Z-due.md");
         assert.match(yield* h.read(dueFile), /^ended: "2026-11-10T13:01:00.000Z"$/m);
         assert.match(yield* h.read(dueFile), /^environment: "MacBook"$/m);
@@ -428,7 +438,7 @@ describe("the pass", () => {
       yield* h.runPass;
       assert.deepStrictEqual(h.threads.settles, []);
       assert.deepStrictEqual(
-        yield* h.fs.readDirectory(h.path.join(star.root, ".pult/conversations/env-1")),
+        yield* h.fs.readDirectory(h.path.join(star.root, ".pult/conversations/env-1/user")),
         ["2026-11-10T08-00-00Z-ended.md"],
       );
       // The fenced threads are newer, yet neither current nor the newest a wake would take.
@@ -478,7 +488,7 @@ describe("a Star's request to sleep", () => {
         assert.strictEqual(other.shell.settledOverride, null);
         assert.match(
           yield* h.read(
-            h.path.join(star.root, ".pult/conversations/env-1/2026-11-10T12-50-00Z-asks.md"),
+            h.path.join(star.root, ".pult/conversations/env-1/user/2026-11-10T12-50-00Z-asks.md"),
           ),
           /^ended: "2026-11-10T13:00:00.000Z"$/m,
         );
@@ -565,7 +575,7 @@ describe("the user's request to sleep", () => {
       assert.deepStrictEqual(h.threads.settles, [current.shell.id]);
       assert.match(
         yield* h.read(
-          h.path.join(star.root, ".pult/conversations/env-1/2026-11-10T12-50-00Z-current.md"),
+          h.path.join(star.root, ".pult/conversations/env-1/user/2026-11-10T12-50-00Z-current.md"),
         ),
         /^ended: "2026-11-10T13:00:00.000Z"$/m,
       );

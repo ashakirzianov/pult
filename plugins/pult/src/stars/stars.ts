@@ -469,7 +469,7 @@ export const make = Effect.gen(function* () {
     if (thread.settledAt === null) return;
     const file = path.join(
       star.root,
-      transcriptsFolder(environmentId),
+      transcriptsFolder(environmentId, kindOf(thread)),
       transcriptName(thread.createdAt, thread.id),
     );
     const existing = yield* readOptional(file);
@@ -589,8 +589,9 @@ export const make = Effect.gen(function* () {
     return star === undefined ? undefined : { star, kind: kindOf(shell) };
   });
 
+  /** The names of the conversation with the user's transcripts, which the fold draws. */
   const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (star: Star) {
-    const folder = path.join(star.root, transcriptsFolder(environmentId));
+    const folder = path.join(star.root, transcriptsFolder(environmentId, "user"));
     if (!(yield* fs.exists(folder))) return [];
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
@@ -672,7 +673,7 @@ export const make = Effect.gen(function* () {
     function* (star: Star, name: string) {
       if (!isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
       const text = yield* readOptional(
-        path.join(star.root, transcriptsFolder(environmentId), name),
+        path.join(star.root, transcriptsFolder(environmentId, "user"), name),
       );
       return text === undefined ? undefined : parseTranscript(text);
     },

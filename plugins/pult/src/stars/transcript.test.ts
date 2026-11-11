@@ -195,10 +195,14 @@ describe("transcriptName", () => {
 
 describe("transcriptsFolder", () => {
   it("names the environment's folder by one segment of its id, which can name nothing above it", () => {
-    assert.strictEqual(transcriptsFolder("env-1"), ".pult/conversations/env-1");
-    assert.strictEqual(transcriptsFolder("../../.ssh"), ".pult/conversations/.._.._.ssh");
-    assert.strictEqual(transcriptsFolder(".."), ".pult/conversations/_..");
-    assert.strictEqual(transcriptsFolder(""), ".pult/conversations/_");
+    assert.strictEqual(transcriptsFolder("env-1", "user"), ".pult/conversations/env-1/user");
+    assert.strictEqual(transcriptsFolder("env-1", "work"), ".pult/conversations/env-1/work");
+    assert.strictEqual(
+      transcriptsFolder("../../.ssh", "user"),
+      ".pult/conversations/.._.._.ssh/user",
+    );
+    assert.strictEqual(transcriptsFolder("..", "user"), ".pult/conversations/_../user");
+    assert.strictEqual(transcriptsFolder("", "user"), ".pult/conversations/_/user");
   });
 });
 
