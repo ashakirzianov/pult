@@ -512,8 +512,9 @@ function StarSyncGroup({ stars }: { stars: ReadonlyArray<Star> }) {
         </div>
       </div>
       <p className="pult-settings-footnote">
-        A Git repository your Stars sync with: Pult commits after each conversation, then pushes,
-        and pulls before a Star wakes. Empty, it only commits.
+        A Git repository your Stars sync with: Pult commits when it connects and as each
+        conversation ends while it is open, then pushes, and pulls before a Star wakes. Empty, it
+        only commits.
       </p>
     </>
   );
