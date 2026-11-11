@@ -145,6 +145,9 @@ export const make = Effect.fn("Schedules.make")(function* (
   let watching = false;
   /** The keys of the problems told this run of the server; the delivery's key holds across restarts. */
   const told = new Set<string>();
+  /** The runs fired this run of the server whose record failed to write: not fired again until a restart. */
+  const unrecorded = new Set<string>();
+  const runKey = (star: Star, name: string, due: number) => `${star.id}:${name}:${iso(due)}`;
 
   const firing = Effect.map(fs.exists(offFile), (off) => !off).pipe(
     Effect.catchCause((cause) =>
@@ -230,7 +233,10 @@ export const make = Effect.fn("Schedules.make")(function* (
     );
   }).pipe(Effect.withSpan("Schedules.read"));
 
-  /** One delivery of the run due at `due`, then its record; a failed delivery is recorded and not retried. */
+  /**
+   * One delivery of the run due at `due`, then its record; a failed delivery is recorded and not
+   * retried, and a record that fails to write keeps the run from firing again until a restart.
+   */
   const fire = Effect.fn("Schedules.fire")(function* (star: Star, file: ScheduleFile, due: number) {
     if (!file.parsed.ok) return;
     const schedule = file.parsed.schedule;
@@ -264,8 +270,23 @@ export const make = Effect.fn("Schedules.make")(function* (
       ...outcome,
     };
     const folder = path.join(star.root, RUNS_DIRECTORY, schedule.name);
-    yield* fs.makeDirectory(folder, { recursive: true });
-    yield* fs.writeFileString(path.join(folder, runFileName(due)), runRecordText(record));
+    yield* Effect.flatMap(fs.makeDirectory(folder, { recursive: true }), () =>
+      fs.writeFileString(path.join(folder, runFileName(due)), runRecordText(record)),
+    ).pipe(
+      Effect.catchCauseIf(notInterrupted, (cause) => {
+        unrecorded.add(runKey(star, schedule.name, due));
+        return Effect.logError(
+          "Could not record a Star's scheduled run; it does not fire again until the server restarts.",
+          {
+            starId: star.id,
+            schedule: schedule.name,
+            due: record.due,
+            result: record.result,
+            cause,
+          },
+        );
+      }),
+    );
     if (record.result === "failed")
       yield* Effect.logWarning("A Star's scheduled run failed.", {
         starId: star.id,
@@ -308,6 +329,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           if (passed !== undefined) return yield* tell(star, file, passed);
           const due = latestDue(file.parsed.schedule, now);
           if (due === undefined || due < file.floor || file.runs.has(runFileName(due))) return;
+          if (unrecorded.has(runKey(star, file.name, due))) return;
           fired = true;
           yield* fire(star, file, due);
         }).pipe(

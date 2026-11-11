@@ -2,6 +2,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { OrchestratorMcpFailure, ProjectId, ThreadId } from "@t3tools/contracts";
+import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -289,6 +290,38 @@ describe("the pass", () => {
         thread: null,
       });
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "does not fire a run again whose record failed to write, and logs it as an error",
+    () => {
+      const errors: unknown[] = [];
+      const logger = Logger.make(({ logLevel, message }) => {
+        if (logLevel === "Error") errors.push(message);
+      });
+      return Effect.gen(function* () {
+        const h = yield* harness;
+        yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
+        const runs = h.path.dirname(h.runFile("standup", "x"));
+        yield* h.fs.makeDirectory(runs, { recursive: true });
+        yield* h.fs.chmod(runs, 0o555);
+        for (const at of ["09:00:01", "09:00:06", "09:00:11", "09:20:00"]) {
+          yield* h.clock(`2026-11-10T${at}Z`);
+          yield* h.pass;
+        }
+        assert.strictEqual(h.deliveries.length, 1);
+        assert.deepStrictEqual(yield* h.records("standup"), []);
+        assert.lengthOf(errors, 1);
+        const [text, fields] = errors[0] as [string, Record<string, unknown>];
+        assert.match(text, /^Could not record a Star's scheduled run/);
+        assert.deepInclude(fields, {
+          starId: "star-1",
+          schedule: "standup",
+          due: "2026-11-10T09:00:00.000Z",
+          result: "launched",
+        });
+      }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+    },
   );
 
   it.effect("tells a file that is no schedule to the Star once per content", () =>
