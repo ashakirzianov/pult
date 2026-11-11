@@ -271,21 +271,48 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* A Star's card (StarCard.tsx): one row, its mark, its name in a title's weight, its chip and its state. */
+/* A Star's card (StarCard.tsx): its mark at 44px with 4px around it, then its name in a title's weight, with its chip, over its state; 52px tall. */
+.pult-card-star .pult-card-select {
+  padding: 4px 10px 4px 4px;
+}
+
 .pult-star-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  height: 22px;
+  height: 44px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
 
+/* The live mark (src/stars/flat/), its span filling the element around it, in the tint that element is given, its troubled ring in the theme's error colour. */
 .pult-star-mark {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
+  --err: var(--vscode-errorForeground);
+}
+
+.pult-star-mark > .flat-star {
+  width: 100%;
+  height: 100%;
+}
+
+.pult-star-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pult-star-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 18px;
 }
 
 .pult-star-name {
@@ -299,7 +326,7 @@
   color: var(--vscode-foreground);
 }
 
-.pult-star-row:has(.pult-card-environment) .pult-star-name {
+.pult-star-head:has(.pult-card-environment) .pult-star-name {
   flex: 0 1 auto;
 }
 

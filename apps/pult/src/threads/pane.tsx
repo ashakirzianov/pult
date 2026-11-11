@@ -28,7 +28,7 @@ import { connection } from "../connection/index.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { isSettingsTab, type SettingsInput } from "../settings/pane.tsx";
-import { starMarks, starMarkUrl } from "../stars/mark.ts";
+import { starMarks, starStillUrl } from "../stars/mark.ts";
 import { starById, starStore } from "../stars/model.ts";
 import { DEFAULT_TINT } from "../stars/record.ts";
 import { starName } from "../stars/stars.ts";
@@ -562,10 +562,10 @@ export class StarInput extends SimpleEditorInput {
   }
 
   private markUrl(): string {
-    return starMarkUrl(this.star() ?? { id: this.starId, tint: DEFAULT_TINT });
+    return starStillUrl(this.star() ?? { id: this.starId, tint: DEFAULT_TINT });
   }
 
-  /** Setting the name fires the label change that redraws the title and icon, its mark its look's still in the theme. */
+  /** Setting the name fires the label change that redraws the title and icon, the icon the still of its mark in its look and the theme (`mark.ts`), whose URL changes only with them. */
   private updateLabel(): void {
     const star = this.star();
     const key = JSON.stringify([star?.name, this.markUrl()]);

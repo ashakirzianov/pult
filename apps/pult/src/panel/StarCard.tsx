@@ -1,9 +1,12 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
-import { starMarks, starMarkUrl } from "../stars/mark.ts";
+import { flatStar } from "../stars/flat/star.ts";
+import "../stars/flat/star.css";
+import type { StarLook } from "../stars/look.ts";
+import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
 import { asleepSince, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
@@ -36,10 +39,29 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
 }
 
 /**
- * A Star's card, the panel's first row, under no header (`star-card`): its
- * mark, its look's still (`mark.ts`, `look.ts` in `src/stars/`), its name ("Star" while it has none), its environment's chip while
- * the page holds several, and its state, Asleep with how long (dimmed),
- * Awake, or Working with its elapsed time. A click selects the Star
+ * The Star's mark, drawn live (`src/stars/flat/`): the mark's span made once
+ * per card, since each holds ids of its own, and a change of look set on its
+ * `data-state`, so the halo's motion carries on from where it was. Its colour
+ * is the tint's in the theme's scheme, set on the element around it.
+ */
+function StarMark({ look, color }: { look: StarLook; color: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    const mark = element.querySelector(".flat-star");
+    if (mark === null) element.innerHTML = flatStar(look);
+    else mark.setAttribute("data-state", look);
+  }, [look]);
+  return <span ref={ref} className="pult-star-mark" style={{ color }} aria-hidden />;
+}
+
+/**
+ * A Star's card, the panel's first row, under no header (`star-card`): two
+ * rows beside its mark (`StarMark`, its look by `look.ts` in `src/stars/`),
+ * its name ("Star" while it has none) with its environment's chip while the
+ * page holds several, over its state, Asleep with how long (dimmed), Awake,
+ * or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
  * expands with its current conversation's subagents, as a thread's card
  * does with its own.
@@ -83,10 +105,14 @@ export function StarCard({
         }}
       >
         <span className="pult-star-row">
-          <img className="pult-star-mark" src={starMarkUrl(star, marks)} alt="" />
-          <span className="pult-star-name">{starName(star)}</span>
-          <EnvironmentChip label={environment} />
-          <StarStatus star={star} now={now} />
+          <StarMark look={starLookOf(star, marks)} color={tintColor(star.tint, marks.scheme)} />
+          <span className="pult-star-text">
+            <span className="pult-star-head">
+              <span className="pult-star-name">{starName(star)}</span>
+              <EnvironmentChip label={environment} />
+            </span>
+            <StarStatus star={star} now={now} />
+          </span>
         </span>
         <JumpHint rowKey={starKey(star.id)} />
       </div>
