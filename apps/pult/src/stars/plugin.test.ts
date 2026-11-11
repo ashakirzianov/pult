@@ -105,6 +105,34 @@ const star = {
   conversation: { threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
   asleepSince: "2026-11-01T00:00:00.000Z",
   conversations: ["2026-11-01T10-00-00Z-t0.md"],
+  schedules: [
+    {
+      name: "morning",
+      path: "/Users/a/.pult/stars/star/.pult/schedules/morning.md",
+      rule: "weekdays 09:00",
+      timezone: "America/Argentina/Buenos_Aires",
+      next: "2026-11-11T12:00:00.000Z",
+      spent: false,
+      problem: null,
+      last: {
+        due: "2026-11-10T12:00:00.000Z",
+        fired: "2026-11-10T12:00:03.000Z",
+        result: "failed",
+        error: "no conversation ended here yet",
+        thread: null,
+      },
+    },
+    {
+      name: "typo",
+      path: "/Users/a/.pult/stars/star/.pult/schedules/typo.md",
+      rule: null,
+      timezone: null,
+      next: null,
+      spent: false,
+      problem: "it has no `timezone`, an IANA name",
+      last: null,
+    },
+  ],
 };
 const stars = { directory: "/Users/a/.pult/stars", hidden: ["p1", "p2"], stars: [star] };
 
@@ -112,9 +140,14 @@ NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads the route's answer, a newer plugin's fields let be", () => {
     NodeAssert.deepEqual(decodeStars(stars), stars);
     NodeAssert.deepEqual(
-      decodeStars({ ...stars, stars: [{ ...star, asks: [], schedules: [] }], build: 4 }),
+      decodeStars({ ...stars, stars: [{ ...star, asks: [] }], build: 4 }),
       stars,
     );
+  });
+
+  NodeTest.test("reads a plugin older than the schedules as serving none", () => {
+    const { schedules: _, ...older } = star;
+    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
   });
 
   NodeTest.test("reads a conversation's hold, and a sleeping Star's none", () => {
@@ -136,6 +169,19 @@ NodeTest.describe("decodeStars", () => {
       { ...stars, stars: [{ ...star, projectId: null }] },
       { ...stars, stars: [{ ...star, conversations: [1] }] },
       { ...stars, stars: [{ ...star, conversation: { threadId: "t1", sleeps: {} } }] },
+      { ...stars, stars: [{ ...star, schedules: null }] },
+      { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[1], spent: "no" }] }] },
+      {
+        ...stars,
+        stars: [
+          {
+            ...star,
+            schedules: [
+              { ...star.schedules[0], last: { ...star.schedules[0]?.last, result: "ok" } },
+            ],
+          },
+        ],
+      },
       { hidden: [], stars: [] },
     ])
       NodeAssert.throws(() => decodeStars(body), PluginAnswerError, JSON.stringify(body));

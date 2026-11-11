@@ -26,6 +26,7 @@ const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar =>
   conversation: null,
   asleepSince: CREATED,
   conversations: [],
+  schedules: [],
   ...overrides,
 });
 const answer = (stars: ReadonlyArray<RouteStar>, hidden: ReadonlyArray<string> = []) =>

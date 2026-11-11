@@ -8,6 +8,9 @@
 /** The plugin's feature of keeping the Stars: where `about` lists it, the server finds, keeps and serves its Stars, and the page draws them. */
 export const STARS_FEATURE = "stars";
 
+/** The plugin's feature of firing the Stars' schedules: listed only where the server fires them, none under its `schedules-off`. */
+export const SCHEDULES_FEATURE = "star-schedules";
+
 const PLUGIN_PATH = "/api/plugins/pult";
 
 /** How long a read may take before the server reads as having no plugin, or no Stars: the environment's cards wait on both. */
@@ -81,6 +84,35 @@ export interface WrittenStar {
   readonly projectId: string;
 }
 
+/** A schedule's newest run, as its record says. */
+export interface RouteRun {
+  /** ISO instants. */
+  readonly due: string;
+  readonly fired: string;
+  readonly result: "started" | "queued" | "launched" | "replayed" | "failed";
+  /** Why it failed; null unless it did. */
+  readonly error: string | null;
+  readonly thread: string | null;
+}
+
+/** A schedule of a Star's, as the plugin parsed its file: the rule in words and the next due instant are the plugin's, the page only draws them. */
+export interface RouteSchedule {
+  readonly name: string;
+  /** The file, a host path. */
+  readonly path: string;
+  /** The rule in words, `weekdays 09:00`; null for a file that is no schedule. */
+  readonly rule: string | null;
+  /** Its IANA zone; null for a file that is no schedule. */
+  readonly timezone: string | null;
+  /** The next due instant, ISO; null where none is. */
+  readonly next: string | null;
+  /** A one-off whose run has a record. */
+  readonly spent: boolean;
+  /** Why the file will not run, else null. */
+  readonly problem: string | null;
+  readonly last: RouteRun | null;
+}
+
 /** A Star as `GET /stars` serves it, the fields the page draws; `root` and `instructions` are host paths. */
 export interface RouteStar extends WrittenStar {
   readonly instructions: string;
@@ -89,6 +121,8 @@ export interface RouteStar extends WrittenStar {
   readonly asleepSince: string;
   /** Its transcripts' names on this environment, oldest first. */
   readonly conversations: ReadonlyArray<string>;
+  /** Its schedules' files, by name; none from a plugin older than the schedules. */
+  readonly schedules: ReadonlyArray<RouteSchedule>;
 }
 
 /** What `GET /stars` answers: the server's Stars directory (a host path), the projects a page draws as no project, and its Stars. */
@@ -140,6 +174,11 @@ const string: Decode<string> = (value, at) =>
 const boolean: Decode<boolean> = (value, at) =>
   typeof value === "boolean" ? value : fail(at, "a boolean");
 
+const nullable =
+  <T>(each: Decode<T>): Decode<T | null> =>
+  (value, at) =>
+    value === null ? null : each(value, at);
+
 const arrayOf =
   <T>(each: Decode<T>): Decode<ReadonlyArray<T>> =>
   (value, at) =>
@@ -147,7 +186,7 @@ const arrayOf =
       ? value.map((item: unknown, index) => each(item, `${at}[${index}]`))
       : fail(at, "an array");
 
-/** An object's fields, each decoded; other fields are let be, as a newer plugin adds them (`schedules`, `asks`). */
+/** An object's fields, each decoded; other fields are let be, as a newer plugin adds them (`asks`). */
 const struct =
   <T extends object>(decoders: { readonly [K in keyof T]: Decode<T[K]> }): Decode<T> =>
   (value, at) => {
@@ -166,6 +205,38 @@ const sleeps: Decode<RouteConversation["sleeps"]> = (value, at) => {
 
 const conversation: Decode<RouteConversation | null> = (value, at) =>
   value === null ? null : struct<RouteConversation>({ threadId: string, sleeps })(value, at);
+
+const runResult: Decode<RouteRun["result"]> = (value, at) =>
+  value === "started" ||
+  value === "queued" ||
+  value === "launched" ||
+  value === "replayed" ||
+  value === "failed"
+    ? value
+    : fail(at, "started, queued, launched, replayed or failed");
+
+const schedule = struct<RouteSchedule>({
+  name: string,
+  path: string,
+  rule: nullable(string),
+  timezone: nullable(string),
+  next: nullable(string),
+  spent: boolean,
+  problem: nullable(string),
+  last: nullable(
+    struct<RouteRun>({
+      due: string,
+      fired: string,
+      result: runResult,
+      error: nullable(string),
+      thread: nullable(string),
+    }),
+  ),
+});
+
+/** A plugin older than the schedules serves none: absent reads as none, any other shape fails. */
+const schedules: Decode<ReadonlyArray<RouteSchedule>> = (value, at) =>
+  value === undefined ? [] : arrayOf(schedule)(value, at);
 
 const writtenStar = struct<WrittenStar>({
   id: string,
@@ -187,6 +258,7 @@ const routeStar = struct<RouteStar>({
   conversation,
   asleepSince: string,
   conversations: arrayOf(string),
+  schedules,
 });
 
 const starsAnswer = struct<StarsAnswer>({
