@@ -8,9 +8,9 @@ import { type AccessState, revokeClient, revokePairingLink } from "../connection
 import { dismissPairing, type Pairing } from "../connection/pairDevice.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 
-// Under an environment's row of the settings page, in its group (xaxis
-// `pult/issues/pair-device`): the pairing link Pair Device minted, and the
-// environment's outstanding pairing links and authorized clients.
+// An environment's devices on the settings page, under Devices in its group
+// (xaxis `pult/issues/pair-device`): the pairing link Pair Device minted, and
+// the environment's outstanding pairing links and authorized clients.
 
 const dateTime = (millis: number) =>
   new Date(millis).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
@@ -164,7 +164,7 @@ export function AuthorizedClients({
     return (
       <div className="pult-settings-row pult-settings-subrow">
         <div className="pult-settings-row-description">
-          Pult cannot list this environment's clients. {access.message}
+          Pult cannot list this environment's devices. {access.message}
         </div>
       </div>
     );

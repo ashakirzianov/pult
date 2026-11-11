@@ -111,15 +111,17 @@ function EnvironmentsSection() {
 }
 
 /**
- * An environment's group: its row, the environments' icon before its name,
- * which the rows under it have none of, its host, how its connection stands and why when it is not ready,
- * Pair Device while it is ready and Retry while it is not, and Disconnect;
- * under it the pairing link Pair Device minted, until it expires and, once the
- * environment's access is known, while it is still outstanding, then that
- * access, followed while the group shows (`EnvironmentAccess.tsx`). `local`,
- * Pult.app's own server: This computer in its row, the local server's switch
- * in Disconnect's place, since off is how the app lets go of it, and under the
- * row whether other devices reach it.
+ * An environment's group, the environment over a line across the group, its
+ * devices under it. The environment: its row, the environments' icon before
+ * its name, its host, how its connection stands and why when it is not ready,
+ * Retry while it is not, and Disconnect; `local`, Pult.app's own server, has
+ * This computer in its row, the local server's switch in Disconnect's place,
+ * since off is how the app lets go of it, and under the row whether other
+ * devices reach it. Its devices, while it is ready or something is known of
+ * them: Devices, with Pair Device while it is ready, the pairing link that
+ * minted, until it expires and, once the environment's access is known, while
+ * it is still outstanding, then that access, followed while the group shows
+ * (`EnvironmentAccess.tsx`).
  */
 function EnvironmentGroup({
   environment,
@@ -138,6 +140,7 @@ function EnvironmentGroup({
     pairing !== undefined &&
     (access?._tag !== "snapshot" ||
       access.snapshot.pairingLinks.some((link) => link.id === pairing.id));
+  const ready = environment.phase === "ready";
   return (
     <div className="pult-settings-group">
       <div className="pult-settings-row">
@@ -156,15 +159,7 @@ function EnvironmentGroup({
           )}
         </div>
         <div className="pult-settings-row-actions">
-          {environment.phase === "ready" ? (
-            <button
-              type="button"
-              className="pult-settings-button"
-              onClick={() => run("pult-shell.pairDevice", environmentId)}
-            >
-              Pair Device…
-            </button>
-          ) : (
+          {ready ? null : (
             <button
               type="button"
               className="pult-settings-button"
@@ -186,8 +181,22 @@ function EnvironmentGroup({
           )}
         </div>
       </div>
-      {outstanding ? <PairingCard key={pairing.id} pairing={pairing} /> : null}
       {local ? <ReachableRow /> : null}
+      {ready || outstanding || access !== undefined ? (
+        <div className="pult-settings-row pult-settings-subrow pult-settings-devices">
+          <h3 className="pult-settings-row-text">Devices</h3>
+          {ready ? (
+            <button
+              type="button"
+              className="pult-settings-button"
+              onClick={() => run("pult-shell.pairDevice", environmentId)}
+            >
+              Pair Device…
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {outstanding ? <PairingCard key={pairing.id} pairing={pairing} /> : null}
       <AuthorizedClients environmentId={environmentId} access={access} />
     </div>
   );

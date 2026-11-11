@@ -87,8 +87,8 @@
   background: var(--pult-settings-hairline);
 }
 
-/* Under an environment's row, inset past its icon: whether other devices reach Pult.app's own server, then the
-   environment's pairing links and clients (EnvironmentAccess.tsx). */
+/* Under an environment's row, inset past its icon: whether other devices reach Pult.app's own server, then Devices
+   and the environment's pairing links and clients (EnvironmentAccess.tsx). */
 .pult-settings-subrow {
   min-height: 34px;
   padding: 5px 12px 5px 40px;
@@ -97,6 +97,24 @@
 
 .pult-settings-group > * + .pult-settings-subrow::before {
   left: 40px;
+}
+
+/* Devices, the name of what is under it as a section's is, Pair Device beside it: a line across the group over it,
+   which parts the environment from its devices, and none under it. */
+.pult-settings-group > * + .pult-settings-devices::before {
+  right: 0;
+  left: 0;
+}
+
+.pult-settings-devices h3 {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pult-settings-group > .pult-settings-devices + .pult-settings-subrow::before {
+  content: none;
 }
 
 .pult-settings-row-text {
@@ -398,7 +416,7 @@
   outline-offset: 2px;
 }
 
-/* The pairing link Pair Device minted, a card under its environment's row: its QR code beside the link, the code and
+/* The pairing link Pair Device minted, a card under its environment's Devices: its QR code beside the link, the code and
    its actions. */
 .pult-settings-pairing {
   display: flex;
