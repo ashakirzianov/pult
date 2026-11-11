@@ -31,7 +31,8 @@ import {
   McpServer,
   Path,
 } from "./host.ts";
-import { at, fakeServer } from "./stars/testing.ts";
+import * as Stars from "./stars/stars.ts";
+import { at, fakeServer, run } from "./stars/testing.ts";
 
 const SESSIONS: Record<string, ReadonlyArray<AuthEnvironmentScope>> = {
   "Bearer reader": [AuthOrchestrationReadScope],
@@ -89,7 +90,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     expect(yield* send("GET", "/about", "reader")).toEqual({
       status: 200,
-      body: { features: ["stars", "star-messages"] },
+      body: { features: ["stars", "star-messages", "star-sleep-request"] },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
       status: 200,
@@ -311,4 +312,90 @@ it.effect(
         "runtime_mode_escalation_denied",
       );
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is refused", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+    const server = yield* fakeServer;
+    const context = yield* Layer.build(
+      PluginLoader.layer(bundledPlugins).pipe(
+        Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+      ),
+    );
+    const mcp = Context.get(context, McpServer.McpServer);
+    expect(mcp.tools.map((each) => each.tool.name)).toContain("pult_star_sleep");
+    const call = (scope: McpInvocationContext.McpInvocationScope) =>
+      mcp.callTool({ name: "pult_star_sleep", arguments: {} }).pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, mcpClient),
+        Effect.map((result) => {
+          const text = result.content[0];
+          const body = text?.type === "text" ? JSON.parse(text.text) : undefined;
+          return result.isError === true ? { refused: body.code, why: body.message } : body;
+        }),
+      );
+
+    // Made through Stars of the test's own over the same fake server, as a page's POST /stars would.
+    const star = yield* (yield* Stars.make.pipe(Effect.provide(server.layer))).create({
+      ifNone: true,
+    });
+    const later = { promptCacheExpiresAt: at("2026-11-10T13:30:00.000Z") };
+    const own = server.threads.add(
+      star.projectId,
+      "star-thread",
+      { ...later, createdAt: at("2026-11-10T12:50:00.000Z"), activeRunId: RunId.make("star-run") },
+      // The fake's wait answers the run as it is: the turn has completed.
+      [run("star-run", "completed")],
+    );
+    const below = server.threads.add(star.projectId, "below", {
+      activeRunId: RunId.make("below-run"),
+      lineage: {
+        parentThreadId: own.shell.id,
+        relationshipToParent: "subagent",
+        rootThreadId: own.shell.id,
+      },
+    });
+    const repo = yield* server.projects.service.create({
+      projectId: ProjectId.make("p-repo"),
+      title: "Repo",
+      workspaceRoot: `${server.tmp}/repo`,
+      createWorkspaceRootIfMissing: true,
+    });
+    server.threads.add(repo.id, "worker", { activeRunId: RunId.make("worker-run") });
+    // A Star's conversation with no turn on, whose background subagent still holds the credential.
+    const idle = server.threads.add(star.projectId, "idle", {
+      ...later,
+      pendingBackgroundTasks: [
+        {
+          kind: "subagent",
+          taskId: "task-1",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        },
+      ],
+    });
+
+    const noStar = {
+      refused: "invalid_request",
+      why: expect.stringContaining("this thread is none"),
+    };
+    expect(yield* call(scopeOf({ thread: "worker" }))).toMatchObject(noStar);
+    expect(yield* call(scopeOf({ thread: below.shell.id }))).toMatchObject(noStar);
+    expect(yield* call(scopeOf({ thread: idle.shell.id }))).toMatchObject({
+      refused: "invalid_request",
+      why: expect.stringContaining("no turn on"),
+    });
+    expect(yield* call(scopeOf({ client: "full-access" }))).toMatchObject({
+      refused: "thread_credential_required",
+    });
+    expect(server.threads.settles).toEqual([]);
+
+    expect(yield* call(scopeOf({ thread: own.shell.id }))).toEqual({
+      star: { id: star.id, name: "Star" },
+      message: expect.stringContaining("falls asleep when this turn ends"),
+    });
+    // The request's fiber settles the conversation once the turn has ended.
+    yield* server.threads.settled(1);
+    expect(server.threads.settles).toEqual([own.shell.id]);
+  }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
