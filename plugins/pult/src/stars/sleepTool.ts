@@ -53,6 +53,7 @@ const refused = (message: string) =>
  * look with this conversation's deadline waived. A run that did not complete spends it.
  */
 export const afterTurn = Effect.fn("PultTools.afterTurn")(function* (
+  threads: ThreadManagementService.ThreadManagementService["Service"],
   stars: Stars,
   star: Star,
   turn: {
@@ -62,8 +63,6 @@ export const afterTurn = Effect.fn("PultTools.afterTurn")(function* (
     readonly calledAt: DateTime.Utc;
   },
 ) {
-  const threads = yield* ThreadManagementService.ThreadManagementService;
-  // A restart's continuation is followed, and answered as the run that ended.
   const ended = yield* threads.waitForThread({
     projectId: turn.projectId,
     threadId: turn.threadId,
@@ -73,7 +72,7 @@ export const afterTurn = Effect.fn("PultTools.afterTurn")(function* (
   if (ended.timedOut || ended.run?.status !== "completed") return;
   yield* stars.sleepNow(star, {
     threadId: turn.threadId,
-    runId: ended.run.id,
+    runId: turn.runId,
     calledAt: turn.calledAt,
   });
 });
@@ -101,13 +100,12 @@ export const make = Effect.fn("PultTools.makeSleep")(function* (stars: Stars) {
       return yield* refused(
         "pult_star_sleep acts at the end of the turn it is called in, and this thread has no turn on: nothing was done.",
       );
-    yield* afterTurn(stars, star, {
+    yield* afterTurn(threads, stars, star, {
       projectId: shell.projectId,
       threadId,
       runId: shell.activeRunId,
       calledAt,
     }).pipe(
-      Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
       Effect.catchCause((cause) =>
         Effect.logWarning("A Star's request to sleep failed.", {
           starId: star.id,
