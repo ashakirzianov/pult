@@ -1,7 +1,13 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  type OrchestrationV2Run,
+  type OrchestrationV2Subagent,
+  ProjectId,
+  RunId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
 import { Effect, FileSystem, Layer, Path } from "../host.ts";
@@ -331,6 +337,76 @@ describe("the pass", () => {
       assert.deepStrictEqual(seen, ["open", "due"]);
       assert.strictEqual((yield* h.stars.ofThread(open.shell.id))?.id, star.id);
       assert.strictEqual(yield* h.stars.ofThread(ThreadId.make("fork")), undefined);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("a Star's request to sleep", () => {
+  const later = at("2026-11-10T13:30:00.000Z");
+
+  it.effect(
+    "settles the conversation before its deadline and writes the transcript in one look",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        const asks = h.threads.add(
+          star.projectId,
+          "asks",
+          { createdAt: at("2026-11-10T12:50:00.000Z"), promptCacheExpiresAt: later },
+          [run("asks-run", "completed")],
+        );
+        const other = h.threads.add(
+          star.projectId,
+          "other",
+          { createdAt: at("2026-11-10T12:40:00.000Z"), promptCacheExpiresAt: later },
+          [run("other-run", "completed")],
+        );
+
+        yield* h.stars.sleepNow(star, asks.shell.id, RunId.make("asks-run"));
+        assert.deepStrictEqual(h.threads.settles, [asks.shell.id]);
+        assert.strictEqual(other.shell.settledOverride, null);
+        assert.match(
+          yield* h.read(
+            h.path.join(star.root, ".pult/conversations/env-1/2026-11-10T12-50-00Z-asks.md"),
+          ),
+          /^ended: "2026-11-10T13:00:00.000Z"$/m,
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("leaves it awake where a run followed the turn or a thread below works", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const conversation = (id: string, runs: ReadonlyArray<OrchestrationV2Run>) =>
+        h.threads.add(star.projectId, id, { promptCacheExpiresAt: later }, [...runs]);
+      const turn = (id: string) => ({ ...run(id, "completed"), ordinal: 1 });
+      // A user's message queued behind the turn; a notification that already ran after it.
+      const queued = conversation("queued", [
+        turn("queued-1"),
+        { ...run("queued-2", "queued"), ordinal: 2 },
+      ]);
+      const followed = conversation("followed", [
+        turn("followed-1"),
+        { ...run("followed-2", "completed"), ordinal: 2 },
+      ]);
+      const delegating = conversation("delegating", [turn("delegating-1")]);
+      delegating.subagents = [{ status: "running" } as OrchestrationV2Subagent];
+
+      for (const [thread, runId] of [
+        [queued, "queued-1"],
+        [followed, "followed-1"],
+        [delegating, "delegating-1"],
+      ] as const)
+        yield* h.stars.sleepNow(star, thread.shell.id, RunId.make(runId));
+      assert.deepStrictEqual(h.threads.settles, []);
+
+      delegating.subagents = [{ status: "completed" } as OrchestrationV2Subagent];
+      yield* h.stars.sleepNow(star, delegating.shell.id, RunId.make("delegating-1"));
+      assert.deepStrictEqual(h.threads.settles, [delegating.shell.id]);
     }).pipe(Effect.scoped),
   );
 });

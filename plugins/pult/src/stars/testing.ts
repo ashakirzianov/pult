@@ -5,6 +5,7 @@ import {
   MessageId,
   type OrchestrationProjectShell,
   type OrchestrationV2Run,
+  type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
   type ProjectId,
@@ -33,6 +34,8 @@ import {
 } from "../host.ts";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
+
+const ON: ReadonlySet<string> = new Set(["preparing", "queued", "starting", "running", "waiting"]);
 
 /** The project store, in memory: `create` makes the folder where asked and refuses a root taken. */
 function fakeProjects(fs: FileSystem.FileSystem) {
@@ -89,6 +92,7 @@ function fakeProjects(fs: FileSystem.FileSystem) {
 interface FakeThread {
   shell: OrchestrationV2ThreadShell;
   runs: OrchestrationV2Run[];
+  subagents: OrchestrationV2Subagent[];
 }
 
 /** A message the store took, with the dispatch's fields and the mode limit it ran under. */
@@ -106,11 +110,12 @@ export interface FakeMessage {
 /**
  * The thread store, in memory: a settle refuses a run other than the expected latest; a command id
  * with a receipt replays and changes nothing; a message starts an idle thread's run and queues
- * behind a running one.
+ * behind a running one; a wait for a run answers its state at once, timed out while it is on.
  */
 function fakeThreads() {
   const threads: FakeThread[] = [];
   const settles: ThreadId[] = [];
+  const settleWaiters: Array<{ count: number; resume: () => void }> = [];
   const receipts = new Set<string>();
   const messages: FakeMessage[] = [];
   const byId = (threadId: ThreadId) => threads.find((each) => each.shell.id === threadId);
@@ -126,6 +131,7 @@ function fakeThreads() {
       settledAt: thread.shell.settledAt,
     },
     runs: thread.runs,
+    subagents: thread.subagents,
   });
   /** Takes a message into the thread: a run starts where none is on, else one queues behind it. */
   const take = Effect.fn("FakeThreads.take")(function* (
@@ -238,8 +244,19 @@ function fakeThreads() {
         settledOverride: "settled",
         settledAt: yield* DateTime.now,
       };
+      for (const waiter of settleWaiters.filter((each) => settles.length >= each.count))
+        waiter.resume();
       return { sequence: 1 };
     }),
+    waitForThread: (input: { threadId: ThreadId; runId?: RunId }) =>
+      Effect.sync(() => {
+        const ran = byId(input.threadId)?.runs.find((each) => each.id === input.runId) ?? null;
+        return {
+          threadId: input.threadId,
+          run: ran,
+          timedOut: ran !== null && ON.has(ran.status),
+        };
+      }),
   };
   const add = (
     projectId: ProjectId,
@@ -261,11 +278,18 @@ function fakeThreads() {
         ...shell,
       },
       runs,
+      subagents: [],
     };
     threads.push(thread);
     return thread;
   };
-  return { threads, settles, receipts, messages, add, take, byId, service };
+  /** Once the store has taken `count` settles in all. */
+  const settled = (count: number) =>
+    Effect.callback<void>((resume) => {
+      if (settles.length >= count) resume(Effect.void);
+      else settleWaiters.push({ count, resume: () => resume(Effect.void) });
+    });
+  return { threads, settles, settled, receipts, messages, add, take, byId, service };
 }
 
 /** The input a launch got, as the fake recorded it. */

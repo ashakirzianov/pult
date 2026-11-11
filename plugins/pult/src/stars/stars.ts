@@ -6,6 +6,7 @@ import {
   CommandId,
   type OrchestrationV2ThreadShell,
   ProjectId,
+  type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
 
@@ -111,6 +112,8 @@ export interface Stars {
     star: Star,
     use: (conversations: Conversations) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StarsError, R>;
+  /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects `runId` as the latest run. */
+  readonly sleepNow: (star: Star, threadId: ThreadId, runId: RunId) => Effect.Effect<void>;
   readonly view: Effect.Effect<StarsView, StarsError>;
   readonly transcript: (
     star: Star,
@@ -324,18 +327,24 @@ export const make = Effect.gen(function* () {
     return roots.slice(0, count);
   });
 
+  /** With `requested`, the Star's own request at the end of that run: the deadline is waived, the holds are not, and any run since spends it. */
   const sleepIfDue = Effect.fn("Stars.sleepIfDue")(function* (
     star: Star,
     thread: OrchestrationV2ThreadShell,
+    requested: RunId | undefined,
   ) {
     const records = yield* threads.getProjectThreadRecords(
       { projectId: star.projectId, threadId: thread.id },
       ["runs", "providerTurns", "runtimeRequests", "subagents"],
     );
-    const now = DateTime.toEpochMillis(yield* DateTime.now);
-    if (!asleepBy(wakefulness(records, thread.promptCacheExpiresAt), now)) return;
-    // A run that began since the read refuses the settle.
     const latest = records.runs.toSorted((left, right) => left.ordinal - right.ordinal).at(-1);
+    const state = wakefulness(records, thread.promptCacheExpiresAt);
+    const due =
+      requested === undefined
+        ? asleepBy(state, DateTime.toEpochMillis(yield* DateTime.now))
+        : state.kind === "deadline" && latest?.id === requested;
+    if (!due) return;
+    // A run that began since the read refuses the settle.
     yield* threads.dispatch({
       type: "thread.settle",
       commandId: CommandId.make(yield* newId),
@@ -373,9 +382,16 @@ export const make = Effect.gen(function* () {
   });
 
   /** Sleep for each open root thread past its deadline, then the transcripts of the latest settled, oldest first; each failure logged. */
-  const look = Effect.fn("Stars.look")(function* (star: Star) {
+  const look = Effect.fn("Stars.look")(function* (
+    star: Star,
+    request?: { readonly threadId: ThreadId; readonly runId: RunId },
+  ) {
     for (const thread of yield* openConversations(star))
-      yield* sleepIfDue(star, thread).pipe(
+      yield* sleepIfDue(
+        star,
+        thread,
+        thread.id === request?.threadId ? request.runId : undefined,
+      ).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Could not put a Star's conversation to sleep.", {
             starId: star.id,
@@ -412,6 +428,16 @@ export const make = Effect.gen(function* () {
         return yield* use(conversations);
       }),
     );
+
+  const sleepNow: Stars["sleepNow"] = (star, threadId, runId) =>
+    lockOf(star)
+      .withPermits(1)(look(star, { threadId, runId }))
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),
+        ),
+        Effect.withSpan("Stars.sleepNow"),
+      );
 
   const ofThread = Effect.fn("Stars.ofThread")(function* (threadId: ThreadId) {
     const shell = yield* threads
@@ -576,6 +602,7 @@ export const make = Effect.gen(function* () {
     get,
     ofThread,
     withConversation,
+    sleepNow,
     view,
     transcript,
     create,
