@@ -52,7 +52,8 @@ export const starsRoute = (
         Effect.map((each) => json(each)),
       ),
     );
-  if (segments.length === 2 && id !== undefined && method === "PATCH")
+  // POST, not PATCH: a page on another origin may send a browser API only the methods the server's CORS allows (`browserApiCorsAllowedMethods`).
+  if (segments.length === 2 && id !== undefined && method === "POST")
     return answer(
       Effect.gen(function* () {
         const body = yield* bodyOf(request, decodeFields);

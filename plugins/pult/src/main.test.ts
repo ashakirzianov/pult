@@ -104,7 +104,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     for (const [method, path] of [
       ["POST", "/stars"],
       ["POST", "/stars/upkeep"],
-      ["PATCH", "/stars/any"],
+      ["POST", "/stars/any"],
     ] as const)
       expect((yield* send(method, path, "reader", {})).status).toBe(403);
 
@@ -152,14 +152,14 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     yield* fs.writeFileString(`${stateDir}/plugins/pult/schedules-off`, "");
     expect((yield* send("GET", "/about", "reader")).body.features).not.toContain("star-schedules");
 
-    expect(yield* send("PATCH", `/stars/${star.id}`, "writer", { name: "Vega" })).toMatchObject({
+    expect(yield* send("POST", `/stars/${star.id}`, "writer", { name: "Vega" })).toMatchObject({
       status: 200,
       body: { id: star.id, name: "Vega" },
     });
-    expect(yield* send("PATCH", "/stars/nobody", "writer", { name: "Vega" })).toMatchObject({
+    expect(yield* send("POST", "/stars/nobody", "writer", { name: "Vega" })).toMatchObject({
       status: 404,
     });
-    expect((yield* send("PATCH", `/stars/${star.id}`, "writer", { name: 7 })).status).toBe(400);
+    expect((yield* send("POST", `/stars/${star.id}`, "writer", { name: 7 })).status).toBe(400);
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";
