@@ -76,6 +76,11 @@ describe("AGENTS.md", () => {
     assert.strictEqual(parseRecord(AGENTS_TEXT), undefined);
   });
 
+  it("calls .pult/asks/ the Star's, apart from the rest of .pult/", () => {
+    assert.match(AGENTS_TEXT, /^- `\.pult\/asks\/` is yours: /m);
+    assert.include(AGENTS_TEXT, "`.pult/`, apart from what is called yours above,");
+  });
+
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
