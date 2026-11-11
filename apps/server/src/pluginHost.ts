@@ -6,6 +6,8 @@
  */
 export * as Cause from "effect/Cause";
 export * as Context from "effect/Context";
+// The Pult plugin's schedules: a file that is no schedule is told to its Star once per content, keyed by its hash.
+export * as Digest from "effect/crypto/Digest";
 // The Pult plugin's Stars: the sleep rule and the transcripts read the records' times.
 export * as DateTime from "effect/DateTime";
 export * as Effect from "effect/Effect";
@@ -57,6 +59,8 @@ export * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 // The Pult plugin's Star messages: a wake launches a Star's fresh conversation.
 export * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
+// The Pult plugin's schedules: the watch of the Stars directory says when a Star's schedules changed.
+export * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";
 
 import packageJson from "../package.json" with { type: "json" };

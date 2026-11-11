@@ -30,6 +30,7 @@ import {
   McpSchema,
   McpServer,
   Path,
+  ServerConfig,
 } from "./host.ts";
 import * as Stars from "./stars/stars.ts";
 import { at, fakeServer, run } from "./stars/testing.ts";
@@ -90,7 +91,9 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     expect(yield* send("GET", "/about", "reader")).toEqual({
       status: 200,
-      body: { features: ["stars", "star-messages", "star-sleep-request", "star-asks"] },
+      body: {
+        features: ["stars", "star-messages", "star-sleep-request", "star-asks", "star-schedules"],
+      },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
       status: 200,
@@ -124,6 +127,30 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       ],
     });
     expect(view.body.stars[0].asleepSince).toBe(view.body.stars[0].created);
+    expect(view.body.stars[0].schedules).toEqual([]);
+
+    // Each Star carries its schedules, read as the page asks; a server under schedules-off fires none.
+    const fs = yield* FileSystem.FileSystem;
+    yield* fs.makeDirectory(`${star.root}/.pult/schedules`, { recursive: true });
+    yield* fs.writeFileString(
+      `${star.root}/.pult/schedules/standup.md`,
+      '---\ntimezone: UTC\ntime: "09:00"\ndays: [mon, tue, wed, thu, fri]\n---\nStandup.\n',
+    );
+    expect((yield* send("GET", "/stars", "reader")).body.stars[0].schedules).toMatchObject([
+      {
+        name: "standup",
+        path: `${star.root}/.pult/schedules/standup.md`,
+        rule: "weekdays 09:00",
+        timezone: "UTC",
+        spent: false,
+        problem: null,
+        last: null,
+      },
+    ]);
+    const { stateDir } = yield* ServerConfig.ServerConfig.pipe(Effect.provide(server.layer));
+    yield* fs.makeDirectory(`${stateDir}/plugins/pult`, { recursive: true });
+    yield* fs.writeFileString(`${stateDir}/plugins/pult/schedules-off`, "");
+    expect((yield* send("GET", "/about", "reader")).body.features).not.toContain("star-schedules");
 
     expect(yield* send("PATCH", `/stars/${star.id}`, "writer", { name: "Vega" })).toMatchObject({
       status: 200,
@@ -137,7 +164,6 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";
     const file = `${star.root}/.pult/conversations/env-1/${name}`;
-    const fs = yield* FileSystem.FileSystem;
     yield* fs.makeDirectory(`${star.root}/.pult/conversations/env-1`, { recursive: true });
     yield* fs.writeFileString(
       file,

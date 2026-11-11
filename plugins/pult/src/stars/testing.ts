@@ -10,6 +10,7 @@ import {
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
   type ProjectId,
+  type ProjectWatchEntriesEvent,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -30,8 +31,10 @@ import {
   ServerConfig,
   ServerEnvironment,
   ServerRuntimeStartup,
+  Stream,
   ThreadLaunchService,
   ThreadManagementService,
+  WorkspaceEntries,
 } from "../host.ts";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -418,7 +421,12 @@ export const fakeServer = Effect.gen(function* () {
   const projects = fakeProjects(fs);
   const threads = fakeThreads();
   const launches = fakeLaunches(threads);
-  let pass: Effect.Effect<void> | undefined;
+  const sources = new Map<string, Effect.Effect<void>>();
+  /** Each subscription to the watch, in order: offer a batch to it, or end or fail it. */
+  const watches: Array<{
+    readonly cwd: string;
+    readonly queue: Parameters<Parameters<typeof Stream.callback<ProjectWatchEntriesEvent>>[0]>[0];
+  }> = [];
   const layer = Layer.mergeAll(
     ServerConfig.layerTest(tmp, path.join(tmp, ".t3")),
     Layer.succeed(
@@ -451,17 +459,28 @@ export const fakeServer = Effect.gen(function* () {
       Scheduler.Scheduler,
       Scheduler.Scheduler.of({
         register: Effect.fn("FakeScheduler.register")(function* <E, R>(
-          _name: string,
+          name: string,
           runDueWork: Effect.Effect<void, E, R>,
         ) {
           const context = yield* Effect.context<R>();
-          pass = Effect.provideContext(runDueWork, context).pipe(Effect.orDie);
+          sources.set(name, Effect.provideContext(runDueWork, context).pipe(Effect.orDie));
         }),
       }),
     ),
+    Layer.succeed(WorkspaceEntries.WorkspaceEntries, {
+      watch: (input: { cwd: string }) =>
+        Stream.callback<ProjectWatchEntriesEvent>((queue) =>
+          Effect.sync(() => {
+            watches.push({ cwd: input.cwd, queue });
+          }),
+        ),
+    } as unknown as WorkspaceEntries.WorkspaceEntries["Service"]),
   );
   const directory = path.join(tmp, ".pult", "stars");
-  /** The source the plugin registered with the scheduler, as its tick runs it. */
-  const runPass = Effect.suspend(() => pass ?? Effect.die(new Error("no pass registered")));
-  return { layer, projects, threads, launches, tmp, directory, runPass };
+  /** A source the plugin registered with the scheduler, as its tick runs it. */
+  const runSource = (name: string) =>
+    Effect.suspend(() => sources.get(name) ?? Effect.die(new Error(`no source ${name}`)));
+  /** The Stars' pass, as the tick runs it. */
+  const runPass = runSource("pult-stars");
+  return { layer, projects, threads, launches, tmp, directory, runPass, runSource, watches };
 });

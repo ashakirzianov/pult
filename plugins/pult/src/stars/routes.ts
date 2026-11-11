@@ -1,6 +1,7 @@
 // The Stars' routes under `/api/plugins/pult` (xaxis `pult/design-durable-agent-sleep`, The routes):
 // each decodes, calls the Stars, and maps an unknown id to 404 and a failure to `{ error }`.
 import { Effect, HttpServerRequest, HttpServerResponse, Schema } from "../host.ts";
+import type { Schedules } from "../schedules/schedules.ts";
 import type { Stars, StarsError } from "./stars.ts";
 
 const decodeCreate = Schema.decodeUnknownEffect(
@@ -21,6 +22,7 @@ const bodyOf = <A>(
 /** The routes' answers, by method and path below `/stars`; undefined for a path of no route. */
 export const starsRoute = (
   stars: Stars,
+  schedules: Schedules,
   request: HttpServerRequest.HttpServerRequest,
   path: string,
 ): Effect.Effect<HttpServerResponse.HttpServerResponse> | undefined => {
@@ -31,8 +33,9 @@ export const starsRoute = (
   const answer = (effect: Effect.Effect<HttpServerResponse.HttpServerResponse, StarsError>) =>
     effect.pipe(Effect.catch((error) => Effect.succeed(json({ error: error.message }, 500))));
 
+  const view = Effect.flatMap(stars.view, schedules.withSchedules);
   if (segments.length === 1 && method === "GET")
-    return answer(Effect.map(stars.view, (view) => json(view)));
+    return answer(Effect.map(view, (each) => json(each)));
   if (segments.length === 1 && method === "POST")
     return answer(
       Effect.gen(function* () {
@@ -45,8 +48,8 @@ export const starsRoute = (
   if (segments.length === 2 && id === "upkeep" && method === "POST")
     return answer(
       stars.upkeep.pipe(
-        Effect.andThen(stars.view),
-        Effect.map((view) => json(view)),
+        Effect.andThen(view),
+        Effect.map((each) => json(each)),
       ),
     );
   if (segments.length === 2 && id !== undefined && method === "PATCH")
