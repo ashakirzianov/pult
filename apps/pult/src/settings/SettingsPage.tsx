@@ -118,7 +118,7 @@ function EnvironmentsSection() {
  * This computer in its row, the local server's switch in Disconnect's place,
  * since off is how the app lets go of it, and under the row whether other
  * devices reach it. Its devices, while it is ready or something is known of
- * them: Devices, with Pair Device while it is ready, the pairing link that
+ * them: Devices, with Pair Device, a plus, while it is ready, the pairing link that
  * minted, until it expires and, once the environment's access is known, while
  * it is still outstanding, then that access, followed while the group shows
  * (`EnvironmentAccess.tsx`).
@@ -188,10 +188,12 @@ function EnvironmentGroup({
           {ready ? (
             <button
               type="button"
-              className="pult-settings-button"
+              className="pult-settings-icon-button"
+              title="Pair Device…"
+              aria-label="Pair Device…"
               onClick={() => run("pult-shell.pairDevice", environmentId)}
             >
-              Pair Device…
+              <i className="codicon codicon-add" aria-hidden />
             </button>
           ) : null}
         </div>

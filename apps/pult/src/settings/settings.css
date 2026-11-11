@@ -99,7 +99,7 @@
   left: 40px;
 }
 
-/* Devices, the name of what is under it as a section's is, Pair Device beside it: a line across the group over it,
+/* Devices, the name of what is under it as a section's is, Pair Device, a plus, beside it: a line across the group over it,
    which parts the environment from its devices, and none under it. */
 .pult-settings-group > * + .pult-settings-devices::before {
   right: 0;
@@ -206,6 +206,28 @@
   background: var(--pult-settings-control-hover);
 }
 
+/* An action as its icon alone, Pair Device's plus: its glyph's edge on the row's, as a Revoke's. */
+.pult-settings-icon-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.pult-settings-icon-button:hover {
+  background: var(--pult-settings-control-hover);
+  color: var(--vscode-foreground);
+}
+
 /* A row's quiet action, a client's Revoke. */
 .pult-settings-link {
   flex-shrink: 0;
@@ -222,6 +244,7 @@
 }
 
 .pult-settings-button:focus-visible,
+.pult-settings-icon-button:focus-visible,
 .pult-settings-link:focus-visible,
 .pult-settings-switch:focus-visible,
 .pult-settings-day:focus-visible {
