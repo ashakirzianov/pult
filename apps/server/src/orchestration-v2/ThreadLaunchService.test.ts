@@ -1605,6 +1605,43 @@ it.effect("replays an accepted launch after the project disables the instance", 
   }).pipe(Effect.provide(harness.layer));
 });
 
+// Pult: tags at creation, which a Star's threads are told apart by.
+it.effect("a launch with tags creates the thread already carrying them", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const tagged = yield* launches.launch({
+      ...launchInput({ command: "command:launch:tagged", thread: "thread:tagged" }),
+      tags: ["pult:work", "pult:star:alpha", "pult:work"],
+    });
+    assert.deepEqual(tagged.projection.thread.tags, ["pult:work", "pult:star:alpha"]);
+    assert.deepEqual((yield* threads.getThreadShell(tagged.threadId))?.tags, [
+      "pult:work",
+      "pult:star:alpha",
+    ]);
+
+    const untagged = yield* launches.launch(
+      launchInput({ command: "command:launch:untagged", thread: "thread:untagged" }),
+    );
+    assert.isUndefined(untagged.projection.thread.tags);
+    assert.isUndefined((yield* threads.getThreadShell(untagged.threadId))?.tags);
+
+    // Only a new thread takes tags; a reused one would drop them.
+    const reused = yield* launches
+      .launch({
+        ...launchInput({ command: "command:launch:reused-tagged", thread: "thread:untagged" }),
+        reuseExistingThread: true,
+        tags: ["pult:work"],
+      })
+      .pipe(Effect.flip);
+    if (reused._tag !== "ThreadLaunchError") {
+      assert.fail(`expected ThreadLaunchError, got ${reused._tag}`);
+    }
+    assert.equal(reused.operation, "update-thread");
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("an agent's launch never starts work above the modes it asks for", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {

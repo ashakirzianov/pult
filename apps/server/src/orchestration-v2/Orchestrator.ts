@@ -3064,6 +3064,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
         ? {}
         : { delegatedFrom: command.delegatedFrom }),
+      // Pult: tags at creation, kept unique as thread.tag.set keeps them.
+      ...(command.tags?.length ? { tags: [...new Set(command.tags)] } : {}),
       lineage: {
         parentThreadId: null,
         relationshipToParent: null,

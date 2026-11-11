@@ -20,6 +20,7 @@ import {
   type RuntimeMode,
   type ScheduledTaskId,
   ThreadId,
+  type ThreadTag,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -103,6 +104,8 @@ export interface ThreadLaunchInput {
   readonly linkOrigin?: OrchestrationV2LinkOrigin;
   /** The parent there, when that environment's agent delegated this as a task. */
   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
+  /** Pult: the new thread's tags, stored as it is created; a reused thread takes none. */
+  readonly tags?: ReadonlyArray<ThreadTag>;
 }
 
 type PreparationInput = Pick<
@@ -854,6 +857,10 @@ const make = Effect.gen(function* () {
           }),
         ),
       );
+      // Pult: only thread.create stores tags, so a reused thread would drop them.
+      if (input.reuseExistingThread === true && input.tags !== undefined) {
+        return yield* mapError(input, "update-thread")("A reused thread cannot take tags.");
+      }
       if (input.reuseExistingThread === true && input.threadId === undefined) {
         return yield* mapError(
           input,
@@ -948,6 +955,7 @@ const make = Effect.gen(function* () {
                 ...(input.delegatedFrom === undefined
                   ? {}
                   : { delegatedFrom: input.delegatedFrom }),
+                ...(input.tags === undefined ? {} : { tags: input.tags }), // Pult: tags at creation.
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               });
