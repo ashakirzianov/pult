@@ -14,6 +14,13 @@ let drafts: typeof Drafts | undefined;
 let looking = false;
 /** The conversations told stranded, by `scopedKey`, each once per page session. */
 const told = new Set<string>();
+/**
+ * The conversations whose composer a move left holding something while the
+ * draft still held nothing (a file the mover keeps back: one whose upload a
+ * reload cut short), by `scopedKey`: carried no more this page session, so
+ * the carry never moves the same nothing again and again.
+ */
+const stuck = new Set<string>();
 
 /** Looks once the current change is through: a move changes the composers again, and is looked at after. */
 function look(): void {
@@ -53,6 +60,7 @@ function carry(drafts: typeof Drafts): void {
               threadId: thread.id,
               settledAt: thread.settledAt,
               holds:
+                !stuck.has(scopedKey(thread.environmentId, thread.id)) &&
                 drafts.composerHoldsText({
                   kind: "thread",
                   environmentId: thread.environmentId,
@@ -72,6 +80,12 @@ function carry(drafts: typeof Drafts): void {
     } as const;
     if (decision.kind === "move") {
       drafts.moveComposerText(from, target);
+      if (drafts.composerHoldsText(target) !== true) {
+        stuck.add(scopedKey(target.environmentId, decision.threadId));
+        console.warn(
+          `[pult-shell] the Star's ended conversation ${decision.threadId} holds what the composer cannot move into the draft, left there.`,
+        );
+      }
       continue;
     }
     const key = scopedKey(target.environmentId, decision.threadId);
