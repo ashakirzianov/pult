@@ -49,7 +49,8 @@ export function isStarRoot(root: string): boolean {
   return /(^|[/\\])\.pult[/\\]stars[/\\][^/\\]+[/\\]?$/.test(root);
 }
 
-function frontMatter(
+/** A text's front matter as its lines, and where its body starts; undefined for a text without one. */
+export function frontMatter(
   text: string,
 ): { readonly lines: string[]; readonly bodyStart: number } | undefined {
   const opening = /^---\r?\n/.exec(text);
@@ -66,7 +67,7 @@ function frontMatter(
 }
 
 /** A line's key and value: a plain scalar, or a quoted one. */
-function entry(line: string): { readonly key: string; readonly value: string } | undefined {
+export function entry(line: string): { readonly key: string; readonly value: string } | undefined {
   const match = /^([A-Za-z0-9_-]+):[ \t]*(.*?)[ \t]*$/.exec(line);
   if (match === null) return undefined;
   const [, key = "", raw = ""] = match;
@@ -99,7 +100,8 @@ export function readFrontMatter(
   return { fields: fieldsOf(matter.lines), body: text.slice(matter.bodyStart) };
 }
 
-const fieldsOf = (lines: ReadonlyArray<string>) =>
+/** Each line's key and value, by key; a line of another shape is left out. */
+export const fieldsOf = (lines: ReadonlyArray<string>) =>
   new Map(
     lines.flatMap((line) => {
       const parsed = entry(line);
