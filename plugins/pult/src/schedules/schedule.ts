@@ -4,7 +4,7 @@
 // a run lands in, is the user's where absent. Every due time is a function of the file alone.
 import { DateTime, Option } from "../host.ts";
 import { entry, frontMatter, SYSTEM_DIRECTORY } from "../stars/record.ts";
-import type { ConversationKind } from "../stars/stars.ts";
+import type { Channel } from "../stars/channels.ts";
 
 export const SCHEDULES_DIRECTORY = `${SYSTEM_DIRECTORY}/schedules`;
 
@@ -53,8 +53,8 @@ export interface Schedule {
   readonly timezone: string;
   readonly zone: DateTime.TimeZone;
   readonly rule: Rule;
-  /** The conversation a run is delivered to. */
-  readonly to: ConversationKind;
+  /** The channel a run is delivered to. */
+  readonly to: Channel;
   /** The message, the body with its surrounding blank lines dropped. */
   readonly text: string;
 }

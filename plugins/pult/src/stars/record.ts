@@ -13,8 +13,8 @@ export const SYSTEM_DIRECTORY = ".pult";
 
 export const RECORD_FILE = `${SYSTEM_DIRECTORY}/star.yaml`;
 
-/** The transcripts of a Star's conversations, a folder per environment (`transcript.ts`). */
-export const CONVERSATIONS_DIRECTORY = `${SYSTEM_DIRECTORY}/conversations`;
+/** A Star's channels, a folder each holding its transcripts, a folder per environment (`transcript.ts`). */
+export const CHANNELS_DIRECTORY = `${SYSTEM_DIRECTORY}/channels`;
 
 export const AGENTS_FILE = "AGENTS.md";
 

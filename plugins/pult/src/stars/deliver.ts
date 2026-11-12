@@ -1,7 +1,7 @@
 // The one door for every message Pult sends a Star (xaxis `pult/issues/message-star.md`, Delivery;
-// `pult/issues/star-multiple-threads.md`): under the Star's lock, once it has looked, the message is
-// queued into the current conversation of the kind it is for, else that kind wakes in a fresh
-// thread at the model and modes of the newest conversation of that kind, else of the other.
+// `pult/issues/star-channels.md`): under the Star's lock, once it has looked, it is queued into its
+// channel's current conversation, else the channel wakes in a fresh thread of its own, tagged, at the
+// model and modes of the channel's newest conversation, else `user`'s, else the Star's newest.
 import {
   CommandId,
   MessageId,
@@ -18,14 +18,9 @@ import {
   ThreadLaunchService,
   ThreadManagementService,
 } from "../host.ts";
+import { type Channel, channelTag, isChannel } from "./channels.ts";
 import { starName } from "./record.ts";
-import {
-  type ConversationKind,
-  type Conversations,
-  type Star,
-  type Stars,
-  WORK_TAG,
-} from "./stars.ts";
+import type { Conversations, Star, Stars } from "./stars.ts";
 
 /**
  * Who sends: a thread, held to upstream's rule that its target's modes be no broader than its own,
@@ -37,10 +32,10 @@ export type Sender = { readonly thread: ThreadId } | "plugin";
 export interface Delivery {
   readonly star: Star;
   readonly text: string;
-  /** One line naming the sender, written into the stored text as `[From <from>, to <the conversation>]`. */
+  /** One line naming the sender, written into the stored text as `[From <from>, to your channel <to>]`. */
   readonly from: string;
-  /** The conversation it is for: the Star's work conversation, or its conversation with the user. */
-  readonly to: ConversationKind;
+  /** The channel it is for, a slug. */
+  readonly to: Channel;
   /** One per message: a repeat delivers nothing new. */
   readonly key: string;
   readonly sender: Sender;
@@ -70,12 +65,6 @@ const failure = (code: OrchestratorMcpFailure["code"], message: string) =>
 const failed = (error: { readonly message: string }) =>
   failure("orchestration_error", error.message);
 
-/** How the bracket line names each conversation to the Star. */
-const conversationName: Record<ConversationKind, string> = {
-  work: "your work conversation",
-  user: "your conversation with the user",
-};
-
 /** Resolves the server's services; the Stars come after, since making them starts their pass. */
 export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
@@ -84,6 +73,7 @@ export const make = Effect.gen(function* () {
 
   return (stars: Stars): Deliver =>
     Effect.fn("Stars.deliver")(function* ({ star, text, from, to, key, sender }: Delivery) {
+      if (!isChannel(to)) return yield* Effect.die(new Error(`"${to}" is no channel's slug.`));
       yield* startup.awaitCommandReady.pipe(Effect.mapError(failed));
       const limit = sender === "plugin" ? undefined : yield* DispatchModeLimit.DispatchModeLimit;
       if (sender !== "plugin" && limit === undefined)
@@ -93,7 +83,7 @@ export const make = Effect.gen(function* () {
       const withinLimit = (target: OrchestrationV2ThreadShell) =>
         limit === undefined ? Effect.void : McpThreadAccess.assertTargetWithinLimits(limit, target);
 
-      const stored = `[From ${from}, to ${conversationName[to]}]\n\n${text}`;
+      const stored = `[From ${from}, to your channel ${to}]\n\n${text}`;
       const senderField = sender === "plugin" ? {} : { senderThreadId: sender.thread };
       const creation = {
         createdBy: "agent" as const,
@@ -126,8 +116,8 @@ export const make = Effect.gen(function* () {
             runtimeMode: newest.runtimeMode,
             interactionMode: newest.interactionMode,
             workspaceStrategy: { type: "root" },
-            // The work conversation is created tagged, so it is never one untagged, the user's.
-            ...(to === "work" ? { tags: [WORK_TAG] } : {}),
+            // Created tagged with its channel, `user` too, so it is never read as another's.
+            tags: [channelTag(to)],
             initialMessage: {
               messageId: wake.messageId,
               text: stored,

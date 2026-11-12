@@ -194,15 +194,21 @@ describe("transcriptName", () => {
 });
 
 describe("transcriptsFolder", () => {
-  it("names the environment's folder by one segment of its id, which can name nothing above it", () => {
-    assert.strictEqual(transcriptsFolder("env-1", "user"), ".pult/conversations/env-1/user");
-    assert.strictEqual(transcriptsFolder("env-1", "work"), ".pult/conversations/env-1/work");
+  it("names the channel's folder, then the environment's by one segment of its id, which can name nothing above it", () => {
+    assert.strictEqual(
+      transcriptsFolder("env-1", "user"),
+      ".pult/channels/user/conversations/env-1",
+    );
+    assert.strictEqual(
+      transcriptsFolder("env-1", "unit-2"),
+      ".pult/channels/unit-2/conversations/env-1",
+    );
     assert.strictEqual(
       transcriptsFolder("../../.ssh", "user"),
-      ".pult/conversations/.._.._.ssh/user",
+      ".pult/channels/user/conversations/.._.._.ssh",
     );
-    assert.strictEqual(transcriptsFolder("..", "user"), ".pult/conversations/_../user");
-    assert.strictEqual(transcriptsFolder("", "user"), ".pult/conversations/_/user");
+    assert.strictEqual(transcriptsFolder("..", "user"), ".pult/channels/user/conversations/_..");
+    assert.strictEqual(transcriptsFolder("", "user"), ".pult/channels/user/conversations/_");
   });
 });
 

@@ -129,8 +129,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
         {
           id: star.id,
           instructions: `${star.root}/instructions.md`,
-          conversation: null,
-          work: null,
+          channels: [],
           conversations: [],
         },
       ],
@@ -177,8 +176,10 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";
-    const file = `${star.root}/.pult/conversations/env-1/user/${name}`;
-    yield* fs.makeDirectory(`${star.root}/.pult/conversations/env-1/user`, { recursive: true });
+    const file = `${star.root}/.pult/channels/user/conversations/env-1/${name}`;
+    yield* fs.makeDirectory(`${star.root}/.pult/channels/user/conversations/env-1`, {
+      recursive: true,
+    });
     yield* fs.writeFileString(
       file,
       '---\nthread: "thread-1"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 1\n---\n\n### User · 2026-11-10T12:00:00Z\n\nHello\n',
@@ -314,7 +315,7 @@ it.effect(
         },
       });
       expect(server.threads.messages[0]).toMatchObject({
-        text: '[From thread worker "Worker" in project "Repo", to your work conversation]\n\nDone.',
+        text: '[From thread worker "Worker" in project "Repo", to your channel work]\n\nDone.',
         senderThreadId: "worker",
         creationSource: "mcp",
         // The wrapper's limits, the caller's own modes.
@@ -335,7 +336,7 @@ it.effect(
       const unknown = yield* call(scopeOf({ thread: "worker" }), { star: "nobody", message: "x" });
       expect(unknown).toMatchObject({ isError: true, body: { code: "invalid_request" } });
       expect(unknown.body.message).toContain('"Vega" (vega-id)');
-      // The Star's conversation with the user hands something to its work conversation.
+      // The Star's conversation with the user hands something to work, naming no channel.
       own.shell = { ...own.shell, settledOverride: null, settledAt: null };
       expect(
         (yield* call(scopeOf({ thread: "star-thread" }), { star: "vega-id", message: "Build it." }))
@@ -343,19 +344,20 @@ it.effect(
       ).toMatchObject({ outcome: "queued", threadId: "launched-1" });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "launched-1",
-        text: "[From your conversation with the user, to your work conversation]\n\nBuild it.",
+        text: "[From your channel user, to your channel work]\n\nBuild it.",
         senderThreadId: "star-thread",
       });
-      // Its work conversation, a client outside a thread, a read-only client.
+      // Its work conversation messaging its own channel is refused nothing: it queues itself a turn.
       const workThread = server.threads.byId(ThreadId.make("launched-1"))!;
-      expect(workThread.shell.tags).toEqual(["pult:work"]);
+      expect(workThread.shell.tags).toEqual(["pult:channel:work"]);
       workThread.shell = { ...workThread.shell, activeRunId: RunId.make("work-run") };
-      const ownWork = yield* call(scopeOf({ thread: "launched-1" }), {
-        star: "vega-id",
-        message: "x",
-      });
-      expect(ownWork).toMatchObject({ isError: true, body: { code: "invalid_request" } });
-      expect(ownWork.body.message).toContain("own work conversation");
+      expect(
+        yield* call(scopeOf({ thread: "launched-1" }), { star: "vega-id", message: "Later." }),
+      ).toMatchObject({ isError: false, body: { outcome: "queued", threadId: "launched-1" } });
+      expect(server.threads.messages.at(-1)?.text).toBe(
+        "[From your channel work, to your channel work]\n\nLater.",
+      );
+      // A client outside a thread, a read-only client.
       expect(
         yield* refusal(scopeOf({ client: "full-access" }), { star: "vega-id", message: "x" }),
       ).toBe("thread_credential_required");
@@ -386,6 +388,130 @@ it.effect(
       expect(yield* refusal(scopeOf({ thread: "worker" }), { star: "vega-id", message: "x" })).toBe(
         "runtime_mode_escalation_denied",
       );
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect(
+  "pult_star_message lands in the channel the call names, else the caller's tag beside the Star's child tag, else work",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const server = yield* fakeServer;
+      const context = yield* Layer.build(
+        PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+        ),
+      );
+      const mcp = Context.get(context, McpServer.McpServer);
+      const call = (caller: string, args: Record<string, unknown>) =>
+        mcp.callTool({ name: "pult_star_message", arguments: args }).pipe(
+          Effect.provideService(
+            McpInvocationContext.McpInvocationContext,
+            scopeOf({ thread: caller }),
+          ),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          Effect.map((result) => {
+            const text = result.content[0];
+            return {
+              isError: result.isError === true,
+              body: text?.type === "text" ? JSON.parse(text.text) : undefined,
+            };
+          }),
+        );
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      /** A Star's folder and project. */
+      const starAt = (folder: string, id: string, name: string) =>
+        Effect.gen(function* () {
+          const root = path.join(server.directory, folder);
+          yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
+          yield* fs.writeFileString(
+            path.join(root, ".pult/star.yaml"),
+            `xaxis-kind: star\nid: "${id}"\nname: "${name}"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n`,
+          );
+          return yield* server.projects.service.create({
+            projectId: ProjectId.make(`p-${id}`),
+            title: name,
+            workspaceRoot: root,
+          });
+        });
+      const vega = yield* starAt("star", "vega-id", "Vega");
+      const deneb = yield* starAt("star-2", "deneb-id", "Deneb");
+      /** An open conversation, idle with its cache warm. */
+      const conversation = (projectId: ProjectId, id: string, tags: ReadonlyArray<string>) =>
+        server.threads.add(
+          projectId,
+          id,
+          {
+            createdAt: at("2026-11-10T12:50:00.000Z"),
+            promptCacheExpiresAt: at("2026-11-10T13:30:00.000Z"),
+            runtimeMode: "auto",
+            tags: [...tags],
+          },
+          [run(`${id}-run`, "completed")],
+        );
+      const user = conversation(vega.id, "vega-user", []);
+      const work = conversation(vega.id, "vega-work", ["pult:channel:work"]);
+      const denebReview = conversation(deneb.id, "deneb-review", ["pult:channel:review"]);
+      denebReview.shell = {
+        ...denebReview.shell,
+        runtimeMode: "full-access",
+        activeRunId: RunId.make("deneb-run"),
+      };
+      const repo = yield* server.projects.service.create({
+        projectId: ProjectId.make("p-repo"),
+        title: "Repo",
+        workspaceRoot: `${server.tmp}/repo`,
+        createWorkspaceRootIfMissing: true,
+      });
+      const child = (id: string, tags: ReadonlyArray<string>) =>
+        server.threads.add(repo.id, id, {
+          title: id,
+          runtimeMode: "full-access",
+          activeRunId: RunId.make(`${id}-run`),
+          tags: [...tags],
+        });
+      child("builder", ["pult:child:star:vega-id", "pult:channel:unit-2"]);
+      child("untagged", ["pult:child:star:vega-id"]);
+      child("foreign", ["pult:child:star:deneb-id", "pult:channel:unit-2"]);
+      const landed = () => {
+        const message = server.threads.messages.at(-1);
+        const thread = message === undefined ? undefined : server.threads.byId(message.threadId);
+        return { thread: thread?.shell.id, tags: thread?.shell.tags, text: message?.text };
+      };
+
+      // A child tagged for a channel wakes it in a thread of its own, user and work untouched.
+      expect((yield* call("builder", { star: "vega-id", message: "Done." })).body.outcome).toBe(
+        "launched",
+      );
+      expect(landed()).toEqual({
+        thread: "launched-1",
+        tags: ["pult:channel:unit-2"],
+        text: '[From thread builder "builder" in project "Repo", to your channel unit-2]\n\nDone.',
+      });
+      expect([user.runs.length, work.runs.length]).toEqual([1, 1]);
+      // No channel tag, or another Star's child tag beside one: work.
+      yield* call("untagged", { star: "vega-id", message: "Done." });
+      expect(landed().thread).toBe(work.shell.id);
+      yield* call("foreign", { star: "vega-id", message: "Done." });
+      expect(landed().thread).toBe(work.shell.id);
+      // The call's channel wins over the tag.
+      yield* call("builder", { star: "vega-id", message: "Elsewhere.", channel: "unit-3" });
+      expect(landed().tags).toEqual(["pult:channel:unit-3"]);
+      // Another Star names a channel, `user` included, and is named with its own.
+      yield* call("deneb-review", { star: "vega-id", message: "A question.", channel: "user" });
+      expect(landed()).toEqual({
+        thread: user.shell.id,
+        tags: [],
+        text: '[From Star "Deneb" (deneb-id), its channel review, to your channel user]\n\nA question.',
+      });
+      // A channel that is no slug is invalid parameters, and nothing lands.
+      const count = server.threads.messages.length;
+      const invalid = yield* Effect.flip(
+        call("builder", { star: "vega-id", message: "x", channel: "Unit 2" }),
+      );
+      expect(invalid).toBeInstanceOf(McpSchema.InvalidParams);
+      expect(server.threads.messages.length).toBe(count);
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 

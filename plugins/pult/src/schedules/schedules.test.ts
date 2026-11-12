@@ -91,8 +91,7 @@ const harnessWith = (
     const starView: StarsView["stars"][number] = {
       ...star,
       instructions: path.join(root, "instructions.md"),
-      conversation: null,
-      work: null,
+      channels: [],
       asleepSince: star.created,
       model: null,
       conversations: [],
@@ -147,7 +146,7 @@ describe("namesSchedules", () => {
       assert.isTrue(Schedules.namesSchedules(changed), changed);
     for (const changed of [
       "star/.pult/runs/standup/2026-11-10T09-00Z.yaml",
-      "star/.pult/conversations/env-1/a.md",
+      "star/.pult/channels/user/conversations/env-1/a.md",
       "star/.pult/asks/a.md",
       "star/instructions.md",
       "star/notes/.pult/schedules/a.md",

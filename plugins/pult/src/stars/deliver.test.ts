@@ -1,17 +1,19 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { type OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2ThreadShell, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
-import { DispatchModeLimit, Effect, Exit, Layer } from "../host.ts";
+import { DateTime, DispatchModeLimit, Effect, Exit, Layer } from "../host.ts";
+import { type Channel, channelTag } from "./channels.ts";
 import * as Delivery from "./deliver.ts";
 import * as Stars from "./stars.ts";
 import { at, fakeServer, run } from "./testing.ts";
 
 const worker = ThreadId.make("worker");
 const fullAccess = { runtimeMode: "full-access", interactionMode: "default" } as const;
-const work = { tags: [Stars.WORK_TAG] } satisfies Partial<OrchestrationV2ThreadShell>;
+const work = { tags: [channelTag("work")] } satisfies Partial<OrchestrationV2ThreadShell>;
+const model = (name: string) => ({ instanceId: ProviderInstanceId.make("codex"), model: name });
 
 /** One Star over a fake server, and `deliver` as the plugin builds it. */
 const harness = Effect.gen(function* () {
@@ -20,7 +22,7 @@ const harness = Effect.gen(function* () {
   const stars = yield* Stars.make.pipe(Effect.provide(server.layer));
   const deliver = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(stars);
   const star = yield* stars.create({ ifNone: true });
-  /** A conversation that ended an hour ago; the user's unless `shell` tags it. */
+  /** A conversation that ended an hour ago; `user`'s unless `shell` tags it. */
   const ended = (id = "ended", shell: Partial<OrchestrationV2ThreadShell> = {}) =>
     server.threads.add(star.projectId, id, {
       createdAt: at("2026-11-10T11:00:00.000Z"),
@@ -30,7 +32,7 @@ const harness = Effect.gen(function* () {
       interactionMode: "default",
       ...shell,
     });
-  /** An open conversation, its cache warm; the user's unless `shell` tags it. */
+  /** An open conversation, its cache warm; `user`'s unless `shell` tags it. */
   const open = (
     runs = [run("open-run", "completed")],
     id = "open",
@@ -47,18 +49,19 @@ const harness = Effect.gen(function* () {
       },
       runs,
     );
-  const fromPlugin = (key: string, text = "Hello", to: Stars.ConversationKind = "user") =>
+  const fromPlugin = (key: string, text = "Hello", to: Channel = "user") =>
     deliver({ star, text, from: 'schedule "standup"', to, key, sender: "plugin" });
-  /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits; to work, as the tool sends. */
+  /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits; to `work` unless it names another. */
   const fromThread = (
     key: string,
     limit: { runtimeMode: "auto" | "full-access"; interactionMode: "default" },
+    to: Channel = "work",
   ) =>
     deliver({
       star,
       text: "Done.",
       from: "thread worker",
-      to: "work",
+      to,
       key,
       sender: { thread: worker },
     }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit));
@@ -71,7 +74,7 @@ const failureCode = <A>(exit: Exit.Exit<A, { readonly code: string }>) =>
     : undefined;
 
 describe("deliver", () => {
-  it.effect("wakes a sleeping Star at its last conversation's model and modes", () =>
+  it.effect("wakes a sleeping Star at its last conversation's model and modes, tagged", () =>
     Effect.gen(function* () {
       const h = yield* harness;
       const last = h.ended();
@@ -100,8 +103,8 @@ describe("deliver", () => {
           runtimeMode: "auto",
           interactionMode: "default",
           workspaceStrategy: { type: "root" },
-          // The conversation with the user carries no tag.
-          tags: undefined,
+          // `user`'s conversation too is launched tagged.
+          tags: ["pult:channel:user"],
         },
       );
       // From the plugin: a server message, no sender thread, no ceiling.
@@ -116,7 +119,7 @@ describe("deliver", () => {
         },
         {
           threadId: ThreadId.make("launched-1"),
-          text: '[From schedule "standup", to your conversation with the user]\n\nTime for the standup.',
+          text: '[From schedule "standup", to your channel user]\n\nTime for the standup.',
           senderThreadId: undefined,
           createdBy: "agent",
           creationSource: "server",
@@ -150,7 +153,7 @@ describe("deliver", () => {
           limit: message?.limit,
         },
         {
-          text: "[From thread worker, to your work conversation]\n\nDone.",
+          text: "[From thread worker, to your channel work]\n\nDone.",
           senderThreadId: worker,
           createdBy: "agent",
           creationSource: "mcp",
@@ -179,7 +182,7 @@ describe("deliver", () => {
             runtimeMode: launch?.runtimeMode,
           },
           {
-            tags: [Stars.WORK_TAG],
+            tags: ["pult:channel:work"],
             modelSelection: user.shell.modelSelection,
             runtimeMode: "auto",
           },
@@ -217,7 +220,7 @@ describe("deliver", () => {
       });
       assert.deepStrictEqual(
         h.launches.launches.map((each) => each.tags),
-        [[Stars.WORK_TAG]],
+        [["pult:channel:work"]],
       );
       assert.deepStrictEqual(
         h.threads.messages.map((each) => each.threadId),
@@ -230,23 +233,58 @@ describe("deliver", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("wakes each kind at the newest conversation of its kind, else of the other", () =>
+  it.effect(
+    "wakes a channel at its newest conversation, else at user's newest, else at the Star's newest in any channel",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        // Only a work conversation so far: a fresh channel and `user` alike take its model and modes.
+        h.ended("work-ended", {
+          ...work,
+          runtimeMode: "full-access",
+          interactionMode: "plan",
+          modelSelection: model("work-model"),
+        });
+        yield* h.fromPlugin("k1", "To a fresh channel.", "unit-2");
+        // The user's ended later; work's model and modes are still its own.
+        h.ended("user-ended", {
+          createdAt: at("2026-11-10T11:30:00.000Z"),
+          settledAt: at("2026-11-10T12:30:00.000Z"),
+          modelSelection: model("user-model"),
+        });
+        yield* h.fromPlugin("k2", "To work.", "work");
+        // A fresh channel takes the model the user set, not whichever channel ran last.
+        yield* h.fromPlugin("k3", "To another fresh channel.", "unit-3");
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => [
+            each.modelSelection.model,
+            each.runtimeMode,
+            each.interactionMode,
+            each.tags,
+          ]),
+          [
+            ["work-model", "full-access", "plan", ["pult:channel:unit-2"]],
+            ["work-model", "full-access", "plan", ["pult:channel:work"]],
+            ["user-model", "auto", "default", ["pult:channel:unit-3"]],
+          ],
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("searches a channel's newest ended conversation among the latest 100 settled", () =>
     Effect.gen(function* () {
       const h = yield* harness;
-      h.ended("work-ended", { ...work, runtimeMode: "full-access", interactionMode: "plan" });
-      // The user's ended later; the work conversation's model and modes are still its own kind's.
-      h.ended("user-ended", {
-        createdAt: at("2026-11-10T11:30:00.000Z"),
-        settledAt: at("2026-11-10T12:30:00.000Z"),
-      });
+      h.ended("work-ended", { ...work, modelSelection: model("work-model") });
+      // A hundred of `user`'s settled after it, so work's newest is out of the search's reach.
+      for (let index = 0; index < 100; index += 1)
+        h.ended(`user-${index}`, {
+          settledAt: DateTime.add(at("2026-11-10T12:10:00.000Z"), { seconds: index }),
+          modelSelection: model("user-model"),
+        });
       yield* h.fromPlugin("k1", "To work.", "work");
-      yield* h.fromPlugin("k2", "To the user.", "user");
       assert.deepStrictEqual(
-        h.launches.launches.map((each) => [each.runtimeMode, each.interactionMode, each.tags]),
-        [
-          ["full-access", "plan", [Stars.WORK_TAG]],
-          ["auto", "default", undefined],
-        ],
+        h.launches.launches.map((each) => each.modelSelection.model),
+        ["user-model"],
       );
     }).pipe(Effect.scoped),
   );
@@ -267,24 +305,32 @@ describe("deliver", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("wakes one work thread for two workers' messages at once", () =>
-    Effect.gen(function* () {
-      const h = yield* harness;
-      h.ended();
-      const both = yield* Effect.all(
-        [h.fromThread("k1", fullAccess), h.fromThread("k2", fullAccess)],
-        { concurrency: "unbounded" },
-      );
-      assert.deepStrictEqual(both.map((each) => each.outcome).toSorted(), ["launched", "queued"]);
-      assert.deepStrictEqual(
-        h.launches.launches.map((each) => each.tags),
-        [[Stars.WORK_TAG]],
-      );
-      assert.deepStrictEqual(
-        both.map((each) => each.threadId),
-        [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
-      );
-    }).pipe(Effect.scoped),
+  it.effect(
+    "wakes one thread of its own for two messages at once to a sleeping channel, while work is open",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.ended();
+        const open = h.open(undefined, "work-open", work);
+        const both = yield* Effect.all(
+          [h.fromThread("k1", fullAccess, "unit-2"), h.fromThread("k2", fullAccess, "unit-2")],
+          { concurrency: "unbounded" },
+        );
+        assert.deepStrictEqual(both.map((each) => each.outcome).toSorted(), ["launched", "queued"]);
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => each.tags),
+          [["pult:channel:unit-2"]],
+        );
+        assert.deepStrictEqual(
+          both.map((each) => each.threadId),
+          [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
+        );
+        assert.deepStrictEqual(
+          open.runs.map((each) => each.id),
+          ["open-run"],
+        );
+        assert.include(h.threads.messages[0]?.text, "to your channel unit-2]");
+      }).pipe(Effect.scoped),
   );
 
   it.effect("delivers a key once on either path, and finishes a wake cut short", () =>
@@ -338,21 +384,26 @@ describe("deliver", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("fails for a Star never spoken to, and dies for a thread outside the wrapper", () =>
-    Effect.gen(function* () {
-      const h = yield* harness;
-      assert.strictEqual(failureCode(yield* Effect.exit(h.fromPlugin("k1"))), "thread_not_found");
-      const outside = yield* Effect.exit(
-        h.deliver({
-          star: h.star,
-          text: "x",
-          from: "y",
-          to: "work",
-          key: "k2",
-          sender: { thread: worker },
-        }),
-      );
-      assert.isTrue(Exit.isFailure(outside) && outside.cause.reasons[0]?._tag === "Die");
-    }).pipe(Effect.scoped),
+  it.effect(
+    "fails for a Star never spoken to, and dies for a thread outside the wrapper or no channel's slug",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        assert.strictEqual(failureCode(yield* Effect.exit(h.fromPlugin("k1"))), "thread_not_found");
+        const died = <A, E>(exit: Exit.Exit<A, E>) =>
+          Exit.isFailure(exit) && exit.cause.reasons[0]?._tag === "Die";
+        const outside = yield* Effect.exit(
+          h.deliver({
+            star: h.star,
+            text: "x",
+            from: "y",
+            to: "work",
+            key: "k2",
+            sender: { thread: worker },
+          }),
+        );
+        assert.isTrue(died(outside));
+        assert.isTrue(died(yield* Effect.exit(h.fromPlugin("k3", "x", "Not a slug"))));
+      }).pipe(Effect.scoped),
   );
 });

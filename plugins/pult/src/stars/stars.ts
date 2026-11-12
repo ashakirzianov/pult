@@ -1,7 +1,7 @@
-// The Stars of this server (xaxis `pult/design-durable-agent-sleep`, `pult/issues/star-multiple-threads.md`):
-// found on demand from the store and the record files, kept up in their folders, their two kinds of
-// conversation, the user's and the work one tagged `pult:work`, put to sleep and transcribed once a
-// minute and before one is handed to anyone. The plugin persists nothing.
+// The Stars of this server (xaxis `pult/design-durable-agent-sleep`, `pult/issues/star-channels.md`):
+// found on demand from the store and the record files, kept up in their folders, their conversations,
+// one current per channel, which a `pult:channel:<slug>` tag names and `user` where none does, put to
+// sleep and transcribed once a minute and before one is handed to anyone. The plugin persists nothing.
 import {
   CommandId,
   linkOriginIsFenced,
@@ -29,9 +29,10 @@ import {
 } from "../host.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { type Ask, askName, ASKS_DIRECTORY, askTitle } from "./asks.ts";
+import { type Channel, taggedChannel, USER_CHANNEL } from "./channels.ts";
 import {
   AGENTS_FILE,
-  CONVERSATIONS_DIRECTORY,
+  CHANNELS_DIRECTORY,
   DEFAULT_STAR_FOLDER,
   INSTRUCTIONS_FILE,
   isStarRoot,
@@ -62,20 +63,14 @@ const PASS_INTERVAL_MS = 60_000;
 const TRANSCRIPTS_KEPT = 10;
 /** Later than any settlement: the first page of settled threads starts below it. */
 const NEWEST_SETTLED = "9999-12-31T23:59:59.999Z";
-/** How many settled threads one page of the search for a kind's latest reads at least. */
+/** How many settled threads one page of the search for a channel's latest reads at least. */
 const SETTLED_PAGE = 25;
+/** How many of the project's latest settled threads the search for a wake's model reads at most. */
+const WAKE_SEARCH = 100;
 
-/** The tag of a Star's work conversation: the plugin launches the thread with it, and nothing else sets it. */
-export const WORK_TAG = "pult:work";
-
-/** Which of a Star's conversations: the one with the user, or its work conversation. */
-export type ConversationKind = "user" | "work";
-
-/** A conversation's kind, by its tag alone. */
-const kindOf = (thread: Pick<OrchestrationV2ThreadShell, "tags">): ConversationKind =>
-  thread.tags?.includes(WORK_TAG) === true ? "work" : "user";
-
-const otherKind = (kind: ConversationKind): ConversationKind => (kind === "user" ? "work" : "user");
+/** A conversation's channel, by its first valid channel tag; `user` with none. */
+const channelOf = (thread: Pick<OrchestrationV2ThreadShell, "tags">): Channel =>
+  taggedChannel(thread.tags) ?? USER_CHANNEL;
 
 export interface Star {
   readonly id: string;
@@ -87,17 +82,18 @@ export interface Star {
 }
 
 /**
- * What `withConversation` hands its use, for the kind it names: that kind's open conversation
- * created last, and the one a wake takes its model and modes from, the newest of that kind, open
- * or ended, else of the other kind.
+ * What `withConversation` hands its use, for the channel it names: that channel's open conversation
+ * created last, and the one a wake takes its model and modes from: the newest of that channel, open
+ * or ended, else of `user`, else of any channel.
  */
 export interface Conversations {
   readonly current: OrchestrationV2ThreadShell | null;
   readonly newest: OrchestrationV2ThreadShell | null;
 }
 
-/** A conversation as the view serves it: its thread, and its deadline or what holds it. */
-export interface ConversationView {
+/** An open channel as the view serves it: its slug, its current conversation's thread, and its deadline or what holds it. */
+export interface ChannelView {
+  readonly slug: Channel;
   readonly threadId: ThreadId;
   readonly sleeps: { readonly at: string } | { readonly heldBy: string };
 }
@@ -109,12 +105,10 @@ export interface StarsView {
   readonly stars: ReadonlyArray<
     Star & {
       readonly instructions: string;
-      /** The current conversation with the user; `asleepSince` and `conversations` are of that kind too. */
-      readonly conversation: ConversationView | null;
-      /** The current work conversation. */
-      readonly work: ConversationView | null;
+      /** Every open channel, `user` among them, by slug; `asleepSince`, `model` and `conversations` are `user`'s. */
+      readonly channels: ReadonlyArray<ChannelView>;
       readonly asleepSince: string;
-      /** The model a wake into the conversation with the user takes, the `newest` of `withConversation`'s; null before the Star's first conversation. */
+      /** The model a wake into `user` takes, the `newest` of `withConversation`'s; null before the Star's first conversation. */
       readonly model: ModelSelection | null;
       readonly conversations: ReadonlyArray<string>;
       /** By name. */
@@ -159,22 +153,19 @@ export interface Stars {
   readonly directory: string;
   readonly list: Effect.Effect<ReadonlyArray<Star>, StarsError>;
   readonly get: (id: string) => Effect.Effect<Star | undefined, StarsError>;
-  /** The Star whose conversation the thread is, a root thread of its project no fenced link started, and its kind. */
+  /** The Star whose conversation the thread is, a root thread of its project no fenced link started, and its channel. */
   readonly ofThread: (
     threadId: ThreadId,
-  ) => Effect.Effect<
-    { readonly star: Star; readonly kind: ConversationKind } | undefined,
-    StarsError
-  >;
-  /** Under the Star's lock, once the Star is looked at: the conversations of the kind `to` names. */
+  ) => Effect.Effect<{ readonly star: Star; readonly channel: Channel } | undefined, StarsError>;
+  /** Under the Star's lock, once the Star is looked at: the conversations of `channel`. */
   readonly withConversation: <A, E, R>(
     star: Star,
-    to: ConversationKind,
+    channel: Channel,
     use: (conversations: Conversations) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StarsError, R>;
   /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects the request's run as the latest. */
   readonly sleepNow: (star: Star, request: StarSleepRequest) => Effect.Effect<void>;
-  /** The user's request, Refresh Context: the look under the Star's lock with its current conversation with the user's deadline taken as passed, every hold applying. */
+  /** The user's request, Refresh Context: the look under the Star's lock with `user`'s current conversation's deadline taken as passed, every hold applying. */
   readonly sleepByHand: (star: Star) => Effect.Effect<SleepByHand, StarsError>;
   readonly view: Effect.Effect<StarsView, StarsError>;
   readonly transcript: (
@@ -233,9 +224,11 @@ const instant = (iso: string | undefined) => {
   return parsed?._tag === "Some" ? DateTime.toEpochMillis(parsed.value) : undefined;
 };
 
-/** The sleep rule's reading of a conversation: the work conversation alone rotates on a full context. */
+/** The sleep rule's reading of a conversation: every channel but `user` rotates on a full context. */
 const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
-  wakefulness(records, thread.promptCacheExpiresAt, { rotatesWhenFull: kindOf(thread) === "work" });
+  wakefulness(records, thread.promptCacheExpiresAt, {
+    rotatesWhenFull: channelOf(thread) !== USER_CHANNEL,
+  });
 
 const sleepsOf = (state: Wakefulness) =>
   state.kind === "held"
@@ -390,24 +383,30 @@ export const make = Effect.gen(function* () {
           ),
     );
 
-  /** The project's latest settled conversations, of `kind` where it names one, the latest first. */
+  /**
+   * The project's latest settled conversations, of `channel` where it names one, the latest first;
+   * with `searched`, among the project's latest that many settled threads alone.
+   */
   const settledConversations = Effect.fn("Stars.settledConversations")(function* (
     star: Star,
     count: number,
-    kind?: ConversationKind,
+    options: { readonly channel?: Channel; readonly searched?: number } = {},
   ) {
+    const { channel, searched = Infinity } = options;
     const roots: OrchestrationV2ThreadShell[] = [];
     let before: { readonly settledAt: string; readonly threadId?: ThreadId } = {
       settledAt: NEWEST_SETTLED,
     };
-    const limit = Math.max(count, SETTLED_PAGE);
-    while (roots.length < count) {
+    let read = 0;
+    while (roots.length < count && read < searched) {
+      const limit = Math.min(Math.max(count, SETTLED_PAGE), searched - read);
       const page = yield* threads.listOlderSettledThreads({
         before,
         projectIds: [star.projectId],
         limit,
       });
       if (page.threadIds.length === 0) break;
+      read += page.threadIds.length;
       const snapshot = yield* threads.getShellSnapshot({ threadIds: page.threadIds });
       const shells = page.threadIds.flatMap((id) => {
         const shell = snapshot.threads.find((thread) => thread.id === id);
@@ -415,7 +414,8 @@ export const make = Effect.gen(function* () {
       });
       roots.push(
         ...shells.filter(
-          (shell) => isConversation(shell) && (kind === undefined || kindOf(shell) === kind),
+          (shell) =>
+            isConversation(shell) && (channel === undefined || channelOf(shell) === channel),
         ),
       );
       const oldest = shells.at(-1);
@@ -476,7 +476,7 @@ export const make = Effect.gen(function* () {
     if (thread.settledAt === null) return;
     const file = path.join(
       star.root,
-      transcriptsFolder(environmentId, kindOf(thread)),
+      transcriptsFolder(environmentId, channelOf(thread)),
       transcriptName(thread.createdAt, thread.id),
     );
     const existing = yield* readOptional(file);
@@ -529,26 +529,36 @@ export const make = Effect.gen(function* () {
 
   const conversationsOf = Effect.fn("Stars.conversationsOf")(function* (
     star: Star,
-    to: ConversationKind,
+    channel: Channel,
   ) {
     const open = yield* openConversations(star);
-    const newestOf = (kind: ConversationKind) => {
-      const current = open.find((thread) => kindOf(thread) === kind);
+    /** Its newest conversation, open or else ended among the latest settled; of any channel where it names none. */
+    const newestOf = (of?: Channel) => {
+      const current = open.find((thread) => of === undefined || channelOf(thread) === of);
       return current === undefined
-        ? Effect.map(settledConversations(star, 1, kind), (settled) => settled[0] ?? null)
+        ? Effect.map(
+            settledConversations(star, 1, {
+              searched: WAKE_SEARCH,
+              ...(of === undefined ? {} : { channel: of }),
+            }),
+            (settled) => settled[0] ?? null,
+          )
         : Effect.succeed(current);
     };
     return {
-      current: open.find((thread) => kindOf(thread) === to) ?? null,
-      newest: (yield* newestOf(to)) ?? (yield* newestOf(otherKind(to))),
+      current: open.find((thread) => channelOf(thread) === channel) ?? null,
+      newest:
+        (yield* newestOf(channel)) ??
+        (channel === USER_CHANNEL ? null : yield* newestOf(USER_CHANNEL)) ??
+        (yield* newestOf()),
     } satisfies Conversations;
   });
 
-  const withConversation: Stars["withConversation"] = (star, to, use) =>
+  const withConversation: Stars["withConversation"] = (star, channel, use) =>
     lockOf(star).withPermits(1)(
       Effect.gen(function* () {
         const conversations = yield* look(star).pipe(
-          Effect.andThen(conversationsOf(star, to)),
+          Effect.andThen(conversationsOf(star, channel)),
           Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
         );
         return yield* use(conversations);
@@ -570,7 +580,7 @@ export const make = Effect.gen(function* () {
       .withPermits(1)(
         Effect.gen(function* () {
           const current = (yield* openConversations(star)).find(
-            (thread) => kindOf(thread) === "user",
+            (thread) => channelOf(thread) === USER_CHANNEL,
           );
           if (current === undefined) return { slept: false, asleep: true } as const;
           const outcome = yield* look(star, { threadId: current.id });
@@ -593,12 +603,12 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.mapError((cause) => new StarsError({ operation: "find", cause })));
     if (shell === null || !isConversation(shell)) return undefined;
     const star = (yield* list).find((each) => each.projectId === shell.projectId);
-    return star === undefined ? undefined : { star, kind: kindOf(shell) };
+    return star === undefined ? undefined : { star, channel: channelOf(shell) };
   });
 
-  /** The names of the conversation with the user's transcripts, which the fold draws. */
+  /** The names of `user`'s transcripts, which the fold draws. */
   const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (star: Star) {
-    const folder = path.join(star.root, transcriptsFolder(environmentId, "user"));
+    const folder = path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL));
     if (!(yield* fs.exists(folder))) return [];
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
@@ -645,26 +655,33 @@ export const make = Effect.gen(function* () {
       .map((project) => project.id);
     const stars = yield* Effect.forEach(yield* list, (star) =>
       Effect.gen(function* () {
-        const open = yield* openConversations(star);
-        const served = Effect.fn("Stars.served")(function* (kind: ConversationKind) {
-          const current = open.find((thread) => kindOf(thread) === kind);
-          if (current === undefined) return null;
-          const records = yield* threads.getProjectThreadRecords(
-            { projectId: star.projectId, threadId: current.id },
-            ["runs", "providerTurns", "runtimeRequests", "subagents"],
-          );
-          return {
-            threadId: current.id,
-            sleeps: sleepsOf(wakefulnessOf(records, current)),
-          } satisfies ConversationView;
-        });
-        const last = (yield* settledConversations(star, 1, "user"))[0];
-        const { newest } = yield* conversationsOf(star, "user");
+        // Newest first, so a channel's first is its current conversation.
+        const current = new Map<Channel, OrchestrationV2ThreadShell>();
+        for (const thread of yield* openConversations(star))
+          if (!current.has(channelOf(thread))) current.set(channelOf(thread), thread);
+        const channels = yield* Effect.forEach(
+          [...current].toSorted(([left], [right]) => left.localeCompare(right)),
+          ([slug, thread]) =>
+            Effect.map(
+              threads.getProjectThreadRecords({ projectId: star.projectId, threadId: thread.id }, [
+                "runs",
+                "providerTurns",
+                "runtimeRequests",
+                "subagents",
+              ]),
+              (records): ChannelView => ({
+                slug,
+                threadId: thread.id,
+                sleeps: sleepsOf(wakefulnessOf(records, thread)),
+              }),
+            ),
+        );
+        const last = (yield* settledConversations(star, 1, { channel: USER_CHANNEL }))[0];
+        const { newest } = yield* conversationsOf(star, USER_CHANNEL);
         return {
           ...star,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
-          conversation: yield* served("user"),
-          work: yield* served("work"),
+          channels,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
           model: newest?.modelSelection ?? null,
           conversations: yield* transcriptNames(star),
@@ -682,7 +699,7 @@ export const make = Effect.gen(function* () {
     function* (star: Star, name: string) {
       if (!isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
       const text = yield* readOptional(
-        path.join(star.root, transcriptsFolder(environmentId, "user"), name),
+        path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL), name),
       );
       return text === undefined ? undefined : parseTranscript(text);
     },
@@ -721,7 +738,7 @@ export const make = Effect.gen(function* () {
         workspaceRoot: root,
         createWorkspaceRootIfMissing: true,
       });
-      yield* fs.makeDirectory(path.join(root, CONVERSATIONS_DIRECTORY), { recursive: true });
+      yield* fs.makeDirectory(path.join(root, CHANNELS_DIRECTORY), { recursive: true });
       yield* fs.writeFileString(path.join(root, INSTRUCTIONS_FILE), "");
       yield* fs.writeFileString(path.join(root, AGENTS_FILE), AGENTS_TEXT);
       const record = newRecord(yield* newId, DateTime.formatIso(yield* DateTime.now));

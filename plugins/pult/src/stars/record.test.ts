@@ -90,7 +90,7 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "your conversation with the user, and your work conversation");
     assert.include(
       AGENTS_TEXT,
-      "those with the user in `user/`, your work conversations in `work/`",
+      "holds the transcripts of your earlier conversations in that channel",
     );
   });
 

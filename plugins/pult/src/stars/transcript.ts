@@ -8,8 +8,8 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import { DateTime } from "../host.ts";
-import { CONVERSATIONS_DIRECTORY, quoted, readFrontMatter } from "./record.ts";
-import type { ConversationKind } from "./stars.ts";
+import type { Channel } from "./channels.ts";
+import { CHANNELS_DIRECTORY, quoted, readFrontMatter } from "./record.ts";
 
 /** An id as one path segment: kept to what any filesystem takes, and never `.` or `..`, so it can name nothing above its folder. */
 function segment(id: string): string {
@@ -17,9 +17,9 @@ function segment(id: string): string {
   return /^\.*$/.test(safe) ? `_${safe}` : safe;
 }
 
-/** The folder of a Star's home holding the transcripts of its conversations of `kind` run on `environmentId`, relative to the home. */
-export const transcriptsFolder = (environmentId: string, kind: ConversationKind) =>
-  `${CONVERSATIONS_DIRECTORY}/${segment(environmentId)}/${kind}`;
+/** The folder of a Star's home holding the transcripts of its conversations in `channel` run on `environmentId`, relative to the home. */
+export const transcriptsFolder = (environmentId: string, channel: Channel) =>
+  `${CHANNELS_DIRECTORY}/${segment(channel)}/conversations/${segment(environmentId)}`;
 
 const STAMP = /^(\d{4}-\d\d-\d\d)T(\d\d):(\d\d):(\d\d)/;
 

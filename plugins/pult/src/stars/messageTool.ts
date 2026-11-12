@@ -1,8 +1,9 @@
-// `pult_star_message` (xaxis `pult/issues/message-star.md`, The tool): another thread messages a
-// Star by its id, always into its work conversation (`pult/issues/star-multiple-threads.md`).
-// Declared as the built-in toolkits declare theirs, through the server's `McpToolAccess` and
-// `toolkitRegistration`, so upstream's access checks run unchanged.
+// `pult_star_message` (xaxis `pult/issues/message-star.md`, `pult/issues/star-channels.md`): a thread
+// messages a Star by its id, into the call's channel, else its tag's beside the Star's child tag, else
+// `work`, nothing refused. Declared through the server's `McpToolAccess` and `toolkitRegistration`,
+// as the built-in toolkits are, so upstream's access checks run unchanged.
 import {
+  type OrchestrationV2ThreadShell,
   OrchestratorMcpClientRequestId,
   OrchestratorMcpFailure,
   ThreadId,
@@ -22,16 +23,23 @@ import {
   Toolkit,
   toolkitRegistration,
 } from "../host.ts";
+import { CHANNEL_PATTERN, childTag, taggedChannel, WORK_CHANNEL } from "./channels.ts";
 import type { Deliver } from "./deliver.ts";
 import { starName } from "./record.ts";
 import type { Star, Stars } from "./stars.ts";
 
 const StarMessageTool = Tool.make("pult_star_message", {
   description:
-    "Message a Star, the user's personal agent in Pult, by its `id`. It goes to the Star's work conversation, never to its conversation with the user: queued into the work conversation if one is open, or waking a fresh one, and the Star answers in its own time: the call does not wait for the answer. The Star sees which thread sent it. The Star's modes cannot be broader than yours. A Star's conversation with the user may message its own `id`, to hand something to its work conversation; its work conversation may not. After an error or lost reply, retry with the same `clientRequestId`; a retry of a send that went through answers `replayed`, and may not name the thread (`threadId` null).",
+    "Message a Star, the user's personal agent in Pult, by its `id`. A Star holds one conversation per channel, and the message lands in the `channel` you name; else, from a thread the Star launched (tagged `pult:child:star:<id>`), in the channel its `pult:channel:<slug>` tag names; else in `work`. It is queued into that channel's conversation if one is open, or wakes a fresh one, and the Star answers in its own time: the call does not wait for the answer. The Star sees which thread sent it, and from which of its channels where a Star sent it. The Star's modes cannot be broader than yours. A Star may message its own `id` with a `channel`, to hand something to another of its channels. After an error or lost reply, retry with the same `clientRequestId`; a retry of a send that went through answers `replayed`, and may not name the thread (`threadId` null).",
   parameters: Schema.Struct({
     star: Schema.String.annotate({ description: "The Star's id, as its record names it." }),
     message: Schema.String.check(Schema.isMaxLength(120000)),
+    channel: Schema.optional(
+      Schema.String.check(Schema.isPattern(CHANNEL_PATTERN)).annotate({
+        description:
+          "The Star's channel to land in, a slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. Naming one makes it; `user` is the Star's conversation with the user, `work` the default.",
+      }),
+    ),
     clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
   }),
   success: Schema.Struct({
@@ -67,8 +75,10 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
 
   /** `thread <id> "<title>" in project "<title>"`. */
-  const threadLine = Effect.fn("PultTools.threadLine")(function* (threadId: ThreadId) {
-    const shell = yield* threads.getThreadShell(threadId);
+  const threadLine = Effect.fn("PultTools.threadLine")(function* (
+    threadId: ThreadId,
+    shell: OrchestrationV2ThreadShell | null,
+  ) {
     if (shell === null) return `thread ${threadId}`;
     const project = yield* projects.getShell(shell.projectId);
     return project._tag === "Some"
@@ -94,20 +104,18 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
           : `No Star has the id "${input.star}" on this server. Its Stars: ${known.map(named).join(", ")}.`,
       );
     }
+    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.mapError(unavailable));
     const own = yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable));
-    const ownStar = own?.star.id === star.id;
-    // Nothing a thread sends reaches the conversation with the user, so work never messages its own Star.
-    if (ownStar && own?.kind === "work")
-      return yield* refused(
-        `This thread is Star ${named(star)}'s own work conversation; a message to itself later is a schedule.`,
-      );
-    // Another Star's conversation is named as the Star: an answer sent to that thread would revive it cold.
+    // A channel tag counts beside this Star's child tag alone, so another Star's builder lands in work.
+    const tagged = shell?.tags?.includes(childTag(star.id)) ? taggedChannel(shell.tags) : undefined;
+    const channel = input.channel ?? tagged ?? WORK_CHANNEL;
+    // Another Star's conversation is named as the Star and its channel: an answer sent to that thread would revive it cold.
     const from =
       own === undefined
-        ? yield* threadLine(threadId)
-        : ownStar
-          ? "your conversation with the user"
-          : `Star ${named(own.star)}`;
+        ? yield* threadLine(threadId, shell)
+        : own.star.id === star.id
+          ? `your channel ${own.channel}`
+          : `Star ${named(own.star)}, its channel ${own.channel}`;
     const key =
       input.clientRequestId === undefined
         ? yield* newKey
@@ -116,7 +124,7 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
       star,
       text: input.message,
       from,
-      to: "work",
+      to: channel,
       key,
       sender: { thread: threadId },
     });

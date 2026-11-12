@@ -65,7 +65,7 @@ export const starsRoute = (
         return json(yield* stars.setRecord(star, body.value));
       }),
     );
-  // Refresh Context: the user puts the Star's current conversation to sleep, unless something holds it.
+  // Refresh Context: the user puts the Star's current conversation in `user` to sleep, unless something holds it.
   if (segments.length === 3 && id !== undefined && sub === "sleep" && method === "POST")
     return answer(
       Effect.gen(function* () {
