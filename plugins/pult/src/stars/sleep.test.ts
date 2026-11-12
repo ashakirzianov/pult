@@ -367,6 +367,17 @@ describe("a full context", () => {
       { kind: "held", by: "queued" },
     );
   });
+
+  it("keeps a hand wake's 10 minutes for a full conversation that rotates on it", () => {
+    const providerTurns = [turn("last", ended, { usage: { usedTokens: 260_000 } })];
+    const woken = { ...v2Projection.thread, unsettledAt: at("2026-11-03T12:00:00.000Z") };
+    assert.deepStrictEqual(
+      wakefulness(conversation({ thread: woken, providerTurns }), at("2026-11-03T11:10:00.000Z"), {
+        rotatesWhenFull: true,
+      }),
+      { kind: "deadline", at: ms("2026-11-03T12:00:00.000Z") + DEFAULT_CACHE_TTL_MS },
+    );
+  });
 });
 
 describe("asleepBy", () => {

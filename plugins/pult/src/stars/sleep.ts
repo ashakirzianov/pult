@@ -51,10 +51,9 @@ export function contextFull(providerTurns: SleepInput["providerTurns"]): boolean
 }
 
 /**
- * Asleep at the shell row's prompt cache expiry, or 10 minutes after a later un-settlement; with
- * no expiry, at the last provider turn's `completedAt` plus the TTL the adapter observed on that
- * provider thread (10 minutes where none), else the latest finished run, else the creation; held
- * while a run is on or queued, a subagent works, or a runtime request awaits the user.
+ * Asleep at the prompt cache expiry, else the last turn's end plus its observed TTL (10 minutes
+ * where none), at that end itself when full and `rotatesWhenFull`, or 10 minutes after a later
+ * un-settlement; held while a run is on or queued, a subagent works, or a request awaits the user.
  */
 export function wakefulness(
   projection: SleepInput,
@@ -82,6 +81,11 @@ export function wakefulness(
   }
   const from = (base: number) =>
     unsettledAt == null ? base : Math.max(base, DateTime.toEpochMillis(unsettledAt));
+  // A hand wake keeps its 10 minutes even when full, so a user can still ask the thread something.
+  const fullAt = (base: number) =>
+    unsettledAt == null
+      ? base
+      : Math.max(base, DateTime.toEpochMillis(unsettledAt) + DEFAULT_CACHE_TTL_MS);
   const turns = projection.providerTurns
     .flatMap((turn) =>
       turn.completedAt === null
@@ -98,9 +102,9 @@ export function wakefulness(
       finished.length > 0
         ? Math.max(...finished)
         : DateTime.toEpochMillis(projection.thread.createdAt);
-    return { kind: "deadline", at: from(base) + (full ? 0 : DEFAULT_CACHE_TTL_MS) };
+    return { kind: "deadline", at: full ? fullAt(base) : from(base) + DEFAULT_CACHE_TTL_MS };
   }
-  if (full) return { kind: "deadline", at: from(last.completedAt) };
+  if (full) return { kind: "deadline", at: fullAt(last.completedAt) };
   // A request served wholly from the cache reports no TTL while refreshing it.
   const observed = turns.findLast(
     ({ turn }) =>
