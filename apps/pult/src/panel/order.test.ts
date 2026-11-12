@@ -10,6 +10,7 @@ import {
   explorerEntries,
   jumpTargets,
   lowerShelves,
+  moveIn,
   openIn,
   PANEL_SHELVES,
   type PanelRows,
@@ -176,6 +177,40 @@ NodeTest.describe("shelf order", () => {
   NodeTest.test("closes a shelf at a given place in the tray", () => {
     const order = closeIn(closeIn(DEFAULT_SHELF_ORDER, "working"), "stars");
     NodeAssert.deepEqual(closeIn(order, "explorer", 0).closed, ["explorer", "working", "stars"]);
+  });
+
+  NodeTest.test("moves a dragged shelf before another, or to a list's end", () => {
+    NodeAssert.deepEqual(moveIn(DEFAULT_SHELF_ORDER, "limits", "open", "explorer").open, [
+      "stars",
+      "limits",
+      "explorer",
+      "inbox",
+      "working",
+      "snoozed",
+      "settled",
+    ]);
+    NodeAssert.deepEqual(moveIn(DEFAULT_SHELF_ORDER, "stars", "open", null).open, [
+      ...PANEL_SHELVES.slice(1),
+      "stars",
+    ]);
+  });
+
+  NodeTest.test("opens a shelf dragged out of the tray, and closes one dragged into it", () => {
+    const order = closeIn(closeIn(DEFAULT_SHELF_ORDER, "working"), "stars");
+    NodeAssert.deepEqual(moveIn(order, "stars", "open", "inbox"), {
+      open: ["explorer", "stars", "inbox", "snoozed", "settled", "limits"],
+      closed: ["working"],
+    });
+    NodeAssert.deepEqual(moveIn(order, "inbox", "closed", "working"), {
+      open: ["explorer", "snoozed", "settled", "limits"],
+      closed: ["inbox", "working", "stars"],
+    });
+  });
+
+  NodeTest.test("keeps the order a drop does not change", () => {
+    NodeAssert.equal(moveIn(DEFAULT_SHELF_ORDER, "inbox", "open", "inbox"), DEFAULT_SHELF_ORDER);
+    NodeAssert.equal(moveIn(DEFAULT_SHELF_ORDER, "inbox", "open", "working"), DEFAULT_SHELF_ORDER);
+    NodeAssert.equal(moveIn(DEFAULT_SHELF_ORDER, "limits", "open", null), DEFAULT_SHELF_ORDER);
   });
 
   NodeTest.test("reads back a stored order, and nothing that misses or repeats a shelf", () => {

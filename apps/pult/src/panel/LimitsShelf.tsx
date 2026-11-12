@@ -49,7 +49,11 @@ export function LimitsShelf({
   if (shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
-    <li ref={element} className={`pult-shelf pult-shelf-limits${lower ? " pult-shelf-lower" : ""}`}>
+    <li
+      ref={element}
+      className={`pult-shelf pult-shelf-limits${lower ? " pult-shelf-lower" : ""}`}
+      data-shelf={"limits"}
+    >
       <ShelfHeader
         shelf="limits"
         label="Limits"

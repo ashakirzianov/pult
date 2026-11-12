@@ -63,6 +63,7 @@ export function ExplorerShelf({
     <li
       ref={element}
       className={`pult-shelf pult-shelf-explorer${lower ? " pult-shelf-lower" : ""}`}
+      data-shelf={"explorer"}
     >
       <ShelfHeader
         shelf="explorer"

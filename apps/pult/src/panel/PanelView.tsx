@@ -47,7 +47,14 @@ import {
   settledTail,
   starKey,
 } from "./order.ts";
-import { SHELF_ICONS, ShelfHeader, shelfOrder, useReveal } from "./shelves.tsx";
+import {
+  SHELF_ICONS,
+  ShelfDropLine,
+  shelfDropHandlers,
+  ShelfHeader,
+  shelfOrder,
+  useReveal,
+} from "./shelves.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -134,7 +141,9 @@ function subagentsByRoot(
  * with its details and its subagents; a subagent has no card, so while one
  * is selected its root's card is the expanded one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
- * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`).
+ * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A
+ * shelf's header dragged moves it among the open shelves, or into the tray
+ * to close it, and a tray icon dragged here opens its shelf where it drops.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -295,9 +304,10 @@ export function PanelView() {
   const top = shown.length - lower.size;
   return (
     <div className="pult-panel">
-      <ul className="pult-panel-cards">
+      <ul className="pult-panel-cards" {...shelfDropHandlers("open")}>
         {/* One keyed list, so a shelf joining or leaving the top run keeps its state. */}
         {[...shown.slice(0, top).map(shelf), notice, ...shown.slice(top).map(shelf)]}
+        <ShelfDropLine list="open" />
       </ul>
     </div>
   );
@@ -334,6 +344,7 @@ function Shelf({
     <li
       ref={element}
       className={`pult-shelf pult-shelf-${name}${lower ? " pult-shelf-lower" : ""}`}
+      data-shelf={name}
     >
       <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} />
       <ul className="pult-shelf-cards">{children}</ul>

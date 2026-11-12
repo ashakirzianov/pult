@@ -26,6 +26,8 @@
 
 /* A column, so the shelves after the cards can sit at its bottom. */
 .pult-panel-cards {
+  /* For the drop line (`ShelfDropLine`). */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1056,6 +1058,38 @@
 
 .pult-tray-shelf-empty {
   opacity: 0.5;
+}
+
+/* While a shelf is dragged the run takes the tray's free room, a place to drop it (`TrayShelves.tsx`). */
+.pult-tray-shelves {
+  position: relative;
+  align-self: stretch;
+  align-items: center;
+}
+
+.pult-tray-shelves-dropping {
+  flex: 1;
+}
+
+/* Where a dragged shelf would drop: a line across the panel between shelves, or upright between the tray's icons (`ShelfDropLine`). */
+.pult-shelf-drop-line {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  margin-top: -1px;
+  list-style: none;
+  pointer-events: none;
+  background: var(--vscode-focusBorder);
+}
+
+.pult-shelf-drop-line-tray {
+  top: 4px;
+  bottom: 4px;
+  right: auto;
+  width: 2px;
+  height: auto;
+  margin: 0 0 0 -1px;
 }
 
 .pult-panel-tab-badge {

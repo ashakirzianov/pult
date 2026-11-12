@@ -12,7 +12,16 @@ import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
 import { draftCards, draftKey, keyOf, type PanelShelf, starKey } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
-import { openShelf, SHELF_ICONS, shelfOrder } from "./shelves.tsx";
+import { setLimitsShowAll } from "../limits/shelf.ts";
+import {
+  openShelf,
+  SHELF_ICONS,
+  shelfDrag,
+  shelfDragHandlers,
+  ShelfDropLine,
+  shelfDropHandlers,
+  shelfOrder,
+} from "./shelves.tsx";
 
 /** What a closed shelf's icon tells: its count as a badge, if any; whether it holds nothing; whether it holds the selected card; and its tooltip. */
 interface ShelfIcon {
@@ -38,6 +47,9 @@ const threadsSnapshot = () => threadStore.get();
  * dimmed with no badge while the shelf holds nothing; highlighted as the
  * open tab is while the shelf holds the selected card, the Stars' while a
  * Star is selected, the Explorer shelf's while the Explorer workspace is.
+ * An icon dragged moves it in the run, or into the panel, opening its shelf
+ * where it drops; while a shelf is dragged the run takes the tray's free
+ * room, shown even with no icon, so a shelf's header dropped there closes it.
  */
 export function TrayShelves() {
   const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
@@ -52,7 +64,9 @@ export function TrayShelves() {
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  if (closed.length === 0) return null;
+  const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
+  // Empty, the run shows only while a shelf is dragged, a place to drop it.
+  if (closed.length === 0 && !dragging) return null;
   // Read on the selection's change, which re-renders the tray.
   const selectedCard = selectedCardKey();
   const drafts = draftCards(
@@ -130,13 +144,22 @@ export function TrayShelves() {
     }
   };
   return (
-    <div className="pult-panel-tabs pult-tray-shelves" aria-label="Closed shelves">
+    <div
+      className={`pult-panel-tabs pult-tray-shelves${dragging ? " pult-tray-shelves-dropping" : ""}`}
+      aria-label="Closed shelves"
+      // Closing Limits by its drop drops its Show all, as its Close does.
+      {...shelfDropHandlers("closed", (shelf) => {
+        if (shelf === "limits") setLimitsShowAll(false);
+      })}
+    >
       {closed.map((shelf) => {
         const { badge, empty, selected, title } = icon(shelf);
         return (
           <button
             key={shelf}
             type="button"
+            data-shelf={shelf}
+            {...shelfDragHandlers(shelf)}
             title={title}
             aria-label={`Open the ${SHELF_ICONS[shelf].label} shelf`}
             className={`pult-panel-tab${selected ? " pult-panel-tab-active" : ""}${empty ? " pult-tray-shelf-empty" : ""}`}
@@ -151,6 +174,7 @@ export function TrayShelves() {
           </button>
         );
       })}
+      <ShelfDropLine list="closed" />
     </div>
   );
 }

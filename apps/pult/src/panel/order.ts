@@ -48,6 +48,31 @@ export function closeIn(
   };
 }
 
+/**
+ * The order with `shelf` dragged into `list`, just before `before`, or at its
+ * end while `before` is null; the order itself when that is where it already is.
+ */
+export function moveIn(
+  order: ShelfOrder,
+  shelf: PanelShelf,
+  list: keyof ShelfOrder,
+  before: PanelShelf | null,
+): ShelfOrder {
+  if (before === shelf) return order;
+  const rest = {
+    open: order.open.filter((each) => each !== shelf),
+    closed: order.closed.filter((each) => each !== shelf),
+  };
+  const at = before === null ? -1 : rest[list].indexOf(before);
+  const next = {
+    ...rest,
+    [list]: rest[list].toSpliced(at === -1 ? rest[list].length : at, 0, shelf),
+  };
+  const same = (a: ReadonlyArray<PanelShelf>, b: ReadonlyArray<PanelShelf>) =>
+    a.length === b.length && a.every((each, index) => each === b[index]);
+  return same(next.open, order.open) && same(next.closed, order.closed) ? order : next;
+}
+
 /** A stored order, or null when it is not one: every shelf exactly once across the two lists. */
 export function parseShelfOrder(stored: unknown): ShelfOrder | null {
   if (typeof stored !== "object" || stored === null) return null;
