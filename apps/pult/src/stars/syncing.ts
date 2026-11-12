@@ -23,6 +23,7 @@ import { readStarTranscript } from "./plugin.ts";
 import { conversationsOf, type Star, type StarState } from "./stars.ts";
 import {
   commitMessages,
+  environmentSleeps,
   HANDOFF_TITLE,
   handoffMessage,
   handoffModel,
@@ -113,13 +114,13 @@ const threadExists = (environmentId: string, threadId: string) =>
  * repository, the environment's Stars directory, as its Pult plugin names
  * it, which the page makes one where it is not and commits on the occasions
  * it sees, one at a time per environment: in full once per connect while
- * every Star there sleeps, no channel of its open, when a Star falls asleep,
- * its last open channel sleeping, when a transcript the plugin wrote
- * appears in a sleeping Star's answer, on Sync Star and for a change of a
- * record;
+ * every Star there sleeps, no channel of its open, when the last Star there
+ * awake falls asleep, its last open channel sleeping, when a transcript the
+ * plugin wrote appears in a Star's answer while every Star there sleeps, on
+ * Sync Star and for a change of a record;
  * with an origin (its `.git/config`'s, the one place it is kept) each full
  * occasion fetches, pulls and pushes too, and a sleeping Star's draft
- * written in pulls alone. A failure is told and tried again on the next
+ * written in pulls alone while every Star there sleeps. A failure is told and tried again on the next
  * occasion; a divergence is handed to a Star.
  */
 class StarSync {
@@ -210,12 +211,12 @@ class StarSync {
 
   /**
    * A Star whose last open channel slept: a full occasion on each of its
-   * homes' environments, committing what its channels left there (their
-   * transcripts among it) and delivering a divergence that waited for its
-   * sleep. A Star's state counts only while every home's environment is
-   * ready with its threads in, where the page holds its channels' threads,
-   * so a sleep seen while one loads is caught once it is in
-   * (`sleepOccasions`).
+   * homes' environments where every Star now sleeps, committing what the
+   * channels left there and delivering a divergence that waited for the
+   * sleep; where another Star is awake, its sleep makes the occasion. A
+   * Star's state counts only while every home's environment is ready with
+   * its threads in, where the page holds its channels' threads, so a sleep
+   * seen while one loads is caught once it is in (`sleepOccasions`).
    */
   private afterSleeps(): void {
     const { occasions, states } = sleepOccasions(this.states, starStore.get(), known);
@@ -319,14 +320,13 @@ class StarSync {
    * After transcripts the plugin wrote into a home appeared in its answer:
    * their conversation's commit, named by the newest one's title and end as
    * its transcript route reads them, and a push where the repository syncs;
-   * nothing while a channel of the Star's is open, whose conversation writes
-   * in the folder, the Star's sleep committing it then (`afterSleeps`).
-   * Until sync moves to the plugin, a transcript waits for a page to commit
-   * it (`star-sync`).
+   * nothing while a channel of a Star's on the environment is open, whose
+   * conversation writes in the repository, the last one's sleep committing
+   * it then (`afterSleeps`). Until sync moves to the plugin, a transcript
+   * waits for a page to commit it (`star-sync`).
    */
   private async afterTranscripts({ environmentId, starId, names }: FoundTranscripts) {
-    const star = starById(starId);
-    if (star === undefined || !syncsNow(star)) return;
+    if (!environmentSleeps(environmentId, starStore.get(), known)) return;
     const newest = names.at(-1);
     const credential = connection.credential(environmentId);
     const transcript =
@@ -350,9 +350,9 @@ class StarSync {
     });
   }
 
-  /** Before a sleeping Star, no channel of its open, wakes, its draft written in: a pull of its environment's repository, at most once a minute, so the send never waits on it. */
+  /** Before a sleeping Star wakes, its draft written in, while every Star on the environment sleeps: a pull of its repository, at most once a minute, so the send never waits on it. */
   private beforeWake(star: Star, environmentId: string): void {
-    if (!syncsNow(star)) return;
+    if (!environmentSleeps(environmentId, starStore.get(), known)) return;
     if (starRepository(environmentId)?.origin === undefined || !ready(environmentId)) return;
     const now = Date.now();
     if (now - (this.pulledAt.get(environmentId) ?? 0) < WAKE_PULL_INTERVAL_MS) return;
@@ -453,10 +453,11 @@ class StarSync {
    * its thread's id deterministic
    * from the repository and both sides (`handoffThreadId`), looked up on the
    * server, so no page, and no reload, hands the same divergence over
-   * again. An awake Star (a channel of its open), one being written to, or
-   * one about to be (a pull before its wake) gets it when it next falls
-   * asleep, its sleep's occasion finding it again (`afterSleeps`), or on the
-   * next occasion after. Never a sync: false.
+   * again. While a Star on the environment is awake (a channel of its
+   * open), or the Star is being written to, or about to be (a pull before
+   * its wake), it gets it when the last one there falls asleep, that sleep's
+   * occasion finding it again (`afterSleeps`), or on the next occasion
+   * after. Never a sync: false.
    */
   private async handOff(
     environmentId: string,
@@ -487,9 +488,10 @@ class StarSync {
     const writing = projectDrafts
       .get()
       .some((draft) => draft.environmentId === environmentId && draft.projectId === home.projectId);
-    if (!handsOffNow({ state: star.state, writing, occasion: occasion.kind })) {
+    const sleeps = environmentSleeps(environmentId, starStore.get(), known);
+    if (!handsOffNow({ sleeps, writing, occasion: occasion.kind })) {
       this.change(environmentId, {
-        note: `${what}; Pult hands it to your Star when it next falls asleep.`,
+        note: `${what}; Pult hands it to your Star once your Stars there all sleep.`,
       });
       return false;
     }

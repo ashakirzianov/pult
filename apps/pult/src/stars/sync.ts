@@ -92,19 +92,15 @@ export function syncPlan(
 }
 
 /**
- * Whether the sync may commit and pull under a Star's folder now: while it
- * sleeps, no channel of its open, since an open one's conversation writes
- * there (`star-sync`). A transcript appearing while another channel is open
- * waits for the Star's sleep (`fellAsleep`).
+ * Whether a Star sleeps for the sync: no channel of its open, since an open
+ * one's conversation writes in its folder (`star-sync`).
  */
 export const syncsNow = (star: { readonly state: StarState }) => star.state === "asleep";
 
 /**
  * The Stars that fell asleep since the states the sync saw last: some
- * channel of theirs open then, none now, each an occasion of its own, which
- * commits what the channels left and delivers a handoff that waited for the
- * sleep. A Star seen for the first time falls asleep from nothing: a
- * connect's occasion is its.
+ * channel of theirs open then, none now. A Star seen for the first time
+ * falls asleep from nothing: a connect's occasion is its.
  */
 export function fellAsleep(
   previous: ReadonlyMap<string, StarState>,
@@ -125,13 +121,40 @@ interface SyncedStar {
   readonly homes: ReadonlyArray<{ readonly environmentId: string }>;
 }
 
+/** Whether the Star's state counts: every home's environment `known`, ready with its threads in, where the page holds its channels' threads. */
+const counts = (star: SyncedStar, known: (environmentId: string) => boolean) =>
+  star.homes.every((home) => known(home.environmentId));
+
+const homedOn = (star: SyncedStar, environmentId: string) =>
+  star.homes.some((home) => home.environmentId === environmentId);
+
 /**
- * The sleeps' occasions since the states the sync kept: one on each home's
- * environment of every Star that fell asleep (`fellAsleep`), the Star's,
- * which a divergence goes to first. A Star's state counts only while every
- * home's environment is `known`, ready with its threads in, where the page
- * holds its channels' threads; it is kept for the next look then alone, so
- * a sleep seen while an environment loads is an occasion once it is in.
+ * Whether the sync may commit and pull the environment's repository now:
+ * every Star with a home there sleeps (`syncsNow`) and counts, since the
+ * repository holds every Star's folder and one awake Star's conversations
+ * write in its own (Anton's ruling, 2026-11-12). A transcript appearing, or
+ * a Star falling asleep, while another is awake waits for the last one's
+ * sleep (`sleepOccasions`).
+ */
+export function environmentSleeps(
+  environmentId: string,
+  stars: ReadonlyArray<SyncedStar>,
+  known: (environmentId: string) => boolean,
+): boolean {
+  return stars
+    .filter((star) => homedOn(star, environmentId))
+    .every((star) => counts(star, known) && syncsNow(star));
+}
+
+/**
+ * The sleeps' occasions since the states the sync kept: one on each
+ * environment where a Star with a home there fell asleep (`fellAsleep`) and
+ * every Star there now sleeps (`environmentSleeps`), for the first such
+ * Star, which a divergence goes to first; so the last Star there to fall
+ * asleep makes it, committing what the channels left and delivering a
+ * handoff that waited. A Star's state counts only while every home's
+ * environment is known, and is kept for the next look then alone, so a
+ * sleep seen while an environment loads is an occasion once it is in.
  */
 export function sleepOccasions(
   previous: ReadonlyMap<string, StarState>,
@@ -141,29 +164,31 @@ export function sleepOccasions(
   readonly occasions: ReadonlyArray<{ readonly environmentId: string; readonly starId: string }>;
   readonly states: ReadonlyMap<string, StarState>;
 } {
-  const seen = stars.filter((star) => star.homes.every((home) => known(home.environmentId)));
+  const seen = stars.filter((star) => counts(star, known));
   const asleep = new Set(fellAsleep(previous, seen));
+  const occasions = new Map<string, string>();
+  for (const star of seen)
+    if (asleep.has(star.id))
+      for (const { environmentId } of star.homes)
+        if (!occasions.has(environmentId) && environmentSleeps(environmentId, stars, known))
+          occasions.set(environmentId, star.id);
   return {
-    occasions: seen
-      .filter((star) => asleep.has(star.id))
-      .flatMap((star) =>
-        star.homes.map((home) => ({ environmentId: home.environmentId, starId: star.id })),
-      ),
+    occasions: [...occasions].map(([environmentId, starId]) => ({ environmentId, starId })),
     states: new Map([...previous, ...seen.map((star) => [star.id, star.state] as const)]),
   };
 }
 
 /**
- * Whether a divergence goes to the Star now, or waits for its sleep's
- * occasion (`fellAsleep`): now only while it sleeps, no channel of its open,
- * nobody writes to its draft, and the occasion is no pull before a wake,
- * since the user is about to write to it.
+ * Whether a divergence goes to the Star now, or waits for the sleep's
+ * occasion (`sleepOccasions`): now only while every Star on the environment
+ * sleeps (`environmentSleeps`), nobody writes to the Star's draft, and the
+ * occasion is no pull before a wake, since the user is about to write to it.
  */
 export const handsOffNow = (input: {
-  readonly state: StarState;
+  readonly sleeps: boolean;
   readonly writing: boolean;
   readonly occasion: "pull" | "full";
-}) => syncsNow(input) && !input.writing && input.occasion === "full";
+}) => input.sleeps && !input.writing && input.occasion === "full";
 
 /**
  * Whether a failed pull or push was git refusing it, which goes to the Star:

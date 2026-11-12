@@ -4,6 +4,7 @@ import * as NodeTest from "node:test";
 
 import { starsOf } from "./stars.ts";
 import {
+  environmentSleeps,
   fellAsleep,
   handoffMessage,
   handoffModel,
@@ -287,11 +288,58 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     NodeAssert.equal(sleepOccasions(loading.states, [star], () => true).occasions.length, 2);
   });
 
+  NodeTest.test(
+    "waits for every Star on the environment to sleep, the last one's sleep its occasion",
+    () => {
+      const home = (environmentId: string) => ({ environmentId });
+      const x = { id: "x", state: "asleep" as const, homes: [home("laptop")] };
+      const yAwake = { id: "y", state: "awake" as const, homes: [home("laptop"), home("desk")] };
+      const yAsleep = { ...yAwake, state: "asleep" as const };
+      const all = () => true;
+      // X falls asleep while Y is awake on the same environment: nothing.
+      const first = sleepOccasions(
+        new Map([
+          ["x", "working"],
+          ["y", "awake"],
+        ]),
+        [x, yAwake],
+        all,
+      );
+      NodeAssert.deepEqual(first.occasions, []);
+      NodeAssert.equal(environmentSleeps("laptop", [x, yAwake], all), false);
+      // Then Y: one occasion on each of its environments, now every Star's there asleep.
+      NodeAssert.deepEqual(sleepOccasions(first.states, [x, yAsleep], all).occasions, [
+        { environmentId: "laptop", starId: "y" },
+        { environmentId: "desk", starId: "y" },
+      ]);
+      // Both at once: one occasion per environment.
+      NodeAssert.deepEqual(
+        sleepOccasions(
+          new Map([
+            ["x", "awake"],
+            ["y", "awake"],
+          ]),
+          [x, yAsleep],
+          all,
+        ).occasions,
+        [
+          { environmentId: "laptop", starId: "x" },
+          { environmentId: "desk", starId: "y" },
+        ],
+      );
+      // A Star there whose other home is still loading does not count as asleep.
+      NodeAssert.equal(
+        environmentSleeps("laptop", [x, yAsleep], (environmentId) => environmentId === "laptop"),
+        false,
+      );
+    },
+  );
+
   NodeTest.test("a handoff deferred while a channel is open is delivered on that sleep", () => {
-    const deferred = { state: workOpen.state, writing: false, occasion: "full" } as const;
+    const deferred = { sleeps: false, writing: false, occasion: "full" } as const;
     NodeAssert.equal(handsOffNow(deferred), false);
-    NodeAssert.equal(handsOffNow({ ...deferred, state: allAsleep.state }), true);
-    NodeAssert.equal(handsOffNow({ ...deferred, state: "asleep", writing: true }), false);
-    NodeAssert.equal(handsOffNow({ ...deferred, state: "asleep", occasion: "pull" }), false);
+    NodeAssert.equal(handsOffNow({ ...deferred, sleeps: true }), true);
+    NodeAssert.equal(handsOffNow({ ...deferred, sleeps: true, writing: true }), false);
+    NodeAssert.equal(handsOffNow({ ...deferred, sleeps: true, occasion: "pull" }), false);
   });
 });
