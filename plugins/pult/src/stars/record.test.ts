@@ -94,6 +94,13 @@ describe("AGENTS.md", () => {
     );
   });
 
+  it("tells the Star to tag every thread it launches with its id", () => {
+    assert.include(
+      AGENTS_TEXT,
+      'Pass `tags: ["pult:star:<id>"]`, that same `id`, on every thread you launch with `t3_thread_launch`',
+    );
+  });
+
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
