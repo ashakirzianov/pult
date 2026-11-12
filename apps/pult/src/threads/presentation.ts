@@ -81,7 +81,7 @@ function isListed(thread: EnvironmentThreadShell): boolean {
 /** The prefix of the tag a Star gives every thread it launches, `pult:star:<id>` (its stock instructions, `plugins/pult/src/stars/agents.ts`). */
 const STAR_LAUNCHED_TAG = "pult:star:";
 
-/** Whether a Star launched `thread`, by its `pult:star:<id>` tag: a thread kept off the Inbox. */
+/** Whether a Star launched `thread`, by its `pult:star:<id>` tag: a thread kept off the active shelf. */
 function isStarLaunched(thread: Pick<EnvironmentThreadShell, "source">): boolean {
   return thread.source.tags?.some((tag) => tag.startsWith(STAR_LAUNCHED_TAG)) === true;
 }
@@ -106,10 +106,10 @@ export function shelfOf(
  * environment's features, every shelf merging the environments as
  * upstream's sidebar does with its working shelf on: an active thread that
  * works sits on the working shelf instead (`observation`), and one a Star
- * launched is on neither Inbox shelf, pinned or active (`isStarLaunched`). Pinned follow
- * their arranged order, active the latest return (made, unsettled, sent to
- * or finished), working the latest message sent, snoozed the soonest wake,
- * settled the newest settlement.
+ * launched is off the active shelf, a pin keeping it (`isStarLaunched`).
+ * Pinned follow their arranged order, active the latest return (made,
+ * unsettled, sent to or finished), working the latest message sent, snoozed
+ * the soonest wake, settled the newest settlement.
  */
 export function shelve(
   threads: ReadonlyArray<EnvironmentThreadShell>,
@@ -126,9 +126,9 @@ export function shelve(
   };
   for (const thread of threads) {
     const shelf = shelfOf(thread, now, featuresOf(thread.environmentId));
-    const inbox = shelf === "pinned" || shelf === "active";
     if (shelf === "active" && observation.isWorking(thread)) shelves.working.push(thread);
-    else if (shelf !== null && !(inbox && isStarLaunched(thread))) shelves[shelf].push(thread);
+    else if (shelf !== null && !(shelf === "active" && isStarLaunched(thread)))
+      shelves[shelf].push(thread);
   }
   const { pinned, active, working, snoozed, settled } = shelves;
   const wakeMs = (thread: EnvironmentThreadShell) => Date.parse(thread.snoozedUntil ?? "") || 0;

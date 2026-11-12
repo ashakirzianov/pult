@@ -387,7 +387,7 @@ NodeTest.describe("shellThreads", () => {
   });
 
   NodeTest.test(
-    "keeps a thread a Star launched off the Inbox, and on the other shelves as any thread",
+    "keeps a thread a Star launched off the active shelf, and on the others as any thread",
     () => {
       const launched = { tags: ["review", "pult:star:abc"] };
       const threads = shellThreads(
@@ -417,12 +417,12 @@ NodeTest.describe("shellThreads", () => {
       NodeAssert.deepEqual(
         threads.map((each) => [each.id, each.shelf]),
         [
+          ["pinned", "pinned"],
           ["other", "active"],
           ["working", "working"],
           ["snoozed", "snoozed"],
           ["settled", "settled"],
           ["active", null],
-          ["pinned", null],
         ],
       );
     },
