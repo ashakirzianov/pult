@@ -26,4 +26,14 @@ it("refuses a t3_thread_update whose fields do not fit its action", () => {
   expect(Exit.isSuccess(decode({ action: "rename", title: "New", environmentId: undefined }))).toBe(
     true,
   );
+  // Pult: `tag` takes both its fields, and the other actions neither.
+  expect(Exit.isSuccess(decode({ action: "tag", tag: "pult:channel:work", tagged: true }))).toBe(
+    true,
+  );
+  expect(Exit.isFailure(decode({ action: "tag", tag: "pult:channel:work" }))).toBe(true);
+  expect(Exit.isFailure(decode({ action: "tag", tagged: false }))).toBe(true);
+  expect(Exit.isFailure(decode({ action: "tag", tag: "x".repeat(65), tagged: true }))).toBe(true);
+  expect(Exit.isFailure(decode({ action: "rename", title: "New", tag: "a", tagged: true }))).toBe(
+    true,
+  );
 });
