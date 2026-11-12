@@ -78,10 +78,10 @@ function isListed(thread: EnvironmentThreadShell): boolean {
   return isPresent(thread) && thread.lineage.relationshipToParent !== "subagent";
 }
 
-/** The prefix of the tag a Star gives every thread it launches, `pult:star:<id>` (its stock instructions, `plugins/pult/src/stars/agents.ts`). */
-const STAR_LAUNCHED_TAG = "pult:star:";
+/** The prefix of the tag a Star gives every thread it launches, `pult:child:star:<id>` (its stock instructions, `plugins/pult/src/stars/agents.ts`). */
+const STAR_LAUNCHED_TAG = "pult:child:star:";
 
-/** Whether a Star launched `thread`, by its `pult:star:<id>` tag: a thread kept off the active shelf. */
+/** Whether a Star launched `thread`, by its `pult:child:star:<id>` tag: a thread kept off the active shelf. */
 function isStarLaunched(thread: Pick<EnvironmentThreadShell, "source">): boolean {
   return thread.source.tags?.some((tag) => tag.startsWith(STAR_LAUNCHED_TAG)) === true;
 }

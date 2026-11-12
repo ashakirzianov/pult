@@ -389,7 +389,7 @@ NodeTest.describe("shellThreads", () => {
   NodeTest.test(
     "keeps a thread a Star launched off the active shelf, and on the others as any thread",
     () => {
-      const launched = { tags: ["review", "pult:star:abc"] };
+      const launched = { tags: ["review", "pult:child:star:abc"] };
       const threads = shellThreads(
         [
           {

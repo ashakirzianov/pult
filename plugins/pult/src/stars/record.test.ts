@@ -97,7 +97,7 @@ describe("AGENTS.md", () => {
   it("tells the Star to tag every thread it launches with its id", () => {
     assert.include(
       AGENTS_TEXT,
-      'Pass `tags: ["pult:star:<id>"]`, that same `id`, on every thread you launch with `t3_thread_launch`',
+      'Pass `tags: ["pult:child:star:<id>"]`, that same `id`, on every thread you launch with `t3_thread_launch`',
     );
   });
 
