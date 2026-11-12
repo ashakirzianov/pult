@@ -1,9 +1,10 @@
 // A Star's schedule (xaxis `pult/issues/star-schedules.md`): `.pult/schedules/<name>.md`, a front
 // matter with a required IANA `timezone` and one rule over the message as its body. Read
-// strictly: a file that is anything else is no schedule, and says why. Every due time is a
-// function of the file alone, so it is the same on every environment.
+// strictly: a file that is anything else is no schedule, and says why. Its `to`, the conversation
+// a run lands in, is the user's where absent. Every due time is a function of the file alone.
 import { DateTime, Option } from "../host.ts";
 import { entry, frontMatter, SYSTEM_DIRECTORY } from "../stars/record.ts";
+import type { ConversationKind } from "../stars/stars.ts";
 
 export const SCHEDULES_DIRECTORY = `${SYSTEM_DIRECTORY}/schedules`;
 
@@ -23,7 +24,7 @@ const INTERVALS: ReadonlyMap<string, number> = new Map([
   ["12h", 720],
 ]);
 
-const KEYS: ReadonlySet<string> = new Set(["timezone", "time", "days", "date", "every"]);
+const KEYS: ReadonlySet<string> = new Set(["timezone", "time", "days", "date", "every", "to"]);
 
 interface ClockTime {
   readonly hour: number;
@@ -52,6 +53,8 @@ export interface Schedule {
   readonly timezone: string;
   readonly zone: DateTime.TimeZone;
   readonly rule: Rule;
+  /** The conversation a run is delivered to. */
+  readonly to: ConversationKind;
   /** The message, the body with its surrounding blank lines dropped. */
   readonly text: string;
 }
@@ -117,7 +120,7 @@ export function parseSchedule(name: string, text: string): Parsed {
       return problem(`its front matter's line "${line}" is not \`key: value\``);
     if (!KEYS.has(parsed.key))
       return problem(
-        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date and every`,
+        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date, every and to`,
       );
     if (fields.has(parsed.key)) return problem(`\`${parsed.key}\` is given twice`);
     fields.set(parsed.key, parsed.value);
@@ -128,6 +131,8 @@ export function parseSchedule(name: string, text: string): Parsed {
   if (Option.isNone(zone)) return problem(`\`timezone\` "${timezone}" is no IANA time zone`);
   const message = text.slice(matter.bodyStart).trim();
   if (message === "") return problem("its message, the text after the front matter, is empty");
+  const to = fields.get("to") ?? "user";
+  if (to !== "user" && to !== "work") return problem(`\`to\` "${to}" is neither user nor work`);
 
   const time = fields.get("time");
   const days = fields.get("days");
@@ -135,7 +140,7 @@ export function parseSchedule(name: string, text: string): Parsed {
   const every = fields.get("every");
   const schedule = (rule: Rule): Parsed => ({
     ok: true,
-    schedule: { name, timezone, zone: zone.value, rule, text: message },
+    schedule: { name, timezone, zone: zone.value, rule, to, text: message },
   });
   if (time !== undefined && every !== undefined)
     return problem("it has both `time` and `every`; a schedule has one of them");

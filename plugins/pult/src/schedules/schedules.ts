@@ -278,8 +278,7 @@ export const make = Effect.fn("Schedules.make")(function* (
       text: schedule.text,
       from: `schedule ${schedule.name}, due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`,
       key: `schedule:${schedule.name}:${iso(due)}`,
-      // A schedule's own `to` is not read yet: every one is for the conversation with the user.
-      to: "user",
+      to: schedule.to,
       sender: "plugin",
     }).pipe(
       Effect.map((delivered) => ({

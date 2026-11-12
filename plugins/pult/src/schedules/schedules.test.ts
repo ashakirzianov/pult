@@ -156,6 +156,24 @@ describe("namesSchedules", () => {
 });
 
 describe("the pass", () => {
+  it.effect("delivers a run to the conversation its schedule names", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
+      yield* h.write(
+        "watch",
+        "---\ntimezone: UTC\ntime: 09:00\nto: work\n---\nCheck the build.\n",
+        "2026-11-10T08:00:00Z",
+      );
+      yield* h.clock("2026-11-10T09:00:04Z");
+      yield* h.pass;
+      assert.deepStrictEqual(h.deliveries.map((each) => [each.text, each.to]).toSorted(), [
+        ["Check the build.", "work"],
+        ["Time for the standup.", "user"],
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("fires a due run once, as the plugin, and records it", () =>
     Effect.gen(function* () {
       const h = yield* harness;
@@ -350,7 +368,7 @@ describe("the pass", () => {
       assert.strictEqual(told?.to, "work");
       assert.strictEqual(
         told?.text,
-        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date and every. Fix the file or delete it; Pult tells you once per content.",
+        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every and to. Fix the file or delete it; Pult tells you once per content.",
       );
       assert.match(told?.key ?? "", /^schedule-problem:standup:[0-9a-f]{16}$/);
       const [standup] = yield* h.view;
