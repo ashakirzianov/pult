@@ -8,7 +8,7 @@ import "../stars/flat/star.css";
 import type { StarLook } from "../stars/look.ts";
 import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
 import { canSleepStar } from "../stars/model.ts";
-import { drawnHome, type Star, type StarChannel, starName } from "../stars/stars.ts";
+import { type CardRows, drawnHome, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
@@ -81,15 +81,15 @@ function StarMark({ look, color }: { look: StarLook; color: string }) {
  * over its state, Asleep with how long (dimmed), Awake,
  * or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
- * expands with its asks, then a row per open channel but `user`
- * (`StarChannels`), then its current conversation's subagents, as a
+ * expands with its asks, then its children and a row per channel but
+ * `user` (`StarChannels`), then its current conversation's subagents, as a
  * thread's card does with its own, then its schedules (`StarSchedules.tsx`), each list
  * a section of the details of its own.
  */
 export function StarCard({
   star,
   environment,
-  channels,
+  rows,
   subagents,
   activities,
   selected,
@@ -98,8 +98,8 @@ export function StarCard({
 }: {
   star: Star;
   environment: string | undefined;
-  /** Its open channels but `user`, by slug, each with its conversation's live row (`channelRows`). */
-  channels: ReadonlyArray<StarChannel>;
+  /** Its children and its channels' rows, as the page's threads have them (`cardRows`). */
+  rows: CardRows<ShellThread>;
   subagents: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
   selected: boolean;
@@ -142,10 +142,11 @@ export function StarCard({
         </span>
         <JumpHint rowKey={starKey(star.id)} />
       </div>
-      {selected && (subagents.length > 0 || channels.length > 0 || hasLists) ? (
+      {selected &&
+      (subagents.length > 0 || rows.children.length > 0 || rows.channels.length > 0 || hasLists) ? (
         <div className="pult-card-details">
           <StarAsks star={star} />
-          <StarChannels starId={star.id} channels={channels} activities={activities} now={now} />
+          <StarChannels starId={star.id} rows={rows} activities={activities} now={now} />
           {subagents.length > 0 ? (
             <Subagents
               subagents={subagents}
@@ -162,30 +163,55 @@ export function StarCard({
 }
 
 /**
- * A selected Star's open channels but `user`, under its card: a row each,
- * labelled by its slug, in the subagents' look, its status Working with
- * its elapsed time, Waiting, or the time since its last turn; a click opens
- * its conversation as a thread's tab among the Star's
- * (`pult-shell.openStarChannel`). Hidden with none.
+ * A selected Star's children and channels, under its card: `user`'s
+ * children first, then a row per channel but `user`, labelled by its slug,
+ * each over its own children (`cardRows`), every row in the subagents' look,
+ * its status Working with its elapsed time, Waiting, or the time since its
+ * last turn. A click on an open channel's row opens its conversation as a
+ * thread's tab among the Star's (`pult-shell.openStarChannel`), on a
+ * child's the child (`pult-shell.openStarChild`); a sleeping channel's row,
+ * there while a child of it is unsettled, reads Asleep and opens nothing.
+ * Hidden with none.
  */
 function StarChannels({
   starId,
-  channels,
+  rows,
   activities,
   now,
 }: {
   starId: string;
-  channels: ReadonlyArray<StarChannel>;
+  rows: CardRows<ShellThread>;
   activities: Map<string, Activity>;
   now: number;
 }) {
-  if (channels.length === 0) return null;
+  if (rows.children.length === 0 && rows.channels.length === 0) return null;
+  const children = (threads: ReadonlyArray<ShellThread>) =>
+    threads.map((child) => (
+      <li key={keyOf(child)}>
+        <button
+          type="button"
+          className="pult-subagent"
+          title={child.title}
+          onClick={() => run("pult-shell.openStarChild", starId, child.environmentId, child.id)}
+        >
+          <i className="codicon codicon-hubot" aria-hidden />
+          <span className="pult-subagent-title">{child.title}</span>
+          <Status thread={child} activity={activities.get(keyOf(child)) ?? null} now={now} />
+        </button>
+      </li>
+    ));
   return (
     <ul className="pult-subagents-list pult-card-channels" aria-label="Channels">
-      {channels.map(({ slug, thread }) => {
-        const activity = activities.get(keyOf(thread)) ?? null;
-        return (
-          <li key={slug}>
+      {children(rows.children)}
+      {rows.channels.map(({ slug, thread, children: below }) => (
+        <li key={`channel:${slug}`}>
+          {thread === null ? (
+            <div className="pult-subagent pult-subagent-asleep" title={`Channel ${slug}, asleep`}>
+              <i className="codicon codicon-comment-discussion" aria-hidden />
+              <span className="pult-subagent-title">{slug}</span>
+              <span className="pult-card-status pult-star-asleep">Asleep</span>
+            </div>
+          ) : (
             <button
               type="button"
               className="pult-subagent"
@@ -194,11 +220,19 @@ function StarChannels({
             >
               <i className="codicon codicon-comment-discussion" aria-hidden />
               <span className="pult-subagent-title">{slug}</span>
-              <Status thread={thread} activity={activity} now={now} />
+              <Status thread={thread} activity={activities.get(keyOf(thread)) ?? null} now={now} />
             </button>
-          </li>
-        );
-      })}
+          )}
+          {below.length > 0 ? (
+            <ul
+              className="pult-subagents-list pult-card-children"
+              aria-label={`Children of ${slug}`}
+            >
+              {children(below)}
+            </ul>
+          ) : null}
+        </li>
+      ))}
     </ul>
   );
 }

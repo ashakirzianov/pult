@@ -17,7 +17,7 @@ import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/c
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { ChannelInput } from "../threads/pane.tsx";
+import { ChannelInput, ChildInput } from "../threads/pane.tsx";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures } from "./about.ts";
@@ -217,6 +217,23 @@ async function openStarChannel(
 }
 
 /**
+ * A Star's child, a thread it launched, as a thread's tab among the Star's
+ * (`ChildInput`), as its card lists them; the Star selected first.
+ */
+async function openStarChild(star: Star, environmentId: string, threadId: string): Promise<void> {
+  const commands = await getService(ICommandService);
+  await commands.executeCommand("pult-shell.selectStar", star.id);
+  // A switch cancelled over a modified file leaves the selection as it was, so the child is not opened among its tabs.
+  if (selectedStar() !== star.id) return;
+  await (
+    await getService(IEditorService)
+  ).openEditor(
+    (await getService(IInstantiationService)).createInstance(ChildInput, environmentId, threadId),
+    { pinned: true },
+  );
+}
+
+/**
  * The Explorer tab at the Star's folder: narrowed to it while the Star is
  * selected, as its composer bar's Explorer narrows, else the environments'
  * folders with the Star's revealed, leaving the selection as it is.
@@ -252,7 +269,8 @@ async function openStarFolder(star: Star): Promise<void> {
  * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
  * [starId]`, the Star's current conversation in `user` put to sleep, offered only
  * while `canSleepStar`), each on the page's Star, picked while it holds
- * several. Open Star is the selection's
+ * several. `pult-shell.openStarChild <starId> <environmentId> <threadId>`,
+ * off the palette, is the card's child rows'. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
  */
@@ -392,6 +410,32 @@ export function registerStarCommands(): void {
         const quickInput = accessor.get(IQuickInputService);
         const star = await pickStar(quickInput, starId, "Open a Star's channel");
         if (star !== undefined) await openStarChannel(quickInput, star, slug);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.openStarChild",
+          title: { value: "Open Star Child", original: "Open Star Child" },
+          category,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(
+        _accessor: ServicesAccessor,
+        starId?: unknown,
+        environmentId?: unknown,
+        threadId?: unknown,
+      ): Promise<void> {
+        const star = typeof starId === "string" ? starById(starId) : undefined;
+        if (star === undefined || typeof environmentId !== "string" || typeof threadId !== "string")
+          throw new Error(
+            "pult-shell.openStarChild takes a held Star's id, an environment and a thread.",
+          );
+        await openStarChild(star, environmentId, threadId);
       }
     },
   );

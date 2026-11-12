@@ -106,14 +106,17 @@ const CHANNEL_TAG = "pult:channel:";
 /** A channel's slug, as the plugin reads one: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. */
 const SLUG = /^[a-z0-9][a-z0-9-]{0,50}$/u;
 
+/** A thread's first valid `pult:channel:<slug>` tag's slug, if it has one. */
+function channelTag(thread: { readonly tags: ReadonlyArray<string> }): string | undefined {
+  return thread.tags
+    .filter((tag) => tag.startsWith(CHANNEL_TAG))
+    .map((tag) => tag.slice(CHANNEL_TAG.length))
+    .find((slug) => SLUG.test(slug));
+}
+
 /** The channel a conversation is, by its first valid `pult:channel:<slug>` tag; `user` where none is. */
 export function channelOf(thread: { readonly tags: ReadonlyArray<string> }): string {
-  return (
-    thread.tags
-      .filter((tag) => tag.startsWith(CHANNEL_TAG))
-      .map((tag) => tag.slice(CHANNEL_TAG.length))
-      .find((slug) => SLUG.test(slug)) ?? USER_CHANNEL
-  );
+  return channelTag(thread) ?? USER_CHANNEL;
 }
 
 /** A Star's conversations among `threads`: the root threads of its homes' projects, newest first. */
@@ -242,6 +245,67 @@ export function channelRows<Thread extends StarThread>(
   star: Pick<Star<Thread>, "channels">,
 ): ReadonlyArray<StarChannel<Thread>> {
   return star.channels.filter(({ slug }) => slug !== USER_CHANNEL);
+}
+
+/** The tag a Star gives every thread it launches, its child, before the Star's id (`star-launched-threads`). */
+const CHILD_TAG = "pult:child:star:";
+/** The channel a child's messages land in where it names none (`star-channels`). */
+const WORK_CHANNEL = "work";
+
+/** A row under a selected Star's card: a channel but `user`, its open conversation, null while it sleeps, and the Star's children of it, oldest first. */
+export interface ChannelRow<Thread> {
+  readonly slug: string;
+  readonly thread: Thread | null;
+  readonly children: ReadonlyArray<Thread>;
+}
+
+/** What a selected Star's card lists: `user`'s children, directly under it, then its channel rows. */
+export interface CardRows<Thread> {
+  readonly children: ReadonlyArray<Thread>;
+  readonly channels: ReadonlyArray<ChannelRow<Thread>>;
+}
+
+/**
+ * What a selected Star's card lists, as the page's threads have them now
+ * (the Stars' model tells only a change of conversation or of its run): its
+ * children, the unsettled threads tagged `pult:child:star:<id>` but its own
+ * conversations, each under the row of its channel, its channel tag, `work`
+ * with none, in the order they were created, `user`'s directly under the
+ * card; and a row per open channel but `user`, its conversation's live row,
+ * and per channel asleep with a child, reading Asleep, by slug.
+ */
+export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
+  star: Pick<Star<Thread>, "id" | "homes" | "channels">,
+  threads: ReadonlyArray<Thread>,
+): CardRows<Thread> {
+  const conversations = new Set(conversationsOf(star.homes, threads));
+  const children = threads
+    .filter(
+      (thread) =>
+        thread.tags.includes(CHILD_TAG + star.id) && !thread.settled && !conversations.has(thread),
+    )
+    .toSorted((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+  const childrenOf = (slug: string) =>
+    children.filter((child) => (channelTag(child) ?? WORK_CHANNEL) === slug);
+  const open = new Map(
+    channelRows(star).map(({ slug, thread }) => {
+      const live = threads.find(
+        (each) => each.environmentId === thread.environmentId && each.id === thread.id,
+      );
+      return [slug, live === undefined || live.settled ? null : live];
+    }),
+  );
+  const slugs = new Set([
+    ...[...open].flatMap(([slug, thread]) => (thread === null ? [] : [slug])),
+    ...children.map((child) => channelTag(child) ?? WORK_CHANNEL),
+  ]);
+  slugs.delete(USER_CHANNEL);
+  return {
+    children: childrenOf(USER_CHANNEL),
+    channels: [...slugs]
+      .toSorted((left, right) => left.localeCompare(right))
+      .map((slug) => ({ slug, thread: open.get(slug) ?? null, children: childrenOf(slug) })),
+  };
 }
 
 /** The threads below a conversation, its subagents' and theirs, as the store has them. */

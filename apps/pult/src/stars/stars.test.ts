@@ -4,6 +4,7 @@ import * as NodeTest from "node:test";
 
 import type { RouteStar, StarsAnswer } from "./plugin.ts";
 import {
+  cardRows,
   channelOf,
   channelRows,
   creationTarget,
@@ -45,6 +46,7 @@ const thread = (
     settled: boolean;
     settledAt: string | null;
     working: boolean;
+    tags: ReadonlyArray<string>;
   }> = {},
 ) => ({
   environmentId,
@@ -57,6 +59,7 @@ const thread = (
   working: false,
   workingSince: null,
   ageFrom: createdAt,
+  tags: [] as ReadonlyArray<string>,
   ...overrides,
 });
 const open = (slug: string, threadId: string) => ({
@@ -245,6 +248,112 @@ NodeTest.describe("channelRows", () => {
         [thread("a", "u", CREATED), thread("a", "w", CREATED, { settled: true })],
       );
       NodeAssert.deepEqual(star && channelRows(star), []);
+    },
+  );
+});
+
+NodeTest.describe("cardRows", () => {
+  const child = (id: string, createdAt: string, tags: ReadonlyArray<string>, settled = false) =>
+    thread("a", id, createdAt, {
+      projectId: "repo",
+      tags: ["pult:child:star:one", ...tags],
+      settled,
+    });
+  const starWith = (channels: ReturnType<typeof open>[], threads: ReturnType<typeof thread>[]) => {
+    const [star] = starsOf(
+      [{ environmentId: "a", answer: answer([routeStar("one", { channels })]) }],
+      threads,
+    );
+    if (star === undefined) throw new Error("No Star.");
+    return star;
+  };
+  const shape = (rows: ReturnType<typeof cardRows<ReturnType<typeof thread>>>) => ({
+    children: rows.children.map(({ id }) => id),
+    channels: rows.channels.map(({ slug, thread, children }) => [
+      slug,
+      thread?.id ?? null,
+      children.map(({ id }) => id),
+    ]),
+  });
+
+  NodeTest.test(
+    "lists each child under its channel's row, `work` with none, `user`'s under the card, oldest first",
+    () => {
+      const threads = [
+        thread("a", "u", CREATED),
+        thread("a", "w", CREATED),
+        thread("a", "b", CREATED),
+        child("late", "2026-11-03T00:00:00.000Z", ["pult:channel:build"]),
+        child("early", "2026-11-02T00:00:00.000Z", ["pult:channel:build"]),
+        child("untagged", "2026-11-02T00:00:00.000Z", []),
+        child("with-user", "2026-11-02T00:00:00.000Z", ["pult:channel:user"]),
+        // Another Star's child, and a thread of no Star's.
+        thread("a", "other", CREATED, { projectId: "repo", tags: ["pult:child:star:two"] }),
+        thread("a", "plain", CREATED, { projectId: "repo" }),
+      ];
+      const star = starWith([open("user", "u"), open("work", "w"), open("build", "b")], threads);
+      NodeAssert.deepEqual(shape(cardRows(star, threads)), {
+        children: ["with-user"],
+        channels: [
+          ["build", "b", ["early", "late"]],
+          ["work", "w", ["untagged"]],
+        ],
+      });
+    },
+  );
+
+  NodeTest.test(
+    "keeps a sleeping channel's row, reading Asleep, while a child is unsettled, and loses it after",
+    () => {
+      const unsettled = [
+        thread("a", "u", CREATED),
+        child("builder", CREATED, ["pult:channel:review"]),
+      ];
+      const asleep = starWith([open("user", "u")], unsettled);
+      NodeAssert.deepEqual(shape(cardRows(asleep, unsettled)), {
+        children: [],
+        channels: [["review", null, ["builder"]]],
+      });
+      const settled = [
+        thread("a", "u", CREATED),
+        child("builder", CREATED, ["pult:channel:review"], true),
+      ];
+      NodeAssert.deepEqual(shape(cardRows(starWith([open("user", "u")], settled), settled)), {
+        children: [],
+        channels: [],
+      });
+    },
+  );
+
+  NodeTest.test(
+    "lists no settled child, and keeps a channel row its conversation alone holds",
+    () => {
+      const threads = [
+        thread("a", "w", CREATED),
+        child("done", CREATED, ["pult:channel:work"], true),
+        child("done-user", CREATED, ["pult:channel:user"], true),
+      ];
+      NodeAssert.deepEqual(shape(cardRows(starWith([open("work", "w")], threads), threads)), {
+        children: [],
+        channels: [["work", "w", []]],
+      });
+    },
+  );
+
+  NodeTest.test(
+    "reads a conversation the page has seen settle as asleep, and lists no conversation as a child",
+    () => {
+      const threads = [
+        thread("a", "w", CREATED, { settled: true }),
+        // A thread the Star launched into its own project is a conversation, not a child.
+        thread("a", "own", CREATED, { tags: ["pult:child:star:one", "pult:channel:work"] }),
+        child("builder", CREATED, ["pult:channel:work"]),
+      ];
+      const star = starWith([open("work", "w")], [thread("a", "w", CREATED)]);
+      NodeAssert.deepEqual(shape(cardRows(star, threads)), {
+        children: [],
+        channels: [["work", null, ["builder"]]],
+      });
     },
   );
 });

@@ -607,6 +607,17 @@
   list-style: none;
 }
 
+/* A selected Star's channel rows (src/panel/StarCard.tsx): a sleeping one's opens nothing; a channel's children sit indented under it. */
+.pult-subagent-asleep,
+.pult-subagent-asleep:hover {
+  background: none;
+  cursor: default;
+}
+
+.pult-card-children {
+  padding-left: 16px;
+}
+
 /* A selected Star's asks (src/panel/StarAsks.tsx): the subagents' header and rows. */
 .pult-card-asks {
   margin: 0 0 8px;
