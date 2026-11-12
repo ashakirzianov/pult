@@ -25,6 +25,7 @@ import type {
 } from "../../view/main.tsx";
 
 import { connection } from "../connection/index.ts";
+import { allowFileDrops } from "../nativeFileDrop.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { isSettingsTab, type SettingsInput } from "../settings/pane.tsx";
@@ -338,6 +339,14 @@ class ThreadPane extends SimpleEditorPane {
         if (this.shown === shown && shown.promotedTo === undefined) this.release();
       },
     };
+  }
+
+  protected override createEditor(parent: HTMLElement): void {
+    super.createEditor(parent);
+    const group = parent.closest<HTMLElement>(".editor-group-container");
+    if (group === null) throw new Error("The thread pane is in no editor group's element.");
+    // Files dropped on the view attach to its composer, while the view is the group's editor.
+    allowFileDrops(group, () => this.group.activeEditorPane === this);
   }
 
   override setVisible(visible: boolean): void {
