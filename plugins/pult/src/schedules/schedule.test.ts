@@ -44,7 +44,7 @@ describe("parseSchedule", () => {
     });
   });
 
-  it("reads `to` as the conversation a run lands in, the one with the user where absent", () => {
+  it("reads `to` as the channel a run lands in, any channel's slug, `user` where absent", () => {
     const to = (matter: string) => {
       const parsed = parseSchedule("standup", file(matter));
       return parsed.ok ? parsed.schedule.to : parsed.problem;
@@ -53,6 +53,8 @@ describe("parseSchedule", () => {
     assert.strictEqual(to("timezone: UTC\ntime: 09:00\nto: user"), "user");
     assert.strictEqual(to("timezone: UTC\nevery: 1h\nto: work"), "work");
     assert.strictEqual(to('timezone: UTC\ntime: 09:00\nto: "work"'), "work");
+    assert.strictEqual(to("timezone: UTC\nevery: 1h\nto: release-42"), "release-42");
+    assert.strictEqual(to(`timezone: UTC\nevery: 1h\nto: ${"a".repeat(51)}`), "a".repeat(51));
   });
 
   // Strict on purpose: a typo, or a key nobody implements, must not run as something else.
@@ -93,10 +95,12 @@ describe("parseSchedule", () => {
     [
       "standup",
       file("timezone: UTC\ntime: 09:00\nto: Work"),
-      /`to` "Work" is neither user nor work/,
+      /`to` "Work" is no channel's slug: lowercase letters, digits and hyphens/,
     ],
-    ["standup", file("timezone: UTC\ntime: 09:00\nto: me"), /`to` "me"/],
-    ["standup", file("timezone: UTC\ntime: 09:00\nto:"), /`to` "" is neither/],
+    ["standup", file("timezone: UTC\ntime: 09:00\nto: -work"), /`to` "-work" is no channel's/],
+    ["standup", file("timezone: UTC\ntime: 09:00\nto: my work"), /`to` "my work" is no/],
+    ["standup", file(`timezone: UTC\ntime: 09:00\nto: ${"a".repeat(52)}`), /is no channel's/],
+    ["standup", file("timezone: UTC\ntime: 09:00\nto:"), /`to` "" is no channel's/],
     ["standup", file("timezone: UTC\ntime: 09:00\nto: work\nto: user"), /`to` is given twice/],
   ];
   it.each(invalid)("finds %j %j no schedule", (name, text, expected) => {

@@ -156,7 +156,7 @@ describe("namesSchedules", () => {
 });
 
 describe("the pass", () => {
-  it.effect("delivers a run to the conversation its schedule names", () =>
+  it.effect("delivers a run to the channel its schedule names, `user` where it names none", () =>
     Effect.gen(function* () {
       const h = yield* harness;
       yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
@@ -165,10 +165,16 @@ describe("the pass", () => {
         "---\ntimezone: UTC\ntime: 09:00\nto: work\n---\nCheck the build.\n",
         "2026-11-10T08:00:00Z",
       );
+      yield* h.write(
+        "release",
+        "---\ntimezone: UTC\ntime: 09:00\nto: release-42\n---\nShip it.\n",
+        "2026-11-10T08:00:00Z",
+      );
       yield* h.clock("2026-11-10T09:00:04Z");
       yield* h.pass;
       assert.deepStrictEqual(h.deliveries.map((each) => [each.text, each.to]).toSorted(), [
         ["Check the build.", "work"],
+        ["Ship it.", "release-42"],
         ["Time for the standup.", "user"],
       ]);
     }).pipe(Effect.scoped),

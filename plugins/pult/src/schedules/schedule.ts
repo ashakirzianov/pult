@@ -1,10 +1,10 @@
 // A Star's schedule (xaxis `pult/issues/star-schedules.md`): `.pult/schedules/<name>.md`, a front
 // matter with a required IANA `timezone` and one rule over the message as its body. Read
-// strictly: a file that is anything else is no schedule, and says why. Its `to`, the conversation
-// a run lands in, is the user's where absent. Every due time is a function of the file alone.
+// strictly: a file that is anything else is no schedule, and says why. Its `to`, the channel a
+// run lands in, is any channel's slug, `user` where absent. Every due time is a function of the file alone.
 import { DateTime, Option } from "../host.ts";
 import { entry, frontMatter, SYSTEM_DIRECTORY } from "../stars/record.ts";
-import type { Channel } from "../stars/channels.ts";
+import { isChannel, USER_CHANNEL, type Channel } from "../stars/channels.ts";
 
 export const SCHEDULES_DIRECTORY = `${SYSTEM_DIRECTORY}/schedules`;
 
@@ -131,8 +131,11 @@ export function parseSchedule(name: string, text: string): Parsed {
   if (Option.isNone(zone)) return problem(`\`timezone\` "${timezone}" is no IANA time zone`);
   const message = text.slice(matter.bodyStart).trim();
   if (message === "") return problem("its message, the text after the front matter, is empty");
-  const to = fields.get("to") ?? "user";
-  if (to !== "user" && to !== "work") return problem(`\`to\` "${to}" is neither user nor work`);
+  const to = fields.get("to") ?? USER_CHANNEL;
+  if (!isChannel(to))
+    return problem(
+      `\`to\` "${to}" is no channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters`,
+    );
 
   const time = fields.get("time");
   const days = fields.get("days");
