@@ -77,9 +77,9 @@ export const USER_CHANNEL = "user";
 /**
  * Whether a batch of changes under the Stars directory may have rewritten a
  * transcript of `user`'s, which the fold shows, as a conversation
- * un-settled and settled again does: a change under a
- * `.pult/channels/user/`, where the plugin writes them, or more changed than
- * the batch names.
+ * un-settled and settled again does: a change to a `.pult/channels/user`
+ * or under it, where the plugin writes them, or more changed than the batch
+ * names.
  */
 export function rewritesUserTranscripts(event: {
   readonly changes: ReadonlyArray<{ readonly path: string }>;
@@ -87,11 +87,12 @@ export function rewritesUserTranscripts(event: {
 }): boolean {
   return (
     event.truncated ||
-    event.changes.some((change) =>
-      change.path.replaceAll("\\", "/").includes(`.pult/channels/${USER_CHANNEL}/`),
-    )
+    event.changes.some((change) => USER_CHANNEL_PATH.test(change.path.replaceAll("\\", "/")))
   );
 }
+
+/** `user`'s channel's folder, or a path under it, `/`-separated. */
+const USER_CHANNEL_PATH = new RegExp(`(?:^|/)\\.pult/channels/${USER_CHANNEL}(?:/|$)`);
 
 /**
  * The Stars of `answer` a batch of changes under its Stars directory may

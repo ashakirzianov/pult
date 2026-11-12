@@ -31,6 +31,10 @@ NodeTest.test("rewritesUserTranscripts reads a change under `user`'s channel alo
   );
   NodeAssert.equal(rewritesUserTranscripts(batch([transcript("work")])), false);
   NodeAssert.equal(rewritesUserTranscripts(batch([transcript("user-research")])), false);
+  // The channel's folder itself, made or removed whole.
+  NodeAssert.equal(rewritesUserTranscripts(batch(["star/.pult/channels/user"])), true);
+  NodeAssert.equal(rewritesUserTranscripts(batch(["star/.pult/channels/user-research"])), false);
+  NodeAssert.equal(rewritesUserTranscripts(batch(["star/old.pult/channels/user/x.md"])), false);
   NodeAssert.equal(rewritesUserTranscripts(batch(["star/notes.md"])), false);
   NodeAssert.equal(rewritesUserTranscripts(batch([], true)), true);
 });
