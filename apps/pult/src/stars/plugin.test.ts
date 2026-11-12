@@ -103,7 +103,10 @@ const star = {
   root: "/Users/a/.pult/stars/star",
   projectId: "p1",
   instructions: "/Users/a/.pult/stars/star/instructions.md",
-  conversation: { threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
+  channels: [
+    { slug: "user", threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
+    { slug: "work", threadId: "t2", sleeps: { heldBy: "run" } },
+  ],
   asleepSince: "2026-11-01T00:00:00.000Z",
   model: {
     instanceId: "claudeAgent",
@@ -174,15 +177,23 @@ NodeTest.describe("decodeStars", () => {
     NodeAssert.equal(decodeStars({ ...stars, stars: [older] }).stars[0]?.model, null);
   });
 
-  NodeTest.test("reads a conversation's hold, and a sleeping Star's none", () => {
-    const held = { ...star, conversation: { threadId: "t1", sleeps: { heldBy: "run" } } };
-    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [held] }).stars[0]?.conversation, {
-      threadId: "t1",
-      sleeps: { heldBy: "run" },
-    });
-    const asleep = { ...star, conversation: null };
-    NodeAssert.equal(decodeStars({ ...stars, stars: [asleep] }).stars[0]?.conversation, null);
+  NodeTest.test("reads each open channel with its deadline or its hold", () => {
+    NodeAssert.deepEqual(decodeStars(stars).stars[0]?.channels, [
+      { slug: "user", threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
+      { slug: "work", threadId: "t2", sleeps: { heldBy: "run" } },
+    ]);
+    const asleep = { ...star, channels: [] };
+    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [asleep] }).stars[0]?.channels, []);
   });
+
+  NodeTest.test(
+    "reads an absent `channels` as none open, and lets an old `conversation` be",
+    () => {
+      const { channels: _, ...older } = star;
+      const old = { ...older, conversation: { threadId: "t1", sleeps: { at: star.created } } };
+      NodeAssert.deepEqual(decodeStars({ ...stars, stars: [old] }).stars[0]?.channels, []);
+    },
+  );
 
   NodeTest.test("takes a run result it does not know, so a newer plugin hides no Star", () => {
     const newer = {
@@ -207,7 +218,9 @@ NodeTest.describe("decodeStars", () => {
       { ...stars, hidden: "p1" },
       { ...stars, stars: [{ ...star, projectId: null }] },
       { ...stars, stars: [{ ...star, conversations: [1] }] },
-      { ...stars, stars: [{ ...star, conversation: { threadId: "t1", sleeps: {} } }] },
+      { ...stars, stars: [{ ...star, channels: [{ slug: "work", threadId: "t1", sleeps: {} }] }] },
+      { ...stars, stars: [{ ...star, channels: [{ threadId: "t1", sleeps: { heldBy: "run" } }] }] },
+      { ...stars, stars: [{ ...star, channels: null }] },
       { ...stars, stars: [{ ...star, schedules: null }] },
       { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[1], spent: "no" }] }] },
       {

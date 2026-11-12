@@ -172,8 +172,8 @@ class StarSync {
 
   /**
    * Syncs in full every environment holding a Star once after it connects,
-   * while every Star there sleeps: an awake one's folder is its
-   * conversation's to change, and its sleep's transcript syncs it. Whether
+   * while every Star there sleeps, no channel of its open: an awake one's folder is its
+   * conversations' to change, and its sleep's transcript syncs it. Whether
    * they sleep is known once the environment's threads are in.
    */
   private update(): void {
@@ -306,9 +306,9 @@ class StarSync {
     });
   }
 
-  /** Before a sleeping Star wakes, its draft written in: a pull of its environment's repository, at most once a minute, so the send never waits on it. */
+  /** Before a sleeping Star, no channel of its open, wakes, its draft written in: a pull of its environment's repository, at most once a minute, so the send never waits on it. */
   private beforeWake(star: Star, environmentId: string): void {
-    if (star.current !== null) return;
+    if (star.state !== "asleep") return;
     if (starRepository(environmentId)?.origin === undefined || !ready(environmentId)) return;
     const now = Date.now();
     if (now - (this.pulledAt.get(environmentId) ?? 0) < WAKE_PULL_INTERVAL_MS) return;
@@ -442,7 +442,7 @@ class StarSync {
       .get()
       .some((draft) => draft.environmentId === environmentId && draft.projectId === home.projectId);
     // A pull before a wake hands nothing over: the user is about to write to the Star.
-    if (star.current !== null || writing || occasion.kind === "pull") {
+    if (star.state !== "asleep" || writing || occasion.kind === "pull") {
       this.change(environmentId, {
         note: `${what}; Pult hands it to your Star when it next falls asleep.`,
       });

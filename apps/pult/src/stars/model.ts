@@ -26,6 +26,7 @@ import {
   STARS_FEATURE,
   type StarsAnswer,
   upkeepStars,
+  USER_CHANNEL,
 } from "./plugin.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { originOf } from "./sync.ts";
@@ -113,16 +114,19 @@ function holdText(heldBy: string): string {
 }
 
 /**
- * The home whose current conversation Refresh Context ends: the Star awake,
- * not working, in a conversation its home's plugin reads with a deadline,
- * no hold, on an environment whose plugin lists `star-sleep`.
+ * The home whose conversation in `user` Refresh Context ends, never another
+ * channel's: `user` open and not working, in a conversation its home's
+ * plugin reads with a deadline, no hold, on an environment whose plugin
+ * lists `star-sleep`.
  */
 function sleepableHome(star: Star): StarHome | undefined {
-  if (star.state !== "awake" || star.current === null) return undefined;
+  const { current } = star;
+  if (current === null || current.working) return undefined;
   const home = drawnHome(star);
+  const user = home?.channels.find((channel) => channel.slug === USER_CHANNEL);
   return home !== undefined &&
-    home.conversation?.threadId === star.current.id &&
-    "at" in home.conversation.sleeps &&
+    user?.threadId === current.id &&
+    "at" in user.sleeps &&
     pluginFeatures(home.environmentId)?.has(SLEEP_FEATURE) === true
     ? home
     : undefined;
@@ -441,7 +445,7 @@ class StarsModel {
             // A transcript the plugin rewrote, its conversation un-settled and settled again, is read again where the fold shows it.
             if (
               event.truncated ||
-              event.changes.some((change) => change.path.includes(".pult/conversations/"))
+              event.changes.some((change) => change.path.includes(".pult/channels/"))
             )
               for (const star of reading.answer?.stars ?? [])
                 refreshTranscripts(environmentId, star.id);
@@ -484,8 +488,7 @@ class StarsModel {
         star.origin,
         star.homes,
         star.state,
-        star.current?.id,
-        star.current?.workingSince,
+        star.channels.map(({ slug, thread }) => [slug, thread.id, thread.workingSince]),
         star.asleepSince,
       ]),
       [...this.readings.values()].map((reading) => reading.status),

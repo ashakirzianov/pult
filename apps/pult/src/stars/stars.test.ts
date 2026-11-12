@@ -4,6 +4,8 @@ import * as NodeTest from "node:test";
 
 import type { RouteStar, StarsAnswer } from "./plugin.ts";
 import {
+  channelOf,
+  channelRows,
   creationTarget,
   drawnHome,
   type EnvironmentReading,
@@ -23,7 +25,7 @@ const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar =>
   root: `/Users/a/.pult/stars/${id}`,
   projectId: "star-project",
   instructions: `/Users/a/.pult/stars/${id}/instructions.md`,
-  conversation: null,
+  channels: [],
   asleepSince: CREATED,
   model: null,
   conversations: [],
@@ -57,7 +59,11 @@ const thread = (
   ageFrom: createdAt,
   ...overrides,
 });
-const current = (threadId: string) => ({ threadId, sleeps: { at: "2026-11-05T00:00:00.000Z" } });
+const open = (slug: string, threadId: string) => ({
+  slug,
+  threadId,
+  sleeps: { at: "2026-11-05T00:00:00.000Z" },
+});
 
 NodeTest.describe("starsOf", () => {
   NodeTest.test(
@@ -95,47 +101,93 @@ NodeTest.describe("starsOf", () => {
     },
   );
 
-  NodeTest.test("takes the live row of the conversation a home's plugin names as current", () => {
-    const threads = [
-      thread("a", "older", "2026-11-01T00:00:00.000Z"),
-      thread("b", "newer", "2026-11-02T00:00:00.000Z", { working: true }),
-      thread("b", "unnamed", "2026-11-03T00:00:00.000Z"),
-    ];
-    const [star] = starsOf(
-      [
-        {
-          environmentId: "a",
-          answer: answer([routeStar("one", { conversation: current("older") })]),
-        },
-        {
-          environmentId: "b",
-          answer: answer([routeStar("one", { conversation: current("newer") })]),
-        },
-      ],
-      threads,
+  NodeTest.test(
+    "takes the live row of the conversation a home's plugin names as `user`'s current",
+    () => {
+      const threads = [
+        thread("a", "older", "2026-11-01T00:00:00.000Z"),
+        thread("b", "newer", "2026-11-02T00:00:00.000Z", { working: true }),
+        thread("b", "unnamed", "2026-11-03T00:00:00.000Z"),
+      ];
+      const [star] = starsOf(
+        [
+          {
+            environmentId: "a",
+            answer: answer([routeStar("one", { channels: [open("user", "older")] })]),
+          },
+          {
+            environmentId: "b",
+            answer: answer([routeStar("one", { channels: [open("user", "newer")] })]),
+          },
+        ],
+        threads,
+      );
+      NodeAssert.equal(star?.current?.id, "newer");
+      NodeAssert.deepEqual(
+        star?.channels.map(({ slug, thread }) => [slug, thread.id]),
+        [["user", "newer"]],
+      );
+      NodeAssert.equal(star?.state, "working");
+    },
+  );
+
+  const of = (channels: RouteStar["channels"], threads: ReturnType<typeof thread>[]) =>
+    starsOf([{ environmentId: "a", answer: answer([routeStar("one", { channels })]) }], threads)[0];
+
+  NodeTest.test("holds every open channel by slug, `user`'s alone the current conversation", () => {
+    const star = of(
+      [open("user", "u"), open("review-x", "r"), open("work", "w")],
+      [thread("a", "u", CREATED), thread("a", "r", CREATED), thread("a", "w", CREATED)],
     );
-    NodeAssert.equal(star?.current?.id, "newer");
-    NodeAssert.equal(star?.state, "working");
+    NodeAssert.deepEqual(
+      star?.channels.map(({ slug, thread }) => [slug, thread.id]),
+      [
+        ["review-x", "r"],
+        ["user", "u"],
+        ["work", "w"],
+      ],
+    );
+    NodeAssert.equal(star?.current?.id, "u");
   });
 
   NodeTest.test(
-    "is asleep where the plugin names no conversation, or the page has seen it settle or holds no row of it",
+    "is awake while any channel is open, `user` asleep among them, and working while any works",
     () => {
-      const asleep = (
-        conversation: RouteStar["conversation"],
-        threads: ReturnType<typeof thread>[],
-      ) =>
-        starsOf(
-          [{ environmentId: "a", answer: answer([routeStar("one", { conversation })]) }],
-          threads,
-        )[0];
-      NodeAssert.equal(asleep(null, [thread("a", "t", CREATED)])?.state, "asleep");
-      NodeAssert.equal(
-        asleep(current("t"), [thread("a", "t", CREATED, { settled: true })])?.current,
-        null,
+      const working = of(
+        [open("user", "u"), open("work", "w")],
+        [thread("a", "u", CREATED), thread("a", "w", CREATED, { working: true })],
       );
-      NodeAssert.equal(asleep(current("t"), [])?.state, "asleep");
-      NodeAssert.equal(asleep(current("t"), [thread("a", "t", CREATED)])?.state, "awake");
+      NodeAssert.equal(working?.state, "working");
+      const userAsleep = of([open("work", "w")], [thread("a", "w", CREATED)]);
+      NodeAssert.equal(userAsleep?.state, "awake");
+      NodeAssert.equal(userAsleep?.current, null);
+    },
+  );
+
+  NodeTest.test(
+    "is asleep only while no channel is open: none named, or each seen settled or held by no row",
+    () => {
+      const asleep = (channels: RouteStar["channels"], threads: ReturnType<typeof thread>[]) =>
+        of(channels, threads)?.state;
+      NodeAssert.equal(asleep([], [thread("a", "t", CREATED)]), "asleep");
+      NodeAssert.equal(
+        asleep(
+          [open("user", "u"), open("work", "w")],
+          [
+            thread("a", "u", CREATED, { settled: true }),
+            thread("a", "w", CREATED, { settled: true }),
+          ],
+        ),
+        "asleep",
+      );
+      NodeAssert.equal(asleep([open("work", "w")], []), "asleep");
+      NodeAssert.equal(
+        asleep(
+          [open("user", "u"), open("work", "w")],
+          [thread("a", "u", CREATED, { settled: true }), thread("a", "w", CREATED)],
+        ),
+        "awake",
+      );
     },
   );
 
@@ -154,6 +206,58 @@ NodeTest.describe("starsOf", () => {
       [],
     );
     NodeAssert.equal(star?.asleepSince, "2026-11-03T09:00:00.000Z");
+  });
+});
+
+NodeTest.describe("channelRows", () => {
+  NodeTest.test("lists every open channel but `user`, by slug", () => {
+    const [star] = starsOf(
+      [
+        {
+          environmentId: "a",
+          answer: answer([
+            routeStar("one", {
+              channels: [open("work", "w"), open("user", "u"), open("build-unit-4", "b")],
+            }),
+          ]),
+        },
+      ],
+      [thread("a", "u", CREATED), thread("a", "w", CREATED), thread("a", "b", CREATED)],
+    );
+    NodeAssert.deepEqual(star && channelRows(star).map(({ slug, thread }) => [slug, thread.id]), [
+      ["build-unit-4", "b"],
+      ["work", "w"],
+    ]);
+  });
+
+  NodeTest.test(
+    "lists none while only `user` is open, nor a channel the page has seen settle",
+    () => {
+      const [star] = starsOf(
+        [
+          {
+            environmentId: "a",
+            answer: answer([
+              routeStar("one", { channels: [open("user", "u"), open("work", "w")] }),
+            ]),
+          },
+        ],
+        [thread("a", "u", CREATED), thread("a", "w", CREATED, { settled: true })],
+      );
+      NodeAssert.deepEqual(star && channelRows(star), []);
+    },
+  );
+});
+
+NodeTest.describe("channelOf", () => {
+  NodeTest.test("reads the first valid channel tag, `user` where none is", () => {
+    NodeAssert.equal(channelOf({ tags: [] }), "user");
+    NodeAssert.equal(channelOf({ tags: ["pult:child:star:s1"] }), "user");
+    NodeAssert.equal(channelOf({ tags: ["pult:channel:work"] }), "work");
+    NodeAssert.equal(
+      channelOf({ tags: ["pult:channel:Not A Slug", "pult:channel:review-2", "pult:channel:x"] }),
+      "review-2",
+    );
   });
 });
 

@@ -1,15 +1,16 @@
 // The Stars as the page draws them, apart from the workbench so
 // `node --test src/stars/stars.test.ts` can run it: each environment's
 // answer of the Pult plugin's `stars` route merged by id into Stars, each
-// with its homes and its current conversation's live row; and when the page
-// asks for a Star to be created.
+// with its homes and its open channels' live rows; and when the page asks
+// for a Star to be created.
 import type { ShellThread } from "../threads/store.ts";
-import type {
-  RouteAsk,
-  RouteConversation,
-  RouteModel,
-  RouteSchedule,
-  StarsAnswer,
+import {
+  type RouteAsk,
+  type RouteChannel,
+  type RouteModel,
+  type RouteSchedule,
+  type StarsAnswer,
+  USER_CHANNEL,
 } from "./plugin.ts";
 
 /** A Star's home: its folder and project on one environment, as that environment's plugin serves it. */
@@ -22,13 +23,13 @@ export interface StarHome {
   readonly projectId: string;
   /** Its `instructions.md`, a host path. */
   readonly instructions: string;
-  /** Its current conversation on this environment, as the plugin reads it; null while it sleeps here. */
-  readonly conversation: RouteConversation | null;
-  /** The model its next conversation here takes, as this environment's plugin reads it (`RouteStar`'s). */
+  /** Its open channels on this environment, as the plugin reads them, by slug; none while it sleeps here. */
+  readonly channels: ReadonlyArray<RouteChannel>;
+  /** The model its next conversation with the user here takes, as this environment's plugin reads it (`RouteStar`'s). */
   readonly model: RouteModel | null;
-  /** Since when it sleeps here: its last conversation's settlement, else its creation. */
+  /** Since when `user` sleeps here: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
-  /** The transcripts' names of this environment, oldest first. */
+  /** The names of `user`'s transcripts of this environment, oldest first. */
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules as this environment's plugin read them (`schedules.ts`). */
   readonly schedules: ReadonlyArray<RouteSchedule>;
@@ -53,13 +54,20 @@ export type StarThread = Pick<
   | "ageFrom"
 >;
 
-/** Asleep while it has no current conversation, Working while that conversation's run is on, else Awake. */
+/** Asleep while no channel is open, Working while any open channel's run is on, else Awake. */
 export type StarState = "asleep" | "awake" | "working";
+
+/** An open channel of a Star's: its slug and its current conversation, the page's live row of the thread a home's plugin names. */
+export interface StarChannel<Thread extends StarThread = ShellThread> {
+  readonly slug: string;
+  readonly thread: Thread;
+}
 
 /**
  * A Star: a record id with its homes, one per environment whose plugin
- * serves it; its current conversation, the page's live row of the thread
- * a home's plugin names, while the page holds it open; and since when it
+ * serves it; its open channels, each the page's live row of the thread a
+ * home's plugin names, while the page holds it open; its current
+ * conversation, `user`'s, the one its tab shows; and since when `user`
  * sleeps, by the home it is drawn from (`drawnHome`).
  */
 export interface Star<Thread extends StarThread = ShellThread> {
@@ -70,6 +78,9 @@ export interface Star<Thread extends StarThread = ShellThread> {
   /** Where it syncs, its first home's repository's origin; absent while it does not. */
   readonly origin?: string;
   readonly homes: ReadonlyArray<StarHome>;
+  /** Every open channel whose conversation the page holds open, `user` among them, by slug. */
+  readonly channels: ReadonlyArray<StarChannel<Thread>>;
+  /** `user`'s open conversation; null while `user` sleeps, whatever the other channels do. */
   readonly current: Thread | null;
   readonly asleepSince: string;
   readonly state: StarState;
@@ -89,6 +100,21 @@ export function starName(star: Pick<Star<StarThread>, "name">): string {
 
 const newestFirst = <Thread extends StarThread>(threads: ReadonlyArray<Thread>) =>
   threads.toSorted((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+
+/** The prefix of the tag that says a thread's channel, `pult:channel:<slug>` (`plugins/pult/src/stars/channels.ts`). */
+const CHANNEL_TAG = "pult:channel:";
+/** A channel's slug, as the plugin reads one: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. */
+const SLUG = /^[a-z0-9][a-z0-9-]{0,50}$/u;
+
+/** The channel a conversation is, by its first valid `pult:channel:<slug>` tag; `user` where none is. */
+export function channelOf(thread: { readonly tags: ReadonlyArray<string> }): string {
+  return (
+    thread.tags
+      .filter((tag) => tag.startsWith(CHANNEL_TAG))
+      .map((tag) => tag.slice(CHANNEL_TAG.length))
+      .find((slug) => SLUG.test(slug)) ?? USER_CHANNEL
+  );
+}
 
 /** A Star's conversations among `threads`: the root threads of its homes' projects, newest first. */
 export function conversationsOf<Thread extends StarThread>(
@@ -129,11 +155,12 @@ export function drawnHome(star: Pick<Star<StarThread>, "homes" | "current">): St
 /**
  * The Stars of the environments' answers, in the order of their first home:
  * one id on several environments is one Star with a home on each. Name and
- * tint are its first home's. Its current conversation is the live row of a
- * thread a home's plugin names as current, while the page's threads hold it
- * open, the newest by creation where several homes name one; asleep
- * otherwise, as the plugin says it is or as the page has just seen it
- * settle, until its next answer.
+ * tint are its first home's. Each open channel's conversation is the live
+ * row of the thread a home's plugin names for it, while the page's threads
+ * hold it open, the newest by creation where several homes name one; a
+ * channel sleeps otherwise, as the plugin says it does or as the page has
+ * just seen its conversation settle, until its next answer. The Star is
+ * asleep while no channel is open, Working while any open one works.
  */
 export function starsOf<Thread extends StarThread>(
   answers: ReadonlyArray<EnvironmentAnswer>,
@@ -157,7 +184,7 @@ export function starsOf<Thread extends StarThread>(
         root: star.root,
         projectId: star.projectId,
         instructions: star.instructions,
-        conversation: star.conversation,
+        channels: star.channels,
         model: star.model,
         asleepSince: star.asleepSince,
         conversations: star.conversations,
@@ -168,17 +195,24 @@ export function starsOf<Thread extends StarThread>(
     }
   }
   return [...byId.values()].map(({ first, origin, homes }) => {
-    const current =
-      newestFirst(
-        homes.flatMap((home) => {
-          const threadId = home.conversation?.threadId;
-          const thread = threads.find(
-            (each) =>
-              each.environmentId === home.environmentId && each.id === threadId && !each.settled,
-          );
-          return thread === undefined ? [] : [thread];
-        }),
-      )[0] ?? null;
+    const open = new Map<string, Thread>();
+    const live = homes.flatMap((home) =>
+      home.channels.flatMap(({ slug, threadId }) => {
+        const thread = threads.find(
+          (each) =>
+            each.environmentId === home.environmentId && each.id === threadId && !each.settled,
+        );
+        return thread === undefined ? [] : [{ slug, thread }];
+      }),
+    );
+    for (const { slug, thread } of live.toSorted(
+      (left, right) => Date.parse(right.thread.createdAt) - Date.parse(left.thread.createdAt),
+    ))
+      if (!open.has(slug)) open.set(slug, thread);
+    const channels = [...open]
+      .map(([slug, thread]) => ({ slug, thread }))
+      .toSorted((left, right) => left.slug.localeCompare(right.slug));
+    const current = open.get(USER_CHANNEL) ?? null;
     const star = { homes, current };
     return {
       id: first.id,
@@ -187,11 +221,27 @@ export function starsOf<Thread extends StarThread>(
       created: first.created,
       ...(origin === undefined ? {} : { origin }),
       homes,
+      channels,
       current,
       asleepSince: drawnHome(star)?.asleepSince ?? first.created,
-      state: current === null ? "asleep" : current.working ? "working" : "awake",
+      state:
+        channels.length === 0
+          ? "asleep"
+          : channels.some(({ thread }) => thread.working)
+            ? "working"
+            : "awake",
     };
   });
+}
+
+/**
+ * The rows under a selected Star's card: one per open channel but `user`,
+ * whose conversation is the Star's tab, by slug.
+ */
+export function channelRows<Thread extends StarThread>(
+  star: Pick<Star<Thread>, "channels">,
+): ReadonlyArray<StarChannel<Thread>> {
+  return star.channels.filter(({ slug }) => slug !== USER_CHANNEL);
 }
 
 /** The threads below a conversation, its subagents' and theirs, as the store has them. */

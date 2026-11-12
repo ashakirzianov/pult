@@ -71,8 +71,12 @@ export async function readAbout(credential: Credential): Promise<ReadonlyArray<s
   return features ?? [];
 }
 
-/** A Star's current conversation as the route reads it: its thread, and the sleep rule's reading of it, a deadline or what holds it. */
-export interface RouteConversation {
+/** The channel with the user, whose conversation is the Star's tab (xaxis `pult/issues/star-channels.md`). */
+export const USER_CHANNEL = "user";
+
+/** An open channel of a Star's as the route reads it: its slug, its current conversation's thread, and the sleep rule's reading of it, a deadline or what holds it. */
+export interface RouteChannel {
+  readonly slug: string;
   readonly threadId: string;
   readonly sleeps: { readonly at: string } | { readonly heldBy: string };
 }
@@ -135,12 +139,13 @@ export interface RouteModel {
 /** A Star as `GET /stars` serves it, the fields the page draws; `root` and `instructions` are host paths. */
 export interface RouteStar extends WrittenStar {
   readonly instructions: string;
-  /** Null while it sleeps. */
-  readonly conversation: RouteConversation | null;
+  /** Every open channel, `user` among them, by slug; none while it sleeps. `asleepSince`, `model` and `conversations` are `user`'s. */
+  readonly channels: ReadonlyArray<RouteChannel>;
+  /** Since when `user` sleeps: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
-  /** The model its next conversation with the user takes, the one a wake by message takes; null before its first, and from a plugin older than the field. */
+  /** The model its next conversation with the user takes, the one a wake by message into `user` takes; null before its first, and from a plugin older than the field. */
   readonly model: RouteModel | null;
-  /** Its transcripts' names on this environment, oldest first. */
+  /** The names of `user`'s transcripts on this environment, oldest first. */
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules' files, by name; none from a plugin older than the schedules. */
   readonly schedules: ReadonlyArray<RouteSchedule>;
@@ -220,14 +225,17 @@ const struct =
     return decoded as T;
   };
 
-const sleeps: Decode<RouteConversation["sleeps"]> = (value, at) => {
+const sleeps: Decode<RouteChannel["sleeps"]> = (value, at) => {
   if (isFields(value) && typeof value.at === "string") return { at: value.at };
   if (isFields(value) && typeof value.heldBy === "string") return { heldBy: value.heldBy };
   return fail(at, "{ at } or { heldBy }");
 };
 
-const conversation: Decode<RouteConversation | null> = (value, at) =>
-  value === null ? null : struct<RouteConversation>({ threadId: string, sleeps })(value, at);
+const channel = struct<RouteChannel>({ slug: string, threadId: string, sleeps });
+
+/** A server without channels serves none: absent reads as none open, any other shape fails. */
+const channels: Decode<ReadonlyArray<RouteChannel>> = (value, at) =>
+  value === undefined ? [] : arrayOf(channel)(value, at);
 
 const schedule = struct<RouteSchedule>({
   name: string,
@@ -285,7 +293,7 @@ const routeStar = struct<RouteStar>({
   root: string,
   projectId: string,
   instructions: string,
-  conversation,
+  channels,
   asleepSince: string,
   model,
   conversations: arrayOf(string),
@@ -370,7 +378,7 @@ export const writeStarRecord = (
   fields: { readonly name?: string; readonly tint?: string },
 ) => ask(credential, "POST", starPath(id), decodeStar, fields);
 
-/** What Refresh Context answers: the Star's conversation put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
+/** What Refresh Context answers: the Star's conversation in `user` put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
 export type SleepAnswer =
   | { readonly slept: true }
   | { readonly slept: false; readonly heldBy: string };
@@ -382,7 +390,7 @@ const sleepAnswer = (body: unknown): SleepAnswer => {
   return fail("sleep", "{ slept: true } or { slept: false, heldBy }");
 };
 
-/** Puts the Star's current conversation to sleep now, unless something holds it; a Star asleep already is refused. */
+/** Puts the Star's current conversation in `user` to sleep now, unless something holds it; a Star asleep already is refused. */
 export const sleepStarOn = (credential: Credential, id: string) =>
   ask(credential, "POST", `${starPath(id)}/sleep`, sleepAnswer, {});
 

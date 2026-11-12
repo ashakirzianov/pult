@@ -351,6 +351,7 @@ export function shellThreads(
         project !== undefined && thread.lineage.parentThreadId === null && inStar(thread)
           ? project.title
           : thread.title,
+      tags: thread.source.tags ?? [],
       branch: thread.branch,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,

@@ -6,7 +6,7 @@ import { projectDrafts, threadsWithUnsentMessages } from "../panel/drafts.ts";
 import { threadStore } from "../threads/store.ts";
 import { flatStill } from "./flat/star.ts";
 import markCss from "./flat/star.css?raw";
-import { finishedUntil, type StarLook, starLook } from "./look.ts";
+import { type StarLook, starFinishedUntil, starLook } from "./look.ts";
 import { starStore } from "./model.ts";
 import type { Star } from "./stars.ts";
 
@@ -75,7 +75,7 @@ function update(): void {
   const stars = starStore.get();
   const looks = new Map(stars.map((star) => [star.id, starLook(star, inputs)]));
   const ends = stars.flatMap((star) => {
-    const until = star.current === null ? null : finishedUntil(star.current);
+    const until = starFinishedUntil(star);
     return until !== null && until > now ? [until] : [];
   });
   if (ends.length > 0)

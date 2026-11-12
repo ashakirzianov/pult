@@ -25,7 +25,7 @@ type Holds<T extends true> = T;
 /** The looks are the mark's states, `pult-star`'s (`flat/states.ts`), name for name: a name only one side has fails the typecheck here. */
 export type LooksAreTheMarksStates = Holds<Same<StarLook, State>>;
 
-/** How long a Star looks finished after its current conversation's last turn ends. */
+/** How long a Star looks finished after a conversation's last turn ends. */
 export const FINISHED_MS = 3 * 60_000;
 
 /** What the look reads of a thread: its own, or one below the conversation. */
@@ -58,45 +58,61 @@ export function finishedUntil(current: Pick<LookThread, "latestRun">): number | 
   return Number.isNaN(end) ? null : end + FINISHED_MS;
 }
 
+/** Until when the Star looks finished: the latest of its open channels' `finishedUntil`; null without one. */
+export function starFinishedUntil(star: {
+  readonly channels: ReadonlyArray<{ readonly thread: Pick<LookThread, "latestRun"> }>;
+}): number | null {
+  const ends = star.channels.flatMap(({ thread }) => finishedUntil(thread) ?? []);
+  return ends.length === 0 ? null : Math.max(...ends);
+}
+
 /**
- * A Star's look. Asleep, it is stirring while one of its homes' drafts holds
- * an unsent message, else asleep. Awake, the first that holds of: troubled,
- * its latest run failed, a usage limit's stop among them, until the next
- * starts (an interrupted run is not a failure, and ends finished); waiting, a
- * runtime request of it or of a thread below it awaits the user; talking, it
- * works and an assistant message of its run streams, as the shell row says
- * (never for a provider that sends its text whole, as Claude's adapter does,
- * nor from an older server); thinking, its own run is on, a queued message
- * among it (upstream's Waiting, a run held open by background work, is not
- * its own); delegating, a thread below
- * it works, or its run is held open by background work; listening, its
- * composer holds an unsent message; finished, for `FINISHED_MS` after its
- * latest run ended; else awake.
+ * A Star's look, read over every open channel's conversation, each state
+ * holding when it holds for any. With none open, it is stirring while one
+ * of its homes' drafts holds an unsent message, else asleep. Else the first
+ * that holds of: troubled, a conversation's latest run failed, a usage
+ * limit's stop among them, until its next starts (an interrupted run is
+ * not a failure, and ends finished); waiting, a runtime request of a
+ * conversation or of a thread below one awaits the user; talking, a
+ * conversation works and an assistant message of its run streams, as the
+ * shell row says (never for a provider that sends its text whole, as
+ * Claude's adapter does, nor from an older server); thinking, a
+ * conversation's own run is on, a queued message among it (upstream's
+ * Waiting, a run held open by background work, is not its own);
+ * delegating, a thread below a conversation works, or its run is held open
+ * by background work; listening, a conversation's composer or a home's
+ * draft holds an unsent message; finished, for `FINISHED_MS` after a
+ * conversation's latest run ended; else awake.
  */
 export function starLook(
   star: {
-    readonly current: LookThread | null;
+    readonly channels: ReadonlyArray<{ readonly thread: LookThread }>;
     readonly homes: ReadonlyArray<Pick<StarHome, "environmentId" | "projectId">>;
   },
   inputs: LookInputs,
 ): StarLook {
-  const { current } = star;
-  if (current === null) {
-    const stirring = inputs.drafts.some((draft) =>
-      star.homes.some(
-        (home) => home.environmentId === draft.environmentId && home.projectId === draft.projectId,
-      ),
-    );
-    return stirring ? "stirring" : "asleep";
-  }
-  if (current.latestRun?.status === "failed") return "troubled";
-  if (current.awaitsUser || threadsBelow(current, inputs.threads).some((each) => each.awaitsUser))
+  const drafted = inputs.drafts.some((draft) =>
+    star.homes.some(
+      (home) => home.environmentId === draft.environmentId && home.projectId === draft.projectId,
+    ),
+  );
+  if (star.channels.length === 0) return drafted ? "stirring" : "asleep";
+  const any = (holds: (thread: LookThread) => boolean) =>
+    star.channels.some(({ thread }) => holds(thread));
+  if (any((thread) => thread.latestRun?.status === "failed")) return "troubled";
+  if (
+    any(
+      (thread) =>
+        thread.awaitsUser || threadsBelow(thread, inputs.threads).some((each) => each.awaitsUser),
+    )
+  )
     return "waiting";
-  if (current.working && current.assistantStreaming) return "talking";
-  if (current.working && !current.waiting) return "thinking";
-  if (current.waiting || lineageWorks(current, inputs.threads)) return "delegating";
-  if (inputs.unsent.has(scopedKey(current.environmentId, current.id))) return "listening";
-  const until = finishedUntil(current);
+  if (any((thread) => thread.working && thread.assistantStreaming)) return "talking";
+  if (any((thread) => thread.working && !thread.waiting)) return "thinking";
+  if (any((thread) => thread.waiting || lineageWorks(thread, inputs.threads))) return "delegating";
+  if (drafted || any((thread) => inputs.unsent.has(scopedKey(thread.environmentId, thread.id))))
+    return "listening";
+  const until = starFinishedUntil(star);
   if (until !== null && inputs.now < until) return "finished";
   return "awake";
 }

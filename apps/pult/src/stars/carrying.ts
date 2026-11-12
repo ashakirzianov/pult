@@ -6,7 +6,8 @@ import { scopedKey, threadStore } from "../threads/store.ts";
 import { carryInto, carryOutOf } from "./carry.ts";
 import { starStore, type StarTarget, starTarget } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
-import { conversationsOf, type Star } from "./stars.ts";
+import { USER_CHANNEL } from "./plugin.ts";
+import { channelOf, conversationsOf, type Star } from "./stars.ts";
 
 /** The composer store's module, once loaded. */
 let drafts: typeof Drafts | undefined;
@@ -34,7 +35,8 @@ function look(): void {
 
 /**
  * Whenever a Star's tab shows its draft and the composer of a conversation
- * of that home that has ended holds text, moves the text into the draft
+ * in `user` of that home that has ended holds text (another channel's
+ * keeps its own), moves the text into the draft
  * (`carryInto`); whenever the Star is awake in a conversation its draft did
  * not create and a draft of its holds text, moves the text into that
  * conversation's composer (`carryOutOf`), whether or not its tab is open.
@@ -57,7 +59,7 @@ function carry(drafts: typeof Drafts): void {
       (home) => home.environmentId === target.environmentId && home.projectId === target.projectId,
     );
     const ended = conversationsOf(homes, threads).flatMap((thread) =>
-      thread.settled && thread.settledAt !== null
+      thread.settled && thread.settledAt !== null && channelOf(thread) === USER_CHANNEL
         ? [
             {
               threadId: thread.id,
