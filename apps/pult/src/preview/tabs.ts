@@ -24,7 +24,7 @@ import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 import type { ThreadPreviewSessions } from "../../view/main.tsx";
 
 import { starStore } from "../stars/model.ts";
-import { ChannelInput, isLeadTab, setPreviewTabs, threadView } from "../threads/pane.tsx";
+import { isLeadTab, setPreviewTabs, StarThreadInput, threadView } from "../threads/pane.tsx";
 import { ThreadSelectedContext } from "../threads/park.ts";
 import {
   isSwitchingThread,
@@ -81,15 +81,15 @@ function targetThread(): ThreadSelection | undefined {
   return target !== undefined && "threadId" in target ? target : undefined;
 }
 
-/** A selected Star's channels' tabs open in the part (`ChannelInput`), each with its group. */
-function channelTabs(
+/** A selected Star's threads' tabs open in the part, its channels' and its children's (`StarThreadInput`), each with its group. */
+function starTabs(
   groups: IEditorGroupsService,
 ): Array<ThreadSelection & { readonly group: IEditorGroup }> {
   return groups
     .getGroups(GroupsOrder.GRID_APPEARANCE)
     .flatMap((group) =>
       group.editors.flatMap((editor) =>
-        editor instanceof ChannelInput
+        editor instanceof StarThreadInput
           ? [{ environmentId: editor.environmentId, threadId: editor.threadId, group }]
           : [],
       ),
@@ -98,19 +98,17 @@ function channelTabs(
 
 /**
  * Where the thread's preview tabs belong, none during a switch: beside the
- * lead tab for the selection's thread, beside its channel's tab for a
- * selected Star's channel's conversation open as one (`previewAnchor`).
+ * lead tab for the selection's thread, beside its tab for a selected
+ * Star's channel's conversation or child open as one (`previewAnchor`).
  */
 function anchorOf(groups: IEditorGroupsService, thread: ThreadSelection) {
-  return isSwitchingThread()
-    ? undefined
-    : previewAnchor(thread, targetThread(), channelTabs(groups));
+  return isSwitchingThread() ? undefined : previewAnchor(thread, targetThread(), starTabs(groups));
 }
 
-/** The threads whose preview tabs the part shows: the selection's and its channels' tabs'. */
+/** The threads whose preview tabs the part shows: the selection's and its Star's threads' tabs'. */
 function shownThreads(groups: IEditorGroupsService): ThreadSelection[] {
   const target = targetThread();
-  return [...(target === undefined ? [] : [target]), ...channelTabs(groups)];
+  return [...(target === undefined ? [] : [target]), ...starTabs(groups)];
 }
 
 /** Remembers a reveal of a session of a thread not the selection's, for when it is next (`openRemembered`). */
@@ -156,11 +154,11 @@ async function closeTabs(
  * tab in place. A new tab goes to the group of the thread's latest preview
  * tab, else the thread tab's (`placementGroup`), pinned. Only for the
  * selection's thread (the selected one, or the selected Star's conversation)
- * or a selected Star's channel's open as a tab, its browsers beside that tab
- * (`previewAnchor`), looked at once the part is in: a session another
- * thread's agent reveals, or one revealed while a switch runs, is
- * remembered and opens in the background when that thread is next selected
- * or its channel's tab opened, if still live, so a tab never
+ * or a selected Star's channel's or child open as a tab, its browsers
+ * beside that tab (`previewAnchor`), looked at once the part is in: a
+ * session another thread's agent reveals, or one revealed while a switch
+ * runs, is remembered and opens in the background when that thread is next
+ * selected or its tab opened, if still live, so a tab never
  * shows under another selection. `focus` moves the keyboard to the tab, for
  * the user's own ways in; the view's opens leave it where it is.
  */
@@ -339,7 +337,7 @@ function onSessions(environmentId: string, threadId: string, list: ThreadPreview
   void openRemembered(environmentId, threadId, live);
 }
 
-/** The thread's remembered reveals of the sessions in `live`, opened in the background while it is the selection's or a channel tab's. */
+/** The thread's remembered reveals of the sessions in `live`, opened in the background while it is the selection's or a Star's thread tab's. */
 async function openRemembered(
   environmentId: string,
   threadId: string,
@@ -403,8 +401,8 @@ async function closeForeignTabs(): Promise<void> {
  * thread is selected or the selected Star has a conversation: a session's
  * tab, active; with no tab id a pick of the thread's live sessions (label,
  * URL, owner) and New, straight to New with none; a thread named that is not
- * the selection's is selected first, and with none named the active channel
- * tab's conversation is the thread, else the selection's (`commandThread`).
+ * the selection's is selected first, and with none named the active tab of
+ * a Star's channel or child is the thread, else the selection's (`commandThread`).
  * `pult-shell.closePreviewSession [environmentId threadId [tabId]]`, the
  * palette's Pult: Close Browser Session and the pane's more menu: ends a
  * session, picked from that thread's without a tab id.
@@ -519,10 +517,10 @@ export function registerPreviewTabs(): void {
   );
 }
 
-/** The thread a command naming none acts on: the active channel tab's conversation, not `user`'s, else the selection's. */
+/** The thread a command naming none acts on: the active tab's of a Star's channel, not `user`, or child, else the selection's. */
 async function commandThread(): Promise<ThreadSelection | undefined> {
   const active = (await getService(IEditorService)).activeEditor;
-  return active instanceof ChannelInput
+  return active instanceof StarThreadInput
     ? { environmentId: active.environmentId, threadId: active.threadId }
     : targetThread();
 }
@@ -547,8 +545,8 @@ async function namedThread(
 export async function startPreviewTabs(): Promise<void> {
   const editors = await getService(IEditorService);
   editors.onDidCloseEditor(({ editor, context }) => {
-    // A channel's tab closed takes its conversation's browsers with it, ending no session.
-    if (editor instanceof ChannelInput) void enqueue(closeForeignTabs);
+    // A Star's thread's tab closed takes its thread's browsers with it, ending no session.
+    if (editor instanceof StarThreadInput) void enqueue(closeForeignTabs);
     if (!(editor instanceof PreviewInput) || context !== EditorCloseContext.UNKNOWN) return;
     if (isSwitchingThread() || closingByShell.has(editor)) return;
     void closedByUser(editor).catch((error: unknown) =>

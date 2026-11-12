@@ -44,10 +44,8 @@ const PANE_ID = "pult.shell.threadPane";
 const DRAFT_TYPE_ID = "pult.shell.draft";
 /** The Star's tab's input type, the same way. */
 const STAR_TYPE_ID = "pult.shell.star";
-/** A Star's channel's tab's input type, the same way. */
-const CHANNEL_TYPE_ID = "pult.shell.channel";
-/** A Star's child's tab's input type, the same way. */
-const CHILD_TYPE_ID = "pult.shell.child";
+/** A Star's thread's tab's input type, the same way: a channel's, the id its tabs were saved under before a child's tab was one too. */
+const STAR_THREAD_TYPE_ID = "pult.shell.channel";
 
 let started: Promise<ThreadViewMounts> | undefined;
 /** The view once it has started, for what the page asks of it synchronously. */
@@ -309,9 +307,7 @@ class ThreadPane extends SimpleEditorPane {
     const target: PaneTarget =
       input instanceof DraftInput
         ? { kind: "draft", environmentId: input.environmentId, projectId: input.projectId }
-        : input instanceof ThreadInput ||
-            input instanceof ChannelInput ||
-            input instanceof ChildInput
+        : input instanceof ThreadInput || input instanceof StarThreadInput
           ? { kind: "thread", environmentId: input.environmentId, threadId: input.threadId }
           : { kind: "thread", environmentId: "", threadId: "" };
     const promotedTo = this.shown?.promotedTo;
@@ -385,19 +381,11 @@ export function isLeadTab(editor: unknown): editor is LeadTab {
 
 /**
  * Whether `editor` is a tab the shell renders: a lead tab, the Settings
- * page (`src/settings/`), a Star's channel's (`ChannelInput`) or a Star's
- * child's (`ChildInput`), the last three closing unlike a lead tab. None has
- * a status bar.
+ * page (`src/settings/`) or a Star's channel's or child's (`StarThreadInput`),
+ * the last two closing unlike a lead tab. None has a status bar.
  */
-export function isShellTab(
-  editor: unknown,
-): editor is LeadTab | SettingsInput | ChannelInput | ChildInput {
-  return (
-    isLeadTab(editor) ||
-    isSettingsTab(editor) ||
-    editor instanceof ChannelInput ||
-    editor instanceof ChildInput
-  );
+export function isShellTab(editor: unknown): editor is LeadTab | SettingsInput | StarThreadInput {
+  return isLeadTab(editor) || isSettingsTab(editor) || editor instanceof StarThreadInput;
 }
 
 /**
@@ -621,22 +609,25 @@ export class StarInput extends SimpleEditorInput {
 }
 
 /**
- * A Star's channel's conversation as a tab among the Star's (`src/stars/`,
- * the card's channel rows, `pult-shell.openStarChannel`): an ordinary
- * thread's tab, in the same pane, which mounts the thread's view, composer
- * included, labelled by its channel's slug with the Star's project as its
- * description. Unlike a lead tab it closes and is not kept leftmost; it is a
- * singleton, so a second click shows the one open. It shows the thread it
- * was opened on, which stays there once the channel falls asleep.
+ * A thread of a Star's as a tab among the Star's (`src/stars/`): a channel's
+ * conversation but `user`'s (the card's channel rows,
+ * `pult-shell.openStarChannel`), labelled by its channel's slug, or a child
+ * the Star launched (the card's child rows, `pult-shell.openStarChild`),
+ * `slug` null, labelled by the thread's title; an ordinary thread's tab, in
+ * the same pane, which mounts the thread's view, composer included, its
+ * project as its description. Unlike a lead tab it closes and is not kept
+ * leftmost; it is a singleton, so a second click shows the one open. It
+ * shows the thread it was opened on, which stays there once a channel falls
+ * asleep. Its browsers open beside it (`src/preview/tabs.ts`).
  */
-export class ChannelInput extends SimpleEditorInput {
+export class StarThreadInput extends SimpleEditorInput {
   private labelKey: string | undefined;
   private labelIcon: URI | undefined;
 
   constructor(
     readonly environmentId: string,
     readonly threadId: string,
-    readonly slug: string,
+    readonly slug: string | null,
   ) {
     super(undefined);
     this.addCapability(
@@ -651,14 +642,18 @@ export class ChannelInput extends SimpleEditorInput {
     return threadStore.thread(this.environmentId, this.threadId);
   }
 
+  private label(): string {
+    return this.slug ?? this.thread()?.title ?? "Thread";
+  }
+
   /** Setting the name fires the label change that redraws the description, title and icon. */
   private updateLabel(): void {
-    const key = JSON.stringify([this.getDescription(), this.getTitle()]);
+    const key = JSON.stringify([this.label(), this.getDescription(), this.getTitle()]);
     const icon = this.getIcon();
     if (key === this.labelKey && icon === this.labelIcon) return;
     this.labelKey = key;
     this.labelIcon = icon;
-    this.setName(this.slug);
+    this.setName(this.label());
   }
 
   override getDescription(): string {
@@ -667,6 +662,8 @@ export class ChannelInput extends SimpleEditorInput {
 
   override getTitle(): string {
     const thread = this.thread();
+    if (this.slug === null)
+      return thread === undefined ? "Thread" : `${thread.projectName}: ${thread.title}`;
     return thread === undefined
       ? `Channel ${this.slug}`
       : `${thread.projectName}: channel ${this.slug}${thread.settled ? ", asleep" : ""}`;
@@ -682,82 +679,12 @@ export class ChannelInput extends SimpleEditorInput {
   }
 
   override get typeId(): string {
-    return CHANNEL_TYPE_ID;
+    return STAR_THREAD_TYPE_ID;
   }
 
   override matches(other: unknown): boolean {
     return (
-      other instanceof ChannelInput &&
-      other.threadId === this.threadId &&
-      other.environmentId === this.environmentId
-    );
-  }
-}
-
-/**
- * A Star's child, a thread it launched, as a tab among the Star's
- * (`src/stars/`, the card's child rows, `pult-shell.openStarChild`): an
- * ordinary thread's tab, in the same pane, which mounts the thread's view,
- * composer included, labelled by the thread's title with its project as its
- * description. Like a channel's tab it closes, is not kept leftmost and is a
- * singleton.
- */
-export class ChildInput extends SimpleEditorInput {
-  private labelKey: string | undefined;
-  private labelIcon: URI | undefined;
-
-  constructor(
-    readonly environmentId: string,
-    readonly threadId: string,
-  ) {
-    super(undefined);
-    this.addCapability(
-      EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
-    );
-    this.updateLabel();
-    this._register({ dispose: threadStore.subscribe(() => this.updateLabel()) });
-    this._register({ dispose: projectIcons.onDidChange(() => this.updateLabel()) });
-  }
-
-  private thread(): ShellThread | undefined {
-    return threadStore.thread(this.environmentId, this.threadId);
-  }
-
-  /** The name is the title; setting it fires the label change that redraws the description, title and icon too. */
-  private updateLabel(): void {
-    const key = JSON.stringify([this.thread()?.title, this.getDescription(), this.getTitle()]);
-    const icon = this.getIcon();
-    if (key === this.labelKey && icon === this.labelIcon) return;
-    this.labelKey = key;
-    this.labelIcon = icon;
-    this.setName(this.thread()?.title ?? "Thread");
-  }
-
-  override getDescription(): string {
-    return this.thread()?.projectName ?? "";
-  }
-
-  override getTitle(): string {
-    const thread = this.thread();
-    return thread === undefined ? "Thread" : `${thread.projectName}: ${thread.title}`;
-  }
-
-  override getIcon(): URI | undefined {
-    const thread = this.thread();
-    return thread === undefined ? undefined : projectIconUri(threadProjectIcon(thread));
-  }
-
-  override getLabelExtraClasses(): string[] {
-    return ["pult-thread-tab"];
-  }
-
-  override get typeId(): string {
-    return CHILD_TYPE_ID;
-  }
-
-  override matches(other: unknown): boolean {
-    return (
-      other instanceof ChildInput &&
+      other instanceof StarThreadInput &&
       other.threadId === this.threadId &&
       other.environmentId === this.environmentId
     );
@@ -779,15 +706,11 @@ interface SerializedStarInput {
   readonly starId: string;
 }
 
-interface SerializedChannelInput {
+/** A Star's thread's tab; one saved as a child's before it was this input, under a type of its own, is dropped. */
+interface SerializedStarThreadInput {
   readonly environmentId: string;
   readonly threadId: string;
-  readonly slug: string;
-}
-
-interface SerializedChildInput {
-  readonly environmentId: string;
-  readonly threadId: string;
+  readonly slug: string | null;
 }
 
 /** The thread's editor pane and its serialisers, and `pult-shell.openThreadFile`, what the view's file links run (`files.ts`). */
@@ -796,12 +719,11 @@ export function registerThreadPane(): void {
     ThreadInput,
     DraftInput,
     StarInput,
-    ChannelInput,
-    ChildInput,
+    StarThreadInput,
   ]);
   registerOpenThreadFileCommand();
   // Serialisable, so the editor part's saved state and the per-selection working
-  // sets (`selection.ts`) restore the thread's, draft's, Star's, channel's or child's tab with the rest.
+  // sets (`selection.ts`) restore the thread's, draft's, Star's or a Star's thread's tab with the rest.
   registerEditorSerializer(
     PANE_ID,
     class implements IEditorSerializer {
@@ -867,45 +789,26 @@ export function registerThreadPane(): void {
     },
   );
   registerEditorSerializer(
-    CHANNEL_TYPE_ID,
+    STAR_THREAD_TYPE_ID,
     class implements IEditorSerializer {
       canSerialize(): boolean {
         return true;
       }
-      serialize(editor: ChannelInput): string {
+      serialize(editor: StarThreadInput): string {
         return JSON.stringify({
           environmentId: editor.environmentId,
           threadId: editor.threadId,
           slug: editor.slug,
-        } satisfies SerializedChannelInput);
+        } satisfies SerializedStarThreadInput);
       }
       deserialize(
         instantiation: IInstantiationService,
         serialized: string,
       ): EditorInput | undefined {
-        const { environmentId, threadId, slug } = JSON.parse(serialized) as SerializedChannelInput;
-        return instantiation.createInstance(ChannelInput, environmentId, threadId, slug);
-      }
-    },
-  );
-  registerEditorSerializer(
-    CHILD_TYPE_ID,
-    class implements IEditorSerializer {
-      canSerialize(): boolean {
-        return true;
-      }
-      serialize(editor: ChildInput): string {
-        return JSON.stringify({
-          environmentId: editor.environmentId,
-          threadId: editor.threadId,
-        } satisfies SerializedChildInput);
-      }
-      deserialize(
-        instantiation: IInstantiationService,
-        serialized: string,
-      ): EditorInput | undefined {
-        const { environmentId, threadId } = JSON.parse(serialized) as SerializedChildInput;
-        return instantiation.createInstance(ChildInput, environmentId, threadId);
+        const { environmentId, threadId, slug } = JSON.parse(
+          serialized,
+        ) as SerializedStarThreadInput;
+        return instantiation.createInstance(StarThreadInput, environmentId, threadId, slug);
       }
     },
   );

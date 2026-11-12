@@ -17,7 +17,7 @@ import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/c
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { ChannelInput, ChildInput } from "../threads/pane.tsx";
+import { StarThreadInput } from "../threads/pane.tsx";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures } from "./about.ts";
@@ -171,7 +171,7 @@ async function openStarAsk(
 
 /**
  * An open channel's conversation of the Star's, but `user`'s, which is its
- * tab, as a thread's tab among the Star's (`ChannelInput`), as its card
+ * tab, as a thread's tab among the Star's (`StarThreadInput`), as its card
  * lists them: `slug`'s, or one picked among them; the Star selected first.
  */
 async function openStarChannel(
@@ -207,7 +207,7 @@ async function openStarChannel(
     await getService(IEditorService)
   ).openEditor(
     (await getService(IInstantiationService)).createInstance(
-      ChannelInput,
+      StarThreadInput,
       environmentId,
       id,
       channel.slug,
@@ -218,7 +218,7 @@ async function openStarChannel(
 
 /**
  * A Star's child, a thread it launched, as a thread's tab among the Star's
- * (`ChildInput`), as its card lists them; the Star selected first.
+ * (`StarThreadInput`, no slug), as its card lists them; the Star selected first.
  */
 async function openStarChild(star: Star, environmentId: string, threadId: string): Promise<void> {
   const commands = await getService(ICommandService);
@@ -228,7 +228,12 @@ async function openStarChild(star: Star, environmentId: string, threadId: string
   await (
     await getService(IEditorService)
   ).openEditor(
-    (await getService(IInstantiationService)).createInstance(ChildInput, environmentId, threadId),
+    (await getService(IInstantiationService)).createInstance(
+      StarThreadInput,
+      environmentId,
+      threadId,
+      null,
+    ),
     { pinned: true },
   );
 }

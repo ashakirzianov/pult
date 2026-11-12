@@ -25,20 +25,20 @@ interface PreviewThread {
 /**
  * The tab a thread's preview tabs belong beside, in the selection's tab set:
  * the lead tab for the selection's thread (the selected one, or the selected
- * Star's conversation in `user`); a channel's tab open among a Star's for
- * that channel's conversation (`ChannelInput`), so its browsers open as
- * `user`'s do; undefined for any other thread, whose reveal waits until its
- * thread is one of these, and whose tabs leave the part.
+ * Star's conversation in `user`); a tab open among a Star's for a channel's
+ * conversation or a child of the Star's (`StarThreadInput`), so its browsers
+ * open as `user`'s do; undefined for any other thread, whose reveal waits
+ * until its thread is one of these, and whose tabs leave the part.
  */
 export function previewAnchor<Tab extends PreviewThread>(
   thread: PreviewThread,
   selection: PreviewThread | undefined,
-  channelTabs: ReadonlyArray<Tab>,
+  starTabs: ReadonlyArray<Tab>,
 ): "lead" | Tab | undefined {
   const same = (other: PreviewThread) =>
     other.environmentId === thread.environmentId && other.threadId === thread.threadId;
   if (selection !== undefined && same(selection)) return "lead";
-  return channelTabs.find(same);
+  return starTabs.find(same);
 }
 
 /**

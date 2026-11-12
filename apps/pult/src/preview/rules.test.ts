@@ -39,6 +39,25 @@ NodeTest.test(
 );
 
 NodeTest.test(
+  "a selected Star's child open as a tab opens its browsers beside that tab, as a channel's does",
+  () => {
+    const user = { environmentId: "env", threadId: "user-now" };
+    const child = { environmentId: "env", threadId: "child", group: "left" };
+    const tabs = [{ environmentId: "env", threadId: "work-now", group: "right" }, child];
+    NodeAssert.equal(previewAnchor({ environmentId: "env", threadId: "child" }, user, tabs), child);
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "env", threadId: "child" }, undefined, tabs),
+      child,
+    );
+    // Its tab closed: its browsers have no place.
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "env", threadId: "child" }, user, tabs.slice(0, 1)),
+      undefined,
+    );
+  },
+);
+
+NodeTest.test(
   "closing an agent's tab keeps its session; a user's or unclaimed one's ends it",
   () => {
     NodeAssert.equal(closingEndsSession("agent"), false);
