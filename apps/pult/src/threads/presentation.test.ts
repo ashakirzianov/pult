@@ -387,6 +387,48 @@ NodeTest.describe("shellThreads", () => {
   });
 
   NodeTest.test(
+    "keeps a thread a Star launched off the Inbox, and on the other shelves as any thread",
+    () => {
+      const launched = { tags: ["review", "pult:star:abc"] };
+      const threads = shellThreads(
+        [
+          {
+            environmentId: "env",
+            threads: [
+              thread("active", launched),
+              thread("pinned", { ...launched, pinnedAt: at("2026-06-19T00:00:00.000Z") }),
+              thread("working", {
+                ...launched,
+                latestRunId: RunId.make("run"),
+                activeRunId: RunId.make("run"),
+                status: "running",
+              }),
+              thread("snoozed", { ...launched, snoozedUntil: at("2026-06-20T15:00:00.000Z") }),
+              thread("settled", { ...launched, settledOverride: "settled" }),
+              thread("other", { tags: ["pult:work"] }),
+            ],
+            projects: [],
+            features: ALL,
+            hidden: NO_HIDDEN,
+          },
+        ],
+        NOW,
+      );
+      NodeAssert.deepEqual(
+        threads.map((each) => [each.id, each.shelf]),
+        [
+          ["other", "active"],
+          ["working", "working"],
+          ["snoozed", "snoozed"],
+          ["settled", "settled"],
+          ["active", null],
+          ["pinned", null],
+        ],
+      );
+    },
+  );
+
+  NodeTest.test(
     "merges the environments' shelves, each thread shelved by its own server's features",
     () => {
       const settled = { settledOverride: "settled" as const };

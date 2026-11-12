@@ -78,6 +78,14 @@ function isListed(thread: EnvironmentThreadShell): boolean {
   return isPresent(thread) && thread.lineage.relationshipToParent !== "subagent";
 }
 
+/** The prefix of the tag a Star gives every thread it launches, `pult:star:<id>` (its stock instructions, `plugins/pult/src/stars/agents.ts`). */
+const STAR_LAUNCHED_TAG = "pult:star:";
+
+/** Whether a Star launched `thread`, by its `pult:star:<id>` tag: a thread kept off the Inbox. */
+function isStarLaunched(thread: Pick<EnvironmentThreadShell, "source">): boolean {
+  return thread.source.tags?.some((tag) => tag.startsWith(STAR_LAUNCHED_TAG)) === true;
+}
+
 /**
  * Upstream's shelf for a thread: snooze wins until its wake time, then
  * settlement wins over a stale pin. Null for a thread the sidebar does not list.
@@ -97,7 +105,8 @@ export function shelfOf(
  * The threads on upstream's shelves (`shelfOf`), each under its own
  * environment's features, every shelf merging the environments as
  * upstream's sidebar does with its working shelf on: an active thread that
- * works sits on the working shelf instead (`observation`). Pinned follow
+ * works sits on the working shelf instead (`observation`), and one a Star
+ * launched is on neither Inbox shelf, pinned or active (`isStarLaunched`). Pinned follow
  * their arranged order, active the latest return (made, unsettled, sent to
  * or finished), working the latest message sent, snoozed the soonest wake,
  * settled the newest settlement.
@@ -117,8 +126,9 @@ export function shelve(
   };
   for (const thread of threads) {
     const shelf = shelfOf(thread, now, featuresOf(thread.environmentId));
+    const inbox = shelf === "pinned" || shelf === "active";
     if (shelf === "active" && observation.isWorking(thread)) shelves.working.push(thread);
-    else if (shelf !== null) shelves[shelf].push(thread);
+    else if (shelf !== null && !(inbox && isStarLaunched(thread))) shelves[shelf].push(thread);
   }
   const { pinned, active, working, snoozed, settled } = shelves;
   const wakeMs = (thread: EnvironmentThreadShell) => Date.parse(thread.snoozedUntil ?? "") || 0;
@@ -273,8 +283,9 @@ export function isStarThread(
  * The store's threads, every environment's: shelf by shelf, as upstream's
  * sidebar lists them (`shelve`), each in its shelf's order across the
  * environments; then the subagents, which upstream lists in their parent and
- * the panel under their root's card, and the Stars' threads, each its Star's
- * conversation, both on no shelf. Archived and deleted ones go nowhere.
+ * the panel under their root's card, the Stars' threads, each its Star's
+ * conversation, and the threads a Star launched while off the Inbox
+ * (`shelve`), all on no shelf. Archived and deleted ones go nowhere.
  */
 export function shellThreads(
   environments: ReadonlyArray<EnvironmentShell>,
@@ -308,6 +319,10 @@ export function shellThreads(
     (thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent",
   );
   const stars = threads.filter((thread) => isListed(thread) && inStar(thread));
+  const shelved = new Set(SHELF_ORDER.flatMap((shelf) => shelves[shelf]));
+  const offInbox = threads.filter(
+    (thread) => isListed(thread) && !inStar(thread) && !shelved.has(thread),
+  );
   const present = (thread: EnvironmentThreadShell, shelf: ShelfName | null): ShellThread => {
     const project = byId.get(scopedKey(thread.environmentId, thread.projectId));
     const settled =
@@ -365,5 +380,6 @@ export function shellThreads(
     ...SHELF_ORDER.flatMap((shelf) => shelves[shelf].map((thread) => present(thread, shelf))),
     ...subagents.map((thread) => present(thread, null)),
     ...stars.map((thread) => present(thread, null)),
+    ...offInbox.map((thread) => present(thread, null)),
   ];
 }
