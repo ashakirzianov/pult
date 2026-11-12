@@ -2,16 +2,23 @@
 // project's draft, per pane, on the shell's connection. A draft follows itself
 // into the thread it creates; a navigation to another thread or a new one
 // opens it in the shell.
-import { type AnyRouter, Outlet, RouterProvider, useRouter } from "@tanstack/react-router";
+import {
+  type AnyRouter,
+  Outlet,
+  RouterProvider,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { deriveProviderSubagentStatus } from "@t3tools/client-runtime/state/thread-execution";
 import {
   EnvironmentId,
   isOrchestrationV2WorkActive,
+  ModelSelection,
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
-import { DateTime } from "effect";
+import { DateTime, Option, Schema } from "effect";
 import { type ReactNode, StrictMode, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -29,6 +36,7 @@ import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
@@ -189,6 +197,47 @@ function ActivityReporter({
   return null;
 }
 
+const decodeModel = Schema.decodeUnknownOption(ModelSelection);
+
+/**
+ * Puts the mount's model on the draft the view shows, its own, in place of
+ * the one upstream's new-thread handler gave it from the composer's last
+ * pick anywhere, unless a model was picked in the draft itself: on each
+ * draft the view goes to, and again when the model changes.
+ */
+function DraftModel({
+  target,
+  source,
+}: {
+  target: Extract<ViewTarget, { kind: "draft" }>;
+  source: ShellValue<unknown>;
+}) {
+  const wanted = useSyncExternalStore(source.subscribe, source.get);
+  const draftId = useRouterState({
+    select: (state) => {
+      const shown = resolveThreadRouteTarget(state.matches.at(-1)?.params ?? {});
+      return shown?.kind === "draft" ? shown.draftId : null;
+    },
+  });
+  const key = JSON.stringify(wanted ?? null);
+  useEffect(() => {
+    if (draftId === null) return;
+    const selection = Option.getOrNull(decodeModel(JSON.parse(key)));
+    if (selection === null) return;
+    const store = useComposerDraftStore.getState();
+    const session = store.getDraftSession(draftId);
+    if (
+      session === null ||
+      session.environmentId !== target.environmentId ||
+      session.projectId !== target.projectId ||
+      hasExplicitComposerModelSelection(store.getComposerDraft(draftId))
+    )
+      return;
+    store.setModelSelection(draftId, selection, { replaceOptions: true });
+  }, [draftId, key, target.environmentId, target.projectId]);
+  return null;
+}
+
 function useTarget(mount: Mount): ViewTarget {
   return useSyncExternalStore(mount.subscribe, mount.target);
 }
@@ -198,6 +247,7 @@ function makeRoot(
   bar: HTMLElement,
   composerOnly: boolean,
   header: MountOptions["timelineHeader"],
+  draftModel: MountOptions["draftModel"],
 ) {
   function NavigationFollower() {
     const router = useRouter();
@@ -215,6 +265,9 @@ function makeRoot(
         <ToastProvider>
           <AnchoredToastProvider>
             <NavigationFollower />
+            {target.kind !== "draft" || draftModel === undefined ? null : (
+              <DraftModel target={target} source={draftModel} />
+            )}
             {target.kind !== "thread" || composerOnly ? null : (
               <ActivityReporter environmentId={target.environmentId} threadId={target.threadId} />
             )}
@@ -302,12 +355,16 @@ export interface MountedView {
  * components work there (a Star's fold, which renders its transcripts with
  * upstream's markdown); a draft resting with its composer where a thread's
  * sits, without upstream's hero (`draftHero: false`); and the composer's
- * placeholder, live, in place of upstream's (a Star's, which names it).
+ * placeholder, live, in place of upstream's (a Star's, which names it);
+ * and the model a draft takes, live, in place of the composer's last pick
+ * anywhere (a Star's, its last conversation's), as the server's model
+ * selection, null for upstream's.
  */
 export interface MountOptions {
   readonly timelineHeader?: { readonly element: HTMLElement; readonly content: ReactNode };
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
+  readonly draftModel?: ShellValue<unknown>;
 }
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
@@ -334,7 +391,7 @@ function mountView(
   const bar = document.createElement("div");
   bar.className = "pult-composer-bar";
   const router = makeThreadRouter({
-    root: makeRoot(mount, bar, composerOnly, options.timelineHeader),
+    root: makeRoot(mount, bar, composerOnly, options.timelineHeader, options.draftModel),
     landing: makeLanding(mount),
     initialPath: mount.home(),
   });

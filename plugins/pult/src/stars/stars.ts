@@ -5,6 +5,7 @@
 import {
   CommandId,
   linkOriginIsFenced,
+  type ModelSelection,
   type OrchestrationV2ThreadShell,
   ProjectId,
   type RunId,
@@ -113,6 +114,8 @@ export interface StarsView {
       /** The current work conversation. */
       readonly work: ConversationView | null;
       readonly asleepSince: string;
+      /** The model a wake into the conversation with the user takes, the `newest` of `withConversation`'s; null before the Star's first conversation. */
+      readonly model: ModelSelection | null;
       readonly conversations: ReadonlyArray<string>;
       /** By name. */
       readonly asks: ReadonlyArray<Ask>;
@@ -656,12 +659,14 @@ export const make = Effect.gen(function* () {
           } satisfies ConversationView;
         });
         const last = (yield* settledConversations(star, 1, "user"))[0];
+        const { newest } = yield* conversationsOf(star, "user");
         return {
           ...star,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
           conversation: yield* served("user"),
           work: yield* served("work"),
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
+          model: newest?.modelSelection ?? null,
           conversations: yield* transcriptNames(star),
           asks: yield* asksOf(star),
         };

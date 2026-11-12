@@ -4,7 +4,13 @@
 // with its homes and its current conversation's live row; and when the page
 // asks for a Star to be created.
 import type { ShellThread } from "../threads/store.ts";
-import type { RouteAsk, RouteConversation, RouteSchedule, StarsAnswer } from "./plugin.ts";
+import type {
+  RouteAsk,
+  RouteConversation,
+  RouteModel,
+  RouteSchedule,
+  StarsAnswer,
+} from "./plugin.ts";
 
 /** A Star's home: its folder and project on one environment, as that environment's plugin serves it. */
 export interface StarHome {
@@ -18,6 +24,8 @@ export interface StarHome {
   readonly instructions: string;
   /** Its current conversation on this environment, as the plugin reads it; null while it sleeps here. */
   readonly conversation: RouteConversation | null;
+  /** The model its next conversation here takes, as this environment's plugin reads it (`RouteStar`'s). */
+  readonly model: RouteModel | null;
   /** Since when it sleeps here: its last conversation's settlement, else its creation. */
   readonly asleepSince: string;
   /** The transcripts' names of this environment, oldest first. */
@@ -150,6 +158,7 @@ export function starsOf<Thread extends StarThread>(
         projectId: star.projectId,
         instructions: star.instructions,
         conversation: star.conversation,
+        model: star.model,
         asleepSince: star.asleepSince,
         conversations: star.conversations,
         schedules: star.schedules,

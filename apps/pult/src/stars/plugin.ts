@@ -126,12 +126,20 @@ export interface RouteAsk {
   readonly path: string;
 }
 
+/** A model as the server's threads carry it, the fields the page checks; the view decodes it in full. */
+export interface RouteModel {
+  readonly instanceId: string;
+  readonly model: string;
+}
+
 /** A Star as `GET /stars` serves it, the fields the page draws; `root` and `instructions` are host paths. */
 export interface RouteStar extends WrittenStar {
   readonly instructions: string;
   /** Null while it sleeps. */
   readonly conversation: RouteConversation | null;
   readonly asleepSince: string;
+  /** The model its next conversation with the user takes, the one a wake by message takes; null before its first, and from a plugin older than the field. */
+  readonly model: RouteModel | null;
   /** Its transcripts' names on this environment, oldest first. */
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules' files, by name; none from a plugin older than the schedules. */
@@ -253,6 +261,13 @@ const asks: Decode<ReadonlyArray<RouteAsk>> = (value, at) =>
         at,
       );
 
+/** A plugin older than the field serves none: absent reads as null. Its options and any other field are kept, for the view to decode. */
+const model: Decode<RouteModel | null> = (value, at) => {
+  if (value === undefined || value === null) return null;
+  struct<RouteModel>({ instanceId: string, model: string })(value, at);
+  return value as RouteModel;
+};
+
 const writtenStar = struct<WrittenStar>({
   id: string,
   name: string,
@@ -272,6 +287,7 @@ const routeStar = struct<RouteStar>({
   instructions: string,
   conversation,
   asleepSince: string,
+  model,
   conversations: arrayOf(string),
   schedules,
   asks,

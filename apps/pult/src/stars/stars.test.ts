@@ -25,6 +25,7 @@ const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar =>
   instructions: `/Users/a/.pult/stars/${id}/instructions.md`,
   conversation: null,
   asleepSince: CREATED,
+  model: null,
   conversations: [],
   schedules: [],
   asks: [],

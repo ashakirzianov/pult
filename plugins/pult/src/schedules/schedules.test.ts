@@ -94,6 +94,7 @@ const harnessWith = (
       conversation: null,
       work: null,
       asleepSince: star.created,
+      model: null,
       conversations: [],
       asks: [],
     };

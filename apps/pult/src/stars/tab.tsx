@@ -26,13 +26,28 @@ const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined)
  * its files: asleep, its draft rests where a thread's composer sits, under
  * the fold, without upstream's hero, which asks what to build in a project
  * and offers to start without one; awake or asleep, it addresses the Star,
- * "Message Star", or its name once it has one.
+ * "Message Star", or its name once it has one; and its draft takes the
+ * model its last conversation had, of the home it wakes in, as a wake by
+ * message does, rather than the one last picked in any thread.
  */
 export function starComposerOptions(starId: string) {
   return {
     draftHero: false,
     placeholder: {
       get: () => `Message ${starName(starById(starId) ?? { name: "" })}`,
+      subscribe: starStore.subscribe,
+    },
+    draftModel: {
+      get: () => {
+        const star = starById(starId);
+        const target = star === undefined ? undefined : starTarget(star);
+        return target?.kind !== "draft"
+          ? null
+          : (star?.homes.find(
+              (home) =>
+                home.environmentId === target.environmentId && home.projectId === target.projectId,
+            )?.model ?? null);
+      },
       subscribe: starStore.subscribe,
     },
   };

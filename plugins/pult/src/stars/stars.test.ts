@@ -6,6 +6,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   ProjectId,
+  ProviderInstanceId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -400,6 +401,42 @@ describe("the pass", () => {
         );
         assert.deepStrictEqual(view?.work?.sleeps, { at: "2026-11-10T13:20:00.000Z" });
         assert.strictEqual(view?.asleepSince, "2026-11-10T13:00:00.000Z");
+      }).pipe(Effect.scoped),
+  );
+  it.effect(
+    "serves the model a wake takes: the newest conversation with the user's, else the work one's",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        const model = (name: string) => ({
+          instanceId: ProviderInstanceId.make("codex"),
+          model: name,
+        });
+        const served = Effect.map(h.stars.view, (view) => view.stars[0]?.model);
+        assert.strictEqual(yield* served, null);
+        h.threads.add(star.projectId, "work", {
+          createdAt: at("2026-11-10T12:30:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T12:40:00.000Z"),
+          tags: [Stars.WORK_TAG],
+          modelSelection: model("work-model"),
+        });
+        assert.deepStrictEqual(yield* served, model("work-model"));
+        h.threads.add(star.projectId, "older", {
+          createdAt: at("2026-11-10T08:00:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T09:00:00.000Z"),
+          modelSelection: model("older-model"),
+        });
+        h.threads.add(star.projectId, "newer", {
+          createdAt: at("2026-11-10T10:00:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T11:00:00.000Z"),
+          modelSelection: model("newer-model"),
+        });
+        assert.deepStrictEqual(yield* served, model("newer-model"));
       }).pipe(Effect.scoped),
   );
   it.effect("leaves alone a root thread a link paired below full access started", () =>

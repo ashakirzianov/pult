@@ -105,6 +105,11 @@ const star = {
   instructions: "/Users/a/.pult/stars/star/instructions.md",
   conversation: { threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
   asleepSince: "2026-11-01T00:00:00.000Z",
+  model: {
+    instanceId: "claudeAgent",
+    model: "claude-opus-5-5",
+    options: [{ id: "effort", value: "high" }],
+  },
   conversations: ["2026-11-01T10-00-00Z-t0.md"],
   schedules: [
     {
@@ -164,6 +169,11 @@ NodeTest.describe("decodeStars", () => {
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.asks, []);
   });
 
+  NodeTest.test("reads a plugin older than the model as naming none", () => {
+    const { model: _, ...older } = star;
+    NodeAssert.equal(decodeStars({ ...stars, stars: [older] }).stars[0]?.model, null);
+  });
+
   NodeTest.test("reads a conversation's hold, and a sleeping Star's none", () => {
     const held = { ...star, conversation: { threadId: "t1", sleeps: { heldBy: "run" } } };
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [held] }).stars[0]?.conversation, {
@@ -209,6 +219,7 @@ NodeTest.describe("decodeStars", () => {
           },
         ],
       },
+      { ...stars, stars: [{ ...star, model: { instanceId: "codex" } }] },
       { ...stars, stars: [{ ...star, asks: {} }] },
       { ...stars, stars: [{ ...star, asks: [{ ...star.asks[0], title: null }] }] },
       { hidden: [], stars: [] },
