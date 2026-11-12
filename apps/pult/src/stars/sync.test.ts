@@ -202,37 +202,34 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     workingSince: null,
     ageFrom: CREATED,
   });
-  /** The Star whose plugin last named `work`'s conversation `w` open, over the page's threads. */
-  const starOver = (threads: ReadonlyArray<ReturnType<typeof thread>>) => {
-    const [only] = starsOf(
-      [
+  /** An environment's answer naming the Star's `work` conversation open in `threadId`. */
+  const answer = (environmentId: string, threadId: string) => ({
+    environmentId,
+    answer: {
+      directory: "/Users/a/.pult/stars",
+      hidden: [],
+      stars: [
         {
-          environmentId: "env",
-          answer: {
-            directory: "/Users/a/.pult/stars",
-            hidden: [],
-            stars: [
-              {
-                id: "star",
-                name: "",
-                tint: "amber",
-                created: CREATED,
-                root: "/Users/a/.pult/stars/star",
-                projectId: "star-project",
-                instructions: "/Users/a/.pult/stars/star/instructions.md",
-                channels: [{ slug: "work", threadId: "w", sleeps: { at: CREATED } }],
-                asleepSince: CREATED,
-                model: null,
-                conversations: [],
-                schedules: [],
-                asks: [],
-              },
-            ],
-          },
+          id: "star",
+          name: "",
+          tint: "amber",
+          created: CREATED,
+          root: "/Users/a/.pult/stars/star",
+          projectId: "star-project",
+          instructions: "/Users/a/.pult/stars/star/instructions.md",
+          channels: [{ slug: "work", threadId, sleeps: { at: CREATED } }],
+          asleepSince: CREATED,
+          model: null,
+          conversations: [],
+          schedules: [],
+          asks: [],
         },
       ],
-      threads,
-    );
+    },
+  });
+  /** The Star whose plugin last named `work`'s conversation `w` open, over the page's threads. */
+  const starOver = (threads: ReadonlyArray<ReturnType<typeof thread>>) => {
+    const [only] = starsOf([answer("env", "w")], threads);
     NodeAssert.ok(only !== undefined);
     return only;
   };
@@ -261,6 +258,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
       id: "star",
       state: "asleep" as const,
       homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
+      awakeOn: [],
     };
     const { occasions, states } = sleepOccasions(new Map([["star", "awake"]]), [star], () => true);
     NodeAssert.deepEqual(occasions, [
@@ -276,6 +274,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
       id: "star",
       state: "asleep" as const,
       homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
+      awakeOn: [],
     };
     const loading = sleepOccasions(
       new Map([["star", "working"]]),
@@ -292,9 +291,14 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     "waits for every Star on the environment to sleep, the last one's sleep its occasion",
     () => {
       const home = (environmentId: string) => ({ environmentId });
-      const x = { id: "x", state: "asleep" as const, homes: [home("laptop")] };
-      const yAwake = { id: "y", state: "awake" as const, homes: [home("laptop"), home("desk")] };
-      const yAsleep = { ...yAwake, state: "asleep" as const };
+      const x = { id: "x", state: "asleep" as const, homes: [home("laptop")], awakeOn: [] };
+      const yAwake = {
+        id: "y",
+        state: "awake" as const,
+        homes: [home("laptop"), home("desk")],
+        awakeOn: ["laptop"],
+      };
+      const yAsleep = { ...yAwake, state: "asleep" as const, awakeOn: [] };
       const all = () => true;
       // X falls asleep while Y is awake on the same environment: nothing.
       const first = sleepOccasions(
@@ -327,13 +331,65 @@ NodeTest.describe("the sync on a Star's sleep", () => {
           { environmentId: "desk", starId: "y" },
         ],
       );
-      // A Star there whose other home is still loading does not count as asleep.
-      NodeAssert.equal(
-        environmentSleeps("laptop", [x, yAsleep], (environmentId) => environmentId === "laptop"),
-        false,
-      );
     },
   );
+
+  NodeTest.test("reads an environment by the Stars' homes there alone", () => {
+    const home = (environmentId: string) => ({ environmentId });
+    const x = { id: "x", state: "asleep" as const, homes: [home("laptop")], awakeOn: [] };
+    // Y, cloned to the desk too, has a channel open there alone.
+    const y = {
+      id: "y",
+      state: "awake" as const,
+      homes: [home("laptop"), home("desk")],
+      awakeOn: ["desk"],
+    };
+    const all = () => true;
+    NodeAssert.equal(environmentSleeps("laptop", [x, y], all), true);
+    NodeAssert.equal(environmentSleeps("desk", [x, y], all), false);
+    // A channel open on Y's laptop home holds the laptop.
+    NodeAssert.equal(environmentSleeps("laptop", [x, { ...y, awakeOn: ["laptop"] }], all), false);
+    // The desk held but offline, or still loading: the laptop syncs, the desk, unknown, does not.
+    const yAsleep = { ...y, state: "asleep" as const, awakeOn: [] };
+    const laptopOnly = (environmentId: string) => environmentId === "laptop";
+    NodeAssert.equal(environmentSleeps("laptop", [x, yAsleep], laptopOnly), true);
+    NodeAssert.equal(environmentSleeps("desk", [x, yAsleep], laptopOnly), false);
+  });
+
+  NodeTest.test("reads a Star awake on each environment where its home has a channel open", () => {
+    const on = (environmentId: string, id: string, settled = false) => ({
+      ...thread(id, settled),
+      environmentId,
+    });
+    const answers = [answer("laptop", "l"), answer("desk", "d")];
+    // `work` open on both homes, the desk's newer, so the Star's `work` is the desk's: the laptop's still writes there.
+    const both = starsOf(answers, [
+      on("laptop", "l"),
+      { ...on("desk", "d"), createdAt: "2026-11-02T00:00:00.000Z" },
+    ]);
+    NodeAssert.deepEqual(
+      both.map((star) => star.awakeOn),
+      [["laptop", "desk"]],
+    );
+    NodeAssert.equal(
+      environmentSleeps("laptop", both, () => true),
+      false,
+    );
+    // The laptop's conversation settled: the laptop sleeps while the desk's goes on.
+    const desk = starsOf(answers, [on("laptop", "l", true), on("desk", "d")]);
+    NodeAssert.deepEqual(
+      desk.map((star) => star.awakeOn),
+      [["desk"]],
+    );
+    NodeAssert.equal(
+      environmentSleeps("laptop", desk, () => true),
+      true,
+    );
+    NodeAssert.equal(
+      environmentSleeps("desk", desk, () => true),
+      false,
+    );
+  });
 
   NodeTest.test("a handoff deferred while a channel is open is delivered on that sleep", () => {
     const deferred = { sleeps: false, writing: false, occasion: "full" } as const;

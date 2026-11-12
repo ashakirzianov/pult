@@ -84,6 +84,8 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly current: Thread | null;
   readonly asleepSince: string;
   readonly state: StarState;
+  /** The environments where a channel of its is open on its home there, whose conversations write in that environment's Stars' repository (`sync.ts`). */
+  readonly awakeOn: ReadonlyArray<string>;
 }
 
 /** An environment's answer, as the model holds it, with its repository's origin. */
@@ -233,6 +235,7 @@ export function starsOf<Thread extends StarThread>(
           : channels.some(({ thread }) => thread.working)
             ? "working"
             : "awake",
+      awakeOn: [...new Set(live.map(({ thread }) => thread.environmentId))],
     };
   });
 }

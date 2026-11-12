@@ -114,11 +114,12 @@ export function fellAsleep(
     .map((star) => star.id);
 }
 
-/** A Star as the sync reads it: its state and its homes' environments. */
+/** A Star as the sync reads it: its state, its homes' environments and those where a channel of its is open. */
 interface SyncedStar {
   readonly id: string;
   readonly state: StarState;
   readonly homes: ReadonlyArray<{ readonly environmentId: string }>;
+  readonly awakeOn: ReadonlyArray<string>;
 }
 
 /** Whether the Star's state counts: every home's environment `known`, ready with its threads in, where the page holds its channels' threads. */
@@ -130,20 +131,25 @@ const homedOn = (star: SyncedStar, environmentId: string) =>
 
 /**
  * Whether the sync may commit and pull the environment's repository now:
- * every Star with a home there sleeps (`syncsNow`) and counts, since the
- * repository holds every Star's folder and one awake Star's conversations
- * write in its own (Anton's ruling, 2026-11-12). A transcript appearing, or
- * a Star falling asleep, while another is awake waits for the last one's
- * sleep (`sleepOccasions`).
+ * the environment is `known`, ready with its threads in, where the page
+ * holds its Stars' channels' threads, and every Star with a home there
+ * sleeps there, no channel of its open on that home, since the repository
+ * holds every Star's folder and one awake Star's conversations there write
+ * in its own (Anton's ruling, 2026-11-12). Only a Star's conversations on
+ * the environment write in its repository, so its channels on another
+ * environment, or that environment still loading or offline, do not count.
+ * A transcript appearing, or a Star falling asleep, while another is awake
+ * there waits for the last one's sleep (`sleepOccasions`).
  */
 export function environmentSleeps(
   environmentId: string,
   stars: ReadonlyArray<SyncedStar>,
   known: (environmentId: string) => boolean,
 ): boolean {
-  return stars
-    .filter((star) => homedOn(star, environmentId))
-    .every((star) => counts(star, known) && syncsNow(star));
+  return (
+    known(environmentId) &&
+    stars.every((star) => !homedOn(star, environmentId) || !star.awakeOn.includes(environmentId))
+  );
 }
 
 /**

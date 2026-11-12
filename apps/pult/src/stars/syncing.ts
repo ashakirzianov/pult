@@ -36,7 +36,6 @@ import {
   refusedByGit,
   sleepOccasions,
   syncPlan,
-  syncsNow,
 } from "./sync.ts";
 
 /** What of a Star's record the page changes: Name and Tint. */
@@ -196,9 +195,10 @@ class StarSync {
 
   /**
    * Syncs in full every environment holding a Star once after it connects,
-   * while every Star there sleeps, no channel of its open: an awake one's folder is its
-   * conversations' to change, and its sleep syncs it (`afterSleeps`). Whether
-   * they sleep is known once the environment's threads are in.
+   * while every Star there sleeps there, no channel of its open on its home
+   * there (`environmentSleeps`): an awake one's folder is its conversations'
+   * to change, and its sleep syncs it (`afterSleeps`). Whether they sleep is
+   * known once the environment's threads are in.
    */
   private update(): void {
     if (connection.connecting || !starsRead()) return;
@@ -208,7 +208,7 @@ class StarSync {
       const stars = starsOn(environmentId);
       if (stars.length === 0 || threadStore.environment(environmentId)?.loaded !== true) continue;
       this.connected.add(environmentId);
-      if (stars.every(syncsNow))
+      if (environmentSleeps(environmentId, stars, known))
         void this.run(environmentId, { kind: "full", message: commitMessages.sync, manual: false });
     }
   }
