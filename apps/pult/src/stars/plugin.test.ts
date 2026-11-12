@@ -3,6 +3,7 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import {
+  channelTranscriptStars,
   createStarOn,
   decodeAbout,
   decodeStars,
@@ -33,6 +34,38 @@ NodeTest.test("rewritesUserTranscripts reads a change under `user`'s channel alo
   NodeAssert.equal(rewritesUserTranscripts(batch(["star/notes.md"])), false);
   NodeAssert.equal(rewritesUserTranscripts(batch([], true)), true);
 });
+
+NodeTest.test(
+  "channelTranscriptStars names the Star whose channel but `user`'s had a transcript written",
+  () => {
+    const batch = (paths: ReadonlyArray<string>, truncated = false) => ({
+      changes: paths.map((path) => ({ path, kind: "created" as const })),
+      truncated,
+    });
+    const answer = {
+      directory: "/Users/a/.pult/stars/",
+      stars: [
+        { id: "one", root: "/Users/a/.pult/stars/star" },
+        { id: "two", root: "/Users/a/.pult/stars/star-2" },
+      ],
+    };
+    const transcript = (folder: string, slug: string) =>
+      `${folder}/.pult/channels/${slug}/conversations/env/2026-11-12T10-00-00Z-t.md`;
+    NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star-2", "work")]), answer), [
+      "two",
+    ]);
+    NodeAssert.deepEqual(
+      channelTranscriptStars(batch([transcript("star", "build").replaceAll("/", "\\")]), answer),
+      ["one"],
+    );
+    NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star", "user")]), answer), []);
+    NodeAssert.deepEqual(
+      channelTranscriptStars(batch(["star/.pult/channels/work/notes.md", "star/notes.md"]), answer),
+      [],
+    );
+    NodeAssert.deepEqual(channelTranscriptStars(batch([], true), answer), ["one", "two"]);
+  },
+);
 
 NodeTest.describe("decodeAbout", () => {
   NodeTest.test("reads the features", () => {

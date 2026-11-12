@@ -11,6 +11,7 @@ import { starGit } from "./git.ts";
 import {
   type FoundTranscripts,
   onDidFindStarTranscripts,
+  onDidWriteStarChannelTranscripts,
   rereadStars,
   setStarFields,
   starById,
@@ -18,6 +19,7 @@ import {
   starRepository,
   starsRead,
   starStore,
+  type WrittenChannelTranscripts,
 } from "./model.ts";
 import { readStarTranscript } from "./plugin.ts";
 import { conversationsOf, type Star, type StarState } from "./stars.ts";
@@ -116,7 +118,8 @@ const threadExists = (environmentId: string, threadId: string) =>
  * it sees, one at a time per environment: in full once per connect while
  * every Star there sleeps, no channel of its open, when the last Star there
  * awake falls asleep, its last open channel sleeping, when a transcript the
- * plugin wrote appears in a Star's answer while every Star there sleeps, on
+ * plugin wrote appears in a Star's answer, or the watch tells of one of a
+ * channel but `user`'s, while every Star there sleeps, on
  * Sync Star and for a change of a record;
  * with an origin (its `.git/config`'s, the one place it is kept) each full
  * occasion fetches, pulls and pushes too, and a sleeping Star's draft
@@ -152,6 +155,7 @@ class StarSync {
       this.afterSleeps();
     });
     onDidFindStarTranscripts((found) => void this.afterTranscripts(found));
+    onDidWriteStarChannelTranscripts((written) => this.afterChannelTranscripts(written));
     // A sleeping Star's draft written in: it is about to wake there.
     projectDrafts.subscribe(() => {
       for (const draft of projectDrafts.get()) {
@@ -212,7 +216,9 @@ class StarSync {
   /**
    * A Star whose last open channel slept: a full occasion on each of its
    * homes' environments where every Star now sleeps, committing what the
-   * channels left there and delivering a divergence that waited for the
+   * channels left there (a transcript the plugin writes after the settle
+   * being its own occasion, `afterChannelTranscripts`, or `user`'s,
+   * `afterTranscripts`) and delivering a divergence that waited for the
    * sleep; where another Star is awake, its sleep makes the occasion. A
    * Star's state counts only while every home's environment is ready with
    * its threads in, where the page holds its channels' threads, so a sleep
@@ -347,6 +353,23 @@ class StarSync {
         ),
       manual: false,
       starId,
+    });
+  }
+
+  /**
+   * After the watch told of a transcript written for a channel but
+   * `user`'s, which no answer names: a full occasion while every Star on
+   * the environment sleeps. The plugin writes a transcript after it settles
+   * the thread, so the occasion of a sleep the page sees at the settle can
+   * run before the file is there.
+   */
+  private afterChannelTranscripts({ environmentId, starIds }: WrittenChannelTranscripts): void {
+    if (!environmentSleeps(environmentId, starStore.get(), known)) return;
+    void this.run(environmentId, {
+      kind: "full",
+      message: commitMessages.sync,
+      manual: false,
+      ...(starIds[0] === undefined ? {} : { starId: starIds[0] }),
     });
   }
 

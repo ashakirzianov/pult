@@ -16,6 +16,7 @@ import { refreshTranscripts } from "./foldState.ts";
 import { starGit } from "./git.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
+  channelTranscriptStars,
   createStarOn,
   type Credential,
   PluginAnswerError,
@@ -70,6 +71,12 @@ export interface FoundTranscripts {
   readonly environmentId: string;
   readonly starId: string;
   readonly names: ReadonlyArray<string>;
+}
+
+/** Stars of a home whose channels but `user` may have had a transcript written, which no answer names. */
+export interface WrittenChannelTranscripts {
+  readonly environmentId: string;
+  readonly starIds: ReadonlyArray<string>;
 }
 
 /** How the page stands with an environment's Stars. */
@@ -195,6 +202,9 @@ class StarsModel {
   private signature = "";
   private readonly listeners = new Set<() => void>();
   private readonly transcriptListeners = new Set<(found: FoundTranscripts) => void>();
+  private readonly channelTranscriptListeners = new Set<
+    (written: WrittenChannelTranscripts) => void
+  >();
   /** While a creation runs, until its re-read has landed: one at a time, across the environments. */
   private creating = false;
   /** Since a creation failed, until an environment connects: no creation by default anywhere. */
@@ -226,6 +236,11 @@ class StarsModel {
   onDidFindTranscripts(listener: (found: FoundTranscripts) => void): () => void {
     this.transcriptListeners.add(listener);
     return () => this.transcriptListeners.delete(listener);
+  }
+
+  onDidWriteChannelTranscripts(listener: (written: WrittenChannelTranscripts) => void): () => void {
+    this.channelTranscriptListeners.add(listener);
+    return () => this.channelTranscriptListeners.delete(listener);
   }
 
   /** Whether every ready environment has answered, so each Star has all the homes the page can see. */
@@ -447,6 +462,12 @@ class StarsModel {
             if (rewritesUserTranscripts(event))
               for (const star of reading.answer?.stars ?? [])
                 refreshTranscripts(environmentId, star.id);
+            // Another channel's transcript, which no answer names, is told as it lands.
+            const starIds =
+              reading.answer === undefined ? [] : channelTranscriptStars(event, reading.answer);
+            if (starIds.length > 0)
+              for (const listener of this.channelTranscriptListeners)
+                listener({ environmentId, starIds });
             this.askSoon(environmentId, reading);
           },
           gone: () => {
@@ -660,6 +681,10 @@ export const sleepStar = (star: Star) => model.sleep(star);
 /** Calls `listener` with the transcripts that appeared in a home since the page's earlier answer for it. */
 export const onDidFindStarTranscripts = (listener: (found: FoundTranscripts) => void) =>
   model.onDidFindTranscripts(listener);
+/** Calls `listener` as the Stars directory's watch tells of a transcript written for a channel but `user`'s (`channelTranscriptStars`). */
+export const onDidWriteStarChannelTranscripts = (
+  listener: (written: WrittenChannelTranscripts) => void,
+) => model.onDidWriteChannelTranscripts(listener);
 
 /** Whether the page holds the environment. */
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;

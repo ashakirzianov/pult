@@ -93,6 +93,39 @@ export function rewritesUserTranscripts(event: {
   );
 }
 
+/**
+ * The Stars of `answer` a batch of changes under its Stars directory may
+ * have written a transcript of a channel but `user`'s for, which no answer
+ * names (its `conversations` are `user`'s): a change under a Star's
+ * `.pult/channels/<slug>/conversations/`, `slug` not `user`, the Star's
+ * folder read from the change's path, relative to the directory; every
+ * Star where more changed than the batch names.
+ */
+export function channelTranscriptStars(
+  event: {
+    readonly changes: ReadonlyArray<{ readonly path: string }>;
+    readonly truncated: boolean;
+  },
+  answer: {
+    readonly directory: string;
+    readonly stars: ReadonlyArray<{ readonly id: string; readonly root: string }>;
+  },
+): string[] {
+  const slashed = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "");
+  const directory = slashed(answer.directory);
+  const folders = new Set(
+    event.changes.flatMap((change) => {
+      const match = /^(.+)\/\.pult\/channels\/([^/]+)\/conversations(?:\/|$)/.exec(
+        slashed(change.path),
+      );
+      return match === null || match[2] === USER_CHANNEL ? [] : [`${directory}/${match[1]}`];
+    }),
+  );
+  return answer.stars
+    .filter((star) => event.truncated || folders.has(slashed(star.root)))
+    .map((star) => star.id);
+}
+
 /** An open channel of a Star's as the route reads it: its slug, its current conversation's thread, and the sleep rule's reading of it, a deadline or what holds it. */
 export interface RouteChannel {
   readonly slug: string;
