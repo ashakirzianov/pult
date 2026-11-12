@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import type { Star } from "../stars/stars.ts";
+import { channelRows, type Star } from "../stars/stars.ts";
 import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
 import {
   settleThread,
@@ -160,6 +160,7 @@ export function PanelView() {
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
   const activities = threadActivities(state.threads);
   const subagents = subagentsByRoot(state.threads, activities);
+  const byKey = new Map(state.threads.map((thread) => [keyOf(thread), thread]));
   const environments = new Map(
     state.environments.map((environment) => [environment.id, environment]),
   );
@@ -190,11 +191,17 @@ export function PanelView() {
   // A Star's card stands for its conversation: selected with the Star, or with one of its conversation's subagents.
   const starCard = (star: Star) => {
     const conversation = star.current === null ? undefined : keyOf(star.current);
+    // Each channel's row as the store has it now: the Stars' model tells only a change of conversation or of its run.
+    const channels = channelRows(star).flatMap(({ slug, thread }) => {
+      const live = byKey.get(keyOf(thread));
+      return live === undefined ? [] : [{ slug, thread: live }];
+    });
     return (
       <StarCard
         key={starKey(star.id)}
         star={star}
         environment={chip(star.current?.environmentId ?? star.homes[0]?.environmentId ?? "")}
+        channels={channels}
         subagents={conversation === undefined ? [] : (subagents.get(conversation) ?? [])}
         activities={activities}
         selected={
@@ -679,7 +686,7 @@ function ageWarning(thread: ShellThread, activity: Activity, now: number): strin
 }
 
 /** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age, in the warning colour while its prompt cache is about to expire. */
-function Status({
+export function Status({
   thread,
   activity,
   now,

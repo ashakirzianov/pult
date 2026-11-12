@@ -44,6 +44,8 @@ const PANE_ID = "pult.shell.threadPane";
 const DRAFT_TYPE_ID = "pult.shell.draft";
 /** The Star's tab's input type, the same way. */
 const STAR_TYPE_ID = "pult.shell.star";
+/** A Star's channel's tab's input type, the same way. */
+const CHANNEL_TYPE_ID = "pult.shell.channel";
 
 let started: Promise<ThreadViewMounts> | undefined;
 /** The view once it has started, for what the page asks of it synchronously. */
@@ -305,7 +307,7 @@ class ThreadPane extends SimpleEditorPane {
     const target: PaneTarget =
       input instanceof DraftInput
         ? { kind: "draft", environmentId: input.environmentId, projectId: input.projectId }
-        : input instanceof ThreadInput
+        : input instanceof ThreadInput || input instanceof ChannelInput
           ? { kind: "thread", environmentId: input.environmentId, threadId: input.threadId }
           : { kind: "thread", environmentId: "", threadId: "" };
     const promotedTo = this.shown?.promotedTo;
@@ -378,12 +380,12 @@ export function isLeadTab(editor: unknown): editor is LeadTab {
 }
 
 /**
- * Whether `editor` is a tab the shell renders and keeps leftmost: a lead
- * tab, or the Settings page (`src/settings/`), which unlike a lead tab
- * closes. None has a status bar.
+ * Whether `editor` is a tab the shell renders: a lead tab, the Settings
+ * page (`src/settings/`) or a Star's channel's (`ChannelInput`), the last
+ * two closing unlike a lead tab. None has a status bar.
  */
-export function isShellTab(editor: unknown): editor is LeadTab | SettingsInput {
-  return isLeadTab(editor) || isSettingsTab(editor);
+export function isShellTab(editor: unknown): editor is LeadTab | SettingsInput | ChannelInput {
+  return isLeadTab(editor) || isSettingsTab(editor) || editor instanceof ChannelInput;
 }
 
 /**
@@ -606,6 +608,80 @@ export class StarInput extends SimpleEditorInput {
   }
 }
 
+/**
+ * A Star's channel's conversation as a tab among the Star's (`src/stars/`,
+ * the card's channel rows, `pult-shell.openStarChannel`): an ordinary
+ * thread's tab, in the same pane, which mounts the thread's view, composer
+ * included, labelled by its channel's slug with the Star's project as its
+ * description. Unlike a lead tab it closes and is not kept leftmost; it is a
+ * singleton, so a second click shows the one open. It shows the thread it
+ * was opened on, which stays there once the channel falls asleep.
+ */
+export class ChannelInput extends SimpleEditorInput {
+  private labelKey: string | undefined;
+  private labelIcon: URI | undefined;
+
+  constructor(
+    readonly environmentId: string,
+    readonly threadId: string,
+    readonly slug: string,
+  ) {
+    super(undefined);
+    this.addCapability(
+      EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
+    );
+    this.updateLabel();
+    this._register({ dispose: threadStore.subscribe(() => this.updateLabel()) });
+    this._register({ dispose: projectIcons.onDidChange(() => this.updateLabel()) });
+  }
+
+  private thread(): ShellThread | undefined {
+    return threadStore.thread(this.environmentId, this.threadId);
+  }
+
+  /** Setting the name fires the label change that redraws the description, title and icon. */
+  private updateLabel(): void {
+    const key = JSON.stringify([this.getDescription(), this.getTitle()]);
+    const icon = this.getIcon();
+    if (key === this.labelKey && icon === this.labelIcon) return;
+    this.labelKey = key;
+    this.labelIcon = icon;
+    this.setName(this.slug);
+  }
+
+  override getDescription(): string {
+    return this.thread()?.projectName ?? "";
+  }
+
+  override getTitle(): string {
+    const thread = this.thread();
+    return thread === undefined
+      ? `Channel ${this.slug}`
+      : `${thread.projectName}: channel ${this.slug}${thread.settled ? ", asleep" : ""}`;
+  }
+
+  override getIcon(): URI | undefined {
+    const thread = this.thread();
+    return thread === undefined ? undefined : projectIconUri(threadProjectIcon(thread));
+  }
+
+  override getLabelExtraClasses(): string[] {
+    return ["pult-thread-tab"];
+  }
+
+  override get typeId(): string {
+    return CHANNEL_TYPE_ID;
+  }
+
+  override matches(other: unknown): boolean {
+    return (
+      other instanceof ChannelInput &&
+      other.threadId === this.threadId &&
+      other.environmentId === this.environmentId
+    );
+  }
+}
+
 /** A saved tab's identity; one saved before tabs named their environment has none, and is dropped. */
 interface SerializedThreadInput {
   readonly environmentId?: string;
@@ -621,12 +697,23 @@ interface SerializedStarInput {
   readonly starId: string;
 }
 
+interface SerializedChannelInput {
+  readonly environmentId: string;
+  readonly threadId: string;
+  readonly slug: string;
+}
+
 /** The thread's editor pane and its serialisers, and `pult-shell.openThreadFile`, what the view's file links run (`files.ts`). */
 export function registerThreadPane(): void {
-  registerEditorPane(PANE_ID, "Pult Thread", ThreadPane, [ThreadInput, DraftInput, StarInput]);
+  registerEditorPane(PANE_ID, "Pult Thread", ThreadPane, [
+    ThreadInput,
+    DraftInput,
+    StarInput,
+    ChannelInput,
+  ]);
   registerOpenThreadFileCommand();
   // Serialisable, so the editor part's saved state and the per-selection working
-  // sets (`selection.ts`) restore the thread's, draft's or Star's tab with the rest.
+  // sets (`selection.ts`) restore the thread's, draft's, Star's or channel's tab with the rest.
   registerEditorSerializer(
     PANE_ID,
     class implements IEditorSerializer {
@@ -688,6 +775,28 @@ export function registerThreadPane(): void {
       ): EditorInput | undefined {
         const { starId } = JSON.parse(serialized) as SerializedStarInput;
         return instantiation.createInstance(StarInput, starId);
+      }
+    },
+  );
+  registerEditorSerializer(
+    CHANNEL_TYPE_ID,
+    class implements IEditorSerializer {
+      canSerialize(): boolean {
+        return true;
+      }
+      serialize(editor: ChannelInput): string {
+        return JSON.stringify({
+          environmentId: editor.environmentId,
+          threadId: editor.threadId,
+          slug: editor.slug,
+        } satisfies SerializedChannelInput);
+      }
+      deserialize(
+        instantiation: IInstantiationService,
+        serialized: string,
+      ): EditorInput | undefined {
+        const { environmentId, threadId, slug } = JSON.parse(serialized) as SerializedChannelInput;
+        return instantiation.createInstance(ChannelInput, environmentId, threadId, slug);
       }
     },
   );

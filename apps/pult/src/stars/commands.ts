@@ -3,6 +3,7 @@ import {
   ICommandService,
   IContextKeyService,
   IEditorService,
+  IInstantiationService,
   INotificationService,
   IQuickInputService,
   type ServicesAccessor,
@@ -16,6 +17,7 @@ import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/c
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
+import { ChannelInput } from "../threads/pane.tsx";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures } from "./about.ts";
@@ -28,7 +30,7 @@ import {
   starById,
   starStore,
 } from "./model.ts";
-import { drawnHome, type Star, starName } from "./stars.ts";
+import { channelRows, drawnHome, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule and Open Star Ask are offered then. */
@@ -168,6 +170,53 @@ async function openStarAsk(
 }
 
 /**
+ * An open channel's conversation of the Star's, but `user`'s, which is its
+ * tab, as a thread's tab among the Star's (`ChannelInput`), as its card
+ * lists them: `slug`'s, or one picked among them; the Star selected first.
+ */
+async function openStarChannel(
+  quickInput: IQuickInputService,
+  star: Star,
+  slug: unknown,
+): Promise<void> {
+  const notifications = await getService(INotificationService);
+  const rows = channelRows(star);
+  if (typeof slug !== "string" && rows.length === 0)
+    return notifications.info(`${starName(star)} has no channel open but yours.`);
+  const channel =
+    typeof slug === "string"
+      ? rows.find((each) => each.slug === slug)
+      : rows.length === 1
+        ? rows[0]
+        : (
+            await quickInput.pick(
+              rows.map((each) => ({ channel: each, label: each.slug })),
+              { placeHolder: "Open a channel of the Star's" },
+            )
+          )?.channel;
+  if (channel === undefined) {
+    if (typeof slug === "string") notifications.info(`${starName(star)} has no ${slug} open.`);
+    return;
+  }
+  const commands = await getService(ICommandService);
+  await commands.executeCommand("pult-shell.selectStar", star.id);
+  // A switch cancelled over a modified file leaves the selection as it was, so the channel is not opened among its tabs.
+  if (selectedStar() !== star.id) return;
+  const { environmentId, id } = channel.thread;
+  await (
+    await getService(IEditorService)
+  ).openEditor(
+    (await getService(IInstantiationService)).createInstance(
+      ChannelInput,
+      environmentId,
+      id,
+      channel.slug,
+    ),
+    { pinned: true },
+  );
+}
+
+/**
  * The Explorer tab at the Star's folder: narrowed to it while the Star is
  * selected, as its composer bar's Explorer narrows, else the environments'
  * folders with the Star's revealed, leaving the selection as it is.
@@ -198,9 +247,10 @@ async function openStarFolder(star: Star): Promise<void> {
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
  * Open Star Ask… (`pult-shell.openStarAsk [starId] [name]`, the card's ask
- * rows), Sync Star (`pult-shell.syncStar
+ * rows), Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
+ * the card's channel rows), Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
- * [starId]`, the Star's current conversation put to sleep, offered only
+ * [starId]`, the Star's current conversation in `user` put to sleep, offered only
  * while `canSleepStar`), each on the page's Star, picked while it holds
  * several. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
@@ -323,6 +373,25 @@ export function registerStarCommands(): void {
         const quickInput = accessor.get(IQuickInputService);
         const star = await pickStar(quickInput, starId, "Open a Star's ask");
         if (star !== undefined) await openStarAsk(quickInput, star, name);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.openStarChannel",
+          title: { value: "Open Star Channel…", original: "Open Star Channel…" },
+          category,
+          f1: true,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown, slug?: unknown): Promise<void> {
+        const quickInput = accessor.get(IQuickInputService);
+        const star = await pickStar(quickInput, starId, "Open a Star's channel");
+        if (star !== undefined) await openStarChannel(quickInput, star, slug);
       }
     },
   );
