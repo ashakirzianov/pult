@@ -2,6 +2,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
+  type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   ProjectId,
@@ -450,6 +451,120 @@ describe("the pass", () => {
       assert.strictEqual(yield* h.stars.ofThread(fenced.shell.id), undefined);
       assert.strictEqual(yield* h.stars.ofThread(fencedEnded.shell.id), undefined);
       assert.strictEqual((yield* h.stars.view).stars[0]?.conversation?.threadId, open.shell.id);
+    }).pipe(Effect.scoped),
+  );
+});
+
+describe("a full context", () => {
+  const later = at("2026-11-10T13:30:00.000Z");
+  /** A provider turn that ended with the run `run` fakes, reporting this usage. */
+  const turnUsing = (usedTokens: number, maxTokens?: number) =>
+    ({
+      id: "turn-full",
+      providerThreadId: "provider-thread",
+      completedAt: at("2026-11-10T12:01:00.000Z"),
+      tokenUsage: { usedTokens, maxTokens, updatedAt: "2026-11-10T12:01:00.000Z" },
+    }) as unknown as OrchestrationV2ProviderTurn;
+  const conversation = (
+    h: Effect.Success<typeof harness>,
+    star: Stars.Star,
+    id: string,
+    tags: ReadonlyArray<string>,
+    runs: OrchestrationV2Run[],
+    usage: OrchestrationV2ProviderTurn,
+  ) => {
+    const thread = h.threads.add(
+      star.projectId,
+      id,
+      { createdAt: at("2026-11-10T11:50:00.000Z"), promptCacheExpiresAt: later, tags: [...tags] },
+      runs,
+    );
+    thread.providerTurns = [usage];
+    return thread;
+  };
+
+  it.effect(
+    "ends an idle work conversation on the next look before its cache expires, and the next message finds none",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        // 75% of a smaller window, short of 250,000 tokens.
+        const work = conversation(
+          h,
+          star,
+          "work",
+          [Stars.WORK_TAG],
+          [run("work-run", "completed")],
+          turnUsing(150_000, 200_000),
+        );
+
+        // Due now, as the route serves it: the end of its last turn.
+        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.work, {
+          threadId: work.shell.id,
+          sleeps: { at: "2026-11-10T12:01:00.000Z" },
+        });
+        const current = yield* h.stars.withConversation(star, "work", ({ current }) =>
+          Effect.succeed(current),
+        );
+        assert.strictEqual(current, null);
+        assert.deepStrictEqual(h.threads.settles, [work.shell.id]);
+        assert.deepStrictEqual(
+          yield* h.fs.readDirectory(h.path.join(star.root, ".pult/conversations/env-1/work")),
+          ["2026-11-10T11-50-00Z-work.md"],
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("waits for a run on or queued, and ends it on the look after the queue drains", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const work = conversation(
+        h,
+        star,
+        "work",
+        [Stars.WORK_TAG],
+        [run("work-run", "running"), { ...run("work-next", "queued"), ordinal: 2 }],
+        turnUsing(250_000, 1_000_000),
+      );
+
+      yield* h.runPass;
+      assert.deepStrictEqual(h.threads.settles, []);
+      assert.deepStrictEqual((yield* h.stars.view).stars[0]?.work?.sleeps, { heldBy: "run" });
+      work.runs = [run("work-run", "completed"), { ...run("work-next", "queued"), ordinal: 2 }];
+      yield* h.runPass;
+      assert.deepStrictEqual(h.threads.settles, []);
+      assert.deepStrictEqual((yield* h.stars.view).stars[0]?.work?.sleeps, { heldBy: "queued" });
+
+      work.runs = [run("work-run", "completed"), { ...run("work-next", "completed"), ordinal: 2 }];
+      yield* h.runPass;
+      assert.deepStrictEqual(h.threads.settles, [work.shell.id]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("never ends the conversation with the user before its cache expires", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const h = yield* harness;
+      const star = yield* h.stars.create({ ifNone: true });
+      const user = conversation(
+        h,
+        star,
+        "user",
+        [],
+        [run("user-run", "completed")],
+        turnUsing(900_000, 1_000_000),
+      );
+
+      yield* h.runPass;
+      assert.deepStrictEqual(h.threads.settles, []);
+      assert.deepStrictEqual((yield* h.stars.view).stars[0]?.conversation, {
+        threadId: user.shell.id,
+        sleeps: { at: "2026-11-10T13:30:00.000Z" },
+      });
     }).pipe(Effect.scoped),
   );
 });

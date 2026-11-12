@@ -18,7 +18,13 @@ import {
 import { DateTime } from "../host.ts";
 
 import { v2Projection } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
-import { asleepBy, DEFAULT_CACHE_TTL_MS, type SleepInput, wakefulness } from "./sleep.ts";
+import {
+  asleepBy,
+  contextFull,
+  DEFAULT_CACHE_TTL_MS,
+  type SleepInput,
+  wakefulness,
+} from "./sleep.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 const ms = (iso: string) => Date.parse(iso);
@@ -54,6 +60,7 @@ function turn(
     status?: OrchestrationV2ProviderTurn["status"];
     ttl?: number;
     providerThread?: string;
+    usage?: { readonly usedTokens: number; readonly maxTokens?: number | null };
   } = {},
 ): OrchestrationV2ProviderTurn {
   return {
@@ -66,12 +73,13 @@ function turn(
     status: options.status ?? (completedAt === null ? "running" : "completed"),
     startedAt: at("2026-11-03T10:00:00.000Z"),
     completedAt: completedAt === null ? null : at(completedAt),
-    ...(options.ttl === undefined
+    ...(options.ttl === undefined && options.usage === undefined
       ? {}
       : {
           tokenUsage: {
             usedTokens: 1000,
-            promptCacheTtlMs: options.ttl,
+            ...options.usage,
+            ...(options.ttl === undefined ? {} : { promptCacheTtlMs: options.ttl }),
             updatedAt: completedAt ?? "2026-11-03T10:00:00.000Z",
           },
         }),
@@ -299,6 +307,65 @@ describe("wakefulness", () => {
       kind: "deadline",
       at: ms("2026-11-03T10:15:00.000Z"),
     });
+  });
+});
+
+describe("a full context", () => {
+  const ended = "2026-11-03T10:10:00.000Z";
+  const full = (usage: { usedTokens: number; maxTokens?: number | null }) =>
+    contextFull([turn("last", ended, { usage })]);
+
+  it("is 250,000 tokens in context, or 75% of the window, whichever comes first", () => {
+    assert.strictEqual(full({ usedTokens: 249_999, maxTokens: 1_000_000 }), false);
+    assert.strictEqual(full({ usedTokens: 250_000, maxTokens: 1_000_000 }), true);
+    assert.strictEqual(full({ usedTokens: 250_000 }), true);
+    assert.strictEqual(full({ usedTokens: 149_999, maxTokens: 200_000 }), false);
+    assert.strictEqual(full({ usedTokens: 150_000, maxTokens: 200_000 }), true);
+  });
+
+  it("is not where no turn reported usage, and by tokens alone where the window is unknown", () => {
+    assert.strictEqual(contextFull([]), false);
+    assert.strictEqual(contextFull([turn("bare", ended)]), false);
+    assert.strictEqual(full({ usedTokens: 200_000, maxTokens: null }), false);
+    assert.strictEqual(full({ usedTokens: 200_000, maxTokens: 0 }), false);
+  });
+
+  it("reads the newest usage reported, as the context meter does", () => {
+    const heavy = turn("heavy", "2026-11-03T10:05:00.000Z", { usage: { usedTokens: 300_000 } });
+    const compacted = turn("compacted", ended, { usage: { usedTokens: 20_000 } });
+    assert.strictEqual(contextFull([heavy, compacted]), false);
+    assert.strictEqual(contextFull([compacted, heavy]), false);
+    assert.strictEqual(contextFull([heavy, turn("bare", ended)]), true);
+  });
+
+  it("takes the deadline as passed for a conversation that rotates on it, every hold applying", () => {
+    const providerTurns = [turn("last", ended, { ttl: 3_600_000, usage: { usedTokens: 260_000 } })];
+    const expiresAt = at("2026-11-03T11:10:00.000Z");
+    const input = conversation({ providerTurns });
+    assert.deepStrictEqual(wakefulness(input, expiresAt, { rotatesWhenFull: true }), {
+      kind: "deadline",
+      at: ms(ended),
+    });
+    assert.deepStrictEqual(wakefulness(input, null, { rotatesWhenFull: true }), {
+      kind: "deadline",
+      at: ms(ended),
+    });
+    // The conversation with the user never rotates on it.
+    assert.deepStrictEqual(wakefulness(input, expiresAt), {
+      kind: "deadline",
+      at: ms("2026-11-03T11:10:00.000Z"),
+    });
+    assert.deepStrictEqual(
+      wakefulness(
+        conversation({
+          providerTurns,
+          runs: [run("done", "completed", ended), { ...run("next", "queued"), queueHeld: true }],
+        }),
+        expiresAt,
+        { rotatesWhenFull: true },
+      ),
+      { kind: "held", by: "queued" },
+    );
   });
 });
 

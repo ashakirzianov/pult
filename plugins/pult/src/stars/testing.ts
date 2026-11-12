@@ -5,6 +5,7 @@ import {
   MessageId,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
@@ -97,6 +98,7 @@ interface FakeThread {
   shell: OrchestrationV2ThreadShell;
   runs: OrchestrationV2Run[];
   subagents: OrchestrationV2Subagent[];
+  providerTurns: OrchestrationV2ProviderTurn[];
   /** The conversation's messages, as the projection records them. */
   messages: OrchestrationV2ConversationMessage[];
 }
@@ -138,6 +140,7 @@ function fakeThreads() {
     },
     runs: thread.runs,
     subagents: thread.subagents,
+    providerTurns: thread.providerTurns,
     messages: thread.messages,
   });
   /** Takes a message into the thread: a run starts where none is on, else one queues behind it. */
@@ -305,6 +308,7 @@ function fakeThreads() {
       },
       runs,
       subagents: [],
+      providerTurns: [],
       messages: [],
     };
     threads.push(thread);

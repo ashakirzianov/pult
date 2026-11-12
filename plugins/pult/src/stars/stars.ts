@@ -45,7 +45,7 @@ import {
   starName,
   withRecordFields,
 } from "./record.ts";
-import { asleepBy, type Wakefulness, wakefulness } from "./sleep.ts";
+import { asleepBy, type SleepInput, type Wakefulness, wakefulness } from "./sleep.ts";
 import {
   formatTranscript,
   isTranscriptName,
@@ -229,6 +229,10 @@ const instant = (iso: string | undefined) => {
   const parsed = iso === undefined ? undefined : DateTime.make(iso);
   return parsed?._tag === "Some" ? DateTime.toEpochMillis(parsed.value) : undefined;
 };
+
+/** The sleep rule's reading of a conversation: the work conversation alone rotates on a full context. */
+const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
+  wakefulness(records, thread.promptCacheExpiresAt, { rotatesWhenFull: kindOf(thread) === "work" });
 
 const sleepsOf = (state: Wakefulness) =>
   state.kind === "held"
@@ -432,7 +436,7 @@ export const make = Effect.gen(function* () {
       ["runs", "providerTurns", "runtimeRequests", "subagents"],
     );
     const latest = records.runs.toSorted((left, right) => left.ordinal - right.ordinal).at(-1);
-    const state = wakefulness(records, thread.promptCacheExpiresAt);
+    const state = wakefulnessOf(records, thread);
     const awake: SleepOutcome = { slept: false };
     if (state.kind === "held") return { slept: false, heldBy: state.by } satisfies SleepOutcome;
     if (requested === undefined) {
@@ -648,7 +652,7 @@ export const make = Effect.gen(function* () {
           );
           return {
             threadId: current.id,
-            sleeps: sleepsOf(wakefulness(records, current.promptCacheExpiresAt)),
+            sleeps: sleepsOf(wakefulnessOf(records, current)),
           } satisfies ConversationView;
         });
         const last = (yield* settledConversations(star, 1, "user"))[0];
