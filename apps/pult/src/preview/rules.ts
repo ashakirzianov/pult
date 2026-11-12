@@ -16,6 +16,31 @@ export function closingEndsSession(owner: PreviewOwner | undefined): boolean {
   return owner === "human" || owner === "unclaimed";
 }
 
+/** A thread, in its environment. */
+interface PreviewThread {
+  readonly environmentId: string;
+  readonly threadId: string;
+}
+
+/**
+ * The tab a thread's preview tabs belong beside, in the selection's tab set:
+ * the lead tab for the selection's thread (the selected one, or the selected
+ * Star's conversation in `user`); a channel's tab open among a Star's for
+ * that channel's conversation (`ChannelInput`), so its browsers open as
+ * `user`'s do; undefined for any other thread, whose reveal waits until its
+ * thread is one of these, and whose tabs leave the part.
+ */
+export function previewAnchor<Tab extends PreviewThread>(
+  thread: PreviewThread,
+  selection: PreviewThread | undefined,
+  channelTabs: ReadonlyArray<Tab>,
+): "lead" | Tab | undefined {
+  const same = (other: PreviewThread) =>
+    other.environmentId === thread.environmentId && other.threadId === thread.threadId;
+  if (selection !== undefined && same(selection)) return "lead";
+  return channelTabs.find(same);
+}
+
 /**
  * The group a thread's new preview tab opens in: the one holding the thread's
  * preview tab shown or opened most recently, so later browsers land where the

@@ -7,8 +7,36 @@ import {
   JUST_OPENED_MS,
   liveReveals,
   placementGroup,
+  previewAnchor,
   staleTabs,
 } from "./rules.ts";
+
+NodeTest.test(
+  "a selected Star's channel open as a tab opens its browsers beside that tab, and no other thread does",
+  () => {
+    const user = { environmentId: "env", threadId: "user-now" };
+    const work = { environmentId: "env", threadId: "work-now", group: "right" };
+    const channels = [work, { environmentId: "env", threadId: "review-now", group: "left" }];
+    NodeAssert.equal(previewAnchor(user, user, channels), "lead");
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "env", threadId: "work-now" }, user, channels),
+      work,
+    );
+    // `user` asleep, the Star's tab on its draft: a channel's tab still opens its own.
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "env", threadId: "work-now" }, undefined, channels),
+      work,
+    );
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "other", threadId: "work-now" }, user, channels),
+      undefined,
+    );
+    NodeAssert.equal(
+      previewAnchor({ environmentId: "env", threadId: "child" }, user, channels),
+      undefined,
+    );
+  },
+);
 
 NodeTest.test(
   "closing an agent's tab keeps its session; a user's or unclaimed one's ends it",
