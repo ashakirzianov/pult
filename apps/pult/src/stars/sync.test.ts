@@ -6,6 +6,7 @@ import { starsOf } from "./stars.ts";
 import {
   fellAsleep,
   handoffMessage,
+  handoffModel,
   handoffThreadId,
   handsOffNow,
   type HomeStatus,
@@ -161,6 +162,27 @@ NodeTest.describe("the handoff", () => {
     NodeAssert.notEqual(await handoffThreadId({ ...home, head: "c".repeat(40) }), id);
     NodeAssert.notEqual(await handoffThreadId({ ...home, behind: 2 }), id);
     NodeAssert.notEqual(await handoffThreadId({ ...home, environmentId: "other" }), id);
+  });
+
+  NodeTest.test("wakes `user` at `user`'s newest model, else at any channel's newest", () => {
+    const conversation = (id: string, environmentId: string, channel?: string) => ({
+      id,
+      environmentId,
+      tags: channel === undefined ? [] : [`pult:channel:${channel}`],
+    });
+    // Newest first: `work` ran last, on this environment.
+    const conversations = [
+      conversation("work-here", "env", "work"),
+      conversation("user-there", "other"),
+      conversation("user-here", "env", "user"),
+      conversation("user-older", "env"),
+    ];
+    NodeAssert.equal(handoffModel(conversations, "env")?.id, "user-here");
+    NodeAssert.equal(handoffModel(conversations, "far")?.id, "user-there");
+    const noUser = [conversation("review", "other", "review"), conversation("work", "env", "work")];
+    NodeAssert.equal(handoffModel(noUser, "env")?.id, "work");
+    NodeAssert.equal(handoffModel(noUser, "far")?.id, "review");
+    NodeAssert.equal(handoffModel([], "env"), undefined);
   });
 });
 

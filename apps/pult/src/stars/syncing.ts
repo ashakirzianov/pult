@@ -26,6 +26,7 @@ import {
   fellAsleep,
   HANDOFF_TITLE,
   handoffMessage,
+  handoffModel,
   handoffThreadId,
   handsOffNow,
   type HomeStatus,
@@ -442,8 +443,9 @@ class StarSync {
   /**
    * Hands a divergence to a Star, the occasion's where it has a home on the
    * environment, else the first one there, as the first message of a
-   * conversation it wakes in, on its home's project, with its latest
-   * conversation there's model and modes; once, its thread's id deterministic
+   * conversation it wakes in, on its home's project, `user`'s, with the
+   * model and modes of `user`'s latest conversation (`handoffModel`); once,
+   * its thread's id deterministic
    * from the repository and both sides (`handoffThreadId`), looked up on the
    * server, so no page, and no reload, hands the same divergence over
    * again. An awake Star (a channel of its open), one being written to, or
@@ -486,10 +488,10 @@ class StarSync {
       });
       return false;
     }
-    // The model and modes of its latest conversation there, else of its latest anywhere.
-    const conversations = conversationsOf(star.homes, threadStore.get().threads);
-    const model =
-      conversations.find((thread) => thread.environmentId === environmentId) ?? conversations[0];
+    const model = handoffModel(
+      conversationsOf(star.homes, threadStore.get().threads),
+      environmentId,
+    );
     if (model === undefined) {
       this.change(environmentId, {
         note: `${what}; reconcile it with git in ${root}.`,

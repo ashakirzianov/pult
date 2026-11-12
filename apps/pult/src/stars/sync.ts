@@ -3,7 +3,8 @@
 // origins the page takes, where it reads the repository's, what each
 // occasion runs, the commits' messages, and the handoff that gives a Star a
 // divergence to reconcile (`syncing.ts` runs it).
-import type { StarState } from "./stars.ts";
+import { USER_CHANNEL } from "./plugin.ts";
+import { channelOf, type StarState } from "./stars.ts";
 
 /** Why the page will not take `url` as an origin, or undefined when it will. */
 export function originProblem(url: string): string | undefined {
@@ -175,6 +176,21 @@ export function handoffMessage(input: {
   ]
     .filter((part) => part !== "")
     .join("\n\n");
+}
+
+/**
+ * The conversation whose model and modes a handoff wakes the Star with,
+ * among its conversations newest first: the woken thread is untagged, so
+ * `user`'s, and takes `user`'s newest, the environment's first; with none,
+ * any channel's newest, the environment's first, as the plugin's wake into
+ * `user` falls back (`star-delivery`).
+ */
+export function handoffModel<
+  Thread extends { readonly environmentId: string; readonly tags: ReadonlyArray<string> },
+>(conversations: ReadonlyArray<Thread>, environmentId: string): Thread | undefined {
+  const users = conversations.filter((thread) => channelOf(thread) === USER_CHANNEL);
+  const among = users.length > 0 ? users : conversations;
+  return among.find((thread) => thread.environmentId === environmentId) ?? among[0];
 }
 
 /** The title of the conversation a handoff wakes, which the server keeps until the Star's first reply retitles it. */
