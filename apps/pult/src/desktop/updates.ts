@@ -86,7 +86,11 @@ export function registerUpdateCommands(): void {
         const host = desktopHost();
         if (host === undefined) return;
         const version = installableVersion(await host.getUpdateState());
-        if (version === null || !(await confirmRestart())) return;
+        if (
+          version === null ||
+          (await confirmRestart(connection.localEnvironment?.environmentId)) === "cancelled"
+        )
+          return;
         const result = await host.installUpdate(version);
         // Accepted, the app quits into the update; refused or failed, it stays.
         if (result.accepted && result.state.message === null) return;
@@ -151,45 +155,52 @@ function settled(host: DesktopBridge): Promise<DesktopUpdateState> {
   });
 }
 
+/** How a restart may go ahead: the server rested, the user chose Restart Anyway, or not at all. */
+export type RestartConsent = "at-rest" | "forced" | "cancelled";
+
 /**
- * Whether to restart now: at once while Pult.app's own server is at rest by its own reading
- * (`server.getActivity`, which the at-rest install reads too) or while the app runs none, else
- * after a warning naming the threads at work, with Restart Anyway.
+ * Whether an environment's Pult.app may restart now (`environmentId`, its server; undefined for
+ * this app with no local server, where nothing runs): at once while its server is at rest by its
+ * own reading (`server.getActivity`, which the at-rest install reads too), else after a warning
+ * naming the root threads there working or awaiting the user, with Restart Anyway. `name` names a
+ * remote environment in the dialog.
  */
-async function confirmRestart(): Promise<boolean> {
-  const local = connection.localEnvironment;
-  if (local === undefined) return true;
+export async function confirmRestart(
+  environmentId: string | undefined,
+  name?: string,
+): Promise<RestartConsent> {
+  if (environmentId === undefined) return "at-rest";
+  const place = name ?? "this computer";
   let detail: string;
   try {
     const { atRest } = await connection.run(
-      local.environmentId,
+      environmentId,
       request(WS_METHODS.serverGetActivity, {}),
     );
-    if (atRest) return true;
+    if (atRest) return "at-rest";
     const working = threadStore
       .get()
       .threads.filter(
         (thread) =>
-          thread.environmentId === local.environmentId &&
+          thread.environmentId === environmentId &&
           thread.parentId === null &&
           (thread.working || thread.awaitsUser),
       )
       .map((thread) => thread.title);
-    detail = busyRestartDetail(working);
+    detail = busyRestartDetail(working, place);
   } catch (error) {
-    console.error("[pult-shell] the local server's activity did not load", error);
-    detail =
-      "Pult could not tell whether agents are working on this computer. Restarting now interrupts any that are.";
+    console.error("[pult-shell] the server's activity did not load", error);
+    detail = `Pult could not tell whether agents are working on ${place}. Restarting now interrupts any that are.`;
   }
   const { confirmed } = await (
     await getService(IDialogService)
   ).confirm({
     type: "warning",
-    message: "Restart Pult to update?",
+    message: name === undefined ? "Restart Pult to update?" : `Restart Pult on ${name} to update?`,
     detail,
     primaryButton: "Restart Anyway",
   });
-  return confirmed;
+  return confirmed ? "forced" : "cancelled";
 }
 
 /**

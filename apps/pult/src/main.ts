@@ -31,6 +31,7 @@ import { installDebugHandle } from "./debug.ts";
 import { registerLocalServerCommands, startLocalServerContext } from "./desktop/localServer.ts";
 import { desktopHost } from "./desktop/host.ts";
 import { startMenuActions } from "./desktop/menuActions.ts";
+import { environmentVersions } from "./desktop/environmentUpdates.ts";
 import { registerUpdateCommands, startUpdateContext } from "./desktop/updates.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { registerMode, startMode } from "./mode.ts";
@@ -164,6 +165,7 @@ await restoreThreadSelection();
 await startPreviewTabs();
 await startLocalServerContext();
 await startUpdateContext();
+environmentVersions.start();
 startMenuActions();
 if (window.pultDesktop) await startSpelling(window.pultDesktop.spelling);
 

@@ -96,13 +96,13 @@ export function trayOffer(state: DesktopUpdateState): TrayOffer | null {
   return null;
 }
 
-/** The restart's warning while the server is busy, naming up to three of the threads at work. */
-export function busyRestartDetail(working: ReadonlyArray<string>): string {
+/** The restart's warning while a server is busy, naming up to three of its threads at work; `place` is "this computer" or the environment's name. */
+export function busyRestartDetail(working: ReadonlyArray<string>, place: string): string {
   const named = working.slice(0, 3).map((title) => `“${title}”`);
   const more = working.length - named.length;
   const what =
     working.length === 0
-      ? "Agent work is running on this computer"
+      ? `Agent work is running on ${place}`
       : `${working.length === 1 ? "An agent is" : "Agents are"} working on ${named.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
   return `${what}. Restarting now interrupts it.`;
 }

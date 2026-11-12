@@ -101,6 +101,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
+import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as ServerActivity from "./serverActivity.ts";
 import * as NpmRelease from "./cloud/npmRelease.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
@@ -825,6 +826,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({}),
   Layer.mock(ServerRuntimeStartup.ServerRuntimeStartup)({}),
   Layer.mock(ServerActivity.ServerActivity)({}),
+  Layer.mock(DesktopTelemetryReceiver.DesktopTelemetryReceiver)({}),
   Layer.mock(ServerSelfUpdate.ServerSelfUpdate)({}),
   Layer.mock(NpmRelease.NpmRelease)({}),
   Layer.mock(SessionStore.SessionStore)({ cookieName: "config-test", legacyCookieName: undefined }),

@@ -161,15 +161,19 @@ NodeTest.test("the tray offers a download, then its progress, then a restart", (
 
 NodeTest.test("the busy restart's warning names a few of the threads at work", () => {
   NodeAssert.equal(
-    busyRestartDetail([]),
+    busyRestartDetail([], "this computer"),
     "Agent work is running on this computer. Restarting now interrupts it.",
   );
   NodeAssert.equal(
-    busyRestartDetail(["Fix tray"]),
+    busyRestartDetail([], "vps"),
+    "Agent work is running on vps. Restarting now interrupts it.",
+  );
+  NodeAssert.equal(
+    busyRestartDetail(["Fix tray"], "this computer"),
     "An agent is working on “Fix tray”. Restarting now interrupts it.",
   );
   NodeAssert.equal(
-    busyRestartDetail(["a", "b", "c", "d", "e"]),
+    busyRestartDetail(["a", "b", "c", "d", "e"], "vps"),
     "Agents are working on “a”, “b”, “c” and 2 more. Restarting now interrupts it.",
   );
 });

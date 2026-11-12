@@ -8,6 +8,8 @@ import { connection, environmentName, type ShellEnvironment } from "../connectio
 import { pairings } from "../connection/pairDevice.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
+import { environmentVersions } from "../desktop/environmentUpdates.ts";
+import { trayOffer } from "../desktop/updateSteps.ts";
 import { updateOffer } from "../desktop/updates.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, setMode } from "../mode.ts";
@@ -183,6 +185,7 @@ function EnvironmentGroup({
           )}
         </div>
       </div>
+      <VersionRow environmentId={environmentId} local={local} />
       {local ? <ReachableRow /> : null}
       {ready || outstanding || access !== undefined ? (
         <div className="pult-settings-row pult-settings-subrow pult-settings-devices">
@@ -251,6 +254,63 @@ function LocalServerSwitch({ enabled }: { enabled: boolean }) {
       checked={enabled}
       onChange={(on) => void setLocalServerEnabled(on)}
     />
+  );
+}
+
+/**
+ * Under an environment's row, its versions (`src/desktop/environmentUpdates.ts`): its Pult.app's,
+ * where its server relays one, and its server's, T3 Code's line; and its Pult.app's update while
+ * its own updater has found one: this app's the tray's button (`updateOffer`), a remote one's
+ * Download and Install, which restarts it there. Nothing until its config is read.
+ */
+function VersionRow({ environmentId, local }: { environmentId: string; local: boolean }) {
+  const versions = useSyncExternalStore(environmentVersions.subscribe, () =>
+    environmentVersions.get(environmentId),
+  );
+  const ownOffer = useSyncExternalStore(updateOffer.subscribe, updateOffer.get);
+  if (versions.serverVersion === null) return null;
+  const app = versions.desktop?.currentVersion;
+  const offer = local ? ownOffer : versions.desktop === null ? null : trayOffer(versions.desktop);
+  const label =
+    versions.updating === "preparing"
+      ? "Downloading…"
+      : versions.updating === "installing"
+        ? "Installing…"
+        : offer === null
+          ? null
+          : local
+            ? {
+                download: "Download Update",
+                downloading: "Downloading…",
+                restart: "Restart to Update",
+              }[offer.kind]
+            : offer.kind === "downloading"
+              ? "Downloading…"
+              : "Download and Install";
+  return (
+    <div className="pult-settings-row pult-settings-subrow">
+      <div className="pult-settings-row-text">
+        <div className="pult-settings-row-label">Version</div>
+        <div className="pult-settings-row-description">
+          {[app === undefined ? undefined : `Pult ${app}`, `T3 Code ${versions.serverVersion}`]
+            .filter((part) => part !== undefined)
+            .join(" · ")}
+          {offer === null ? "" : ` · Pult ${offer.version} available`}
+        </div>
+      </div>
+      {label === null ? null : (
+        <button
+          type="button"
+          className="pult-settings-button"
+          disabled={versions.updating !== null || offer?.kind === "downloading"}
+          onClick={() =>
+            void (local ? updateOffer.act() : environmentVersions.install(environmentId))
+          }
+        >
+          {label}
+        </button>
+      )}
+    </div>
   );
 }
 

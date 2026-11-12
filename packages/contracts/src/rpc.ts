@@ -165,6 +165,7 @@ import {
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
+import { DesktopUpdateStateSchema } from "./ipc.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import { OrchestrationSearchThreadsError } from "./threadSearch.ts";
 import {
@@ -538,6 +539,8 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverGetActivity: "server.getActivity",
+  /** Pult: the desktop app's update state, as the app on the server's machine reports it. */
+  serverSubscribeDesktopApp: "server.subscribeDesktopApp",
   serverGetNpmRelease: "server.getNpmRelease",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
@@ -687,6 +690,14 @@ const WsServerGetActivityRpc = Rpc.make(WS_METHODS.serverGetActivity, {
   payload: Schema.Struct({}),
   success: ServerActivitySnapshot,
   error: EnvironmentAuthorizationError,
+});
+
+/** Pult: the latest state, then each change; nothing from a server no desktop app started. */
+const WsServerSubscribeDesktopAppRpc = Rpc.make(WS_METHODS.serverSubscribeDesktopApp, {
+  payload: Schema.Struct({}),
+  success: DesktopUpdateStateSchema,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -2152,6 +2163,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerGetActivityRpc,
+  WsServerSubscribeDesktopAppRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,

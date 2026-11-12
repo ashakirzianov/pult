@@ -683,6 +683,8 @@ export const ServerConfig = Schema.Struct({
   scratchWorkspaceRoot: Schema.optionalKey(TrimmedNonEmptyString),
   /** Whether server.getActivity exists. */
   serverActivity: Schema.optionalKey(Schema.Boolean),
+  /** Pult: whether server.subscribeDesktopApp exists; absent on stock servers. */
+  desktopAppStatus: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether review.getLog and review.getRefs exist; absent on stock servers, which show no history. */
   reviewLog: Schema.optionalKey(Schema.Boolean),
   newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),

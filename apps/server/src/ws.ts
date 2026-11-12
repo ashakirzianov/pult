@@ -234,6 +234,7 @@ import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
+import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as ServerActivity from "./serverActivity.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -1439,6 +1440,7 @@ export const layerWsRpc = (
       const scratchThreadPromotion = yield* ScratchThreadPromotion.ScratchThreadPromotion;
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
       const serverActivity = yield* ServerActivity.ServerActivity;
+      const desktopTelemetry = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -2008,6 +2010,7 @@ export const layerWsRpc = (
           secretReferences: true,
           secretRequestReferences: true,
           serverActivity: true,
+          desktopAppStatus: true,
           reviewLog: true,
           ...Option.match(scratchWorkspaceRoot, {
             onNone: () => ({}),
@@ -2418,6 +2421,17 @@ export const layerWsRpc = (
             deferNetworkDiscovery: false,
           }),
         [WS_METHODS.serverGetActivity]: (_input) => serverActivity.current,
+        // Pult: what the desktop app on this machine last reported of its updates, then each report.
+        [WS_METHODS.serverSubscribeDesktopApp]: (_input) =>
+          Stream.unwrap(
+            desktopTelemetry.desktopUpdates.pipe(
+              Effect.map(({ latest, changes }) =>
+                Stream.concat(Stream.fromIterable(Option.toArray(latest)), changes).pipe(
+                  Stream.map((report) => report.state),
+                ),
+              ),
+            ),
+          ),
         [WS_METHODS.serverSearchAcpRegistry]: (input) =>
           acpRegistryCatalog
             .search(input)
