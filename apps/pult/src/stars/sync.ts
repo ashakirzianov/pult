@@ -118,6 +118,41 @@ export function fellAsleep(
     .map((star) => star.id);
 }
 
+/** A Star as the sync reads it: its state and its homes' environments. */
+interface SyncedStar {
+  readonly id: string;
+  readonly state: StarState;
+  readonly homes: ReadonlyArray<{ readonly environmentId: string }>;
+}
+
+/**
+ * The sleeps' occasions since the states the sync kept: one on each home's
+ * environment of every Star that fell asleep (`fellAsleep`), the Star's,
+ * which a divergence goes to first. A Star's state counts only while every
+ * home's environment is `known`, ready with its threads in, where the page
+ * holds its channels' threads; it is kept for the next look then alone, so
+ * a sleep seen while an environment loads is an occasion once it is in.
+ */
+export function sleepOccasions(
+  previous: ReadonlyMap<string, StarState>,
+  stars: ReadonlyArray<SyncedStar>,
+  known: (environmentId: string) => boolean,
+): {
+  readonly occasions: ReadonlyArray<{ readonly environmentId: string; readonly starId: string }>;
+  readonly states: ReadonlyMap<string, StarState>;
+} {
+  const seen = stars.filter((star) => star.homes.every((home) => known(home.environmentId)));
+  const asleep = new Set(fellAsleep(previous, seen));
+  return {
+    occasions: seen
+      .filter((star) => asleep.has(star.id))
+      .flatMap((star) =>
+        star.homes.map((home) => ({ environmentId: home.environmentId, starId: star.id })),
+      ),
+    states: new Map([...previous, ...seen.map((star) => [star.id, star.state] as const)]),
+  };
+}
+
 /**
  * Whether a divergence goes to the Star now, or waits for its sleep's
  * occasion (`fellAsleep`): now only while it sleeps, no channel of its open,

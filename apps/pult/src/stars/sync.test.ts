@@ -13,6 +13,7 @@ import {
   originOf,
   originProblem,
   refusedByGit,
+  sleepOccasions,
   syncPlan,
   syncsNow,
 } from "./sync.ts";
@@ -252,6 +253,38 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     NodeAssert.deepEqual(fellAsleep(new Map([["star", "asleep"]]), [allAsleep]), []);
     // A Star seen for the first time: a connect's occasion, not a sleep's.
     NodeAssert.deepEqual(fellAsleep(new Map(), [allAsleep]), []);
+  });
+
+  NodeTest.test("is an occasion on each of the Star's homes' environments", () => {
+    const star = {
+      id: "star",
+      state: "asleep" as const,
+      homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
+    };
+    const { occasions, states } = sleepOccasions(new Map([["star", "awake"]]), [star], () => true);
+    NodeAssert.deepEqual(occasions, [
+      { environmentId: "laptop", starId: "star" },
+      { environmentId: "desk", starId: "star" },
+    ]);
+    NodeAssert.equal(states.get("star"), "asleep");
+    NodeAssert.deepEqual(sleepOccasions(states, [star], () => true).occasions, []);
+  });
+
+  NodeTest.test("waits for every home's environment to be known, then is caught", () => {
+    const star = {
+      id: "star",
+      state: "asleep" as const,
+      homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
+    };
+    const loading = sleepOccasions(
+      new Map([["star", "working"]]),
+      [star],
+      (environmentId) => environmentId === "laptop",
+    );
+    NodeAssert.deepEqual(loading.occasions, []);
+    // Its state is not kept while it does not count, so the sleep stays to be seen.
+    NodeAssert.equal(loading.states.get("star"), "working");
+    NodeAssert.equal(sleepOccasions(loading.states, [star], () => true).occasions.length, 2);
   });
 
   NodeTest.test("a handoff deferred while a channel is open is delivered on that sleep", () => {

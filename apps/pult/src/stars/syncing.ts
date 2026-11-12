@@ -23,7 +23,6 @@ import { readStarTranscript } from "./plugin.ts";
 import { conversationsOf, type Star, type StarState } from "./stars.ts";
 import {
   commitMessages,
-  fellAsleep,
   HANDOFF_TITLE,
   handoffMessage,
   handoffModel,
@@ -32,6 +31,7 @@ import {
   type HomeStatus,
   originProblem,
   refusedByGit,
+  sleepOccasions,
   syncPlan,
   syncsNow,
 } from "./sync.ts";
@@ -77,6 +77,9 @@ const environmentName = (environmentId: string) =>
   threadStore.environment(environmentId)?.name ?? environmentId;
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
 const ready = (environmentId: string) => connection.environment(environmentId)?.phase === "ready";
+/** Ready with its threads in, where the page holds its Stars' channels' threads, so their states count. */
+const known = (environmentId: string) =>
+  ready(environmentId) && threadStore.environment(environmentId)?.loaded === true;
 /** The Stars with a home on the environment. */
 const starsOn = (environmentId: string) =>
   starStore.get().filter((star) => star.homes.some((home) => home.environmentId === environmentId));
@@ -126,8 +129,8 @@ class StarSync {
   /** The environments synced in full since they connected. */
   private readonly connected = new Set<string>();
   private readonly pulledAt = new Map<string, number>();
-  /** Each Star's state as the sync last saw it, every home's threads in, for its fall asleep (`fellAsleep`). */
-  private readonly states = new Map<string, StarState>();
+  /** Each Star's state as the sync last saw it, every home's threads in, for its fall asleep (`sleepOccasions`). */
+  private states: ReadonlyMap<string, StarState> = new Map();
   private version = 0;
   private readonly listeners = new Set<() => void>();
 
@@ -136,12 +139,17 @@ class StarSync {
       for (const environmentId of this.connected)
         if (!ready(environmentId)) this.connected.delete(environmentId);
       this.update();
+      this.afterSleeps();
     });
     starStore.subscribe(() => {
       this.update();
       this.afterSleeps();
     });
-    threadStore.subscribe(() => this.update());
+    // An environment's threads coming in make its Stars' states count, which may change no Star.
+    threadStore.subscribe(() => {
+      this.update();
+      this.afterSleeps();
+    });
     onDidFindStarTranscripts((found) => void this.afterTranscripts(found));
     // A sleeping Star's draft written in: it is about to wake there.
     projectDrafts.subscribe(() => {
@@ -205,23 +213,20 @@ class StarSync {
    * homes' environments, committing what its channels left there (their
    * transcripts among it) and delivering a divergence that waited for its
    * sleep. A Star's state counts only while every home's environment is
-   * ready with its threads in, where the page holds its channels' threads.
+   * ready with its threads in, where the page holds its channels' threads,
+   * so a sleep seen while one loads is caught once it is in
+   * (`sleepOccasions`).
    */
   private afterSleeps(): void {
-    const known = (environmentId: string) =>
-      ready(environmentId) && threadStore.environment(environmentId)?.loaded === true;
-    const seen = starStore
-      .get()
-      .filter((star) => star.homes.every((home) => known(home.environmentId)));
-    for (const starId of fellAsleep(this.states, seen))
-      for (const home of starById(starId)?.homes ?? [])
-        void this.run(home.environmentId, {
-          kind: "full",
-          message: commitMessages.sync,
-          manual: false,
-          starId,
-        });
-    for (const star of seen) this.states.set(star.id, star.state);
+    const { occasions, states } = sleepOccasions(this.states, starStore.get(), known);
+    this.states = states;
+    for (const { environmentId, starId } of occasions)
+      void this.run(environmentId, {
+        kind: "full",
+        message: commitMessages.sync,
+        manual: false,
+        starId,
+      });
   }
 
   /** The environments holding a Star whose repository the page has read, the held ones alone. */
