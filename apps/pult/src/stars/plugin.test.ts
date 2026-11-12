@@ -12,8 +12,27 @@ import {
   readAbout,
   readStars,
   readStarTranscript,
+  rewritesUserTranscripts,
   sleepStarOn,
 } from "./plugin.ts";
+
+NodeTest.test("rewritesUserTranscripts reads a change under `user`'s channel alone", () => {
+  const batch = (paths: ReadonlyArray<string>, truncated = false) => ({
+    changes: paths.map((path) => ({ path, kind: "changed" as const })),
+    truncated,
+  });
+  const transcript = (slug: string) =>
+    `star/.pult/channels/${slug}/conversations/env/2026-11-12T10-00-00Z-t.md`;
+  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("user")])), true);
+  NodeAssert.equal(
+    rewritesUserTranscripts(batch([transcript("user").replaceAll("/", "\\")])),
+    true,
+  );
+  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("work")])), false);
+  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("user-research")])), false);
+  NodeAssert.equal(rewritesUserTranscripts(batch(["star/notes.md"])), false);
+  NodeAssert.equal(rewritesUserTranscripts(batch([], true)), true);
+});
 
 NodeTest.describe("decodeAbout", () => {
   NodeTest.test("reads the features", () => {

@@ -21,6 +21,7 @@ import {
   PluginAnswerError,
   writeStarRecord,
   readStars,
+  rewritesUserTranscripts,
   SLEEP_FEATURE,
   sleepStarOn,
   STARS_FEATURE,
@@ -442,11 +443,8 @@ class StarsModel {
         watch.disposable = server.watchEntries(directory, {
           subscribed: async () => {},
           changed: (event) => {
-            // A transcript the plugin rewrote, its conversation un-settled and settled again, is read again where the fold shows it.
-            if (
-              event.truncated ||
-              event.changes.some((change) => change.path.includes(".pult/channels/"))
-            )
+            // A transcript of `user`'s the plugin rewrote is read again where the fold shows it; any change asks for the Stars again.
+            if (rewritesUserTranscripts(event))
               for (const star of reading.answer?.stars ?? [])
                 refreshTranscripts(environmentId, star.id);
             this.askSoon(environmentId, reading);

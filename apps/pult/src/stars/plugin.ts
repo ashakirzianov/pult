@@ -74,6 +74,25 @@ export async function readAbout(credential: Credential): Promise<ReadonlyArray<s
 /** The channel with the user, whose conversation is the Star's tab (xaxis `pult/issues/star-channels.md`). */
 export const USER_CHANNEL = "user";
 
+/**
+ * Whether a batch of changes under the Stars directory may have rewritten a
+ * transcript of `user`'s, which the fold shows, as a conversation
+ * un-settled and settled again does: a change under a
+ * `.pult/channels/user/`, where the plugin writes them, or more changed than
+ * the batch names.
+ */
+export function rewritesUserTranscripts(event: {
+  readonly changes: ReadonlyArray<{ readonly path: string }>;
+  readonly truncated: boolean;
+}): boolean {
+  return (
+    event.truncated ||
+    event.changes.some((change) =>
+      change.path.replaceAll("\\", "/").includes(`.pult/channels/${USER_CHANNEL}/`),
+    )
+  );
+}
+
 /** An open channel of a Star's as the route reads it: its slug, its current conversation's thread, and the sleep rule's reading of it, a deadline or what holds it. */
 export interface RouteChannel {
   readonly slug: string;
