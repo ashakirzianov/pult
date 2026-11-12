@@ -86,19 +86,23 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "record of the runs in `.pult/runs/`.");
   });
 
-  it("tells the Star of its two conversations and of their transcripts' folders", () => {
-    assert.include(AGENTS_TEXT, "your conversation with the user, and your work conversation");
-    assert.include(
+  it("tells the Star of its channels and of their transcripts' folders", () => {
+    assert.include(AGENTS_TEXT, "You hold one conversation per channel, each a thread of its own.");
+    assert.include(AGENTS_TEXT, "a conversation whose messages carry no such line is `user`");
+    assert.include(AGENTS_TEXT, "with your own `id` and a `channel`");
+    assert.include(AGENTS_TEXT, "A schedule lands in `user` unless its file says `to: <slug>`");
+    assert.match(
       AGENTS_TEXT,
-      "holds the transcripts of your earlier conversations in that channel",
+      /^- `\.pult\/channels\/<channel>\/conversations\/<environment>\/` holds/m,
     );
   });
 
-  it("tells the Star to tag every thread it launches with its id", () => {
+  it("tells the Star to tag every thread it launches with its id and a channel", () => {
     assert.include(
       AGENTS_TEXT,
-      'Pass `tags: ["pult:child:star:<id>"]`, that same `id`, on every thread you launch with `t3_thread_launch`',
+      'Pass `tags: ["pult:child:star:<id>", "pult:channel:<channel>"]`, that same `id` and the channel its messages belong in, on every thread you launch with `t3_thread_launch`',
     );
+    assert.include(AGENTS_TEXT, "`t3_thread_update` sets it");
   });
 
   it("is rewritten when missing, of no version or older, never when newer", () => {
