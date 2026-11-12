@@ -27,6 +27,7 @@ import {
   StorageScope,
   StorageTarget,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
+import { EditorActivation } from "@codingame/monaco-vscode-api/vscode/vs/platform/editor/common/editor";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
@@ -477,7 +478,10 @@ async function switchTo(next: Selection): Promise<void> {
     return true;
   }
 
-  /** The thread's, draft's or Star's tab in the first group, leftmost; other selections' tabs leave, all of them for the Explorer workspace. */
+  /**
+   * The thread's, draft's or Star's tab, leftmost in its group (the first, for a new one) and active, whichever tab the working set last had
+   * active, so a card's click shows the thread; other selections' tabs leave, all of them for the Explorer workspace.
+   */
   async function showLeadTab(lead: Selection): Promise<void> {
     if (isExplorer(lead)) return closeLeadTabs(() => true);
     const isOwn = (editor: LeadTab) =>
@@ -489,15 +493,22 @@ async function switchTo(next: Selection): Promise<void> {
             ? editor instanceof DraftInput && editor.projectId === lead.projectId
             : editor instanceof ThreadInput && editor.threadId === lead.threadId);
     await closeLeadTabs((editor) => !isOwn(editor));
-    const first = groups.getGroups(GroupsOrder.GRID_APPEARANCE)[0] ?? groups.activeGroup;
-    if (!first.editors.some(isLeadTab)) {
-      const tab = isStar(lead)
+    const ordered = groups.getGroups(GroupsOrder.GRID_APPEARANCE);
+    const holding = ordered.find((group) => group.editors.some(isLeadTab));
+    const group = holding ?? ordered[0] ?? groups.activeGroup;
+    const tab =
+      group.editors.find(isLeadTab) ??
+      (isStar(lead)
         ? instantiation.createInstance(StarInput, lead.starId)
         : isDraft(lead)
           ? instantiation.createInstance(DraftInput, lead.environmentId, lead.projectId)
-          : instantiation.createInstance(ThreadInput, lead.environmentId, lead.threadId);
-      await first.openEditor(tab, { pinned: true, index: 0 });
-    }
+          : instantiation.createInstance(ThreadInput, lead.environmentId, lead.threadId));
+    await group.openEditor(tab, {
+      pinned: true,
+      index: 0,
+      preserveFocus: true,
+      activation: EditorActivation.ACTIVATE,
+    });
     keepThreadTabsFirst(groups.getGroups(GroupsOrder.GRID_APPEARANCE));
   }
 
