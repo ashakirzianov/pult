@@ -24,8 +24,15 @@ export function updateRunning(state: DesktopUpdateState): boolean {
   return state.status === "checking" || state.status === "downloading";
 }
 
-/** The next step; `downloadTried` once a download this run started has ended. */
-export function nextUpdateStep(state: DesktopUpdateState, downloadTried: boolean): UpdateStep {
+/**
+ * The next step; `downloadTried` once a download this run started has ended, `installsAtRest`
+ * while the server installs updates on its own (`autoUpdateDesktopApp`).
+ */
+export function nextUpdateStep(
+  state: DesktopUpdateState,
+  downloadTried: boolean,
+  installsAtRest: boolean,
+): UpdateStep {
   const downloaded = installableVersion(state);
   if (downloaded !== null) {
     // The server installs at rest only a download that has not failed to install here.
@@ -34,9 +41,10 @@ export function nextUpdateStep(state: DesktopUpdateState, downloadTried: boolean
     return {
       kind: "answer",
       severity: "info",
-      message: failedHere
-        ? `Pult ${downloaded} downloaded. Restart to Update installs it.`
-        : `Pult ${downloaded} downloaded; it installs when Pult rests.`,
+      message:
+        failedHere || !installsAtRest
+          ? `Pult ${downloaded} downloaded. Restart to Update installs it.`
+          : `Pult ${downloaded} downloaded; it installs when Pult rests.`,
     };
   }
   if (!state.enabled || state.status === "disabled") {
@@ -65,4 +73,36 @@ export function nextUpdateStep(state: DesktopUpdateState, downloadTried: boolean
         message: state.message ?? "Pult could not check for updates.",
       };
   }
+}
+
+/** The tray's update button (`src/panel/rows.tsx`): Download for an update found, its download under way, or Restart for one downloaded. */
+export interface TrayOffer {
+  readonly kind: "download" | "downloading" | "restart";
+  readonly version: string;
+}
+
+/** What the tray offers in this state, as upstream's sidebar pill reads it; null for nothing. */
+export function trayOffer(state: DesktopUpdateState): TrayOffer | null {
+  const downloaded = installableVersion(state);
+  if (downloaded !== null) return { kind: "restart", version: downloaded };
+  const version = state.availableVersion;
+  if (version === null) return null;
+  if (state.status === "downloading") return { kind: "downloading", version };
+  if (
+    state.status === "available" ||
+    (state.status === "error" && state.errorContext === "download")
+  )
+    return { kind: "download", version };
+  return null;
+}
+
+/** The restart's warning while the server is busy, naming up to three of the threads at work. */
+export function busyRestartDetail(working: ReadonlyArray<string>): string {
+  const named = working.slice(0, 3).map((title) => `“${title}”`);
+  const more = working.length - named.length;
+  const what =
+    working.length === 0
+      ? "Agent work is running on this computer"
+      : `${working.length === 1 ? "An agent is" : "Agents are"} working on ${named.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  return `${what}. Restarting now interrupts it.`;
 }

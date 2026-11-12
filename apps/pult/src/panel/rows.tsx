@@ -21,7 +21,7 @@ import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import logoUrl from "../../assets/pult/logo-color.svg";
-import { restartOffer } from "../desktop/updates.ts";
+import { updateOffer } from "../desktop/updates.ts";
 import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 import { TrayShelves } from "./TrayShelves.tsx";
@@ -91,18 +91,37 @@ function PanelHeader() {
   );
 }
 
-/** Restart to Update, in Pult.app while a downloaded update waits and its server is at rest (`restartOffer`). */
-function RestartToUpdate() {
-  const version = useSyncExternalStore(restartOffer.subscribe, restartOffer.get);
-  if (version === null) return null;
+/** The tray's update button in Pult.app (`updateOffer`): Download Update for an update found, its download under way, then Restart to Update. */
+function UpdateButton() {
+  const offer = useSyncExternalStore(updateOffer.subscribe, updateOffer.get);
+  if (offer === null) return null;
+  const { icon, label, title } = {
+    download: {
+      icon: "cloud-download",
+      label: "Download Update",
+      title: `Download Pult ${offer.version}`,
+    },
+    downloading: {
+      icon: "loading codicon-modifier-spin",
+      label: "Downloading…",
+      title: `Downloading Pult ${offer.version}`,
+    },
+    restart: {
+      icon: "debug-restart",
+      label: "Restart to Update",
+      title: `Restart Pult to install ${offer.version}`,
+    },
+  }[offer.kind];
   return (
     <button
       type="button"
-      className="pult-panel-restart"
-      title={`Restart Pult to install ${version}`}
-      onClick={() => void restartOffer.restart()}
+      className="pult-panel-update"
+      title={title}
+      disabled={offer.kind === "downloading"}
+      onClick={() => void updateOffer.act()}
     >
-      Restart to Update
+      <i className={`codicon codicon-${icon}`} aria-hidden />
+      <span className="pult-panel-update-label">{label}</span>
     </button>
   );
 }
@@ -110,16 +129,16 @@ function RestartToUpdate() {
 /**
  * The left panel's bottom row, the tray: every icon in it is something not
  * showing, which a click shows. The closed shelves' icons at its left end
- * (`TrayShelves.tsx`), then Restart to Update while it is offered, in VS
- * Code's mode the tabs beside the gear (`PanelTabs.tsx`), and rightmost the
- * gear, which opens the Pult settings page.
+ * (`TrayShelves.tsx`), then in Pult.app the update's button while there is
+ * one, in VS Code's mode the tabs beside the gear (`PanelTabs.tsx`), and
+ * rightmost the gear, which opens the Pult settings page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
   return (
     <>
       <TrayShelves />
       <span className="pult-panel-row-spacer" />
-      <RestartToUpdate />
+      <UpdateButton />
       <PanelTabs store={store} />
       <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>

@@ -22,6 +22,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
 import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as ServerActivity from "../serverActivity.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
 import * as InstallAtRest from "./InstallAtRest.ts";
 
@@ -74,6 +75,7 @@ const prepared: ServerSelfUpdateResult = {
 
 interface Harness {
   readonly env?: Record<string, string>;
+  readonly autoUpdateDesktopApp?: boolean;
   readonly available?: boolean;
   readonly activity?: ServerActivitySnapshot;
   readonly power?: HostPowerSnapshot;
@@ -166,6 +168,9 @@ const start = Effect.fn(function* (options: Harness = {}) {
                 Effect.sync(() => calls.push(`commit ${token}`)).pipe(Effect.andThen(Effect.never)),
             }),
           ),
+          ServerSettings.ServerSettingsService.layerTest({
+            autoUpdateDesktopApp: options.autoUpdateDesktopApp ?? true,
+          }),
           ConfigProvider.layer(
             ConfigProvider.fromEnv({
               env: options.env ?? { T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST: "true" },
@@ -186,6 +191,14 @@ describe("InstallAtRest", () => {
       expect(calls).toEqual([]);
       yield* TestClock.adjust(MINUTE);
       expect(calls).toEqual(["run", "commit token-1"]);
+    }),
+  );
+
+  it.effect("installs nothing while automatic updates are off in the settings", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* start({ autoUpdateDesktopApp: false });
+      yield* TestClock.adjust(60 * MINUTE);
+      expect(calls).toEqual([]);
     }),
   );
 

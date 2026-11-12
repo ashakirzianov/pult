@@ -5,7 +5,7 @@ import { connection } from "./connection.ts";
 import { bindConnectedContext } from "./contextKey.ts";
 
 export { pickEnvironment } from "./commands.ts";
-export { connection, environmentName, SERVER_CONFIG_OPTIONS } from "./connection.ts";
+export { connection, environmentName } from "./connection.ts";
 export type { ShellEnvironment } from "./connection.ts";
 export { ConnectedContext } from "./contextKey.ts";
 

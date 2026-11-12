@@ -12,6 +12,7 @@ import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
 import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerActivity from "../serverActivity.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
 
 /** Opts a desktop-managed server into installing its desktop app's updates while nobody needs it. */
@@ -97,6 +98,13 @@ const tick = Effect.fn("desktopUpdate.installAtRest.tick")(function* (
         ),
       ),
     );
+  // Pult: the user's setting turns the install off without a relaunch (`autoUpdateDesktopApp`).
+  const settings = yield* ServerSettings.ServerSettingsService;
+  const automatic = yield* settings.getSettings.pipe(
+    Effect.map((current) => current.autoUpdateDesktopApp),
+    Effect.orElseSucceed(() => false),
+  );
+  if (!automatic) return yield* notInstalled("automatic updates are off");
   if ((yield* refusal(Option.some(yield* power.snapshot))) !== null) return;
   // Up to date comes back as a failure too, untyped; either way the next tick asks again.
   const prepared = yield* update

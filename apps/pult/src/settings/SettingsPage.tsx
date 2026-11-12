@@ -8,6 +8,7 @@ import { connection, environmentName, type ShellEnvironment } from "../connectio
 import { pairings } from "../connection/pairDevice.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
+import { updateOffer } from "../desktop/updates.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, setMode } from "../mode.ts";
 import { starStore } from "../stars/model.ts";
@@ -47,6 +48,7 @@ export function SettingsPage({
       <EnvironmentsSection />
       <StarSection />
       <LimitsSection />
+      <UpdatesSection />
       <AppearanceSection colorScheme={colorScheme} />
       <VSCodeSection mode={mode} />
     </div>
@@ -555,6 +557,28 @@ function AppearanceSection({ colorScheme }: { colorScheme: ColorSchemeChoice }) 
  * which the Limits shelf's pace counts no time on; Saturday and Sunday by
  * default, none for a pace by the calendar.
  */
+/**
+ * In Pult.app with its own server held, its updates: Automatic updates, the server's
+ * `autoUpdateDesktopApp` (`src/desktop/updates.ts`), on by default.
+ */
+function UpdatesSection() {
+  const automatic = useSyncExternalStore(updateOffer.subscribe, updateOffer.automatic);
+  if (automatic === null) return null;
+  return (
+    <section className="pult-settings-section">
+      <h2>Updates</h2>
+      <div className="pult-settings-group">
+        <SwitchRow
+          label="Download and install updates automatically"
+          description="Pult downloads an update as soon as it finds one, and installs it once no agent has worked for a few minutes and you have been away as long."
+          checked={automatic}
+          onChange={(on) => void updateOffer.setAutomatic(on)}
+        />
+      </div>
+    </section>
+  );
+}
+
 function LimitsSection() {
   const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
   const days = DAYS.filter((day) => weekend.has(dayNumber(day)));

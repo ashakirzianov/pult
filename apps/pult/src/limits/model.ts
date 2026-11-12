@@ -1,11 +1,9 @@
 import { getService, INotificationService } from "@codingame/monaco-vscode-api";
-import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   requestGuarded,
   // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- the page runs none of upstream's atoms the client guard reads; the server checks the scopes itself.
   RpcPermissionGuard,
 } from "@t3tools/client-runtime/rpc";
-import { makeEnvironmentServerConfigState } from "@t3tools/client-runtime/state/server";
 import { EnvironmentId, type ServerConfig, WS_METHODS } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
@@ -14,12 +12,9 @@ import {
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
-import * as SubscriptionRef from "effect/SubscriptionRef";
 
-import { connection, environmentName, SERVER_CONFIG_OPTIONS } from "../connection/index.ts";
+import { connection, environmentName } from "../connection/index.ts";
+import { followServerConfig } from "../connection/serverConfig.ts";
 
 /** The client's guard reads the session's scopes through upstream's atoms, which the page does not run; the server checks them itself. */
 const serverChecks = { authorize: () => Effect.void };
@@ -38,36 +33,6 @@ export interface LimitsState {
   /** Whether a refresh asked of the servers is under way. */
   readonly refreshing: boolean;
 }
-
-/**
- * An environment's server config, as the registry's supervisor keeps it
- * live, on the same subscription the session holds (`SERVER_CONFIG_OPTIONS`),
- * which it replays rather than opening another. Every change to the registry
- * entry restarts `followStream`, and so the config's state, empty until the
- * session replays it; the page's cache store keeps nothing to start it from.
- */
-const followServerConfig = Effect.fn("Pult.followServerConfig")(function* (
-  environmentId: EnvironmentId,
-  publish: (config: ServerConfig) => void,
-) {
-  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-  yield* registry
-    .followStream(
-      environmentId,
-      Stream.unwrap(
-        makeEnvironmentServerConfigState(SERVER_CONFIG_OPTIONS).pipe(
-          Effect.map(SubscriptionRef.changes),
-        ),
-      ),
-    )
-    .pipe(
-      Stream.runForEach((state) =>
-        Effect.sync(() => {
-          if (Option.isSome(state)) publish(state.value.config);
-        }),
-      ),
-    );
-});
 
 /** The freshest of a config's checks: its providers' limits and its hubs'. */
 function latestCheck(config: ServerConfig | null): string | null {
@@ -123,14 +88,11 @@ class LimitsModel {
     for (const { environmentId } of environments) {
       if (this.followed.has(environmentId)) continue;
       const followed = { config: null as ServerConfig | null, stop: () => {} };
-      const fiber = connection.runtime.runFork(
-        followServerConfig(EnvironmentId.make(environmentId), (config) => {
-          if (followed.config === config) return;
-          followed.config = config;
-          this.publish();
-        }),
-      );
-      followed.stop = () => void Effect.runFork(Fiber.interrupt(fiber));
+      followed.stop = followServerConfig(environmentId, (config) => {
+        if (followed.config === config) return;
+        followed.config = config;
+        this.publish();
+      });
       this.followed.set(environmentId, followed);
     }
     this.publish();

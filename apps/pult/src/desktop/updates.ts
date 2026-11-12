@@ -2,6 +2,7 @@ import {
   getService,
   ICommandService,
   IContextKeyService,
+  IDialogService,
   INotificationService,
   IProgressService,
 } from "@codingame/monaco-vscode-api";
@@ -15,11 +16,15 @@ import { request } from "@t3tools/client-runtime/rpc";
 import { type DesktopBridge, type DesktopUpdateState, WS_METHODS } from "@t3tools/contracts";
 
 import { connection } from "../connection/index.ts";
+import { followServerConfig } from "../connection/serverConfig.ts";
 import { threadStore } from "../threads/store.ts";
 import { desktopHost } from "./host.ts";
 import {
+  busyRestartDetail,
   installableVersion,
   nextUpdateStep,
+  type TrayOffer,
+  trayOffer,
   updateRunning,
   type UpdateStep,
 } from "./updateSteps.ts";
@@ -29,9 +34,11 @@ import {
  * over `window.desktopBridge`: the palette's Pult: Check for Updates, which
  * checks, downloads what it finds and answers with one notification, and
  * Pult: Restart to Update while a downloaded update waits, which installs it
- * now. Neither is offered outside Pult.app. While a downloaded update waits
- * and the app's own server is at rest, the tray offers Restart to Update too
- * (`restartOffer`).
+ * now, asking first while agents work here; and the tray's button, Download
+ * Update, then Restart to Update (`updateOffer`). While the local server's
+ * `autoUpdateDesktopApp` is on, the page downloads an update as the updater
+ * finds one, and the server installs it at rest (`InstallAtRest.ts`). None of
+ * it is offered outside Pult.app.
  */
 
 /** `downloaded` while an update waits to be installed, `none` otherwise in Pult.app, empty elsewhere. */
@@ -79,7 +86,7 @@ export function registerUpdateCommands(): void {
         const host = desktopHost();
         if (host === undefined) return;
         const version = installableVersion(await host.getUpdateState());
-        if (version === null) return;
+        if (version === null || !(await confirmRestart())) return;
         const result = await host.installUpdate(version);
         // Accepted, the app quits into the update; refused or failed, it stays.
         if (result.accepted && result.state.message === null) return;
@@ -103,7 +110,7 @@ async function checkForUpdates(host: DesktopBridge): Promise<void> {
         let state = (await host.checkForUpdate()).state;
         let downloadTried = false;
         for (;;) {
-          const step = nextUpdateStep(state, downloadTried);
+          const step = nextUpdateStep(state, downloadTried, updateOffer.automatic() === true);
           if (step.kind === "answer") return step;
           if (step.kind === "wait") {
             state = await settled(host);
@@ -145,71 +152,152 @@ function settled(host: DesktopBridge): Promise<DesktopUpdateState> {
 }
 
 /**
- * The tray's Restart to Update (`src/panel/rows.tsx`): the downloaded version while one waits and
- * Pult.app's own server is at rest, by the server's own reading (`server.getActivity`, which the
- * at-rest install reads too), else null. The rest is read again a second after the threads or the
- * connection change, and once a minute for what the threads do not show (a native subagent's end).
+ * Whether to restart now: at once while Pult.app's own server is at rest by its own reading
+ * (`server.getActivity`, which the at-rest install reads too) or while the app runs none, else
+ * after a warning naming the threads at work, with Restart Anyway.
  */
-class RestartOffer {
-  private downloaded: string | null = null;
-  private atRest = false;
-  private readonly listeners = new Set<() => void>();
-  private scheduled: ReturnType<typeof setTimeout> | undefined;
-  private reads = 0;
+async function confirmRestart(): Promise<boolean> {
+  const local = connection.localEnvironment;
+  if (local === undefined) return true;
+  let detail: string;
+  try {
+    const { atRest } = await connection.run(
+      local.environmentId,
+      request(WS_METHODS.serverGetActivity, {}),
+    );
+    if (atRest) return true;
+    const working = threadStore
+      .get()
+      .threads.filter(
+        (thread) =>
+          thread.environmentId === local.environmentId &&
+          thread.parentId === null &&
+          (thread.working || thread.awaitsUser),
+      )
+      .map((thread) => thread.title);
+    detail = busyRestartDetail(working);
+  } catch (error) {
+    console.error("[pult-shell] the local server's activity did not load", error);
+    detail =
+      "Pult could not tell whether agents are working on this computer. Restarting now interrupts any that are.";
+  }
+  const { confirmed } = await (
+    await getService(IDialogService)
+  ).confirm({
+    type: "warning",
+    message: "Restart Pult to update?",
+    detail,
+    primaryButton: "Restart Anyway",
+  });
+  return confirmed;
+}
 
-  readonly get = (): string | null => (this.atRest ? this.downloaded : null);
+/**
+ * Pult.app's update as the tray shows it (`src/panel/rows.tsx`), from the updater's state
+ * (`trayOffer`), and the local server's `autoUpdateDesktopApp`, followed from its config: while
+ * on, an update the updater finds is downloaded at once, each version once.
+ */
+class UpdateOffer {
+  private host: DesktopBridge | undefined;
+  private state: DesktopUpdateState | null = null;
+  private offer: TrayOffer | null = null;
+  private setting: boolean | null = null;
+  private readonly downloadsTried = new Set<string>();
+  private readonly listeners = new Set<() => void>();
+  private followed: { readonly environmentId: string; readonly stop: () => void } | undefined;
+
+  readonly get = (): TrayOffer | null => this.offer;
+
+  /** The local server's setting, null while the page holds no local server or has not read it. */
+  readonly automatic = (): boolean | null => this.setting;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
 
-  start(): void {
-    threadStore.subscribe(this.schedule);
-    connection.onDidChange(this.schedule);
-    setInterval(this.schedule, 60_000);
+  start(host: DesktopBridge): void {
+    this.host = host;
+    const follow = () => {
+      const local = connection.localEnvironment?.environmentId;
+      if (local === this.followed?.environmentId) return;
+      this.followed?.stop();
+      this.followed = undefined;
+      this.setAutomaticRead(null);
+      if (local === undefined) return;
+      const stop = followServerConfig(local, (config) =>
+        this.setAutomaticRead(config.settings.autoUpdateDesktopApp),
+      );
+      this.followed = { environmentId: local, stop };
+    };
+    connection.onDidChange(follow);
+    follow();
   }
 
-  setDownloaded(version: string | null): void {
-    if (version === this.downloaded) return;
-    this.downloaded = version;
-    this.emit();
-    void this.read();
-  }
-
-  /** Reads the rest now, and restarts into the update only if the server is still at rest; else the offer goes. */
-  async restart(): Promise<void> {
-    if (!(await this.read())) return;
-    await (await getService(ICommandService)).executeCommand("pult-shell.restartToUpdate");
-  }
-
-  private readonly schedule = () => {
-    if (this.downloaded === null) return;
-    this.scheduled ??= setTimeout(() => {
-      this.scheduled = undefined;
-      void this.read();
-    }, 1000);
-  };
-
-  /** Whether the local server is at rest now; a read overtaken by a later one leaves the offer to it. */
-  private async read(): Promise<boolean> {
-    const read = ++this.reads;
-    const local = connection.localEnvironment;
-    let atRest = false;
-    if (this.downloaded !== null && local?.phase === "ready") {
-      try {
-        atRest = (
-          await connection.run(local.environmentId, request(WS_METHODS.serverGetActivity, {}))
-        ).atRest;
-      } catch (error) {
-        console.error("[pult-shell] the local server's activity did not load", error);
-      }
-    }
-    if (read === this.reads && atRest !== this.atRest) {
-      this.atRest = atRest;
+  setState(state: DesktopUpdateState): void {
+    this.state = state;
+    const offer = trayOffer(state);
+    if (offer?.kind !== this.offer?.kind || offer?.version !== this.offer?.version) {
+      this.offer = offer;
       this.emit();
     }
-    return atRest;
+    this.downloadIfAutomatic();
+  }
+
+  /** Writes the local server's setting; its config's change brings it back here. */
+  async setAutomatic(automatic: boolean): Promise<void> {
+    const local = connection.localEnvironment;
+    if (local === undefined) return;
+    try {
+      await connection.run(
+        local.environmentId,
+        request(WS_METHODS.serverUpdateSettings, { patch: { autoUpdateDesktopApp: automatic } }),
+      );
+    } catch (error) {
+      (await getService(INotificationService)).error(
+        `Pult could not change automatic updates. ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** The tray's click: downloads the update found, or restarts into the one downloaded. */
+  async act(): Promise<void> {
+    const host = this.host;
+    if (host === undefined || this.offer === null) return;
+    if (this.offer.kind === "restart") {
+      await (await getService(ICommandService)).executeCommand("pult-shell.restartToUpdate");
+    } else if (this.offer.kind === "download") {
+      await this.download(host, true);
+    }
+  }
+
+  private async download(host: DesktopBridge, asked: boolean): Promise<void> {
+    const { state } = await host.downloadUpdate();
+    // An automatic download's failure is told by the tray, which offers Download again.
+    if (asked && state.status === "error" && state.errorContext === "download") {
+      (await getService(INotificationService)).error(
+        state.message ?? `Pult could not download ${state.availableVersion ?? "the update"}.`,
+      );
+    }
+  }
+
+  private downloadIfAutomatic(): void {
+    const { host, state } = this;
+    if (host === undefined || state === null || this.setting !== true) return;
+    const version = state.availableVersion;
+    if (state.status !== "available" || version === null || this.downloadsTried.has(version))
+      return;
+    this.downloadsTried.add(version);
+    void this.download(host, false).catch((error: unknown) =>
+      console.error("[pult-shell] the automatic download failed", error),
+    );
+  }
+
+  private setAutomaticRead(automatic: boolean | null): void {
+    if (automatic === this.setting) return;
+    this.setting = automatic;
+    this.emit();
+    this.downloadIfAutomatic();
   }
 
   private emit(): void {
@@ -217,7 +305,7 @@ class RestartOffer {
   }
 }
 
-export const restartOffer = new RestartOffer();
+export const updateOffer = new UpdateOffer();
 
 /** In Pult.app, sets the context key and keeps it, and the tray's offer, with the updater's state. */
 export async function startUpdateContext(): Promise<void> {
@@ -225,9 +313,8 @@ export async function startUpdateContext(): Promise<void> {
   if (host === undefined) return;
   const key = UpdateContext.bindTo(await getService(IContextKeyService));
   const apply = (state: DesktopUpdateState) => {
-    const version = installableVersion(state);
-    key.set(version === null ? "none" : "downloaded");
-    restartOffer.setDownloaded(version);
+    key.set(installableVersion(state) === null ? "none" : "downloaded");
+    updateOffer.setState(state);
   };
   let heard = false;
   host.onUpdateState((state) => {
@@ -235,7 +322,7 @@ export async function startUpdateContext(): Promise<void> {
     apply(state);
   });
   key.set("none");
-  restartOffer.start();
+  updateOffer.start(host);
   void host.getUpdateState().then(
     (state) => {
       if (!heard) apply(state);

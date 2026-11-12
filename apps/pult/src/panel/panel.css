@@ -1026,30 +1026,46 @@
   outline-offset: -1px;
 }
 
-/* Restart to Update in the tray (src/panel/rows.tsx), the workbench's primary button, as tall as the rows' buttons; it gives way first when the tray is narrow. */
-.pult-panel-restart {
+/* The update's button in the tray (src/panel/rows.tsx), the workbench's primary button, as tall as the rows' buttons; its label gives way first when the tray is narrow. */
+.pult-panel-update {
+  display: inline-flex;
   flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   height: 22px;
   margin-right: 4px;
-  padding: 0 8px;
-  overflow: hidden;
+  padding: 0 8px 0 6px;
   border: none;
   border-radius: 6px;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   font: inherit;
   font-size: 12px;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.pult-panel-restart:hover {
+.pult-panel-update .codicon {
+  flex: none;
+  font-size: 14px;
+}
+
+.pult-panel-update-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pult-panel-update:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
 }
 
-.pult-panel-restart:focus-visible {
+.pult-panel-update:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.pult-panel-update:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
