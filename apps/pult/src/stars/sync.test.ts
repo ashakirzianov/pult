@@ -5,7 +5,6 @@ import * as NodeTest from "node:test";
 import { starsOf } from "./stars.ts";
 import {
   environmentSleeps,
-  fellAsleep,
   handoffMessage,
   handoffModel,
   handoffThreadId,
@@ -16,7 +15,6 @@ import {
   refusedByGit,
   sleepOccasions,
   syncPlan,
-  syncsNow,
 } from "./sync.ts";
 
 const synced: HomeStatus = {
@@ -238,119 +236,164 @@ NodeTest.describe("the sync on a Star's sleep", () => {
   // Then `work` sleeps too, the page seeing its conversation settle.
   const allAsleep = starOver([thread("u", true), thread("w", true)]);
 
+  const home = (environmentId: string) => ({ environmentId });
+  const all = () => true;
+
   NodeTest.test("syncs nothing while another channel is open, `user` asleep", () => {
     NodeAssert.equal(workOpen.state, "awake");
-    NodeAssert.equal(syncsNow(workOpen), false);
-    NodeAssert.deepEqual(fellAsleep(new Map(), [workOpen]), []);
+    NodeAssert.equal(environmentSleeps("env", [workOpen], all), false);
+    NodeAssert.deepEqual(sleepOccasions(new Map(), [workOpen], all).occasions, []);
   });
 
   NodeTest.test("syncs when the last open channel sleeps, and not again while it sleeps", () => {
-    NodeAssert.equal(syncsNow(allAsleep), true);
-    NodeAssert.deepEqual(fellAsleep(new Map([["star", workOpen.state]]), [allAsleep]), ["star"]);
-    NodeAssert.deepEqual(fellAsleep(new Map([["star", "working"]]), [allAsleep]), ["star"]);
-    NodeAssert.deepEqual(fellAsleep(new Map([["star", "asleep"]]), [allAsleep]), []);
-    // A Star seen for the first time: a connect's occasion, not a sleep's.
-    NodeAssert.deepEqual(fellAsleep(new Map(), [allAsleep]), []);
+    NodeAssert.equal(environmentSleeps("env", [allAsleep], all), true);
+    const open = sleepOccasions(new Map(), [workOpen], all);
+    NodeAssert.deepEqual(open.awake.get("env"), ["star"]);
+    const slept = sleepOccasions(open.awake, [allAsleep], all);
+    NodeAssert.deepEqual(slept.occasions, [{ environmentId: "env", starId: "star" }]);
+    NodeAssert.deepEqual(sleepOccasions(slept.awake, [allAsleep], all).occasions, []);
+    // An environment seen for the first time: a connect's occasion, not a sleep's.
+    NodeAssert.deepEqual(sleepOccasions(new Map(), [allAsleep], all).occasions, []);
   });
 
-  NodeTest.test("is an occasion on each of the Star's homes' environments", () => {
-    const star = {
-      id: "star",
-      state: "asleep" as const,
-      homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
-      awakeOn: [],
-    };
-    const { occasions, states } = sleepOccasions(new Map([["star", "awake"]]), [star], () => true);
+  NodeTest.test("is an occasion on each environment the Star slept on", () => {
+    const star = { id: "star", homes: [home("laptop"), home("desk")], awakeOn: [] };
+    const { occasions, awake } = sleepOccasions(
+      new Map([
+        ["laptop", ["star"]],
+        ["desk", ["star"]],
+      ]),
+      [star],
+      all,
+    );
     NodeAssert.deepEqual(occasions, [
       { environmentId: "laptop", starId: "star" },
       { environmentId: "desk", starId: "star" },
     ]);
-    NodeAssert.equal(states.get("star"), "asleep");
-    NodeAssert.deepEqual(sleepOccasions(states, [star], () => true).occasions, []);
+    NodeAssert.deepEqual(sleepOccasions(awake, [star], all).occasions, []);
+    // Awake on the desk alone: the desk's occasion alone.
+    NodeAssert.deepEqual(
+      sleepOccasions(
+        new Map([
+          ["laptop", []],
+          ["desk", ["star"]],
+        ]),
+        [star],
+        all,
+      ).occasions,
+      [{ environmentId: "desk", starId: "star" }],
+    );
   });
 
-  NodeTest.test("waits for every home's environment to be known, then is caught", () => {
-    const star = {
-      id: "star",
-      state: "asleep" as const,
-      homes: [{ environmentId: "laptop" }, { environmentId: "desk" }],
-      awakeOn: [],
-    };
-    const loading = sleepOccasions(
-      new Map([["star", "working"]]),
-      [star],
-      (environmentId) => environmentId === "laptop",
+  NodeTest.test(
+    "keeps an environment not known as last seen, and catches its sleep once in",
+    () => {
+      const star = { id: "star", homes: [home("laptop"), home("desk")], awakeOn: [] };
+      const laptopOnly = (environmentId: string) => environmentId === "laptop";
+      const loading = sleepOccasions(
+        new Map([
+          ["laptop", []],
+          ["desk", ["star"]],
+        ]),
+        [star],
+        laptopOnly,
+      );
+      NodeAssert.deepEqual(loading.occasions, []);
+      NodeAssert.deepEqual(loading.awake.get("desk"), ["star"]);
+      NodeAssert.deepEqual(sleepOccasions(loading.awake, [star], all).occasions, [
+        { environmentId: "desk", starId: "star" },
+      ]);
+    },
+  );
+
+  NodeTest.test("is not held by a second environment held but offline", () => {
+    // Y, cloned to the desk, which is offline: the laptop's sleeps are still its occasions.
+    const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
+    const y = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["laptop"] };
+    const laptopOnly = (environmentId: string) => environmentId === "laptop";
+    const first = sleepOccasions(new Map(), [x, y], laptopOnly);
+    NodeAssert.deepEqual(first.awake, new Map([["laptop", ["x", "y"]]]));
+    const xSlept = sleepOccasions(first.awake, [{ ...x, awakeOn: [] }, y], laptopOnly);
+    NodeAssert.deepEqual(xSlept.occasions, []);
+    NodeAssert.deepEqual(
+      sleepOccasions(
+        xSlept.awake,
+        [
+          { ...x, awakeOn: [] },
+          { ...y, awakeOn: [] },
+        ],
+        laptopOnly,
+      ).occasions,
+      [{ environmentId: "laptop", starId: "y" }],
     );
-    NodeAssert.deepEqual(loading.occasions, []);
-    // Its state is not kept while it does not count, so the sleep stays to be seen.
-    NodeAssert.equal(loading.states.get("star"), "working");
-    NodeAssert.equal(sleepOccasions(loading.states, [star], () => true).occasions.length, 2);
   });
 
   NodeTest.test(
     "waits for every Star on the environment to sleep, the last one's sleep its occasion",
     () => {
-      const home = (environmentId: string) => ({ environmentId });
-      const x = { id: "x", state: "asleep" as const, homes: [home("laptop")], awakeOn: [] };
-      const yAwake = {
-        id: "y",
-        state: "awake" as const,
-        homes: [home("laptop"), home("desk")],
-        awakeOn: ["laptop"],
-      };
-      const yAsleep = { ...yAwake, state: "asleep" as const, awakeOn: [] };
-      const all = () => true;
+      const x = { id: "x", homes: [home("laptop")], awakeOn: [] };
+      const yAwake = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["laptop"] };
+      const yAsleep = { ...yAwake, awakeOn: [] };
       // X falls asleep while Y is awake on the same environment: nothing.
       const first = sleepOccasions(
         new Map([
-          ["x", "working"],
-          ["y", "awake"],
+          ["laptop", ["x", "y"]],
+          ["desk", []],
         ]),
         [x, yAwake],
         all,
       );
       NodeAssert.deepEqual(first.occasions, []);
       NodeAssert.equal(environmentSleeps("laptop", [x, yAwake], all), false);
-      // Then Y: one occasion on each of its environments, now every Star's there asleep.
-      NodeAssert.deepEqual(sleepOccasions(first.states, [x, yAsleep], all).occasions, [
+      // Then Y: the laptop's occasion, now every Star's there asleep; the desk slept already.
+      NodeAssert.deepEqual(sleepOccasions(first.awake, [x, yAsleep], all).occasions, [
         { environmentId: "laptop", starId: "y" },
-        { environmentId: "desk", starId: "y" },
       ]);
-      // Both at once: one occasion per environment.
+      // Both at once: one occasion, for the first of them.
       NodeAssert.deepEqual(
-        sleepOccasions(
-          new Map([
-            ["x", "awake"],
-            ["y", "awake"],
-          ]),
-          [x, yAsleep],
-          all,
-        ).occasions,
-        [
-          { environmentId: "laptop", starId: "x" },
-          { environmentId: "desk", starId: "y" },
-        ],
+        sleepOccasions(new Map([["laptop", ["x", "y"]]]), [x, yAsleep], all).occasions,
+        [{ environmentId: "laptop", starId: "x" }],
       );
     },
   );
 
+  NodeTest.test("is not lost when a Star first counts already asleep", () => {
+    // X falls asleep while Y's home on the laptop is not in its answer yet, then Y's comes in asleep.
+    const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
+    const y = { id: "y", homes: [home("laptop")], awakeOn: [] };
+    const first = sleepOccasions(new Map(), [x], all);
+    const xSlept = sleepOccasions(first.awake, [{ ...x, awakeOn: [] }], all);
+    NodeAssert.deepEqual(xSlept.occasions, [{ environmentId: "laptop", starId: "x" }]);
+    // Y's home there appearing asleep while X sleeps is no second occasion.
+    NodeAssert.deepEqual(
+      sleepOccasions(xSlept.awake, [{ ...x, awakeOn: [] }, y], all).occasions,
+      [],
+    );
+    // Y counted awake, X asleep, then both asleep: one occasion.
+    const yAwake = sleepOccasions(
+      xSlept.awake,
+      [
+        { ...x, awakeOn: [] },
+        { ...y, awakeOn: ["laptop"] },
+      ],
+      all,
+    );
+    NodeAssert.deepEqual(yAwake.occasions, []);
+    NodeAssert.deepEqual(sleepOccasions(yAwake.awake, [{ ...x, awakeOn: [] }, y], all).occasions, [
+      { environmentId: "laptop", starId: "y" },
+    ]);
+  });
+
   NodeTest.test("reads an environment by the Stars' homes there alone", () => {
-    const home = (environmentId: string) => ({ environmentId });
-    const x = { id: "x", state: "asleep" as const, homes: [home("laptop")], awakeOn: [] };
+    const x = { id: "x", homes: [home("laptop")], awakeOn: [] };
     // Y, cloned to the desk too, has a channel open there alone.
-    const y = {
-      id: "y",
-      state: "awake" as const,
-      homes: [home("laptop"), home("desk")],
-      awakeOn: ["desk"],
-    };
-    const all = () => true;
+    const y = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["desk"] };
     NodeAssert.equal(environmentSleeps("laptop", [x, y], all), true);
     NodeAssert.equal(environmentSleeps("desk", [x, y], all), false);
     // A channel open on Y's laptop home holds the laptop.
     NodeAssert.equal(environmentSleeps("laptop", [x, { ...y, awakeOn: ["laptop"] }], all), false);
     // The desk held but offline, or still loading: the laptop syncs, the desk, unknown, does not.
-    const yAsleep = { ...y, state: "asleep" as const, awakeOn: [] };
+    const yAsleep = { ...y, awakeOn: [] };
     const laptopOnly = (environmentId: string) => environmentId === "laptop";
     NodeAssert.equal(environmentSleeps("laptop", [x, yAsleep], laptopOnly), true);
     NodeAssert.equal(environmentSleeps("desk", [x, yAsleep], laptopOnly), false);

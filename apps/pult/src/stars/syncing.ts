@@ -22,7 +22,7 @@ import {
   type WrittenChannelTranscripts,
 } from "./model.ts";
 import { readStarTranscript } from "./plugin.ts";
-import { conversationsOf, type Star, type StarState } from "./stars.ts";
+import { conversationsOf, type Star } from "./stars.ts";
 import {
   commitMessages,
   environmentSleeps,
@@ -115,7 +115,7 @@ const threadExists = (environmentId: string, threadId: string) =>
  * repository, the environment's Stars directory, as its Pult plugin names
  * it, which the page makes one where it is not and commits on the occasions
  * it sees, one at a time per environment: in full once per connect while
- * every Star there sleeps, no channel of its open, when the last Star there
+ * every Star there sleeps there, no channel of its open on its home there, when the last Star there
  * awake falls asleep, its last open channel sleeping, when a transcript the
  * plugin wrote appears in a Star's answer, or the watch tells of one of a
  * channel but `user`'s, while every Star there sleeps, on
@@ -132,8 +132,8 @@ class StarSync {
   /** The environments synced in full since they connected. */
   private readonly connected = new Set<string>();
   private readonly pulledAt = new Map<string, number>();
-  /** Each Star's state as the sync last saw it, every home's threads in, for its fall asleep (`sleepOccasions`). */
-  private states: ReadonlyMap<string, StarState> = new Map();
+  /** The Stars the sync last saw awake on each environment it knew, for the sleep's occasion (`sleepOccasions`). */
+  private awake: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
   private version = 0;
   private readonly listeners = new Set<() => void>();
 
@@ -141,6 +141,8 @@ class StarSync {
     connection.onDidChange(() => {
       for (const environmentId of this.connected)
         if (!ready(environmentId)) this.connected.delete(environmentId);
+      // An environment no longer ready is seen afresh on its reconnect, whose sync is the connect's, not a sleep's.
+      this.awake = new Map([...this.awake].filter(([environmentId]) => ready(environmentId)));
       this.update();
       this.afterSleeps();
     });
@@ -214,19 +216,19 @@ class StarSync {
   }
 
   /**
-   * A Star whose last open channel slept: a full occasion on each of its
-   * homes' environments where every Star now sleeps, committing what the
-   * channels left there (a transcript the plugin writes after the settle
-   * being its own occasion, `afterChannelTranscripts`, or `user`'s,
-   * `afterTranscripts`) and delivering a divergence that waited for the
-   * sleep; where another Star is awake, its sleep makes the occasion. A
-   * Star's state counts only while every home's environment is ready with
-   * its threads in, where the page holds its channels' threads, so a sleep
-   * seen while one loads is caught once it is in (`sleepOccasions`).
+   * The last Star awake on an environment falling asleep there, its last
+   * channel open on its home there sleeping: a full occasion on that
+   * environment, committing what the channels left there (a transcript the
+   * plugin writes after the settle being its own occasion,
+   * `afterChannelTranscripts`, or `user`'s, `afterTranscripts`) and
+   * delivering a divergence that waited for the sleep. An environment counts
+   * only while it is ready with its threads in, where the page holds its
+   * channels' threads, so a sleep seen while it loads is caught once it is
+   * in (`sleepOccasions`).
    */
   private afterSleeps(): void {
-    const { occasions, states } = sleepOccasions(this.states, starStore.get(), known);
-    this.states = states;
+    const { occasions, awake } = sleepOccasions(this.awake, starStore.get(), known);
+    this.awake = awake;
     for (const { environmentId, starId } of occasions)
       void this.run(environmentId, {
         kind: "full",

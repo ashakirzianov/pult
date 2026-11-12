@@ -4,7 +4,7 @@
 // occasion runs, the commits' messages, and the handoff that gives a Star a
 // divergence to reconcile (`syncing.ts` runs it).
 import { USER_CHANNEL } from "./plugin.ts";
-import { channelOf, type StarState } from "./stars.ts";
+import { channelOf } from "./stars.ts";
 
 /** Why the page will not take `url` as an origin, or undefined when it will. */
 export function originProblem(url: string): string | undefined {
@@ -91,43 +91,22 @@ export function syncPlan(
   };
 }
 
-/**
- * Whether a Star sleeps for the sync: no channel of its open, since an open
- * one's conversation writes in its folder (`star-sync`).
- */
-export const syncsNow = (star: { readonly state: StarState }) => star.state === "asleep";
-
-/**
- * The Stars that fell asleep since the states the sync saw last: some
- * channel of theirs open then, none now. A Star seen for the first time
- * falls asleep from nothing: a connect's occasion is its.
- */
-export function fellAsleep(
-  previous: ReadonlyMap<string, StarState>,
-  stars: ReadonlyArray<{ readonly id: string; readonly state: StarState }>,
-): string[] {
-  return stars
-    .filter((star) => {
-      const before = previous.get(star.id);
-      return before !== undefined && !syncsNow({ state: before }) && syncsNow(star);
-    })
-    .map((star) => star.id);
-}
-
-/** A Star as the sync reads it: its state, its homes' environments and those where a channel of its is open. */
+/** A Star as the sync reads it: its homes' environments and those where a channel of its is open. */
 interface SyncedStar {
   readonly id: string;
-  readonly state: StarState;
   readonly homes: ReadonlyArray<{ readonly environmentId: string }>;
   readonly awakeOn: ReadonlyArray<string>;
 }
 
-/** Whether the Star's state counts: every home's environment `known`, ready with its threads in, where the page holds its channels' threads. */
-const counts = (star: SyncedStar, known: (environmentId: string) => boolean) =>
-  star.homes.every((home) => known(home.environmentId));
-
-const homedOn = (star: SyncedStar, environmentId: string) =>
-  star.homes.some((home) => home.environmentId === environmentId);
+/** The Stars awake on the environment, a channel of theirs open on their home there, in the Stars' order. */
+const awakeThere = (environmentId: string, stars: ReadonlyArray<SyncedStar>) =>
+  stars
+    .filter(
+      (star) =>
+        star.homes.some((home) => home.environmentId === environmentId) &&
+        star.awakeOn.includes(environmentId),
+    )
+    .map((star) => star.id);
 
 /**
  * Whether the sync may commit and pull the environment's repository now:
@@ -146,42 +125,46 @@ export function environmentSleeps(
   stars: ReadonlyArray<SyncedStar>,
   known: (environmentId: string) => boolean,
 ): boolean {
-  return (
-    known(environmentId) &&
-    stars.every((star) => !homedOn(star, environmentId) || !star.awakeOn.includes(environmentId))
-  );
+  return known(environmentId) && awakeThere(environmentId, stars).length === 0;
 }
 
 /**
- * The sleeps' occasions since the states the sync kept: one on each
- * environment where a Star with a home there fell asleep (`fellAsleep`) and
- * every Star there now sleeps (`environmentSleeps`), for the first such
- * Star, which a divergence goes to first; so the last Star there to fall
- * asleep makes it, committing what the channels left and delivering a
- * handoff that waited. A Star's state counts only while every home's
- * environment is known, and is kept for the next look then alone, so a
- * sleep seen while an environment loads is an occasion once it is in.
+ * The sleeps' occasions since the Stars the sync last saw awake on each
+ * environment (`awake`): one on each known environment where some Star was
+ * awake then and none is now (`environmentSleeps`), for the first of those
+ * that were, which a divergence goes to first; so the last Star there to
+ * fall asleep makes it, committing what the channels left and delivering a
+ * handoff that waited, however the Stars came to count. An environment not
+ * known keeps what was seen of it, so a sleep seen while it loads is an
+ * occasion once it is in; one seen for the first time has none, the
+ * connect's sync being its (`syncing.ts`, which forgets an environment no
+ * longer ready, so a reconnect is a first sight again).
  */
 export function sleepOccasions(
-  previous: ReadonlyMap<string, StarState>,
+  awake: ReadonlyMap<string, ReadonlyArray<string>>,
   stars: ReadonlyArray<SyncedStar>,
   known: (environmentId: string) => boolean,
 ): {
   readonly occasions: ReadonlyArray<{ readonly environmentId: string; readonly starId: string }>;
-  readonly states: ReadonlyMap<string, StarState>;
+  readonly awake: ReadonlyMap<string, ReadonlyArray<string>>;
 } {
-  const seen = stars.filter((star) => counts(star, known));
-  const asleep = new Set(fellAsleep(previous, seen));
-  const occasions = new Map<string, string>();
-  for (const star of seen)
-    if (asleep.has(star.id))
-      for (const { environmentId } of star.homes)
-        if (!occasions.has(environmentId) && environmentSleeps(environmentId, stars, known))
-          occasions.set(environmentId, star.id);
-  return {
-    occasions: [...occasions].map(([environmentId, starId]) => ({ environmentId, starId })),
-    states: new Map([...previous, ...seen.map((star) => [star.id, star.state] as const)]),
-  };
+  const occasions: Array<{ readonly environmentId: string; readonly starId: string }> = [];
+  const next = new Map<string, ReadonlyArray<string>>();
+  const environments = new Set(
+    stars.flatMap((star) => star.homes.map((home) => home.environmentId)),
+  );
+  for (const environmentId of environments) {
+    const before = awake.get(environmentId);
+    if (!known(environmentId)) {
+      if (before !== undefined) next.set(environmentId, before);
+      continue;
+    }
+    const now = awakeThere(environmentId, stars);
+    const starId = before?.[0];
+    if (starId !== undefined && now.length === 0) occasions.push({ environmentId, starId });
+    next.set(environmentId, now);
+  }
+  return { occasions, awake: next };
 }
 
 /**
