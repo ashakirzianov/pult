@@ -86,6 +86,14 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "record of the runs in `.pult/runs/`.");
   });
 
+  it("tells the Star of its two conversations and of their transcripts' folders", () => {
+    assert.include(AGENTS_TEXT, "your conversation with the user, and your work conversation");
+    assert.include(
+      AGENTS_TEXT,
+      "those with the user in `user/`, your work conversations in `work/`",
+    );
+  });
+
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
