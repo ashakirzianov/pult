@@ -2,14 +2,18 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
+import { starsOf } from "./stars.ts";
 import {
+  fellAsleep,
   handoffMessage,
   handoffThreadId,
+  handsOffNow,
   type HomeStatus,
   originOf,
   originProblem,
   refusedByGit,
   syncPlan,
+  syncsNow,
 } from "./sync.ts";
 
 const synced: HomeStatus = {
@@ -157,5 +161,82 @@ NodeTest.describe("the handoff", () => {
     NodeAssert.notEqual(await handoffThreadId({ ...home, head: "c".repeat(40) }), id);
     NodeAssert.notEqual(await handoffThreadId({ ...home, behind: 2 }), id);
     NodeAssert.notEqual(await handoffThreadId({ ...home, environmentId: "other" }), id);
+  });
+});
+
+NodeTest.describe("the sync on a Star's sleep", () => {
+  const CREATED = "2026-11-01T00:00:00.000Z";
+  const thread = (id: string, settled: boolean) => ({
+    environmentId: "env",
+    id,
+    projectId: "star-project",
+    parentId: null,
+    settled,
+    settledAt: null,
+    createdAt: CREATED,
+    working: false,
+    workingSince: null,
+    ageFrom: CREATED,
+  });
+  /** The Star whose plugin last named `work`'s conversation `w` open, over the page's threads. */
+  const starOver = (threads: ReadonlyArray<ReturnType<typeof thread>>) => {
+    const [only] = starsOf(
+      [
+        {
+          environmentId: "env",
+          answer: {
+            directory: "/Users/a/.pult/stars",
+            hidden: [],
+            stars: [
+              {
+                id: "star",
+                name: "",
+                tint: "amber",
+                created: CREATED,
+                root: "/Users/a/.pult/stars/star",
+                projectId: "star-project",
+                instructions: "/Users/a/.pult/stars/star/instructions.md",
+                channels: [{ slug: "work", threadId: "w", sleeps: { at: CREATED } }],
+                asleepSince: CREATED,
+                model: null,
+                conversations: [],
+                schedules: [],
+                asks: [],
+              },
+            ],
+          },
+        },
+      ],
+      threads,
+    );
+    NodeAssert.ok(only !== undefined);
+    return only;
+  };
+  // `user` has slept, its transcript written, while `work` is still open.
+  const workOpen = starOver([thread("u", true), thread("w", false)]);
+  // Then `work` sleeps too, the page seeing its conversation settle.
+  const allAsleep = starOver([thread("u", true), thread("w", true)]);
+
+  NodeTest.test("syncs nothing while another channel is open, `user` asleep", () => {
+    NodeAssert.equal(workOpen.state, "awake");
+    NodeAssert.equal(syncsNow(workOpen), false);
+    NodeAssert.deepEqual(fellAsleep(new Map(), [workOpen]), []);
+  });
+
+  NodeTest.test("syncs when the last open channel sleeps, and not again while it sleeps", () => {
+    NodeAssert.equal(syncsNow(allAsleep), true);
+    NodeAssert.deepEqual(fellAsleep(new Map([["star", workOpen.state]]), [allAsleep]), ["star"]);
+    NodeAssert.deepEqual(fellAsleep(new Map([["star", "working"]]), [allAsleep]), ["star"]);
+    NodeAssert.deepEqual(fellAsleep(new Map([["star", "asleep"]]), [allAsleep]), []);
+    // A Star seen for the first time: a connect's occasion, not a sleep's.
+    NodeAssert.deepEqual(fellAsleep(new Map(), [allAsleep]), []);
+  });
+
+  NodeTest.test("a handoff deferred while a channel is open is delivered on that sleep", () => {
+    const deferred = { state: workOpen.state, writing: false, occasion: "full" } as const;
+    NodeAssert.equal(handsOffNow(deferred), false);
+    NodeAssert.equal(handsOffNow({ ...deferred, state: allAsleep.state }), true);
+    NodeAssert.equal(handsOffNow({ ...deferred, state: "asleep", writing: true }), false);
+    NodeAssert.equal(handsOffNow({ ...deferred, state: "asleep", occasion: "pull" }), false);
   });
 });

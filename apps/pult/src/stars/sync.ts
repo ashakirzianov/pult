@@ -3,6 +3,7 @@
 // origins the page takes, where it reads the repository's, what each
 // occasion runs, the commits' messages, and the handoff that gives a Star a
 // divergence to reconcile (`syncing.ts` runs it).
+import type { StarState } from "./stars.ts";
 
 /** Why the page will not take `url` as an origin, or undefined when it will. */
 export function originProblem(url: string): string | undefined {
@@ -88,6 +89,45 @@ export function syncPlan(
     push: remote && full && status.branch !== null && (!tracked || commit || status.ahead > 0),
   };
 }
+
+/**
+ * Whether the sync may commit and pull under a Star's folder now: while it
+ * sleeps, no channel of its open, since an open one's conversation writes
+ * there (`star-sync`). A transcript appearing while another channel is open
+ * waits for the Star's sleep (`fellAsleep`).
+ */
+export const syncsNow = (star: { readonly state: StarState }) => star.state === "asleep";
+
+/**
+ * The Stars that fell asleep since the states the sync saw last: some
+ * channel of theirs open then, none now, each an occasion of its own, which
+ * commits what the channels left and delivers a handoff that waited for the
+ * sleep. A Star seen for the first time falls asleep from nothing: a
+ * connect's occasion is its.
+ */
+export function fellAsleep(
+  previous: ReadonlyMap<string, StarState>,
+  stars: ReadonlyArray<{ readonly id: string; readonly state: StarState }>,
+): string[] {
+  return stars
+    .filter((star) => {
+      const before = previous.get(star.id);
+      return before !== undefined && !syncsNow({ state: before }) && syncsNow(star);
+    })
+    .map((star) => star.id);
+}
+
+/**
+ * Whether a divergence goes to the Star now, or waits for its sleep's
+ * occasion (`fellAsleep`): now only while it sleeps, no channel of its open,
+ * nobody writes to its draft, and the occasion is no pull before a wake,
+ * since the user is about to write to it.
+ */
+export const handsOffNow = (input: {
+  readonly state: StarState;
+  readonly writing: boolean;
+  readonly occasion: "pull" | "full";
+}) => syncsNow(input) && !input.writing && input.occasion === "full";
 
 /**
  * Whether a failed pull or push was git refusing it, which goes to the Star:
