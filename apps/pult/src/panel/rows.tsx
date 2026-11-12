@@ -17,9 +17,11 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
+import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import logoUrl from "../../assets/pult/logo-color.svg";
+import { restartOffer } from "../desktop/updates.ts";
 import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 import { TrayShelves } from "./TrayShelves.tsx";
@@ -89,18 +91,35 @@ function PanelHeader() {
   );
 }
 
+/** Restart to Update, in Pult.app while a downloaded update waits and its server is at rest (`restartOffer`). */
+function RestartToUpdate() {
+  const version = useSyncExternalStore(restartOffer.subscribe, restartOffer.get);
+  if (version === null) return null;
+  return (
+    <button
+      type="button"
+      className="pult-panel-restart"
+      title={`Restart Pult to install ${version}`}
+      onClick={() => void restartOffer.restart()}
+    >
+      Restart to Update
+    </button>
+  );
+}
+
 /**
  * The left panel's bottom row, the tray: every icon in it is something not
  * showing, which a click shows. The closed shelves' icons at its left end
- * (`TrayShelves.tsx`), in VS Code's mode the tabs beside the gear
- * (`PanelTabs.tsx`), and rightmost the gear, which opens the Pult settings
- * page.
+ * (`TrayShelves.tsx`), then Restart to Update while it is offered, in VS
+ * Code's mode the tabs beside the gear (`PanelTabs.tsx`), and rightmost the
+ * gear, which opens the Pult settings page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
   return (
     <>
       <TrayShelves />
       <span className="pult-panel-row-spacer" />
+      <RestartToUpdate />
       <PanelTabs store={store} />
       <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>

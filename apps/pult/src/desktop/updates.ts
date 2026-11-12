@@ -1,5 +1,6 @@
 import {
   getService,
+  ICommandService,
   IContextKeyService,
   INotificationService,
   IProgressService,
@@ -10,8 +11,11 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
-import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
+import { request } from "@t3tools/client-runtime/rpc";
+import { type DesktopBridge, type DesktopUpdateState, WS_METHODS } from "@t3tools/contracts";
 
+import { connection } from "../connection/index.ts";
+import { threadStore } from "../threads/store.ts";
 import { desktopHost } from "./host.ts";
 import {
   installableVersion,
@@ -25,7 +29,9 @@ import {
  * over `window.desktopBridge`: the palette's Pult: Check for Updates, which
  * checks, downloads what it finds and answers with one notification, and
  * Pult: Restart to Update while a downloaded update waits, which installs it
- * now. Neither is offered outside Pult.app.
+ * now. Neither is offered outside Pult.app. While a downloaded update waits
+ * and the app's own server is at rest, the tray offers Restart to Update too
+ * (`restartOffer`).
  */
 
 /** `downloaded` while an update waits to be installed, `none` otherwise in Pult.app, empty elsewhere. */
@@ -138,19 +144,98 @@ function settled(host: DesktopBridge): Promise<DesktopUpdateState> {
   });
 }
 
-/** In Pult.app, sets the context key and keeps it with the updater's state. */
+/**
+ * The tray's Restart to Update (`src/panel/rows.tsx`): the downloaded version while one waits and
+ * Pult.app's own server is at rest, by the server's own reading (`server.getActivity`, which the
+ * at-rest install reads too), else null. The rest is read again a second after the threads or the
+ * connection change, and once a minute for what the threads do not show (a native subagent's end).
+ */
+class RestartOffer {
+  private downloaded: string | null = null;
+  private atRest = false;
+  private readonly listeners = new Set<() => void>();
+  private scheduled: ReturnType<typeof setTimeout> | undefined;
+  private reads = 0;
+
+  readonly get = (): string | null => (this.atRest ? this.downloaded : null);
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  start(): void {
+    threadStore.subscribe(this.schedule);
+    connection.onDidChange(this.schedule);
+    setInterval(this.schedule, 60_000);
+  }
+
+  setDownloaded(version: string | null): void {
+    if (version === this.downloaded) return;
+    this.downloaded = version;
+    this.emit();
+    void this.read();
+  }
+
+  /** Reads the rest now, and restarts into the update only if the server is still at rest; else the offer goes. */
+  async restart(): Promise<void> {
+    if (!(await this.read())) return;
+    await (await getService(ICommandService)).executeCommand("pult-shell.restartToUpdate");
+  }
+
+  private readonly schedule = () => {
+    if (this.downloaded === null) return;
+    this.scheduled ??= setTimeout(() => {
+      this.scheduled = undefined;
+      void this.read();
+    }, 1000);
+  };
+
+  /** Whether the local server is at rest now; a read overtaken by a later one leaves the offer to it. */
+  private async read(): Promise<boolean> {
+    const read = ++this.reads;
+    const local = connection.localEnvironment;
+    let atRest = false;
+    if (this.downloaded !== null && local?.phase === "ready") {
+      try {
+        atRest = (
+          await connection.run(local.environmentId, request(WS_METHODS.serverGetActivity, {}))
+        ).atRest;
+      } catch (error) {
+        console.error("[pult-shell] the local server's activity did not load", error);
+      }
+    }
+    if (read === this.reads && atRest !== this.atRest) {
+      this.atRest = atRest;
+      this.emit();
+    }
+    return atRest;
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+export const restartOffer = new RestartOffer();
+
+/** In Pult.app, sets the context key and keeps it, and the tray's offer, with the updater's state. */
 export async function startUpdateContext(): Promise<void> {
   const host = desktopHost();
   if (host === undefined) return;
   const key = UpdateContext.bindTo(await getService(IContextKeyService));
-  const apply = (state: DesktopUpdateState) =>
-    key.set(installableVersion(state) === null ? "none" : "downloaded");
+  const apply = (state: DesktopUpdateState) => {
+    const version = installableVersion(state);
+    key.set(version === null ? "none" : "downloaded");
+    restartOffer.setDownloaded(version);
+  };
   let heard = false;
   host.onUpdateState((state) => {
     heard = true;
     apply(state);
   });
   key.set("none");
+  restartOffer.start();
   void host.getUpdateState().then(
     (state) => {
       if (!heard) apply(state);

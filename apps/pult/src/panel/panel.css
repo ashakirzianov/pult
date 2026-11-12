@@ -1026,6 +1026,34 @@
   outline-offset: -1px;
 }
 
+/* Restart to Update in the tray (src/panel/rows.tsx), the workbench's primary button, as tall as the rows' buttons; it gives way first when the tray is narrow. */
+.pult-panel-restart {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: none;
+  border-radius: 6px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pult-panel-restart:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.pult-panel-restart:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
 .pult-panel-tabs {
   display: flex;
   gap: 2px;
