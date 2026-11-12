@@ -43,7 +43,7 @@ NodeTest.test("the only card leaves nothing to select", () => {
 
 NodeTest.test("actions follow the shelf and the server's features", () => {
   const all = { settlement: true, snooze: true, pinning: true };
-  NodeAssert.deepEqual(parkActions({ shelf: "active", pinned: false }, all), {
+  NodeAssert.deepEqual(parkActions({ shelf: "active", offInbox: false, pinned: false }, all), {
     settle: true,
     unsettle: false,
     snooze: true,
@@ -51,7 +51,7 @@ NodeTest.test("actions follow the shelf and the server's features", () => {
     pin: true,
     unpin: false,
   });
-  NodeAssert.deepEqual(parkActions({ shelf: "snoozed", pinned: true }, all), {
+  NodeAssert.deepEqual(parkActions({ shelf: "snoozed", offInbox: false, pinned: true }, all), {
     settle: true,
     unsettle: false,
     snooze: false,
@@ -60,7 +60,10 @@ NodeTest.test("actions follow the shelf and the server's features", () => {
     unpin: true,
   });
   NodeAssert.deepEqual(
-    parkActions({ shelf: "settled", pinned: false }, { ...all, settlement: false }),
+    parkActions(
+      { shelf: "settled", offInbox: false, pinned: false },
+      { ...all, settlement: false },
+    ),
     {
       settle: false,
       unsettle: false,
@@ -70,8 +73,18 @@ NodeTest.test("actions follow the shelf and the server's features", () => {
       unpin: false,
     },
   );
+  NodeAssert.deepEqual(parkActions({ shelf: null, offInbox: true, pinned: false }, all), {
+    settle: true,
+    unsettle: false,
+    snooze: true,
+    wake: false,
+    pin: true,
+    unpin: false,
+  });
   NodeAssert.ok(
-    Object.values(parkActions({ shelf: null, pinned: false }, all)).every((offered) => !offered),
+    Object.values(parkActions({ shelf: null, offInbox: false, pinned: false }, all)).every(
+      (offered) => !offered,
+    ),
   );
 });
 

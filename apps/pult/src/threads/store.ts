@@ -10,6 +10,8 @@ export interface ShellThread {
   readonly id: string;
   /** Its shelf; null for a subagent, which the panel lists under its root's card, and for a Star's thread, the Star's conversation (`src/stars/`). */
   readonly shelf: ShelfName | null;
+  /** On no shelf only as a thread a Star launched, while it would sit on the active one (`shelve` in `presentation.ts`): listed all the same, for its actions and Open Thread. */
+  readonly offInbox: boolean;
   /** Settled, whatever its shelf: a Star's thread, on none, is asleep so. */
   readonly settled: boolean;
   /** When it was settled, while it is: a Star's conversation's end (`src/stars/`). */
@@ -114,7 +116,7 @@ export interface ThreadState {
 
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
 export function isSubagent(thread: ShellThread): boolean {
-  return thread.shelf === null && thread.parentId !== null;
+  return thread.shelf === null && !thread.offInbox && thread.parentId !== null;
 }
 
 /** A thread's or project's identity across environments, for maps and keys. */

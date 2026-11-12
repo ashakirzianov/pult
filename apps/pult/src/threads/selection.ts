@@ -629,9 +629,9 @@ export function registerSelectThreadCommand(): void {
         const quickInput = accessor.get(IQuickInputService);
         const { threads } = threadStore.get();
         const current = selectedThread();
-        // The store lists the shelves in the cards' order, pinned and active first; a subagent has none.
+        // The store lists the shelves in the cards' order, pinned and active first; a subagent has none, a thread a Star launched none while off the Inbox.
         const items = threads.flatMap((thread) =>
-          thread.shelf === null
+          thread.shelf === null && !thread.offInbox
             ? []
             : [
                 {
@@ -640,7 +640,7 @@ export function registerSelectThreadCommand(): void {
                   description: [
                     thread.projectName,
                     threadStore.distinguishing(thread.environmentId),
-                    SHELF_LABELS[thread.shelf],
+                    thread.shelf === null ? "Off the Inbox" : SHELF_LABELS[thread.shelf],
                   ]
                     .filter((part) => part !== undefined)
                     .join(" · "),

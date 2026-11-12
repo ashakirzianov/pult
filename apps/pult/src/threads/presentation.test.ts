@@ -425,6 +425,10 @@ NodeTest.describe("shellThreads", () => {
           ["active", null],
         ],
       );
+      NodeAssert.deepEqual(
+        threads.filter((each) => each.offInbox).map((each) => each.id),
+        ["active"],
+      );
     },
   );
 

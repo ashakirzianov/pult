@@ -16,13 +16,14 @@ export interface ParkActions {
 /**
  * A thread's actions, as upstream's thread menu offers them: Settle unless
  * settled, Snooze unless snoozed, Wake while snoozed, Pin or Unpin. A
- * subagent, on no shelf, has none.
+ * subagent, on no shelf, has none; a thread a Star launched, off the
+ * Inbox, has an active thread's, a pin bringing it back.
  */
 export function parkActions(
-  thread: Pick<ShellThread, "shelf" | "pinned">,
+  thread: Pick<ShellThread, "shelf" | "offInbox" | "pinned">,
   features: ThreadFeatures,
 ): ParkActions {
-  const listed = thread.shelf !== null;
+  const listed = thread.shelf !== null || thread.offInbox;
   return {
     settle: features.settlement && listed && thread.shelf !== "settled",
     unsettle: features.settlement && thread.shelf === "settled",

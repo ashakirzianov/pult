@@ -323,7 +323,11 @@ export function shellThreads(
   const offInbox = threads.filter(
     (thread) => isListed(thread) && !inStar(thread) && !shelved.has(thread),
   );
-  const present = (thread: EnvironmentThreadShell, shelf: ShelfName | null): ShellThread => {
+  const present = (
+    thread: EnvironmentThreadShell,
+    shelf: ShelfName | null,
+    offInbox = false,
+  ): ShellThread => {
     const project = byId.get(scopedKey(thread.environmentId, thread.projectId));
     const settled =
       featuresOf(thread.environmentId).settlement && thread.settledOverride === "settled";
@@ -331,6 +335,7 @@ export function shellThreads(
       environmentId: thread.environmentId,
       id: thread.id,
       shelf,
+      offInbox,
       settled,
       settledAt: settled ? thread.settledAt : null,
       parentId: thread.lineage.parentThreadId,
@@ -380,6 +385,6 @@ export function shellThreads(
     ...SHELF_ORDER.flatMap((shelf) => shelves[shelf].map((thread) => present(thread, shelf))),
     ...subagents.map((thread) => present(thread, null)),
     ...stars.map((thread) => present(thread, null)),
-    ...offInbox.map((thread) => present(thread, null)),
+    ...offInbox.map((thread) => present(thread, null, true)),
   ];
 }
