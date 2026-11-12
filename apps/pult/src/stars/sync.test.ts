@@ -306,6 +306,23 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     },
   );
 
+  NodeTest.test(
+    "keeps an environment whose Stars are missing while it is not known, and catches the sleep when they return",
+    () => {
+      const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
+      const first = sleepOccasions(new Map(), [x], all);
+      // The laptop's read fails, dropping its Stars, and the laptop is not known until it answers again.
+      const unread = () => false;
+      const dropped = sleepOccasions(first.awake, [], unread);
+      NodeAssert.deepEqual(dropped.occasions, []);
+      NodeAssert.deepEqual(dropped.awake.get("laptop"), ["x"]);
+      // The answer returns with X asleep: the sleep's occasion.
+      NodeAssert.deepEqual(sleepOccasions(dropped.awake, [{ ...x, awakeOn: [] }], all).occasions, [
+        { environmentId: "laptop", starId: "x" },
+      ]);
+    },
+  );
+
   NodeTest.test("is not held by a second environment held but offline", () => {
     // Y, cloned to the desk, which is offline: the laptop's sleeps are still its occasions.
     const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };

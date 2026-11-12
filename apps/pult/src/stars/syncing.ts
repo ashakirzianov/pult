@@ -18,6 +18,7 @@ import {
   starOfProject,
   starRepository,
   starsRead,
+  starsReadOn,
   starStore,
   type WrittenChannelTranscripts,
 } from "./model.ts";
@@ -79,9 +80,15 @@ const environmentName = (environmentId: string) =>
   threadStore.environment(environmentId)?.name ?? environmentId;
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
 const ready = (environmentId: string) => connection.environment(environmentId)?.phase === "ready";
-/** Ready with its threads in, where the page holds its Stars' channels' threads, so their states count. */
+/**
+ * Ready with its threads in, where the page holds its Stars' channels'
+ * threads, and its plugin's answer in, where it holds its Stars, so their
+ * states count: a failed read drops the environment's Stars, which is no sleep.
+ */
 const known = (environmentId: string) =>
-  ready(environmentId) && threadStore.environment(environmentId)?.loaded === true;
+  ready(environmentId) &&
+  threadStore.environment(environmentId)?.loaded === true &&
+  starsReadOn(environmentId);
 /** The Stars with a home on the environment. */
 const starsOn = (environmentId: string) =>
   starStore.get().filter((star) => star.homes.some((home) => home.environmentId === environmentId));
@@ -222,9 +229,9 @@ class StarSync {
    * plugin writes after the settle being its own occasion,
    * `afterChannelTranscripts`, or `user`'s, `afterTranscripts`) and
    * delivering a divergence that waited for the sleep. An environment counts
-   * only while it is ready with its threads in, where the page holds its
-   * channels' threads, so a sleep seen while it loads is caught once it is
-   * in (`sleepOccasions`).
+   * only while it is ready with its threads and its plugin's answer in
+   * (`known`), so a sleep seen while it loads, or while a failed read drops
+   * its Stars, is caught once it is in (`sleepOccasions`).
    */
   private afterSleeps(): void {
     const { occasions, awake } = sleepOccasions(this.awake, starStore.get(), known);

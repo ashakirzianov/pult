@@ -135,8 +135,9 @@ export function environmentSleeps(
  * that were, which a divergence goes to first; so the last Star there to
  * fall asleep makes it, committing what the channels left and delivering a
  * handoff that waited, however the Stars came to count. An environment not
- * known keeps what was seen of it, so a sleep seen while it loads is an
- * occasion once it is in; one seen for the first time has none, the
+ * known keeps what was seen of it, its Stars there or not, so a sleep seen
+ * while it loads, or while its Stars are missing, is an occasion once it is
+ * in; one seen for the first time has none, the
  * connect's sync being its (`syncing.ts`, which forgets an environment no
  * longer ready, so a reconnect is a first sight again).
  */
@@ -150,9 +151,10 @@ export function sleepOccasions(
 } {
   const occasions: Array<{ readonly environmentId: string; readonly starId: string }> = [];
   const next = new Map<string, ReadonlyArray<string>>();
-  const environments = new Set(
-    stars.flatMap((star) => star.homes.map((home) => home.environmentId)),
-  );
+  const environments = new Set([
+    ...awake.keys(),
+    ...stars.flatMap((star) => star.homes.map((home) => home.environmentId)),
+  ]);
   for (const environmentId of environments) {
     const before = awake.get(environmentId);
     if (!known(environmentId)) {

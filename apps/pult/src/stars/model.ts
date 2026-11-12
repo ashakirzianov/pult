@@ -253,6 +253,11 @@ class StarsModel {
     );
   }
 
+  /** Whether the environment's plugin answered its Stars, the answer the page holds its Stars there by. */
+  readOn(environmentId: string): boolean {
+    return this.readings.get(environmentId)?.status === "read";
+  }
+
   /** Whether a Star may be created on the environment by hand: it is ready and its plugin serves Stars. */
   canCreateOn(environmentId: string): boolean {
     return (
@@ -661,6 +666,7 @@ export const canCreateStarOn = (environmentId: string) => model.canCreateOn(envi
 export const starRepository = (environmentId: string) => model.repository(environmentId);
 /** Whether every ready environment has answered (`syncing.ts` waits for it). */
 export const starsRead = () => model.allRead();
+export const starsReadOn = (environmentId: string) => model.readOn(environmentId);
 export const setStarFields = (
   starId: string,
   changes: { readonly name?: string; readonly tint?: string },
