@@ -2,6 +2,7 @@ import {
   getService,
   ICommandService,
   IContextKeyService,
+  IEditorGroupsService,
   IEditorService,
   IInstantiationService,
   INotificationService,
@@ -30,7 +31,7 @@ import {
   starById,
   starStore,
 } from "./model.ts";
-import { channelRows, drawnHome, type Star, starName } from "./stars.ts";
+import { channelRows, drawnHome, rotatedChannelTab, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule and Open Star Ask are offered then. */
@@ -172,7 +173,9 @@ async function openStarAsk(
 /**
  * An open channel's conversation of the Star's, but `user`'s, which is its
  * tab, as a thread's tab among the Star's (`StarThreadInput`), as its card
- * lists them: `slug`'s, or one picked among them; the Star selected first.
+ * lists them: `slug`'s, or one picked among them; the Star selected first,
+ * and the channel's tab left on an ended conversation by a rotation shown on
+ * its current one in place (`rotatedChannelTab`).
  */
 async function openStarChannel(
   quickInput: IQuickInputService,
@@ -203,6 +206,33 @@ async function openStarChannel(
   // A switch cancelled over a modified file leaves the selection as it was, so the channel is not opened among its tabs.
   if (selectedStar() !== star.id) return;
   const { environmentId, id } = channel.thread;
+  // A tab the channel's rotation left on its ended conversation becomes its current one, in place.
+  const groups = await getService(IEditorGroupsService);
+  const tabs = groups.groups.flatMap((group) =>
+    group.editors.flatMap((editor) =>
+      editor instanceof StarThreadInput ? [{ group, editor }] : [],
+    ),
+  );
+  const rotated = rotatedChannelTab(
+    tabs.map(({ editor }) => editor),
+    channel.slug,
+    channel.thread,
+    threadStore.get().threads,
+  );
+  const replaced = tabs.find(({ editor }) => editor === rotated);
+  if (replaced !== undefined) {
+    const replacement = (await getService(IInstantiationService)).createInstance(
+      StarThreadInput,
+      environmentId,
+      id,
+      channel.slug,
+    );
+    await replaced.group.replaceEditors([
+      { editor: replaced.editor, replacement, options: { pinned: true } },
+    ]);
+    await replaced.group.openEditor(replacement, { pinned: true });
+    return;
+  }
   await (
     await getService(IEditorService)
   ).openEditor(

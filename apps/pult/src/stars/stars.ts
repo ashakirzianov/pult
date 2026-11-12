@@ -247,6 +247,34 @@ export function channelRows<Thread extends StarThread>(
   return star.channels.filter(({ slug }) => slug !== USER_CHANNEL);
 }
 
+/**
+ * Of the tabs among the selected Star's (`StarThreadInput`), the one that
+ * opening the channel `slug` on `current`, its open conversation, replaces:
+ * none while a tab shows `current`, which is shown as it is; else a tab of
+ * that channel on a conversation the page holds settled, a rotation having
+ * left it behind, so the channel never has two tabs of one label (Anton's
+ * ruling, 2026-11-12). A child's tab has no slug and is never one.
+ */
+export function rotatedChannelTab<
+  Tab extends {
+    readonly environmentId: string;
+    readonly threadId: string;
+    readonly slug: string | null;
+  },
+>(
+  tabs: ReadonlyArray<Tab>,
+  slug: string,
+  current: { readonly environmentId: string; readonly id: string },
+  threads: ReadonlyArray<Pick<StarThread, "environmentId" | "id" | "settled">>,
+): Tab | undefined {
+  const shows = (tab: Tab, thread: { readonly environmentId: string; readonly id: string }) =>
+    tab.environmentId === thread.environmentId && tab.threadId === thread.id;
+  if (tabs.some((tab) => shows(tab, current))) return undefined;
+  return tabs.find(
+    (tab) => tab.slug === slug && threads.some((thread) => thread.settled && shows(tab, thread)),
+  );
+}
+
 /** The tag a Star gives every thread it launches, its child, before the Star's id (`star-launched-threads`). */
 const CHILD_TAG = "pult:child:star:";
 /** The channel a child's messages land in where it names none (`star-channels`). */

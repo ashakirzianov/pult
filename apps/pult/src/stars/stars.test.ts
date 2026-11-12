@@ -12,6 +12,7 @@ import {
   type EnvironmentReading,
   findStarOfThread,
   newTranscripts,
+  rotatedChannelTab,
   starsOf,
   wakeHome,
 } from "./stars.ts";
@@ -250,6 +251,48 @@ NodeTest.describe("channelRows", () => {
       NodeAssert.deepEqual(star && channelRows(star), []);
     },
   );
+});
+
+NodeTest.describe("rotatedChannelTab", () => {
+  const tab = (threadId: string, slug: string | null) => ({ environmentId: "a", threadId, slug });
+  const threads = [
+    thread("a", "work-old", CREATED, { settled: true }),
+    thread("a", "work-new", CREATED),
+    thread("a", "child", CREATED, { settled: true }),
+  ];
+  const current = { environmentId: "a", id: "work-new" };
+
+  NodeTest.test(
+    "is the channel's tab on a settled conversation, which its current one replaces",
+    () => {
+      const old = tab("work-old", "work");
+      NodeAssert.equal(rotatedChannelTab([tab("child", null), old], "work", current, threads), old);
+    },
+  );
+
+  NodeTest.test("is none while a tab shows the current conversation, which is focused", () => {
+    NodeAssert.equal(
+      rotatedChannelTab(
+        [tab("work-old", "work"), tab("work-new", "work")],
+        "work",
+        current,
+        threads,
+      ),
+      undefined,
+    );
+  });
+
+  NodeTest.test("is never another channel's tab, a child's, or one on an open thread", () => {
+    NodeAssert.equal(
+      rotatedChannelTab(
+        [tab("work-old", "build"), tab("child", null), tab("open-elsewhere", "work")],
+        "work",
+        current,
+        [...threads, thread("a", "open-elsewhere", CREATED)],
+      ),
+      undefined,
+    );
+  });
 });
 
 NodeTest.describe("cardRows", () => {
