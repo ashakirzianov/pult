@@ -42,6 +42,7 @@ import {
   liveReveals,
   type PreviewOwner,
   placementGroup,
+  placementIndex,
   previewAnchor,
   staleTabs,
 } from "./rules.ts";
@@ -85,13 +86,13 @@ function targetThread(): ThreadSelection | undefined {
 /** A selected Star's threads' tabs open in the part, its channels' and its children's (`StarThreadInput`), each with its group. */
 function starTabs(
   groups: IEditorGroupsService,
-): Array<ThreadSelection & { readonly group: IEditorGroup }> {
+): Array<ThreadSelection & { readonly group: IEditorGroup; readonly editor: StarThreadInput }> {
   return groups
     .getGroups(GroupsOrder.GRID_APPEARANCE)
     .flatMap((group) =>
       group.editors.flatMap((editor) =>
         editor instanceof StarThreadInput
-          ? [{ environmentId: editor.environmentId, threadId: editor.threadId, group }]
+          ? [{ environmentId: editor.environmentId, threadId: editor.threadId, group, editor }]
           : [],
       ),
     );
@@ -153,7 +154,9 @@ async function closeTabs(
  * the thread's open one shown rather than a second opened; with
  * `replacePlaceholder` the thread's open placeholder becomes the session's
  * tab in place. A new tab goes to the group of the thread's latest preview
- * tab, else the thread tab's (`placementGroup`), pinned. Only for the
+ * tab, else the thread tab's (`placementGroup`), after its last browser there,
+ * else right after the Star's tab of a channel or child it belongs beside
+ * (`placementIndex`), pinned. Only for the
  * selection's thread (the selected one, or the selected Star's conversation)
  * or a selected Star's channel's or child open as a tab, its browsers
  * beside that tab (`previewAnchor`), looked at once the part is in: a
@@ -209,14 +212,13 @@ function openPreview(
       lead,
       groups.activeGroup,
     );
-    // After the thread's last browser in the group, so they keep the order they opened in.
-    const last = Math.max(
-      -1,
-      ...tabs
-        .filter((tab) => tab.group === group)
-        .map(({ editor }) => group.getIndexOfEditor(editor)),
+    const at = placementIndex(
+      tabs.filter((tab) => tab.group === group).map(({ editor }) => group.getIndexOfEditor(editor)),
+      anchor !== "lead" && anchor.group === group
+        ? group.getIndexOfEditor(anchor.editor)
+        : undefined,
     );
-    const index = last < 0 ? {} : { index: last + 1 };
+    const index = at === undefined ? {} : { index: at };
     await group.openEditor(
       input,
       options.activate

@@ -81,6 +81,22 @@ export function placementGroup<Group>(
 }
 
 /**
+ * Where in its group a thread's new preview tab opens: after the thread's
+ * last browser there (`browsers`, their indexes), so they keep the order
+ * they opened in; with none there, right after the Star's tab of a channel
+ * or a child it belongs beside (`anchor`, its index, when in that group),
+ * whichever tab is active; else undefined, the workbench's place, beside
+ * the active tab.
+ */
+export function placementIndex(
+  browsers: ReadonlyArray<number>,
+  anchor: number | undefined,
+): number | undefined {
+  if (browsers.length > 0) return Math.max(...browsers) + 1;
+  return anchor === undefined ? undefined : anchor + 1;
+}
+
+/**
  * How long a tab the page itself opened is kept against a list that lacks its
  * session: a list the server answered before the open can arrive after it,
  * and closing the tab then would lose it for good.

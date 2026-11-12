@@ -8,6 +8,7 @@ import {
   JUST_OPENED_MS,
   liveReveals,
   placementGroup,
+  placementIndex,
   previewAnchor,
   staleTabs,
 } from "./rules.ts";
@@ -81,6 +82,16 @@ NodeTest.test("with no preview tab, the thread tab's group, else the active one"
   NodeAssert.equal(placementGroup([], "lead", "active"), "lead");
   NodeAssert.equal(placementGroup([], undefined, "active"), "active");
 });
+
+NodeTest.test(
+  "a new browser opens after the thread's last one, else right after the Star's tab it belongs beside",
+  () => {
+    NodeAssert.equal(placementIndex([3, 5, 4], 1), 6);
+    // A child's tab at 2, the Star's tab at 0 and active: right after the child's, not after the active one.
+    NodeAssert.equal(placementIndex([], 2), 3);
+    NodeAssert.equal(placementIndex([], undefined), undefined);
+  },
+);
 
 NodeTest.test("tabs whose session is gone are stale", () => {
   const result = staleTabs({
