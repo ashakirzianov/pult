@@ -38,6 +38,7 @@ import {
 import { isPreviewTab, PreviewInput, registerPreviewPane } from "./pane.tsx";
 import {
   closingEndsSession,
+  foreignPreviews,
   liveReveals,
   type PreviewOwner,
   placementGroup,
@@ -378,18 +379,28 @@ async function refreshFollows(): Promise<void> {
 /**
  * A preview tab belongs to its thread's tab set: the working sets keep a
  * thread's own, and a Star's set holds its current conversation's and its
- * open channel tabs' alone, so a conversation's end, a channel's tab
- * closed, or anything else that leaves another thread's tab in the part,
- * closes it, a dismissal that ends no session. Nothing while a Star's
- * conversation is not known yet (its Stars still loading).
+ * open channel and child tabs' alone, so a conversation's end, a Star's
+ * thread's tab closed, or anything else that leaves another thread's tab in
+ * the part, closes it, a dismissal that ends no session. Nothing while a
+ * Star's conversation is not known (its Stars still loading, or `user`
+ * asleep), but the browsers of `closed`, a Star's thread whose tab closed
+ * (`foreignPreviews`).
  */
-async function closeForeignTabs(): Promise<void> {
+async function closeForeignTabs(closed?: ThreadSelection): Promise<void> {
   if (isSwitchingThread()) return;
-  if (targetThread() === undefined && selectedStar() !== undefined) return;
   const groups = await getService(IEditorGroupsService);
-  await closeTabs(
-    previewTabs(groups).filter(({ editor }) => anchorOf(groups, editor) === undefined),
+  const previews = previewTabs(groups);
+  const foreign = new Set(
+    foreignPreviews(
+      previews.map(({ editor }) => editor),
+      (thread) => anchorOf(groups, thread) !== undefined,
+      {
+        known: targetThread() !== undefined || selectedStar() === undefined,
+        ...(closed === undefined ? {} : { closed }),
+      },
+    ),
   );
+  await closeTabs(previews.filter(({ editor }) => foreign.has(editor)));
 }
 
 /**
@@ -546,7 +557,7 @@ export async function startPreviewTabs(): Promise<void> {
   const editors = await getService(IEditorService);
   editors.onDidCloseEditor(({ editor, context }) => {
     // A Star's thread's tab closed takes its thread's browsers with it, ending no session.
-    if (editor instanceof StarThreadInput) void enqueue(closeForeignTabs);
+    if (editor instanceof StarThreadInput) void enqueue(() => closeForeignTabs(editor));
     if (!(editor instanceof PreviewInput) || context !== EditorCloseContext.UNKNOWN) return;
     if (isSwitchingThread() || closingByShell.has(editor)) return;
     void closedByUser(editor).catch((error: unknown) =>

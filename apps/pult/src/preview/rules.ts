@@ -42,6 +42,28 @@ export function previewAnchor<Tab extends PreviewThread>(
 }
 
 /**
+ * The preview tabs that leave the part as foreign to the selection's tab
+ * set: each whose thread has no anchor (`previewAnchor`). None while that
+ * set is not known (a selected Star whose `user` is asleep or not read
+ * yet), but those of `closed`, a Star's thread whose tab just closed, whose
+ * browsers go with it whatever `user` does.
+ */
+export function foreignPreviews<Preview extends PreviewThread>(
+  previews: ReadonlyArray<Preview>,
+  anchored: (thread: PreviewThread) => boolean,
+  { known, closed }: { readonly known: boolean; readonly closed?: PreviewThread },
+): Preview[] {
+  return previews.filter(
+    (preview) =>
+      !anchored(preview) &&
+      (known ||
+        (closed !== undefined &&
+          preview.environmentId === closed.environmentId &&
+          preview.threadId === closed.threadId)),
+  );
+}
+
+/**
  * The group a thread's new preview tab opens in: the one holding the thread's
  * preview tab shown or opened most recently, so later browsers land where the
  * user put the last one (Split Editor, a drag); else the thread tab's group;

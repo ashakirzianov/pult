@@ -4,6 +4,7 @@ import * as NodeTest from "node:test";
 
 import {
   closingEndsSession,
+  foreignPreviews,
   JUST_OPENED_MS,
   liveReveals,
   placementGroup,
@@ -130,3 +131,34 @@ NodeTest.test("a list not loaded yet closes nothing", () => {
   });
   NodeAssert.deepEqual(result, { close: [], recheckAt: undefined });
 });
+
+NodeTest.test(
+  "a Star's thread's tab closed while `user` sleeps takes its browsers, and leaves `user`'s as they are",
+  () => {
+    const browser = (threadId: string, tabId: string) => ({
+      environmentId: "env",
+      threadId,
+      tabId,
+    });
+    const previews = [browser("child", "a"), browser("work-now", "b"), browser("user-old", "c")];
+    const anchored = (thread: { readonly threadId: string }) => thread.threadId === "work-now";
+    const closed = { environmentId: "env", threadId: "child" };
+    // `user` asleep: the set is not known, so only the closed tab's thread's browsers go.
+    NodeAssert.deepEqual(foreignPreviews(previews, anchored, { known: false, closed }), [
+      browser("child", "a"),
+    ]);
+    NodeAssert.deepEqual(foreignPreviews(previews, anchored, { known: false }), []);
+    // A tab moved to another group is still there: its browsers stay.
+    NodeAssert.deepEqual(
+      foreignPreviews(previews, (thread) => thread.threadId !== "user-old", {
+        known: false,
+        closed,
+      }),
+      [],
+    );
+    NodeAssert.deepEqual(foreignPreviews(previews, anchored, { known: true, closed }), [
+      browser("child", "a"),
+      browser("user-old", "c"),
+    ]);
+  },
+);
