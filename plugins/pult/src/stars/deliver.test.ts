@@ -207,6 +207,29 @@ describe("deliver", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect("wakes a work thread, never queueing into the user's running conversation", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      const user = h.open([run("user-run", "running")]);
+      assert.deepStrictEqual(yield* h.fromThread("k1", fullAccess), {
+        outcome: "launched",
+        threadId: ThreadId.make("launched-1"),
+      });
+      assert.deepStrictEqual(
+        h.launches.launches.map((each) => each.tags),
+        [[Stars.WORK_TAG]],
+      );
+      assert.deepStrictEqual(
+        h.threads.messages.map((each) => each.threadId),
+        [ThreadId.make("launched-1")],
+      );
+      assert.deepStrictEqual(
+        user.runs.map((each) => each.id),
+        ["user-run"],
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("wakes each kind at the newest conversation of its kind, else of the other", () =>
     Effect.gen(function* () {
       const h = yield* harness;
