@@ -241,6 +241,24 @@ export function starsOf<Thread extends StarThread>(
 }
 
 /**
+ * What of the Stars, changing, the store tells its listeners of: a change to
+ * none of it keeps the Stars it holds, so `awakeOn` is among it for the sync
+ * to see a sleep on one home while another home's channel stays open.
+ */
+export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<Star<Thread>>) =>
+  stars.map((star) => [
+    star.id,
+    star.name,
+    star.tint,
+    star.origin,
+    star.homes,
+    star.state,
+    star.channels.map(({ slug, thread }) => [slug, thread.id, thread.workingSince]),
+    star.asleepSince,
+    star.awakeOn,
+  ]);
+
+/**
  * The rows under a selected Star's card: one per open channel but `user`,
  * whose conversation is the Star's tab, by slug.
  */

@@ -43,6 +43,7 @@ import {
   type StarHome,
   starName,
   starsOf,
+  starsSignature,
   wakeHome,
 } from "./stars.ts";
 
@@ -500,16 +501,7 @@ class StarsModel {
     const stars = starsOf(answers, threadStore.get().threads);
     // The readings too, which tell where a Star may be created.
     const signature = JSON.stringify([
-      stars.map((star) => [
-        star.id,
-        star.name,
-        star.tint,
-        star.origin,
-        star.homes,
-        star.state,
-        star.channels.map(({ slug, thread }) => [slug, thread.id, thread.workingSince]),
-        star.asleepSince,
-      ]),
+      starsSignature(stars),
       [...this.readings.values()].map((reading) => reading.status),
     ]);
     if (signature !== this.signature) {

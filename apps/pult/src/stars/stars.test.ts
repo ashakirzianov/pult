@@ -14,6 +14,7 @@ import {
   newTranscripts,
   rotatedChannelTab,
   starsOf,
+  starsSignature,
   wakeHome,
 } from "./stars.ts";
 
@@ -211,6 +212,40 @@ NodeTest.describe("starsOf", () => {
     );
     NodeAssert.equal(star?.asleepSince, "2026-11-03T09:00:00.000Z");
   });
+});
+
+NodeTest.describe("starsSignature", () => {
+  NodeTest.test(
+    "changes when a home's channel settles while another home's newer thread of the slug stays open",
+    () => {
+      const answers = [
+        {
+          environmentId: "laptop",
+          answer: answer([routeStar("one", { channels: [open("work", "older")] })]),
+        },
+        {
+          environmentId: "desk",
+          answer: answer([routeStar("one", { channels: [open("work", "newer")] })]),
+        },
+      ];
+      const newer = thread("desk", "newer", "2026-11-02T00:00:00.000Z");
+      const [both] = starsOf(answers, [thread("laptop", "older", CREATED), newer]);
+      const [settled] = starsOf(answers, [
+        thread("laptop", "older", CREATED, { settled: true }),
+        newer,
+      ]);
+      NodeAssert.ok(both !== undefined && settled !== undefined);
+      NodeAssert.deepEqual(both.awakeOn, ["laptop", "desk"]);
+      NodeAssert.deepEqual(settled.awakeOn, ["desk"]);
+      // The Star looks the same, the desk's conversation its channel's either way: only `awakeOn` tells the sleep.
+      NodeAssert.equal(settled.state, both.state);
+      NodeAssert.deepEqual(
+        settled.channels.map(({ thread }) => thread.id),
+        both.channels.map(({ thread }) => thread.id),
+      );
+      NodeAssert.notDeepEqual(starsSignature([settled]), starsSignature([both]));
+    },
+  );
 });
 
 NodeTest.describe("channelRows", () => {
