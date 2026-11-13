@@ -29,9 +29,9 @@ on:
         default: true
         type: boolean
       runner:
-        description: The macOS runner label, when macos-15 has no capacity (an Intel one, e.g. macos-15-intel, for arch x64)
+        description: The macOS runner label, when macos-26 has no capacity (an Intel one, e.g. macos-15-intel, for arch x64)
         required: false
-        default: macos-15
+        default: macos-26
         type: string
       arch:
         description: The app's arch; x64 only for a dry run on an Intel runner, since releases are arm64
@@ -50,7 +50,7 @@ concurrency:
 jobs:
   build:
     name: Build Pult.app (macOS ${{ inputs.arch || 'arm64' }})
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 90
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
