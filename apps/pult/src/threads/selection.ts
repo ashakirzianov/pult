@@ -306,6 +306,15 @@ export function selectThread(environmentId: string, threadId: string): Promise<v
   return enqueue(() => switchTo({ environmentId, threadId }));
 }
 
+/** Whether `selectThread` would select what is selected already: the thread itself, or the selected Star, its thread's. */
+export function holdsThread(environmentId: string, threadId: string): boolean {
+  const thread = threadStore.thread(environmentId, threadId);
+  const star = thread === undefined ? undefined : starOfThread(thread);
+  if (star !== undefined) return isStar(selected) && selected.starId === star.id;
+  const current = selectedThread();
+  return current?.environmentId === environmentId && current.threadId === threadId;
+}
+
 /**
  * Selects a Star as a thread is selected: its own tab set, one across the
  * threads of its conversation, led by its tab (`StarInput`), whose pane

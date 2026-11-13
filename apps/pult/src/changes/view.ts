@@ -73,8 +73,9 @@ import type { TurnCheckpoints } from "../../view/main.tsx";
 
 import { pultUri } from "../panel/explorer.ts";
 import {
+  holdsThread,
   onDidSelectThread,
-  selectedThread,
+  selectionTarget,
   selectThread,
   type ThreadSelection,
 } from "../threads/selection.ts";
@@ -600,9 +601,10 @@ type Services = {
  * resource opens VS Code's diff editor, its old side from the server, its
  * new side the live `pult:` file, or the server's for a deleted file or a
  * committed change. With no filter, the checkouts with changes alone; with
- * one (`pult-shell.showChanges`), the selected thread's checkout, changes or
- * none, under its card (`card.tsx`), the filter following the selection and
- * letting the view show everything while no thread is selected; while the
+ * one (`pult-shell.showChanges`), the named thread's checkout, changes or
+ * none, under its card (`card.tsx`), the filter following the selection (a
+ * Star's its current conversation) and letting the view show everything
+ * while the selection has no thread; while the
  * thread has one, a turn instead, its files alone under Changed Files: the
  * turn the thread view's changed files card last opened for the thread,
  * both sides of each file from the turn's checkpoints. It reads every
@@ -620,6 +622,7 @@ class ChangesView {
   private readonly entries = new Map<string, Entry>();
   /** Whether the view is narrowed to the selected thread, while one is. */
   private filtered = false;
+  /** The thread the filter follows: the selection's, a Star's its current conversation, or the one `show` last named, until the selection changes. */
   private selection: ThreadSelection | null = null;
   private visible: boolean;
   /** Each thread's latest run's end, by `scopedKey`, as last seen. */
@@ -729,11 +732,11 @@ class ChangesView {
     host.onDidChangeFocus((focused) => {
       if (focused) view.refreshAll();
     });
-    onDidSelectThread(() => view.select(selectedThread() ?? null));
+    onDidSelectThread(() => view.select(selectionThread()));
     // The store may load after the selection, adds and drops checkouts, and a finished run changes the files.
     threadStore.subscribe(() => view.syncStore());
     view.syncStore();
-    view.select(selectedThread() ?? null);
+    view.select(selectionThread());
     return view;
   }
 
@@ -1396,8 +1399,9 @@ class ChangesView {
   };
 
   /**
-   * The Source Control view narrowed to `thread`, selected first if another
-   * is, or to the selected thread; with `turn` its turn's files, else its
+   * The Source Control view narrowed to `thread`, selected first unless the
+   * selection holds it (a Star's thread, under its Star), or to the
+   * selection's thread; with `turn` its turn's files, else its
    * checkout's; and the change of `path` open when the view has it, the
    * turn's first.
    */
@@ -1415,12 +1419,12 @@ class ChangesView {
       if (turn !== null && checkoutRoot !== null)
         this.rememberTurn(target, loadTurn(target, checkoutRoot, turn));
     }
-    const selected = selectedThread();
-    if (
-      thread !== null &&
-      (thread.threadId !== selected?.threadId || thread.environmentId !== selected.environmentId)
-    ) {
-      await selectThread(thread.environmentId, thread.threadId);
+    if (thread !== null) {
+      // A Star's thread is held by the Star's selection, whose lead tab selecting it again would show.
+      if (!holdsThread(thread.environmentId, thread.threadId))
+        await selectThread(thread.environmentId, thread.threadId);
+      // Selecting a Star's thread selects the Star, whose selection names its current conversation.
+      this.selection = thread;
     }
     await this.reveal();
     if (path === null || target === null) return;
@@ -1614,6 +1618,12 @@ interface Turn {
   readonly turnCount: number;
   readonly root: string;
   readonly changes: ReadonlyArray<Change>;
+}
+
+/** The selection's thread: the selected thread, or the selected Star's current conversation; null for a draft, a sleeping Star or the Explorer workspace. */
+function selectionThread(): ThreadSelection | null {
+  const target = selectionTarget();
+  return target !== undefined && "threadId" in target ? target : null;
 }
 
 function turnKey(selection: ThreadSelection): string {
