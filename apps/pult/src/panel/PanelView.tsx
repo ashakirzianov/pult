@@ -127,9 +127,9 @@ function subagentsByRoot(
  * The Pult tab's view, under the sidebar's title row: its shelves in the
  * order they were opened (`shelfOrder`, `shelves.tsx`), each left out while
  * it holds nothing and, closed, its icon in the tray (`TrayShelves.tsx`).
- * The leading run of top shelves (Stars, Explorer, Inbox) sticks to the
- * panel's top, and the rest to its bottom (`lowerShelves`), the panel's
- * notice, Not connected or No threads, between. The Stars' shelf holds the
+ * The top shelves (Stars, Explorer, Inbox), and every shelf before the
+ * last of them, stick to the panel's top, and the rest to its bottom
+ * (`lowerShelves`), the panel's notice, Not connected or No threads, between. The Stars' shelf holds the
  * Stars' cards, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
  * Star's threads have no card of their own. The Explorer shelf is the
  * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
@@ -306,7 +306,7 @@ export function PanelView() {
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards" {...shelfDropHandlers("open")}>
-        {/* One keyed list, so a shelf joining or leaving the top run keeps its state. */}
+        {/* One keyed list, so a shelf joining or leaving the top group keeps its state. */}
         {[...shown.slice(0, top).map(shelf), notice, ...shown.slice(top).map(shelf)]}
         <ShelfDropLine list="open" />
       </ul>

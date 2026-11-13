@@ -168,6 +168,24 @@ NodeTest.describe("shelf order", () => {
     },
   );
 
+  NodeTest.test("opens a top shelf after the last top shelf, under none of the lower ones", () => {
+    const closed = closeIn(closeIn(DEFAULT_SHELF_ORDER, "inbox"), "stars");
+    NodeAssert.deepEqual(openIn(closed, "stars").open, [
+      "explorer",
+      "stars",
+      "working",
+      "snoozed",
+      "settled",
+      "limits",
+    ]);
+    const onlyLower = { open: ["snoozed"], closed: ["stars", "inbox"] } as const;
+    NodeAssert.deepEqual(openIn(openIn(onlyLower, "stars"), "inbox").open, [
+      "stars",
+      "inbox",
+      "snoozed",
+    ]);
+  });
+
   NodeTest.test("keeps a shelf already where it is asked to go in its place", () => {
     const order = closeIn(DEFAULT_SHELF_ORDER, "inbox");
     NodeAssert.equal(openIn(order, "explorer"), order);
@@ -226,22 +244,16 @@ NodeTest.describe("shelf order", () => {
 });
 
 NodeTest.describe("lowerShelves", () => {
-  NodeTest.test("are the open shelves after the leading run of top shelves", () => {
+  NodeTest.test("are the open shelves after the last top shelf", () => {
     NodeAssert.deepEqual(lowerShelves(PANEL_SHELVES), ["working", "snoozed", "settled", "limits"]);
-    NodeAssert.deepEqual(lowerShelves(["explorer", "working", "stars", "limits"]), [
-      "working",
-      "stars",
-      "limits",
-    ]);
+    NodeAssert.deepEqual(lowerShelves(["explorer", "working", "stars", "limits"]), ["limits"]);
+    NodeAssert.deepEqual(lowerShelves(["snoozed", "stars", "inbox"]), []);
   });
 
-  NodeTest.test(
-    "are every open shelf while no top one leads, none while only top ones are open",
-    () => {
-      NodeAssert.deepEqual(lowerShelves(["limits", "inbox"]), ["limits", "inbox"]);
-      NodeAssert.deepEqual(lowerShelves(["inbox", "stars"]), []);
-    },
-  );
+  NodeTest.test("are every open shelf while no top one is open, none while one is last", () => {
+    NodeAssert.deepEqual(lowerShelves(["working", "limits"]), ["working", "limits"]);
+    NodeAssert.deepEqual(lowerShelves(["limits", "inbox"]), []);
+  });
 });
 
 NodeTest.describe("draftCards", () => {

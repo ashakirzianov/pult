@@ -386,7 +386,7 @@
   margin-top: 0;
 }
 
-/* The first lower shelf shown, after the leading run of top shelves (`lowerShelves`, src/panel/order.ts),
+/* The first lower shelf shown, after the last top shelf (`lowerShelves`, src/panel/order.ts),
    takes the room the top ones leave, as upstream's lower shelves sit at its sidebar's bottom; the rest
    follow it. An empty one is left out, so the next takes it. */
 .pult-panel-cards > .pult-shelf-lower:not(.pult-shelf-lower ~ *) {

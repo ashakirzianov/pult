@@ -79,8 +79,9 @@ function update(next: ShelfOrder): void {
  * The Pult tab's shelves in their two lists, kept in localStorage: the open
  * ones in the panel's order, top to bottom, and the closed ones in the tray's
  * (`TrayShelves.tsx`), left to right, whose rows none of the jumps reach
- * (`jump.ts`). Opening a shelf puts it at the panel's bottom, closing one
- * puts it at the tray's right end.
+ * (`jump.ts`). Opening a shelf puts it at the end of its group in the panel,
+ * a top shelf's after the last top shelf (`openIn`), closing one puts it at
+ * the tray's right end.
  */
 export const shelfOrder = {
   get: () => order,
@@ -95,7 +96,7 @@ export function closeShelf(shelf: PanelShelf, at?: number): void {
   update(closeIn(order, shelf, at));
 }
 
-/** Opens the shelf at the panel's bottom, from its tray icon or a command, an open one kept in place, and brings it into view (`useReveal`). */
+/** Opens the shelf at the end of its group in the panel (`openIn`), from its tray icon or a command, an open one kept in place, and brings it into view (`useReveal`). */
 export function openShelf(shelf: PanelShelf): void {
   reveal = { shelf, serial: (reveal?.serial ?? 0) + 1 };
   update(openIn(order, shelf));
@@ -209,7 +210,7 @@ function aim(
   if (moveIn(order, shelf, list, before) === order) return null;
   const others = shown.filter((each) => each.name !== shelf);
   const next = before === null ? others.length : others.findIndex((each) => each.name === before);
-  // In the panel a top shelf joining the top run lands under its last shelf, however far below the lower ones are.
+  // In the panel a shelf joining the top group lands under the shelf before it, however far below the lower ones are.
   const landsLow =
     !vertical ||
     lowerShelves(others.map((each) => each.name).toSpliced(next, 0, shelf)).includes(shelf);

@@ -14,13 +14,14 @@ export const PANEL_SHELVES = [
 
 export type PanelShelf = (typeof PANEL_SHELVES)[number];
 
-/** The top shelves: the leading run of them in the panel's order sticks to its top (`lowerShelves`). */
+/** The top shelves: they and every shelf before the last of them stick to the panel's top (`lowerShelves`). */
 const TOP_SHELVES: ReadonlySet<PanelShelf> = new Set(["stars", "explorer", "inbox"]);
 
 /**
  * Where each shelf is: in the panel's open shelves, top to bottom, or the
- * tray's closed ones, left to right; each shelf in exactly one. Opening or
- * closing a shelf appends it to the end of the other (`openIn`, `closeIn`).
+ * tray's closed ones, left to right; each shelf in exactly one. Closing a
+ * shelf appends it to the tray's end, opening one puts it at the end of its
+ * group in the panel (`openIn`, `closeIn`).
  */
 export interface ShelfOrder {
   readonly open: ReadonlyArray<PanelShelf>;
@@ -29,10 +30,20 @@ export interface ShelfOrder {
 
 export const DEFAULT_SHELF_ORDER: ShelfOrder = { open: PANEL_SHELVES, closed: [] };
 
-/** The order with `shelf` opened, at the panel's bottom; an open one stays where it is. */
+/**
+ * The order with `shelf` opened: a top shelf right after the last top shelf
+ * open, so it pulls no lower shelf up with it, another at the panel's bottom;
+ * an open one stays where it is.
+ */
 export function openIn(order: ShelfOrder, shelf: PanelShelf): ShelfOrder {
   if (order.open.includes(shelf)) return order;
-  return { open: [...order.open, shelf], closed: order.closed.filter((each) => each !== shelf) };
+  const at = TOP_SHELVES.has(shelf)
+    ? order.open.findLastIndex((each) => TOP_SHELVES.has(each)) + 1
+    : order.open.length;
+  return {
+    open: order.open.toSpliced(at, 0, shelf),
+    closed: order.closed.filter((each) => each !== shelf),
+  };
 }
 
 /** The order with `shelf` closed, at the tray's end, or at `at` among the closed; a closed one stays where it is. */
@@ -85,13 +96,13 @@ export function parseShelfOrder(stored: unknown): ShelfOrder | null {
 }
 
 /**
- * The open shelves after the leading run of top shelves, which stick to the
- * panel's bottom: the first of them that renders takes the free space above
- * it (`panel.css`), so an empty one, left out, does not take it.
+ * The open shelves after the last top shelf, which stick to the panel's
+ * bottom, every shelf before it sticking to the top with it: the first of
+ * them that renders takes the free space above it (`panel.css`), so an empty
+ * one, left out, does not take it.
  */
 export function lowerShelves(open: ReadonlyArray<PanelShelf>): ReadonlyArray<PanelShelf> {
-  const run = open.findIndex((shelf) => !TOP_SHELVES.has(shelf));
-  return run === -1 ? [] : open.slice(run);
+  return open.slice(open.findLastIndex((shelf) => TOP_SHELVES.has(shelf)) + 1);
 }
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */

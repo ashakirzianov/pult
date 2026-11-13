@@ -38,8 +38,8 @@ const threadsSnapshot = () => threadStore.get();
 /**
  * The closed shelves' icons from the tray's left end, in the order they
  * were closed, the last closed rightmost (`shelfOrder`), the Stars' none
- * while Show Star is off; a click opens the shelf at the bottom of the Pult
- * tab and brings it into view, the Explorer shelf's the Explorer tab with
+ * while Show Star is off; a click opens the shelf at the end of its group
+ * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
  * a badge in the accent colour, as Source Control's tab does, but Stars,
  * which has none yet, Settled, whose count is in its tooltip, and Limits,
