@@ -409,6 +409,8 @@ describe("the pass", () => {
       const filed = h.path.dirname(h.runFile("filed", "x"));
       yield* h.fs.makeDirectory(h.path.dirname(filed), { recursive: true });
       yield* h.fs.writeFileString(filed, "");
+      yield* h.write("malformed", STANDUP.replace("timezone: UTC\n", ""), "2026-11-10T08:00:00Z");
+      yield* h.fs.writeFileString(h.path.dirname(h.runFile("malformed", "x")), "");
       yield* h.clock("2026-11-10T09:00:01Z");
       yield* h.pass;
 
@@ -419,16 +421,25 @@ describe("the pass", () => {
           "Pult, about schedule dangling",
           "Pult, about schedule filed",
           "Pult, about schedule locked",
+          "Pult, about schedule malformed",
           "schedule standup, due 2026-11-10 09:00 UTC",
         ],
       );
+      assert.match(
+        h.deliveries.find((each) => each.from === "Pult, about schedule malformed")?.text ?? "",
+        /it has no `timezone`/,
+      );
       const view = yield* h.view;
+      const blocked = view.find((each) => each.name === "filed");
+      assert.strictEqual(blocked?.timezone, "UTC");
+      assert.strictEqual(blocked?.next, null);
       assert.deepStrictEqual(
         view.map((each) => [each.name, each.rule, each.problem?.split(":")[0] ?? null]),
         [
           ["dangling", null, "it could not be read"],
-          ["filed", null, "its runs, `.pult/runs/filed`, could not be read"],
+          ["filed", "every day 09:00", "its runs, `.pult/runs/filed`, could not be read"],
           ["locked", null, "it could not be read"],
+          ["malformed", null, "it has no `timezone`, an IANA name"],
           ["standup", "every day 09:00", null],
         ],
       );

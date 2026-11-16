@@ -80,6 +80,7 @@ interface ScheduleFile {
   /** No run due before this fires: the minute the file last changed. */
   readonly floor: number;
   readonly parsed: Parsed;
+  readonly problem: string | null;
   /** The run records' files of the schedule, by name. */
   readonly runs: ReadonlySet<string>;
   readonly last: LastRun | null;
@@ -188,13 +189,18 @@ export const make = Effect.fn("Schedules.make")(function* (
     const filePath = path.join(folder, file);
     const runsFolder = path.join(runs, name);
     /** A file that will not run: no run is due, and `problem` says why. */
-    const problem = (text: string, why: string): ReadonlyArray<ScheduleFile> => [
+    const problem = (
+      text: string,
+      why: string,
+      parsed: Parsed = { ok: false, problem: why },
+    ): ReadonlyArray<ScheduleFile> => [
       {
         name,
         path: filePath,
         text,
         floor: Number.POSITIVE_INFINITY,
-        parsed: { ok: false, problem: why },
+        parsed,
+        problem: why,
         runs: new Set(),
         last: null,
       },
@@ -213,6 +219,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           "the file system gives it no modification time, which its first run is counted from",
         );
       const floor = minuteOf(info.mtime.value.getTime());
+      const parsed = parseSchedule(name, text);
       return yield* Effect.gen(function* () {
         const runFiles = (yield* fs.exists(runsFolder))
           ? (yield* fs.readDirectory(runsFolder)).filter(isRunFileName).toSorted()
@@ -228,15 +235,21 @@ export const make = Effect.fn("Schedules.make")(function* (
             path: filePath,
             text,
             floor,
-            parsed: parseSchedule(name, text),
+            parsed,
+            problem: null,
             runs: new Set(runFiles),
             last,
           } satisfies ScheduleFile,
         ];
       }).pipe(
-        Effect.catchCauseIf(
-          notInterrupted,
-          failed(text, `its runs, \`${RUNS_DIRECTORY}/${name}\`, could not be read`),
+        Effect.catchCauseIf(notInterrupted, (cause) =>
+          Effect.succeed(
+            problem(
+              text,
+              `its runs, \`${RUNS_DIRECTORY}/${name}\`, could not be read: ${messageOf(Cause.squash(cause))}`,
+              parsed,
+            ),
+          ),
         ),
       );
     }).pipe(Effect.catchCauseIf(notInterrupted, failed("", "it could not be read")));
@@ -359,6 +372,7 @@ export const make = Effect.fn("Schedules.make")(function* (
       for (const file of files)
         yield* Effect.gen(function* () {
           if (!file.parsed.ok) return yield* tell(star, file, file.parsed.problem);
+          if (file.problem !== null) return yield* tell(star, file, file.problem);
           const passed = passedProblem(file);
           if (passed !== undefined) return yield* tell(star, file, passed);
           const due = latestDue(file.parsed.schedule, now);
@@ -381,7 +395,8 @@ export const make = Effect.fn("Schedules.make")(function* (
   const earliestAfter = (now: number) => {
     const dues = known.flatMap(({ files }) =>
       files.flatMap((file) => {
-        const due = file.parsed.ok ? nextDue(file.parsed.schedule, now) : undefined;
+        const due =
+          file.problem === null && file.parsed.ok ? nextDue(file.parsed.schedule, now) : undefined;
         return due === undefined ? [] : [due];
       }),
     );
@@ -426,7 +441,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           last,
         };
       const schedule = file.parsed.schedule;
-      const passed = passedProblem(file);
+      const passed = file.problem ?? passedProblem(file);
       const latest = latestDue(schedule, now);
       const next = nextDue(schedule, now);
       return {
