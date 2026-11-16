@@ -18,6 +18,7 @@ import {
   v2ThreadShell,
 } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import {
+  limitedLabel,
   nextWake,
   NO_THREAD_FEATURES,
   promptCacheWarning,
@@ -344,6 +345,50 @@ NodeTest.describe("shellThreads", () => {
         ["unknown", null],
         ["older", undefined],
       ]),
+    );
+  });
+
+  NodeTest.test("carries a usage limit's stop and its reset until the run resumes", () => {
+    const failed = { latestRunId: RunId.make("run"), status: "failed" as const };
+    const threads = shellThreads(
+      [
+        {
+          environmentId: "env",
+          threads: [
+            thread("resets", {
+              ...failed,
+              lastErrorClass: "usage_limit",
+              usageLimitResetAt: "2026-06-20T14:00:00.000Z",
+            }),
+            thread("unknown", { ...failed, lastErrorClass: "usage_limit" }),
+            thread("failed", failed),
+            thread("resumed", {
+              latestRunId: RunId.make("run"),
+              activeRunId: RunId.make("run"),
+              status: "running",
+              lastErrorClass: "usage_limit",
+            }),
+          ],
+          projects: [],
+          features: ALL,
+          hidden: NO_HIDDEN,
+        },
+      ],
+      NOW,
+    );
+    const label = (id: string) => {
+      const usageLimit = threads.find((each) => each.id === id)?.usageLimit ?? null;
+      return usageLimit === null ? null : limitedLabel(usageLimit, Date.parse(NOW), "UTC");
+    };
+    NodeAssert.deepEqual(["resets", "unknown", "failed", "resumed"].map(label), [
+      "Limited · resets 14:00",
+      "Limited",
+      null,
+      null,
+    ]);
+    NodeAssert.equal(
+      limitedLabel({ resetsAt: "2026-06-21T09:00:00.000Z" }, Date.parse(NOW), "UTC"),
+      "Limited · resets tomorrow 09:00",
     );
   });
 

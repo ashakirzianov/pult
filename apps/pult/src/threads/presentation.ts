@@ -24,6 +24,7 @@ import {
 import type { OrchestrationProjectShell } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
+import { instantText } from "../stars/schedules.ts";
 import {
   scopedKey,
   type ShellProject,
@@ -153,6 +154,16 @@ export function promptCacheWarning(
   const left = Date.parse(thread.promptCacheExpiresAt ?? "") - now;
   if (!(left > 0 && left <= PROMPT_CACHE_WARNING_MS)) return null;
   return `Prompt cache expires in ${Math.ceil(left / 60_000)}m`;
+}
+
+/** A card's status for a thread a usage limit stopped: `Limited · resets 14:00`, the day named outside today (`instantText`), `Limited` with no reset time. */
+export function limitedLabel(
+  usageLimit: NonNullable<ShellThread["usageLimit"]>,
+  now: number,
+  zone: string,
+): string {
+  if (usageLimit.resetsAt === null) return "Limited";
+  return `Limited · resets ${instantText(usageLimit.resetsAt, now, zone).replace(/^today /, "")}`;
 }
 
 /** The next time one of `threads` wakes from its snooze, after `now`. */
@@ -372,6 +383,10 @@ export function shellThreads(
       awaitsUser: thread.hasPendingApprovals || thread.hasPendingUserInput,
       assistantStreaming: thread.source.assistantMessageStreaming === true,
       canSnooze: canSnooze(thread, { now }),
+      usageLimit:
+        thread.runtime?.status === "failed" && thread.runtime.lastErrorClass === "usage_limit"
+          ? { resetsAt: thread.runtime.usageLimitResetAt ?? null }
+          : null,
       latestRun:
         thread.latestRun === null
           ? null

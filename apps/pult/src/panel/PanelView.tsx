@@ -13,7 +13,7 @@ import {
   wakeThread,
 } from "../threads/park.ts";
 import { parkActions } from "../threads/parking.ts";
-import { NO_THREAD_FEATURES, promptCacheWarning } from "../threads/presentation.ts";
+import { limitedLabel, NO_THREAD_FEATURES, promptCacheWarning } from "../threads/presentation.ts";
 import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
 import { onDidSelectThread, selectedDraft } from "../threads/selection.ts";
 import {
@@ -670,6 +670,7 @@ function StatusSlot({
 function ageWarning(thread: ShellThread, activity: Activity, now: number): string | null {
   if (
     activity !== null ||
+    thread.usageLimit !== null ||
     thread.latestRun?.status === "failed" ||
     thread.woke ||
     thread.shelf === "snoozed" ||
@@ -679,7 +680,7 @@ function ageWarning(thread: ShellThread, activity: Activity, now: number): strin
   return promptCacheWarning(thread, now);
 }
 
-/** A card's or a subagent's status: the run state when it says something, then Woke, else the thread's age, in the warning colour while its prompt cache is about to expire. */
+/** A card's or a subagent's status: the run state when it says something, a usage limit's stop ahead of a failure, then Woke, else the thread's age, in the warning colour while its prompt cache is about to expire. */
 export function Status({
   thread,
   activity,
@@ -698,6 +699,13 @@ export function Status({
   }
   if (activity === "waiting")
     return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
+  if (thread.usageLimit !== null) {
+    return (
+      <span className="pult-card-status pult-card-status-limited">
+        {limitedLabel(thread.usageLimit, now, new Intl.DateTimeFormat().resolvedOptions().timeZone)}
+      </span>
+    );
+  }
   if (thread.latestRun?.status === "failed")
     return <span className="pult-card-status pult-card-status-failed">Failed</span>;
   if (thread.woke) {

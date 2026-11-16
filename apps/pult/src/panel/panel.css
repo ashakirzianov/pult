@@ -242,6 +242,12 @@
   font-weight: 500;
 }
 
+/* A usage limit's stop, in the warning colour upstream's sidebar gives it. */
+.pult-card-status-limited {
+  color: var(--vscode-editorWarning-foreground);
+  font-weight: 500;
+}
+
 /* Upstream's Woke, in its warning colour. */
 .pult-card-status-woke {
   color: var(--vscode-editorWarning-foreground);

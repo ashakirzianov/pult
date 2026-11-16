@@ -55,6 +55,8 @@ export interface ShellThread {
   readonly assistantStreaming: boolean;
   /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
+  /** Stopped by a provider's usage limit, until its run resumes, with when the limit resets where the server says (upstream's Limited). */
+  readonly usageLimit: { readonly resetsAt: string | null } | null;
   readonly latestRun: {
     status: string;
     startedAt: string | null;
