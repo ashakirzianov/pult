@@ -71,6 +71,23 @@ function targetPath(target: Shown): string {
   return draftId === null ? "/" : `/draft/${encodeURIComponent(draftId)}`;
 }
 
+/** Whether `shown` is `target`: two projects' drafts not started yet share one path. */
+function isShown(shown: Shown, target: ViewTarget): boolean {
+  if (shown.kind === "thread")
+    return (
+      target.kind === "thread" &&
+      shown.environmentId === target.environmentId &&
+      shown.threadId === target.threadId
+    );
+  if (shown.kind === "draft")
+    return (
+      target.kind === "draft" &&
+      shown.environmentId === target.environmentId &&
+      shown.projectId === target.projectId
+    );
+  return false;
+}
+
 /** How long a navigation a mount started may take before the view follows the router again, whatever it resolves. */
 const HEADING_MS = 2000;
 
@@ -160,7 +177,9 @@ type Mount = ReturnType<typeof makeMount>;
  * New thread on branch, send and new), remembered as its project's draft
  * first so the shell's draft takes it up. While the router heads for a
  * target a mount just showed, what it resolves on the way is the previous
- * target's and is not followed; `arrived` is told once it is there.
+ * target's, or a late navigation of its content (a draft's new-thread
+ * handler), and opens nothing in the shell: the router goes on to the
+ * target; `arrived` is told once it is there.
  */
 function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) {
   const target = mount.target();
@@ -178,7 +197,7 @@ function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) 
       environmentId === target.environmentId
     )
       return arrive();
-    if (mount.heading()) return;
+    if (mount.heading()) return goHome();
     if (target.kind === "draft" && isPromotion(target, environmentId, threadId)) {
       mount.promote(environmentId, threadId);
       return;
@@ -202,16 +221,15 @@ function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) 
         closeThreadPanel(session.environmentId, session.threadId);
         return arrive();
       }
-      if (mount.heading()) return;
+      if (mount.heading()) return goHome();
       localStorage.setItem(draftKey(session.environmentId, session.projectId), shown.draftId);
       threadViewHost().openDraft(session.environmentId, session.projectId);
     }
-    if (mount.heading()) return;
     goHome();
     return;
   }
   if (router.state.location.pathname === mount.home()) return arrive();
-  if (mount.heading()) return;
+  if (mount.heading()) return goHome();
   toastManager.add({
     type: "info",
     title: "Not in Pult yet",
@@ -542,10 +560,11 @@ function makeView(composerOnly: boolean) {
       options: MountOptions,
     ) {
       clearTimeout(resting);
+      const before = mount.target();
       const from = mount.home();
-      const rested = mount.target().kind === "none";
       mount.show(target, onPromoted, options);
-      const stays = mount.home() === from;
+      const stays = isShown(before, target) && mount.home() === from;
+      const rested = before.kind === "none";
       if (!stays && !rested) conceal(true);
       element.append(main, bar);
       if (stays) mount.remount();
@@ -604,7 +623,9 @@ function mountView(
   let disposed = false;
   return {
     bar: view.bar,
-    follow: view.follow,
+    follow: (environmentId, threadId) => {
+      if (!disposed) view.follow(environmentId, threadId);
+    },
     dispose: () => {
       if (disposed) return;
       disposed = true;
