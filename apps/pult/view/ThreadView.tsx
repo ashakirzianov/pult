@@ -596,6 +596,16 @@ function makeView(composerOnly: boolean) {
 
 type View = ReturnType<typeof makeView>;
 
+/**
+ * A key the view handled stops at its element, as a webview's would: the
+ * workbench's keybindings listen bubbling on the window, see every key and
+ * count no contenteditable as an input, so Cmd+B in the composer would bold
+ * and toggle the sidebar. A key the view leaves goes on to the workbench.
+ */
+function stopHandledKey(event: KeyboardEvent) {
+  if (event.defaultPrevented) event.stopPropagation();
+}
+
 /** The views no element mounts, one per kind at most: the next mount of the kind takes it. */
 const atRest: { pane?: View; composer?: View } = {};
 
@@ -619,6 +629,7 @@ function mountView(
   delete atRest[kind];
   element.classList.add("pult-thread-view");
   element.classList.toggle("pult-composer-only", composerOnly);
+  element.addEventListener("keydown", stopHandledKey);
   view.enter(element, target, onPromoted, options);
   let disposed = false;
   return {
@@ -629,6 +640,7 @@ function mountView(
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      element.removeEventListener("keydown", stopHandledKey);
       view.leave();
       if (atRest[kind] === undefined) atRest[kind] = view;
       else view.discard();
