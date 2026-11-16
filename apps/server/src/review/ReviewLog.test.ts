@@ -102,6 +102,14 @@ describe("ReviewLog", () => {
         side.commits.map((commit) => commit.subject),
         ["initial commit"],
       );
+      const both = yield* ReviewLog.getLog(driver, {
+        cwd,
+        refs: ["refs/remotes/origin/main", "refs/heads/side"],
+      });
+      assert.deepEqual(
+        both.commits.map((commit) => commit.subject),
+        ["side change", "initial commit"],
+      );
       // A revision is never read as an option.
       yield* Effect.flip(ReviewLog.getLog(driver, { cwd, refs: ["--output=/tmp/pwned"] }));
 

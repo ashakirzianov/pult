@@ -72,10 +72,11 @@ export const getLog = Effect.fn("ReviewLog.getLog")(function* (
       `--format=${LOG_FORMAT}`,
       `--skip=${input.skip ?? 0}`,
       `--max-count=${limit + 1}`,
-      "--end-of-options",
-      ...(refs ?? ["HEAD"]),
+      // Revisions on stdin, which git reads as revisions alone, and with no argv limit for every ref of a large repository.
+      "--stdin",
       "--",
     ],
+    stdin: `${(refs ?? ["HEAD"]).join("\n")}\n`,
     maxOutputBytes: LOG_MAX_OUTPUT_BYTES,
   });
   const fields = result.stdout.split("\0");

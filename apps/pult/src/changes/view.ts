@@ -23,6 +23,7 @@ import type { ThemeIcon } from "@codingame/monaco-vscode-api/vscode/vs/base/comm
 // The package ships `observable`'s types only; its parts are modules of their own.
 import { constObservable } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/observables/constObservable";
 import { observableValue } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/observables/observableValue";
+import { autorun } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/reactions/autorun";
 import { transaction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/transaction";
 import type { IExtUri } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
 import { ResourceTree } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resourceTree";
@@ -62,6 +63,7 @@ import type {
   ISCMResourceDecorations,
   ISCMResourceGroup,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
+import { HISTORY_VIEW_PANE_ID } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
 import {
   ProjectId,
   REVIEW_LOG_MAX_LIMIT,
@@ -278,9 +280,10 @@ function commitSideUri(file: CommitFile, side: Side["side"]): URI {
  * A checkout's history for VS Code's Graph, on a server with the fork's log
  * (`review.getLog`, `review.getRefs`), after the git extension's: its branch,
  * upstream and base, which the Graph's default filter walks, every ref for
- * the others, read again whenever the checkout's changes are; a commit's
- * files from upstream's commit preview, each a diff of `pult-diff:` sides.
- * No incoming or outgoing changes nodes, which need a merge base.
+ * the others, read again whenever the checkout's changes are while the Graph
+ * shows it (`GraphFocus`); a commit's files from upstream's commit preview,
+ * each a diff of `pult-diff:` sides. No incoming or outgoing changes nodes,
+ * which need a merge base.
  */
 class CheckoutHistory implements ISCMHistoryProvider {
   readonly historyItemRef = observableValue<ISCMHistoryItemRef | undefined>(this, undefined);
@@ -294,15 +297,28 @@ class CheckoutHistory implements ISCMHistoryProvider {
   });
   private refs: HistoryRefs | undefined;
   private generation = 0;
+  /** The base of the last `refresh`, and whether its read was skipped while the Graph showed another checkout or none. */
+  private baseRef: string | null = null;
+  private skipped = true;
 
-  constructor(private readonly checkout: Checkout) {}
+  constructor(
+    private readonly checkout: Checkout,
+    private readonly graph: GraphFocus,
+  ) {}
 
   private get server() {
     return changesServer(this.checkout.environmentId);
   }
 
-  /** Reads the refs again, `baseRef` the base the server diffs the branch against; the Graph refreshes as they moved. The newest read wins. */
+  /**
+   * Reads the refs again, `baseRef` the base the server diffs the branch
+   * against, while the Graph shows the checkout, else on its next showing;
+   * the Graph refreshes as they moved. The newest read wins.
+   */
   async refresh(baseRef: string | null): Promise<void> {
+    this.baseRef = baseRef;
+    this.skipped = !this.graph.shows(this);
+    if (this.skipped) return;
     const generation = ++this.generation;
     let refs: HistoryRefs;
     try {
@@ -330,11 +346,20 @@ class CheckoutHistory implements ISCMHistoryProvider {
     });
   }
 
-  provideHistoryItemRefs(): Promise<ISCMHistoryItemRef[]> {
-    return Promise.resolve([...(this.refs?.all ?? [])]);
+  /** The Graph shows the checkout: its refs are read now, when its last refresh skipped them or with `fresh`. */
+  showing(fresh: boolean): Promise<void> {
+    return fresh || this.skipped ? this.refresh(this.baseRef) : Promise.resolve();
+  }
+
+  /** After the read the ask starts, since the Graph drops a saved filter none of whose refs it is given. */
+  async provideHistoryItemRefs(): Promise<ISCMHistoryItemRef[]> {
+    await this.graph.ask(this);
+    return [...(this.refs?.all ?? [])];
   }
 
   async provideHistoryItems(options: ISCMHistoryOptions): Promise<ISCMHistoryItem[]> {
+    // The Graph asks the checkout it shows, whichever its picker names.
+    void this.graph.ask(this);
     if (typeof options.limit === "object") todo("a history page that ends at a commit");
     if (options.filterText !== undefined) todo("a history filtered by text");
     const refs = options.historyItemRefs ?? [];
@@ -405,6 +430,52 @@ class CheckoutHistory implements ISCMHistoryProvider {
   // Without a merge base the Graph draws no incoming or outgoing changes node.
   resolveHistoryItemRefsCommonAncestor(): Promise<string | undefined> {
     return Promise.resolve(undefined);
+  }
+}
+
+/**
+ * Which checkouts VS Code's Graph may show, while it is visible, so only
+ * theirs refs are read, every branch, remote branch and tag being the
+ * costly part of a refresh: the active repository's, which a fresh Graph
+ * waits on and follows, else the first repository's, which it waits on
+ * while none is active; and the one the Graph last asked for history, its
+ * picker's, which the Graph keeps to itself.
+ */
+class GraphFocus {
+  private active: CheckoutHistory | undefined;
+  private asked: CheckoutHistory | undefined;
+
+  constructor(
+    private visible: boolean,
+    private readonly first: () => CheckoutHistory | undefined,
+  ) {}
+
+  shows(history: CheckoutHistory): boolean {
+    return this.visible && (history === (this.active ?? this.first()) || history === this.asked);
+  }
+
+  /** The active repository's history, read when its last refresh skipped its refs. */
+  setActive(history: CheckoutHistory | undefined): void {
+    this.active = history;
+    if (this.visible) void history?.showing(false);
+  }
+
+  /** A checkout's history attached, read when the Graph may show it. */
+  attached(history: CheckoutHistory): void {
+    if (this.shows(history)) void history.showing(false);
+  }
+
+  /** The Graph asked `history` for its history or refs, read when its last refresh skipped them. */
+  ask(history: CheckoutHistory): Promise<void> {
+    this.asked = history;
+    return this.visible ? history.showing(false) : Promise.resolve();
+  }
+
+  /** The Graph shown, the refs of the repository a fresh Graph shows read afresh, or hidden. */
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.asked = undefined;
+    if (visible) void (this.active ?? this.first())?.showing(true);
   }
 }
 
@@ -640,6 +711,8 @@ class ChangesView {
     Promise<{ readonly oldContents: string; readonly newContents: string }>
   >();
   private readonly decorationsChanged = new Emitter<URI[]>();
+  /** The checkouts whose refs the Graph's refreshes read. */
+  private readonly graph: GraphFocus;
   /** The checkouts a file changed under, read again together once the burst settles. */
   private readonly stale = new Set<Entry>();
   private staleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -649,6 +722,11 @@ class ChangesView {
     private readonly views: IViewsService,
   ) {
     this.visible = views.isViewContainerVisible(SCM_CONTAINER);
+    this.graph = new GraphFocus(views.isViewVisible(HISTORY_VIEW_PANE_ID), () => {
+      const [first] = services.scm.repositories;
+      const history = first?.provider.historyProvider.get();
+      return history instanceof CheckoutHistory ? history : undefined;
+    });
   }
 
   /** Starts following the store, the selection and Source Control's visibility, with the `pult-diff:` sides and the badges registered. */
@@ -720,6 +798,16 @@ class ChangesView {
     });
     views.onDidChangeViewContainerVisibility(({ id, visible }) => {
       if (id === SCM_CONTAINER) view.setVisible(visible);
+    });
+    views.onDidChangeViewVisibility(({ id, visible }) => {
+      if (id === HISTORY_VIEW_PANE_ID) view.graph.setVisible(visible);
+    });
+    // The active repository's history, attached once its server tells it serves the fork's log.
+    autorun((reader) => {
+      const history = scmView.activeRepository
+        .read(reader)
+        ?.repository.provider.historyProvider.read(reader);
+      view.graph.setActive(history instanceof CheckoutHistory ? history : undefined);
     });
     // A file written through the page, or changed as a folder's watch reports it, makes its checkout's diff stale.
     const { extUri } = uriIdentity;
@@ -1040,9 +1128,11 @@ class ChangesView {
       .hasHistory()
       .catch(() => false);
     if (!served || entry.registered?.provider !== provider) return;
-    const history = new CheckoutHistory(entry.checkout);
-    provider.historyProvider.set(history, undefined);
+    const history = new CheckoutHistory(entry.checkout, this.graph);
+    // Its base first, so the Graph, should it show the checkout as it attaches, reads its refs once.
     await history.refresh(entry.baseRef);
+    provider.historyProvider.set(history, undefined);
+    this.graph.attached(history);
   }
 
   /** The thread a commit of the checkout names, for the server's project settings: the filter's, when on it, else the first on it. */
