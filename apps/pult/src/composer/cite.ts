@@ -10,16 +10,16 @@ import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/edito
 
 import type { ICodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
 
-import { joinPath, toHostPath } from "../files/paths.ts";
+import { toHostPath } from "../files/paths.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
-import { citedPath, type CitedCheckout } from "./citedPath.ts";
+import { citedPath, diffFile, type CitedCheckout } from "./citedPath.ts";
 import { diffExcerpt } from "./diffExcerpt.ts";
 import { composerStrip, HasComposerContext, selectedTarget } from "./index.tsx";
 
 const CITE_SELECTION = "pult-shell.citeSelection";
 
-/** The changes view's diff sides (`src/changes/view.ts`), whose query names the change. */
+/** The changes view's and the Graph's diff sides (`src/changes/view.ts`), whose query names the change or the commit's file. */
 const DIFF_SCHEME = "pult-diff";
 
 /** Where Cite applies: a `pult:` file, or a side of the changes view's diff, while a thread or a project's draft is selected. */
@@ -47,8 +47,8 @@ function selectedCheckout(): CitedCheckout | undefined {
 
 /**
  * The changes view's diff `editor` is a side of, with both sides' lines and
- * the diff's mappings: the change's checkout and its path relative to it, and
- * source from the old side's `pult-diff:` query.
+ * the diff's mappings: the file its old side's `pult-diff:` query names
+ * (`diffFile`), a change's or a Graph commit's.
  */
 function changesDiff(
   diffs: ReturnType<ICodeEditorService["listDiffEditors"]>,
@@ -70,14 +70,8 @@ function changesDiff(
   )
     return undefined;
   if (original.uri.scheme !== DIFF_SCHEME) return undefined;
-  const { change } = JSON.parse(original.uri.query) as {
-    change: { environmentId: string; cwd: string; path: string; sourceKind: string };
-  };
   return {
-    environmentId: change.environmentId,
-    root: change.cwd,
-    path: change.path,
-    source: change.sourceKind === "working-tree" ? ("Uncommitted" as const) : ("Changes" as const),
+    ...diffFile(original.uri.query),
     side: diff?.getOriginalEditor() === editor ? ("old" as const) : ("new" as const),
     original: original.getLinesContent(),
     modified: modified.getLinesContent(),
@@ -142,11 +136,7 @@ export function registerCiteCommand(): void {
           if (excerpt === null) return void (await notify("Cite takes lines of the diff."));
           cited = citations.citeDiffLines(target, {
             ...excerpt,
-            path: citedPath(selectedCheckout(), {
-              environmentId: diff.environmentId,
-              hostPath: joinPath(diff.root, diff.path),
-              root: diff.root,
-            }),
+            path: citedPath(selectedCheckout(), diff),
             source: diff.source,
             side: diff.side === "old" ? "deletions" : "additions",
             startLine: selection.startLineNumber,
