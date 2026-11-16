@@ -28,6 +28,7 @@ import {
   StorageTarget,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { EditorActivation } from "@codingame/monaco-vscode-api/vscode/vs/platform/editor/common/editor";
+import { GroupModelChangeKind } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { GroupsOrder } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorGroupsService";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
@@ -427,6 +428,7 @@ function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<
       );
     } finally {
       endSwitch();
+      void storage.flush();
     }
     for (const listener of listeners) listener();
   });
@@ -465,11 +467,12 @@ async function switchTo(next: Selection): Promise<void> {
     if (isExplorer(next)) await closeClosedExplorerFiles();
   } finally {
     endSwitch();
+    // The selection is stored at once, the editor part's state only when the workbench saves its state (at intervals, and at
+    // shutdown, which a page's reload does not wait for): saved now, completed or cancelled, a reload restores the tabs of the
+    // selection it restores. The changes outside a switch save themselves (`flushSoon`).
+    void storage.flush();
   }
   for (const listener of listeners) listener();
-  // The selection is stored at once, the editor part's state only when the workbench saves its state (at intervals, and at
-  // shutdown, which a page's reload may not finish): saved now, a reload restores the tabs of the selection it restores.
-  void storage.flush();
 
   /**
    * Closes the tabs of modified files, each through the workbench's own Save,
@@ -566,12 +569,40 @@ function keepThreadTabsFirst(groups: ReadonlyArray<IEditorGroup>): void {
   }
 }
 
+/** The editor part's changes that change the tab set a reload restores; a label, a dirty mark or a selection does not. */
+const TAB_SET_CHANGES = new Set([
+  GroupModelChangeKind.EDITOR_OPEN,
+  GroupModelChangeKind.EDITOR_CLOSE,
+  GroupModelChangeKind.EDITOR_MOVE,
+  GroupModelChangeKind.EDITOR_ACTIVE,
+  GroupModelChangeKind.EDITOR_PIN,
+  GroupModelChangeKind.EDITOR_STICKY,
+]);
+
+let flushQueued = false;
+
+/**
+ * Saves the workbench's state once the current burst of changes is done. The
+ * workbench saves it every few seconds and on shutdown, but a reload does not
+ * wait for the shutdown's write to IndexedDB, so a tab opened just before a
+ * reload was gone after it (`pult/issues/reload-loses-new-tabs.md`).
+ */
+function flushSoon(storage: IStorageService): void {
+  if (flushQueued) return;
+  flushQueued = true;
+  queueMicrotask(() => {
+    flushQueued = false;
+    void storage.flush();
+  });
+}
+
 /**
  * Reads the selection saved before a reload; the editor part restores its own
  * state, which is the selected thread's tabs, so nothing is applied. Then
  * keeps the thread tab leftmost as editors move, after each change has settled:
  * the event fires inside a group's move, before its tab strip has caught up,
- * and a second move from there scrambles the strip's labels. Started once the
+ * and a second move from there scrambles the strip's labels. Saves the
+ * workbench's state as the tab set changes (`flushSoon`). Started once the
  * workbench is up.
  */
 export async function restoreThreadSelection(): Promise<void> {
@@ -593,8 +624,9 @@ export async function restoreThreadSelection(): Promise<void> {
       files: files.filter((file) => typeof file === "string").map((file) => URI.parse(file)),
       active: undefined,
     };
-  editors.onDidEditorsChange(() => {
+  editors.onDidEditorsChange(({ event }) => {
     if (!switching) queueMicrotask(() => keepThreadTabsFirst(groups.groups));
+    if (!switching && TAB_SET_CHANGES.has(event.kind)) flushSoon(storage);
     recordExplorerFiles(editors, storage);
   });
   editors.onDidActiveEditorChange(() => recordExplorerFiles(editors, storage));
