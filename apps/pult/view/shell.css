@@ -34,6 +34,8 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 .pult-preview-view {
   width: 100%;
   height: 100%;
+  /* Over upstream's rule on the document's root and body, which the page's build moves onto the thread view's root (\`vite.config.ts\`). */
+  min-height: 0;
   overflow: hidden;
   background: var(--background);
   color: var(--foreground);

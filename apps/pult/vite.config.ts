@@ -2,6 +2,14 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import {
+  Features,
+  transform,
+  type Declaration,
+  type Selector,
+  type SelectorComponent,
+  type StyleRule,
+} from "lightningcss";
 import { defineConfig, type Plugin } from "vite";
 import { STUBS } from "./view/stubs.ts";
 
@@ -49,6 +57,201 @@ function threadViewRelease(): Plugin {
 }
 
 /**
+ * The view's elements in the page, the scope of its stylesheet: the roots the
+ * shell mounts it in, the thread's and the composer strip's
+ * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`) and the
+ * browser host's (`view/browserHost.tsx`), and what it puts on the page's
+ * body: base-ui's portal node for every popover, menu, tooltip, dialog and
+ * toast, and upstream's own portals there, the composer's command menu and
+ * the cite-selection button.
+ */
+const VIEW_ROOTS =
+  ".pult-thread-view, .pult-view-theme, [data-base-ui-portal], [data-composer-drawer-layer], [data-assistant-selection-toolbar]";
+
+/** One selector, parsed by Lightning CSS. */
+function parseSelector(text: string): Selector {
+  let selector: Selector | undefined;
+  transform({
+    filename: "selector.css",
+    code: Buffer.from(`${text} {}`),
+    visitor: { Rule: { style: (rule) => void (selector = rule.value.selectors[0]) } },
+  });
+  if (selector === undefined) throw new Error(`not a selector: ${text}`);
+  return selector;
+}
+
+/**
+ * A selector's subject compound, between its last combinator and its pseudo-elements.
+ * Lightning CSS lists a selector's compounds from the first to the subject.
+ */
+function subjectOf(selector: Selector) {
+  let start = selector.length;
+  while (start > 0 && selector[start - 1]?.type !== "combinator") start--;
+  let end = start;
+  while (end < selector.length && selector[end]?.type !== "pseudo-element") end++;
+  return {
+    ancestors: selector.slice(0, start),
+    own: selector.slice(start, end),
+    elements: selector.slice(end),
+  };
+}
+
+const isDocumentRoot = (component: SelectorComponent) =>
+  (component.type === "type" && (component.name === "html" || component.name === "body")) ||
+  (component.type === "pseudo-class" && (component.kind === "root" || component.kind === "host"));
+const hasDocumentRootSubject = (selector: Selector) => subjectOf(selector).own.some(isDocumentRoot);
+const isToken = (declaration: Declaration) =>
+  declaration.property === "custom" && declaration.value.name.startsWith("--");
+
+/** Lightning CSS hands an absent optional out as null but reads some back only as a missing field (a `var()`'s `from`). */
+function withoutNulls<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutNulls) as T;
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, field]) => field !== null)
+      .map(([key, field]) => [key, withoutNulls(field)]),
+  ) as T;
+}
+
+function withDeclarations(rule: StyleRule, keep: (declaration: Declaration) => boolean) {
+  const declarations = {
+    declarations: (rule.declarations?.declarations ?? []).filter(keep),
+    importantDeclarations: (rule.declarations?.importantDeclarations ?? []).filter(keep),
+  };
+  return declarations.declarations.length + declarations.importantDeclarations.length === 0
+    ? undefined
+    : { ...rule, declarations };
+}
+
+/** The rules that are global by name or by kind, which stay on the page outside the scope. */
+const GLOBAL_RULES = [
+  "keyframes",
+  "font-face",
+  "property",
+  "layer-statement",
+  "import",
+  "namespace",
+  "counter-style",
+  "font-palette-values",
+  "font-feature-values",
+  "page",
+  "custom-media",
+] as const;
+const unplaced = (rule: { type: string }) => {
+  throw new Error(`the view's stylesheet has a ${rule.type} rule its scope does not place`);
+};
+
+/**
+ * Upstream's stylesheet bounded to the view's elements (`VIEW_ROOTS`), so its
+ * reset and its rules on the document leave the workbench's browser defaults
+ * alone (a hover's bulleted list, the page's `color-scheme`); the view's
+ * classes share no name with the workbench's. Its nesting flattened, it
+ * leaves as two parts: on the page, its global rules and its custom
+ * properties on `:root`, `html`, `body` and `:host`, which style nothing by
+ * themselves and stay where upstream's own code writes over them (the `.dark`
+ * class and `data-theme-id` on `<html>`, the appearance settings' inline
+ * tokens); and every other rule inside one `@scope` over the view's elements,
+ * a selector's subject marked `:where(:scope, *)` so a root that carries
+ * classes of its own matches too, and the rest of a rule on the document's
+ * root or body moved onto the thread view's root, its conditions on the root
+ * kept as an ancestor test (`:root:is(.dark, .dark *) :where(:scope.pult-thread-view)`).
+ */
+function scopeThreadViewStylesheet(code: string, filename: string): string {
+  const flat = transform({
+    filename,
+    code: Buffer.from(code),
+    include: Features.Nesting,
+    errorRecovery: false,
+  }).code;
+  const inScope = parseSelector(":where(:scope, *)");
+  const atThreadRoot = parseSelector(":where(:scope.pult-thread-view)");
+  const page = transform({
+    filename,
+    code: flat,
+    errorRecovery: false,
+    visitor: {
+      Rule: {
+        style(rule) {
+          const selectors = rule.value.selectors.filter(hasDocumentRootSubject);
+          const tokens = withDeclarations({ ...rule.value, selectors }, isToken);
+          return selectors.length === 0 || tokens === undefined
+            ? []
+            : withoutNulls({ ...rule, value: tokens });
+        },
+      },
+    },
+  }).code;
+  const scoped = transform({
+    filename,
+    code: flat,
+    errorRecovery: false,
+    visitor: {
+      Rule: {
+        ...Object.fromEntries(GLOBAL_RULES.map((type) => [type, () => []])),
+        unknown: unplaced,
+        custom: unplaced,
+        nesting: unplaced,
+        "nested-declarations": unplaced,
+        viewport: unplaced,
+        "moz-document": unplaced,
+        "view-transition": unplaced,
+        "position-try": unplaced,
+        style(rule) {
+          if (rule.value.rules?.length) unplaced({ type: "nested style" });
+          const onRoots = rule.value.selectors.filter(hasDocumentRootSubject);
+          if (onRoots.length === 0) return undefined;
+          const others = rule.value.selectors.filter(
+            (selector) => !hasDocumentRootSubject(selector),
+          );
+          const moved = withDeclarations(
+            {
+              ...rule.value,
+              selectors: onRoots.map((selector) => {
+                const { ancestors, own, elements } = subjectOf(selector);
+                return [
+                  ...ancestors,
+                  ...own,
+                  { type: "combinator", value: "descendant" },
+                  ...atThreadRoot,
+                  ...elements,
+                ];
+              }),
+            },
+            (declaration) => !isToken(declaration),
+          );
+          return withoutNulls([
+            ...(others.length > 0
+              ? [{ ...rule, value: { ...rule.value, selectors: others } }]
+              : []),
+            ...(moved === undefined ? [] : [{ ...rule, value: moved }]),
+          ]);
+        },
+      },
+      Selector(selector) {
+        if (hasDocumentRootSubject(selector) || JSON.stringify(selector).includes('"kind":"scope"'))
+          return selector;
+        const { ancestors, own, elements } = subjectOf(selector);
+        return [...ancestors, ...own, ...inScope, ...elements];
+      },
+    },
+  }).code;
+  return `${page.toString()}\n@scope (${VIEW_ROOTS}) {\n${scoped.toString()}}\n`;
+}
+
+/** The view's stylesheet (`view/tailwind.css`), once Tailwind has built it, bounded to the view (`scopeThreadViewStylesheet`). */
+function threadViewStylesheetScope(): Plugin {
+  const stylesheet = NodePath.join(view, "tailwind.css");
+  return {
+    name: "pult:thread-view-stylesheet-scope",
+    transform: (code, id) =>
+      id.split("?")[0] === stylesheet
+        ? { code: scopeThreadViewStylesheet(code, stylesheet), map: null }
+        : null,
+  };
+}
+
+/**
  * The repository's release, which its release stamps on `contracts` as on its
  * apps: the view reports it as its own, so upstream's version check compares
  * like with like.
@@ -88,6 +291,7 @@ export default defineConfig({
     // The view is built as the fork builds its web app, with the React Compiler; the shell's own React is not.
     react({ compiler: { sources: [webSource + NodePath.sep, view + NodePath.sep] } }),
     tailwindcss(),
+    threadViewStylesheetScope(),
     {
       // The vendored workbench imports its CSS as strings and injects it itself.
       name: "load-vscode-css-as-string",
