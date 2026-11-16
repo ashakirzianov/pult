@@ -10,7 +10,10 @@ import {
   Action2,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { ProgressLocation } from "@codingame/monaco-vscode-api/vscode/vs/platform/progress/common/progress";
 import { request } from "@t3tools/client-runtime/rpc";
 import { type DesktopBridge, type DesktopUpdateState, WS_METHODS } from "@t3tools/contracts";
@@ -57,7 +60,11 @@ export function registerUpdateCommands(): void {
           title: { value: "Check for Updates", original: "Check for Updates" },
           category,
           f1: true,
-          precondition: UpdateContext.notEqualsTo(""),
+          // Bound in Pult.app alone: an unbound key reads undefined, which `notEqualsTo("")` would let through.
+          precondition: ContextKeyExpr.or(
+            UpdateContext.isEqualTo("none"),
+            UpdateContext.isEqualTo("downloaded"),
+          ),
         });
       }
 
