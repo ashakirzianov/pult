@@ -39,6 +39,7 @@ import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { isRichTextBoldShortcut } from "~/keybindings";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
@@ -603,7 +604,12 @@ type View = ReturnType<typeof makeView>;
  * and toggle the sidebar. A key the view leaves goes on to the workbench.
  */
 function stopHandledKey(event: KeyboardEvent) {
-  if (event.defaultPrevented) event.stopPropagation();
+  if (!event.defaultPrevented) return;
+  // The composer swallows Cmd+B with nothing selected, leaving it to the app's sidebar toggle: here the workbench's.
+  const bold = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
+  if (bold && event.code === "KeyB" && !isRichTextBoldShortcut(event, window.getSelection()))
+    return;
+  event.stopPropagation();
 }
 
 /** The views no element mounts, one per kind at most: the next mount of the kind takes it. */
