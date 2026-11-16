@@ -208,6 +208,16 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   height: 14px;
 }
 
+/* Upstream's text button among them, Compact or Keep with the context's
+   tokens, sized to its label and padded as the bar's labels are. */
+.pult-composer-bar
+  > [data-chat-composer-slot-item="actions"]
+  [data-chat-composer-compact-send]
+  > button {
+  width: auto;
+  padding-inline: var(--pult-bar-item-padding);
+}
+
 .pult-composer-bar > [data-chat-composer-slot-item="actions"] button[type="submit"] {
   background: var(--accent);
   color: var(--foreground);
