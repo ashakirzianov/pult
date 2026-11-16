@@ -103,6 +103,7 @@ import {
 } from "./commit.ts";
 import { historyItem, type HistoryRefs, historyRefs, refsChange } from "./history.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
+import { setRepository } from "./repositories.ts";
 import { changesServer } from "./server.ts";
 import {
   afterStep,
@@ -1000,13 +1001,18 @@ class ChangesView {
     const generation = ++entry.syncGeneration;
     const { environmentId, root } = entry.checkout;
     let sync: SyncState | undefined;
+    // A failed read counts as a repository, for the thread bar's Source Control.
+    let isRepo = true;
     try {
-      sync = syncState(await limited(() => changesServer(environmentId).status(root)));
+      const status = await limited(() => changesServer(environmentId).status(root));
+      sync = syncState(status);
+      isRepo = status.isRepo;
     } catch {
       // Not a repository, a worktree gone: nothing to sync.
       sync = undefined;
     }
     if (generation !== entry.syncGeneration || this.entries.get(entry.key) !== entry) return;
+    setRepository(entry.key, isRepo);
     if (JSON.stringify(sync) === JSON.stringify(entry.sync)) return;
     entry.sync = sync;
     this.render();

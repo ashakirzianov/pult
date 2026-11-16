@@ -2,6 +2,7 @@ import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { lazy, type ReactElement, Suspense, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
+import { isNoRepository, subscribeRepositories } from "../changes/repositories.ts";
 import { threadStore } from "./store.ts";
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
@@ -28,8 +29,10 @@ export function BarTip({ label, children }: { label: string; children: ReactElem
  * thread view provides (`ThreadViewMounts`): Explorer, an icon button that
  * opens the Explorer tab narrowed to the thread's root (a note when the
  * thread has none), Source Control, one that opens the changes view narrowed
- * to the thread's checkout (`pult-shell.showChanges`), and the environment,
- * an icon whose name shows in a tooltip. The bar orders its entries by their
+ * to the thread's checkout (`pult-shell.showChanges`), hidden while the
+ * changes view found the checkout no repository
+ * (`src/changes/repositories.ts`), and the environment, an icon whose name
+ * shows in a tooltip. The bar orders its entries by their
  * `data-chat-composer-slot-item`.
  */
 export function ThreadBarEntries({
@@ -44,6 +47,9 @@ export function ThreadBarEntries({
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const thread = state.threads.find(
     (candidate) => candidate.id === threadId && candidate.environmentId === environmentId,
+  );
+  const noRepository = useSyncExternalStore(subscribeRepositories, () =>
+    thread?.checkoutRoot == null ? false : isNoRepository(environmentId, thread.checkoutRoot),
   );
   if (thread === undefined) return null;
   const held = state.environments.find((candidate) => candidate.id === environmentId);
@@ -71,7 +77,7 @@ export function ThreadBarEntries({
               </button>
             </BarTip>
           )}
-          {thread.checkoutRoot === null ? null : (
+          {thread.checkoutRoot === null || noRepository ? null : (
             <BarTip label="Source Control">
               <button
                 type="button"
