@@ -108,7 +108,7 @@ NodeTest.describe("shownChanges", () => {
   NodeTest.test(
     "shows the working tree while it has uncommitted changes, though the branch repeats them",
     () => {
-      const shown = shownChanges("a", "/repo", [
+      const shown = shownChanges("a", "/repo", "/repo", [
         source("branch-range", ["a.ts", "b.ts"]),
         source("working-tree", ["b.ts"]),
       ]);
@@ -121,7 +121,7 @@ NodeTest.describe("shownChanges", () => {
   );
 
   NodeTest.test("shows the branch's changes once everything is committed", () => {
-    const shown = shownChanges("a", "/repo", [
+    const shown = shownChanges("a", "/repo", "/repo", [
       source("working-tree", []),
       source("branch-range", ["a.ts"]),
     ]);
@@ -132,7 +132,7 @@ NodeTest.describe("shownChanges", () => {
     "shows nothing once the base branch is committed, its unpushed commits being no branch's changes",
     () => {
       NodeAssert.equal(
-        shownChanges("a", "/repo", [
+        shownChanges("a", "/repo", "/repo", [
           source("working-tree", []),
           source("branch-range", ["a.ts"], "main"),
         ]),
@@ -143,9 +143,9 @@ NodeTest.describe("shownChanges", () => {
 
   NodeTest.test("shows nothing without changes", () => {
     NodeAssert.equal(
-      shownChanges("a", "/repo", [source("working-tree", []), source("branch-range", [])]),
+      shownChanges("a", "/repo", "/repo", [source("working-tree", []), source("branch-range", [])]),
       undefined,
     );
-    NodeAssert.equal(shownChanges("a", "/repo", []), undefined);
+    NodeAssert.equal(shownChanges("a", "/repo", "/repo", []), undefined);
   });
 });

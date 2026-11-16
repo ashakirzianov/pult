@@ -147,6 +147,8 @@ type Side =
 interface CommitFile {
   readonly environmentId: string;
   readonly cwd: string;
+  /** The repository's root, which `path` is relative to. */
+  readonly repositoryRoot: string;
   readonly sha: string;
   /** The commit's first parent, or the empty tree for a root commit, as the server diffs it. */
   readonly parent: string;
@@ -239,7 +241,7 @@ const BADGES: Record<
 
 /** The live file a change is of. */
 function fileUri(change: Change): URI {
-  return pultUri(change.environmentId, joinPath(change.cwd, change.path));
+  return pultUri(change.environmentId, joinPath(change.repositoryRoot, change.path));
 }
 
 /** A `pult:` file's key among the decorated, the authority in any case. */
@@ -249,7 +251,7 @@ function decorationKey(uri: URI): string {
 
 function sideUri(change: Change, side: Side["side"]): URI {
   const path = side === "old" ? (change.previousPath ?? change.path) : change.path;
-  return pultUri(change.environmentId, joinPath(change.cwd, path)).with({
+  return pultUri(change.environmentId, joinPath(change.repositoryRoot, path)).with({
     scheme: DIFF_SCHEME,
     query: JSON.stringify({ change, side } satisfies Side),
   });
@@ -266,7 +268,7 @@ function sides(change: Change): { readonly original: URI; readonly modified: URI
 
 function commitSideUri(file: CommitFile, side: Side["side"]): URI {
   const path = side === "old" ? (file.previousPath ?? file.path) : file.path;
-  return pultUri(file.environmentId, joinPath(file.cwd, path)).with({
+  return pultUri(file.environmentId, joinPath(file.repositoryRoot, path)).with({
     scheme: DIFF_SCHEME,
     query: JSON.stringify({ commit: file, side } satisfies Side),
   });
@@ -353,11 +355,10 @@ class CheckoutHistory implements ISCMHistoryProvider {
     historyItemParentId: string | undefined,
   ): Promise<ISCMHistoryItemChange[]> {
     const { environmentId, root } = this.checkout;
-    const preview = await this.server.diffPreview({
-      cwd: root,
-      commitSha: historyItemId,
-      metadataOnly: true,
-    });
+    const [preview, repository] = await Promise.all([
+      this.server.diffPreview({ cwd: root, commitSha: historyItemId, metadataOnly: true }),
+      repositoryRoot(environmentId, root),
+    ]);
     const source = preview.sources.find((candidate) => candidate.kind === "commit");
     if (source === undefined || source.baseRef === null || source.headRef === null) return [];
     if (historyItemParentId !== undefined && historyItemParentId !== source.baseRef)
@@ -367,13 +368,14 @@ class CheckoutHistory implements ISCMHistoryProvider {
       const file: CommitFile = {
         environmentId,
         cwd: root,
+        repositoryRoot: repository,
         sha,
         parent,
         path: stat.path,
         previousPath: stat.previousPath,
       };
       return {
-        uri: pultUri(environmentId, joinPath(root, stat.path)),
+        uri: pultUri(environmentId, joinPath(repository, stat.path)),
         originalUri: commitSideUri(file, "old"),
         modifiedUri: commitSideUri(file, "new"),
       };
@@ -866,11 +868,18 @@ class ChangesView {
     const generation = ++entry.generation;
     const { environmentId, root } = entry.checkout;
     const current = () => generation === entry.generation && this.entries.get(entry.key) === entry;
+    // Asked beside the diff, and waited for only when there are changes to place: a folder off any repository has none.
+    const repository = repositoryRoot(environmentId, root);
+    repository.catch(() => undefined);
     const loading = limited(() => changesServer(environmentId).diffPreview({ cwd: root })).then(
-      (preview) => {
+      async (preview) => {
+        const shown =
+          preview.sources.length === 0
+            ? undefined
+            : shownChanges(environmentId, root, await repository, preview.sources);
         if (!current()) return;
         entry.failure = null;
-        entry.shown = shownChanges(environmentId, root, preview.sources);
+        entry.shown = shown;
         entry.baseRef =
           preview.sources.find((source) => source.kind === "branch-range")?.baseRef ?? null;
       },
@@ -1641,23 +1650,27 @@ async function loadTurn(
   root: string,
   turn: TurnCheckpoints,
 ): Promise<Turn> {
-  const patch = await changesServer(selection.environmentId)
-    .turnDiff({
-      threadId: ThreadId.make(selection.threadId),
-      fromTurnCount: turn.turnCount - 1,
-      toTurnCount: turn.turnCount,
-      ignoreWhitespace: false,
-    })
-    .then(
-      (result) => result.diff,
-      () => "",
-    );
+  const [patch, repository] = await Promise.all([
+    changesServer(selection.environmentId)
+      .turnDiff({
+        threadId: ThreadId.make(selection.threadId),
+        fromTurnCount: turn.turnCount - 1,
+        toTurnCount: turn.turnCount,
+        ignoreWhitespace: false,
+      })
+      .then(
+        (result) => result.diff,
+        () => "",
+      ),
+    repositoryRoot(selection.environmentId, root),
+  ]);
   const parsed = new Map(patchFiles(patch).map((file) => [file.path, file]));
   const changes = turn.files.map((stat): Change => {
     const file = parsed.get(stat.path);
     return {
       environmentId: selection.environmentId,
       cwd: root,
+      repositoryRoot: repository,
       sourceKind: "turn",
       baseRef: turn.fromRef,
       headRef: turn.toRef,
@@ -1734,6 +1747,43 @@ async function commitContents(
 /** What the view does not do yet, loud where it is asked for: `grep 'todo('` lists it. */
 function todo(reason: string): never {
   throw new Error(`Pult's changes view does not do this yet: ${reason}.`);
+}
+
+/** Each checkout's repository root, by `checkoutKey`, read once, since a checkout's repository does not move. */
+const repositoryRoots = new Map<string, Promise<string>>();
+
+/**
+ * The root of the repository the checkout at `cwd` is in, which the
+ * server's paths are relative to (a project in a subdirectory of its
+ * repository is below it), from the checkout's status read with nothing
+ * fetched; a failed read is tried again on the next ask.
+ */
+function repositoryRoot(environmentId: string, cwd: string): Promise<string> {
+  const key = checkoutKey(environmentId, cwd);
+  const known = repositoryRoots.get(key);
+  if (known !== undefined) return known;
+  const read = limited(() => changesServer(environmentId).localStatus(cwd)).then(
+    ({ workingTree }) => checkoutRepositoryRoot(cwd, workingTree.rootPath),
+  );
+  repositoryRoots.set(key, read);
+  read.catch(() => {
+    if (repositoryRoots.get(key) === read) repositoryRoots.delete(key);
+  });
+  return read;
+}
+
+/**
+ * The repository's root by the checkout's path: the server's is git's, with
+ * every symlink resolved (macOS's `/tmp` among them), so for a checkout off
+ * it, at its repository's root by its name, the checkout's own path, the
+ * one the explorer and the editors name the files by.
+ */
+function checkoutRepositoryRoot(cwd: string, rootPath: string | undefined): string {
+  if (rootPath === undefined) throw new Error(`The server named no repository root for ${cwd}.`);
+  if (cwd === rootPath || cwd.startsWith(rootPath.endsWith("/") ? rootPath : `${rootPath}/`))
+    return rootPath;
+  if (cwd.split("/").at(-1) === rootPath.split("/").at(-1)) return cwd;
+  return todo(`a checkout below its repository's root through a symlink, ${cwd} in ${rootPath}`);
 }
 
 function joinPath(root: string, relativePath: string): string {

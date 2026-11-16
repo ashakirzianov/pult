@@ -77,6 +77,14 @@ export function changesServer(environmentId: string) {
       await whenReady(environmentId);
       return connection.run(environmentId, request(WS_METHODS.vcsRefreshStatus, { cwd }));
     },
+    /** The checkout's status as the server last read it, nothing fetched. */
+    localStatus: async (cwd: string): Promise<VcsStatusResult> => {
+      await whenReady(environmentId);
+      return connection.run(
+        environmentId,
+        request(WS_METHODS.vcsRefreshStatus, { cwd, localOnly: true }),
+      );
+    },
     /** A fast-forward pull of the checkout's branch from its upstream; a diverged branch fails. */
     pull: async (cwd: string): Promise<VcsPullResult> => {
       await whenReady(environmentId);

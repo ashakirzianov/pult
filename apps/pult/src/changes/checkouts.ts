@@ -89,13 +89,16 @@ export function checkoutName(checkout: Checkout): string {
 /** A changed file of a checkout's source or a thread's turn, with what the server's file contents RPC needs to show its sides. */
 export interface Change {
   readonly environmentId: string;
+  /** The checkout the server reads the change in. */
   readonly cwd: string;
+  /** The repository's root, which the server's paths are relative to: the checkout's own, or above it for a project in a subdirectory of its repository. */
+  readonly repositoryRoot: string;
   /** A server's diff source, or a turn's, between its checkpoints. */
   readonly sourceKind: ReviewDiffPreviewSourceKind | "turn";
   /** The source's refs, or a turn's checkpoint refs, before and after it. */
   readonly baseRef: string | null;
   readonly headRef: string | null;
-  /** Relative to `cwd`, after the change. */
+  /** Relative to `repositoryRoot`, after the change. */
   readonly path: string;
   readonly previousPath: string | null;
   readonly changeType: ChangeType;
@@ -104,7 +107,12 @@ export interface Change {
 }
 
 /** A source's files as changes: its stats, with how each changed from its patch; a file the truncated patch missed counts as modified. */
-function changesOf(environmentId: string, cwd: string, source: ReviewDiffPreviewSource): Change[] {
+function changesOf(
+  environmentId: string,
+  cwd: string,
+  repositoryRoot: string,
+  source: ReviewDiffPreviewSource,
+): Change[] {
   const parsed = new Map(patchFiles(source.diff).map((file) => [file.path, file]));
   const stats =
     source.files ?? [...parsed.values()].map((file) => ({ ...file, additions: 0, deletions: 0 }));
@@ -113,6 +121,7 @@ function changesOf(environmentId: string, cwd: string, source: ReviewDiffPreview
     return {
       environmentId,
       cwd,
+      repositoryRoot,
       sourceKind: source.kind,
       baseRef: source.baseRef,
       headRef: source.headRef,
@@ -136,6 +145,7 @@ function changesOf(environmentId: string, cwd: string, source: ReviewDiffPreview
 export function shownChanges(
   environmentId: string,
   cwd: string,
+  repositoryRoot: string,
   sources: ReadonlyArray<ReviewDiffPreviewSource>,
 ):
   | { readonly kind: ReviewDiffPreviewSourceKind; readonly changes: ReadonlyArray<Change> }
@@ -145,7 +155,7 @@ export function shownChanges(
     const changes =
       source === undefined || againstOwnUpstream(source)
         ? []
-        : changesOf(environmentId, cwd, source);
+        : changesOf(environmentId, cwd, repositoryRoot, source);
     if (changes.length > 0) return { kind, changes };
   }
   return undefined;
