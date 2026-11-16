@@ -416,9 +416,11 @@ const starPath = (id: string) => `/stars/${encodeURIComponent(id)}`;
 /** The server's Stars, as a page draws them. */
 export const readStars = (credential: Credential) => ask(credential, "GET", "/stars", decodeStars);
 
-/** A new Star in a fresh folder; with `ifNone`, the one there while the server has any. */
-export const createStarOn = (credential: Credential, options: { readonly ifNone: boolean }) =>
-  ask(credential, "POST", "/stars", decodeStar, options);
+/** A new Star in a fresh folder named after `name`; with `ifNone`, the one there while the server has any. */
+export const createStarOn = (
+  credential: Credential,
+  options: { readonly ifNone: boolean; readonly name?: string },
+) => ask(credential, "POST", "/stars", decodeStar, options);
 
 /** The plugin's upkeep now, a Star that arrived by a clone or a pull made a project; answered as `readStars`. */
 export const upkeepStars = (credential: Credential) =>

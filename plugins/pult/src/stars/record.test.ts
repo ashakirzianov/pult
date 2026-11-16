@@ -1,7 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
 
 import { AGENTS_TEXT, AGENTS_VERSION, agentsOutdated } from "./agents.ts";
-import { isStarRoot, newRecord, parseRecord, recordText, withRecordFields } from "./record.ts";
+import {
+  isStarRoot,
+  newRecord,
+  parseRecord,
+  recordText,
+  starFolder,
+  withRecordFields,
+} from "./record.ts";
 
 const record = newRecord("5f0c7e1a-2b3c-4d5e-8f90-1a2b3c4d5e6f", "2026-11-03T12:00:00.000Z");
 
@@ -70,6 +77,24 @@ describe("isStarRoot", () => {
     assert.strictEqual(isStarRoot("/Users/anton/.pult/stars"), false);
     assert.strictEqual(isStarRoot("/Users/anton/.pult/stars/star/.pult"), false);
     assert.strictEqual(isStarRoot("/Users/anton/repos/stars/star"), false);
+  });
+});
+
+describe("starFolder", () => {
+  it("is the name's slug, its marks dropped, cut to 40 characters", () => {
+    assert.strictEqual(starFolder("Beta"), "beta");
+    assert.strictEqual(starFolder("  xaxis Lead!  "), "xaxis-lead");
+    assert.strictEqual(starFolder("Ålpha_Çentauri, the 2nd"), "alpha-centauri-the-2nd");
+    assert.strictEqual(starFolder("ﬁne"), "fine");
+    assert.strictEqual(starFolder(`${"a".repeat(39)} b`), "a".repeat(39));
+    assert.strictEqual(starFolder("b".repeat(50)), "b".repeat(40));
+  });
+
+  it("is star for no name, or one that slugs to nothing", () => {
+    assert.strictEqual(starFolder(undefined), "star");
+    assert.strictEqual(starFolder(""), "star");
+    assert.strictEqual(starFolder("Вега"), "star");
+    assert.strictEqual(starFolder("--- ..."), "star");
   });
 });
 

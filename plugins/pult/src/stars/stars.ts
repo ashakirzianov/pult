@@ -33,7 +33,7 @@ import { type Channel, taggedChannel, USER_CHANNEL } from "./channels.ts";
 import {
   AGENTS_FILE,
   CHANNELS_DIRECTORY,
-  DEFAULT_STAR_FOLDER,
+  starFolder,
   INSTRUCTIONS_FILE,
   isStarRoot,
   newRecord,
@@ -173,8 +173,11 @@ export interface Stars {
     star: Star,
     name: string,
   ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
-  /** A Star in a fresh folder; with `ifNone`, the one there while the server has any. */
-  readonly create: (options: { readonly ifNone: boolean }) => Effect.Effect<Star, StarsError>;
+  /** A Star in a fresh folder named after `name` (`starFolder`), fixed from then on; with `ifNone`, the one there while the server has any, whatever the name. */
+  readonly create: (options: {
+    readonly ifNone: boolean;
+    readonly name?: string | undefined;
+  }) => Effect.Effect<Star, StarsError>;
   readonly upkeep: Effect.Effect<void>;
   readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
 }
@@ -712,19 +715,16 @@ export const make = Effect.gen(function* () {
       ),
   );
 
-  /** The first folder of the directory with nothing at it: `star`, then `star-2` and on. */
-  const freshRoot = Effect.gen(function* () {
+  /** The first folder of the directory with nothing at it: `base`, then `base-2` and on. */
+  const freshRoot = Effect.fn("Stars.freshRoot")(function* (base: string) {
     for (let index = 1; ; index += 1) {
-      const root = path.join(
-        directory,
-        index === 1 ? DEFAULT_STAR_FOLDER : `${DEFAULT_STAR_FOLDER}-${index}`,
-      );
+      const root = path.join(directory, index === 1 ? base : `${base}-${index}`);
       if (!(yield* fs.exists(root))) return root;
     }
   });
 
   const create = Effect.fn("Stars.create")(
-    function* ({ ifNone }: { readonly ifNone: boolean }) {
+    function* ({ ifNone, name }: { readonly ifNone: boolean; readonly name?: string | undefined }) {
       yield* keepUp;
       if (ifNone) {
         const there = (yield* list).toSorted((left, right) =>
@@ -732,18 +732,18 @@ export const make = Effect.gen(function* () {
         )[0];
         if (there !== undefined) return there;
       }
-      const root = yield* freshRoot;
+      const root = yield* freshRoot(starFolder(name));
+      const record = newRecord(yield* newId, DateTime.formatIso(yield* DateTime.now), name);
       const project = yield* projects.create({
         commandId: CommandId.make(yield* newId),
         projectId: ProjectId.make(yield* newId),
-        title: "Star",
+        title: starName(record),
         workspaceRoot: root,
         createWorkspaceRootIfMissing: true,
       });
       yield* fs.makeDirectory(path.join(root, CHANNELS_DIRECTORY), { recursive: true });
       yield* fs.writeFileString(path.join(root, INSTRUCTIONS_FILE), "");
       yield* fs.writeFileString(path.join(root, AGENTS_FILE), AGENTS_TEXT);
-      const record = newRecord(yield* newId, DateTime.formatIso(yield* DateTime.now));
       // Written last: the record is what makes the folder a Star.
       yield* fs.writeFileString(path.join(root, RECORD_FILE), recordText(record));
       yield* setIcon(project.id);

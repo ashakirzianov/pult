@@ -5,7 +5,7 @@ import type { Schedules } from "../schedules/schedules.ts";
 import type { Stars, StarsError } from "./stars.ts";
 
 const decodeCreate = Schema.decodeUnknownEffect(
-  Schema.Struct({ ifNone: Schema.optional(Schema.Boolean) }),
+  Schema.Struct({ ifNone: Schema.optional(Schema.Boolean), name: Schema.optional(Schema.String) }),
 );
 const decodeFields = Schema.decodeUnknownEffect(
   Schema.Struct({ name: Schema.optional(Schema.String), tint: Schema.optional(Schema.String) }),
@@ -41,8 +41,10 @@ export const starsRoute = (
       Effect.gen(function* () {
         const body = yield* bodyOf(request, decodeCreate);
         if (body._tag === "None")
-          return json({ error: "The body must be JSON: { ifNone? }." }, 400);
-        return json(yield* stars.create({ ifNone: body.value.ifNone === true }));
+          return json({ error: "The body must be JSON: { ifNone?, name? }." }, 400);
+        return json(
+          yield* stars.create({ ifNone: body.value.ifNone === true, name: body.value.name }),
+        );
       }),
     );
   if (segments.length === 2 && id === "upkeep" && method === "POST")

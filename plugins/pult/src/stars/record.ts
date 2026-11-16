@@ -5,8 +5,21 @@
 /** Where a server's Stars live, beside its home (`directory.ts`). */
 export const STARS_DIRECTORY = ".pult/stars";
 
-/** The folder a Star is created in, then `star-2`, `star-3` and on. */
-export const DEFAULT_STAR_FOLDER = "star";
+/** The folder a Star with no name is created in, then `star-2`, `star-3` and on. */
+const DEFAULT_STAR_FOLDER = "star";
+
+/** The folder a Star named `name` is created in, before `-2` and on where it is taken: the name's slug, or `star` for none. */
+export function starFolder(name: string | undefined): string {
+  const slug = (name ?? "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/, "");
+  return slug || DEFAULT_STAR_FOLDER;
+}
 
 /** What of a Star's folder is Pult's beside `AGENTS.md`. */
 export const SYSTEM_DIRECTORY = ".pult";
@@ -143,8 +156,8 @@ export function withRecordFields(text: string, changes: RecordFields): string {
   return lines.map((line) => line + newline).join("");
 }
 
-export function newRecord(id: string, created: string): StarRecord {
-  return { id, name: "", description: "", tint: DEFAULT_TINT, created };
+export function newRecord(id: string, created: string, name = ""): StarRecord {
+  return { id, name, description: "", tint: DEFAULT_TINT, created };
 }
 
 export function recordText(record: StarRecord): string {

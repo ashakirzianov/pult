@@ -181,6 +181,26 @@ describe("creation", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "names a named Star's folder after it, then -2 where it is taken, and ifNone ignores the name",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const vega = yield* h.stars.create({ ifNone: false, name: "Véga Lead" });
+        assert.strictEqual(vega.root, h.path.join(h.directory, "vega-lead"));
+        assert.strictEqual(vega.name, "Véga Lead");
+        assert.include(
+          yield* h.read(h.path.join(vega.root, ".pult/star.yaml")),
+          'name: "Véga Lead"',
+        );
+        assert.strictEqual(h.projects.shells[0]?.title, "Véga Lead");
+
+        const again = yield* h.stars.create({ ifNone: false, name: "Vega lead" });
+        assert.strictEqual(again.root, h.path.join(h.directory, "vega-lead-2"));
+        assert.strictEqual((yield* h.stars.create({ ifNone: true, name: "Sirius" })).id, vega.id);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("never creates over anything at a folder's path", () =>
     Effect.gen(function* () {
       const h = yield* harness;

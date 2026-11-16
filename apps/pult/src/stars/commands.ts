@@ -292,9 +292,9 @@ async function openStarFolder(star: Star): Promise<void> {
 /**
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
  * [environmentId]`, a new Star on any held environment whose Pult plugin
- * serves Stars, picked among them while there are several; while the
- * page's Stars sync, their repository cloned there from its origin, where
- * none is), Edit Star Instructions
+ * serves Stars, picked among them while there are several, named in an
+ * input box first; while the page's Stars sync, their repository cloned
+ * there from its origin, where none is, with no name asked), Edit Star Instructions
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
@@ -325,14 +325,26 @@ export function registerStarCommands(): void {
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
         // Stars that sync are cloned to an environment holding none, each a second home there, rather than a new Star made beside them.
-        const create = (environmentId: string) => {
+        // A new Star is named before it is made, its folder named after it by the plugin; a clone brings named Stars, and asks nothing.
+        const create = async (environmentId: string) => {
           const holds = starStore
             .get()
             .some((star) => star.homes.some((home) => home.environmentId === environmentId));
           const origin = holds
             ? undefined
             : starStore.get().find((star) => star.origin !== undefined)?.origin;
-          return createStar(environmentId, origin);
+          if (origin !== undefined) return createStar(environmentId, { origin });
+          const name = await (
+            await getService(IQuickInputService)
+          ).input({
+            title: "Create Star",
+            prompt: "The Star's name, which also names its folder",
+            placeHolder: "Vega",
+            ignoreFocusLost: true,
+            validateInput: async (text) => (text.trim() === "" ? "Enter a name." : undefined),
+          });
+          if (name === undefined || name.trim() === "") return;
+          return createStar(environmentId, { name: name.trim() });
         };
         if (typeof environmentId === "string") return create(environmentId);
         const candidates = connection.environments.filter((environment) =>

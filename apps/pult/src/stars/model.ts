@@ -537,7 +537,8 @@ class StarsModel {
   /**
    * Asks the environment's plugin for a Star, which makes it in a fresh
    * folder (`POST /stars`): by default only while the server has none
-   * (`ifNone`), so two pages make one, and by Create Star always. One
+   * (`ifNone`), so two pages make one, unnamed, and by Create Star always,
+   * with the `name` it asked for, after which the plugin names the folder. One
    * notification says the Star is ready; a failure notifies, and is tried
    * again on the next connect, with no creation by default anywhere until
    * one connects.
@@ -549,7 +550,7 @@ class StarsModel {
    */
   async create(
     environmentId: string,
-    how: { readonly ifNone: boolean } | { readonly origin: string },
+    how: { readonly ifNone: boolean; readonly name?: string } | { readonly origin: string },
   ): Promise<void> {
     const reading = this.readings.get(environmentId);
     if (reading === undefined || this.creating) return;
@@ -574,7 +575,7 @@ class StarsModel {
         notifications.info(`Your Stars are here too, synced with ${how.origin}.`);
         return;
       }
-      const star = await createStarOn(credential, { ifNone: how.ifNone });
+      const star = await createStarOn(credential, how);
       notifications.prompt(Severity.Info, "Your Star is ready.", [
         { label: "Open Star", run: () => void openStar(star.id) },
       ]);
@@ -656,9 +657,11 @@ export function starById(starId: string): Star | undefined {
   return model.get().find((star) => star.id === starId);
 }
 
-/** Asks for a new Star on the environment, or with `origin` clones the Stars' repository syncing through it there. */
-export const createStar = (environmentId: string, origin?: string) =>
-  model.create(environmentId, origin === undefined ? { ifNone: false } : { origin });
+/** Asks for a new Star named `name` on the environment, or with `origin` clones the Stars' repository syncing through it there. */
+export const createStar = (
+  environmentId: string,
+  how: { readonly name: string } | { readonly origin: string },
+) => model.create(environmentId, "origin" in how ? how : { ifNone: false, name: how.name });
 /** Asks the environment's plugin for its Stars again: after a sync occasion, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
