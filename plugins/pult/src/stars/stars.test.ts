@@ -40,7 +40,7 @@ const servedChannel = (view: Stars.StarsView["stars"][number] | undefined, slug:
   view?.channels.find((each) => each.slug === slug);
 
 const record = (id: string, name = "") =>
-  recordText({ id, name, tint: "amber", created: "2026-11-10T12:00:00.000Z" });
+  recordText({ id, name, description: "", tint: "amber", created: "2026-11-10T12:00:00.000Z" });
 
 describe("starsDirectory", () => {
   it.effect(
@@ -111,6 +111,7 @@ describe("finding", () => {
         {
           id: "vega-id",
           name: "Vega",
+          description: "",
           tint: "amber",
           created: "2026-11-10T12:00:00.000Z",
           root,
@@ -248,7 +249,7 @@ describe("upkeep", () => {
       assert.deepStrictEqual(renamed, { ...star, name: "Vega", tint: "sky" });
       assert.match(
         yield* h.read(file),
-        /^name: "Vega"\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
+        /^name: "Vega"\ndescription: ""\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
       );
       assert.strictEqual(h.projects.shells[0]?.title, "Vega");
 

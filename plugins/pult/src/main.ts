@@ -7,6 +7,7 @@ import { Effect, HttpServerResponse, Layer, type PluginHost } from "./host.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import * as Schedules from "./schedules/schedules.ts";
 import * as Delivery from "./stars/deliver.ts";
+import * as ListTool from "./stars/listTool.ts";
 import * as MessageTool from "./stars/messageTool.ts";
 import * as SleepTool from "./stars/sleepTool.ts";
 import { starsRoute } from "./stars/routes.ts";
@@ -32,6 +33,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const schedules = yield* Schedules.make(stars, deliverTo(stars));
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, deliverTo(stars)),
+    yield* ListTool.make(stars),
     yield* SleepTool.make(stars),
     yield* UsageLimitsTool.make(),
   );

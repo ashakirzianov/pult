@@ -712,6 +712,73 @@ it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is re
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 
+it.effect(
+  "pult_star_list lists this server's Stars by name, each with its record's description",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* fakeServer;
+      const context = yield* Layer.build(
+        PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+        ),
+      );
+      const mcp = Context.get(context, McpServer.McpServer);
+      const call = (scope: McpInvocationContext.McpInvocationScope) =>
+        mcp.callTool({ name: "pult_star_list", arguments: {} }).pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          Effect.map((result) => {
+            const text = result.content[0];
+            const body = text?.type === "text" ? JSON.parse(text.text) : undefined;
+            return result.isError === true ? { refused: body.code } : body;
+          }),
+        );
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const starAt = (folder: string, id: string, lines: string) =>
+        Effect.gen(function* () {
+          const root = path.join(server.directory, folder);
+          yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
+          yield* fs.writeFileString(
+            path.join(root, ".pult/star.yaml"),
+            `xaxis-kind: star\nid: "${id}"\n${lines}tint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n`,
+          );
+          yield* server.projects.service.create({
+            projectId: ProjectId.make(`p-${id}`),
+            title: id,
+            workspaceRoot: root,
+          });
+        });
+      // A record written before the field, with no description line.
+      yield* starAt("star", "vega-id", 'name: "Vega"\n');
+      yield* starAt("star-2", "deneb-id", 'name: "Deneb"\ndescription: "Lead of the Pult track"\n');
+      const repo = yield* server.projects.service.create({
+        projectId: ProjectId.make("p-repo"),
+        title: "Repo",
+        workspaceRoot: `${server.tmp}/repo`,
+        createWorkspaceRootIfMissing: true,
+      });
+      server.threads.add(repo.id, "worker", { activeRunId: RunId.make("worker-run") });
+      const fenced = server.threads.add(repo.id, "fenced", {
+        activeRunId: RunId.make("fenced-run"),
+        linkOrigin: { sessionId: "link-1", label: "Laptop", access: "read-only" },
+      });
+
+      expect(yield* call(scopeOf({ thread: "worker" }))).toEqual({
+        stars: [
+          { id: "deneb-id", name: "Deneb", description: "Lead of the Pult track" },
+          { id: "vega-id", name: "Vega", description: "" },
+        ],
+      });
+      expect(yield* call(scopeOf({ client: "full-access" }))).toEqual({
+        refused: "thread_credential_required",
+      });
+      expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toEqual({
+        refused: "capability_denied",
+      });
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+);
+
 it.effect("pult_usage_limits reads this server's accounts, each window paced by the calendar", () =>
   Effect.gen(function* () {
     yield* TestClock.setTime(Date.parse("2026-11-16T13:00:00.000Z"));

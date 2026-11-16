@@ -75,6 +75,7 @@ const channelOf = (thread: Pick<OrchestrationV2ThreadShell, "tags">): Channel =>
 export interface Star {
   readonly id: string;
   readonly name: string;
+  readonly description: string;
   readonly tint: string;
   readonly created: string;
   readonly root: string;
@@ -306,6 +307,7 @@ export const make = Effect.gen(function* () {
   const starOf = (record: StarRecord, root: string, projectId: ProjectId): Star => ({
     id: record.id,
     name: record.name,
+    description: record.description,
     tint: record.tint,
     created: record.created,
     root,

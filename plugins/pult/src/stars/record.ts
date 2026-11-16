@@ -26,10 +26,14 @@ export const STAR_PROJECT_ICON = { kind: "emoji", emoji: "🌟" } as const;
 /** The tint a record without one reads as. */
 const DEFAULT_TINT = "amber";
 
-/** A Star's record: who it is. `name` is empty until the user or the Star names it. */
+/**
+ * A Star's record: who it is. `name` is empty until the user or the Star names it, `description`
+ * until one of them writes what the Star is for (`pult_star_list` lists it).
+ */
 export interface StarRecord {
   readonly id: string;
   readonly name: string;
+  readonly description: string;
   readonly tint: string;
   readonly created: string;
 }
@@ -117,6 +121,8 @@ export function parseRecord(text: string): StarRecord | undefined {
   return {
     id,
     name: fields.get("name") ?? "",
+    // One line as written: a YAML block scalar reads as its indicator, wrong where everyone sees it.
+    description: fields.get("description") ?? "",
     tint: fields.get("tint") || DEFAULT_TINT,
     created: fields.get("created") ?? "",
   };
@@ -138,13 +144,14 @@ export function withRecordFields(text: string, changes: RecordFields): string {
 }
 
 export function newRecord(id: string, created: string): StarRecord {
-  return { id, name: "", tint: DEFAULT_TINT, created };
+  return { id, name: "", description: "", tint: DEFAULT_TINT, created };
 }
 
 export function recordText(record: StarRecord): string {
   return `xaxis-kind: ${KIND}
 id: ${quoted(record.id)}
 name: ${quoted(record.name)}
+description: ${quoted(record.description)}
 tint: ${quoted(record.tint)}
 created: ${quoted(record.created)}
 `;

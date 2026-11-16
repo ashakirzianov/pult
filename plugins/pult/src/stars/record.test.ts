@@ -9,14 +9,17 @@ describe("parseRecord", () => {
   it("reads the record the page writes, plain YAML with no front matter", () => {
     assert.deepStrictEqual(parseRecord(recordText(record)), record);
     assert.notMatch(recordText(record), /^---/m);
+    const described = { ...record, description: "Lead of the Pult track: plans, reviews" };
+    assert.deepStrictEqual(parseRecord(recordText(described)), described);
   });
 
-  it("reads plain, double- and single-quoted values", () => {
+  it("reads plain, double- and single-quoted values, and no description line as none", () => {
     const text =
       "xaxis-kind: star\nid: abc\nname: 'Vega''s'\ntint: \"mint\"\ncreated: 2026-11-03\n";
     assert.deepStrictEqual(parseRecord(text), {
       id: "abc",
       name: "Vega's",
+      description: "",
       tint: "mint",
       created: "2026-11-03",
     });
@@ -39,6 +42,7 @@ describe("withRecordFields", () => {
     assert.deepStrictEqual(parseRecord(written), {
       id: "abc",
       name: "Vega",
+      description: "",
       tint: "sky",
       created: "x",
     });
