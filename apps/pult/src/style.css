@@ -48,7 +48,7 @@ body,
   overflow: hidden;
   background: var(--vscode-editor-background);
   color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-font-family);
+  font-family: inherit;
 }
 
 .pult-thread-content {

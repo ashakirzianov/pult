@@ -1,8 +1,9 @@
 /* The thread view in a pane of Pult's shell, after upstream's stylesheet:
-   with no T3 theme chosen, its canvas and text follow the editor's and its
-   sans font the workbench's, whose variables live on the workbench element,
-   not on the document's root as in a webview. The view's other roots, a
-   preview tab's (`PreviewMount.tsx`) and the page-wide webview host's
+   with no T3 theme chosen, its canvas and text follow the editor's colours
+   and its sans font inherits from the workbench. The colour variables live
+   on the workbench element, not the document's root as in a webview.
+   The view's other roots, a preview tab's (`PreviewMount.tsx`) and the
+   page-wide webview host's
    (`browserHost.tsx`), take the same with `pult-view-theme`; the host sits on
    the page's body, outside the workbench element, where its variables do not
    reach, so it keeps upstream's colours and takes the text scale alone. */
@@ -10,7 +11,8 @@ html:not([data-theme-id]) .pult-thread-view,
 html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   --background: var(--vscode-editor-background);
   --foreground: var(--vscode-editor-foreground);
-  --font-sans: var(--vscode-font-family);
+  /* Unset the upstream sans font so font-sans utilities inherit the workbench's. */
+  --font-sans: initial;
 }
 
 /* Upstream's text scale is rem on a 16px document, and the page's root is

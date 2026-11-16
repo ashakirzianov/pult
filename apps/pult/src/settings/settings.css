@@ -20,7 +20,7 @@
   overscroll-behavior: contain;
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
-  font-family: var(--vscode-font-family);
+  font-family: inherit;
   font-size: 13px;
   line-height: 1.35;
 }
@@ -415,7 +415,7 @@
 
 .pult-settings-input-origin {
   width: 280px;
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: monospace;
   font-size: 11px;
 }
 
@@ -481,7 +481,7 @@
 
 .pult-settings-pairing-value {
   margin-top: 8px;
-  font-family: var(--vscode-editor-font-family);
+  font-family: inherit;
   font-size: 12px;
   overflow-wrap: anywhere;
   user-select: text;
