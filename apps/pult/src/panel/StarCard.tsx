@@ -8,8 +8,9 @@ import "../stars/flat/star.css";
 import type { StarLook } from "../stars/look.ts";
 import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
 import { canSleepStar } from "../stars/model.ts";
-import { type CardRows, drawnHome, type Star, starName } from "../stars/stars.ts";
+import { type CardRows, channelThreads, drawnHome, type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
+import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
 import { keyOf, starKey } from "./order.ts";
@@ -81,8 +82,8 @@ function StarMark({ look, color }: { look: StarLook; color: string }) {
  * over its state, Asleep with how long (dimmed), Awake,
  * or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
- * expands with its asks, then its children and a row per channel but
- * `user` (`StarChannels`), then its current conversation's subagents, as a
+ * expands with its asks, then `user`'s children and a collapsible
+ * Channels holding a row per channel but `user` (`StarChannels`), then its current conversation's subagents, as a
  * thread's card does with its own, then its schedules (`StarSchedules.tsx`), each list
  * a section of the details of its own.
  */
@@ -164,7 +165,10 @@ export function StarCard({
 
 /**
  * A selected Star's children and channels, under its card: `user`'s
- * children first, then a row per channel but `user`, labelled by its slug,
+ * children first, then a collapsible "Channels" with their count, collapsed
+ * until opened and remembered per Star, its header reading Waiting while a
+ * thread in it waits, else Working with the longest elapsed time while one
+ * works; open, a row per channel but `user`, labelled by its slug,
  * each over its own children (`cardRows`), every row in the subagents' look,
  * its status Working with its elapsed time, Waiting, or the time since its
  * last turn. A click on an open channel's row opens its conversation as a
@@ -184,6 +188,7 @@ function StarChannels({
   activities: Map<string, Activity>;
   now: number;
 }) {
+  const [expanded, setExpanded] = useExpanded(`pult-shell.panel.channels-expanded:${starId}`);
   if (rows.children.length === 0 && rows.channels.length === 0) return null;
   const children = (threads: ReadonlyArray<ShellThread>) =>
     threads.map((child) => (
@@ -201,39 +206,87 @@ function StarChannels({
       </li>
     ));
   return (
-    <ul className="pult-subagents-list pult-card-channels" aria-label="Channels">
-      {children(rows.children)}
-      {rows.channels.map(({ slug, thread, children: below }) => (
-        <li key={`channel:${slug}`}>
-          {thread === null ? (
-            <div className="pult-subagent pult-subagent-asleep" title={`Channel ${slug}, asleep`}>
-              <i className="codicon codicon-comment-discussion" aria-hidden />
-              <span className="pult-subagent-title">{slug}</span>
-              <span className="pult-card-status pult-star-asleep">Asleep</span>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="pult-subagent"
-              title={`Channel ${slug}`}
-              onClick={() => run("pult-shell.openStarChannel", starId, slug)}
-            >
-              <i className="codicon codicon-comment-discussion" aria-hidden />
-              <span className="pult-subagent-title">{slug}</span>
-              <Status thread={thread} activity={activities.get(keyOf(thread)) ?? null} now={now} />
-            </button>
-          )}
-          {below.length > 0 ? (
-            <ul
-              className="pult-subagents-list pult-card-children"
-              aria-label={`Children of ${slug}`}
-            >
-              {children(below)}
-            </ul>
-          ) : null}
-        </li>
-      ))}
-    </ul>
+    <div className="pult-card-channels">
+      {rows.children.length > 0 ? (
+        <ul className="pult-subagents-list" aria-label="Children">
+          {children(rows.children)}
+        </ul>
+      ) : null}
+      {rows.channels.length > 0 ? (
+        <CollapsibleHeader
+          label="Channels"
+          count={rows.channels.length}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
+          status={<ChannelsStatus threads={channelThreads(rows)} activities={activities} />}
+        />
+      ) : null}
+      {expanded && rows.channels.length > 0 ? (
+        <ul className="pult-subagents-list" aria-label="Channels">
+          {rows.channels.map(({ slug, thread, children: below }) => (
+            <li key={`channel:${slug}`}>
+              {thread === null ? (
+                <div
+                  className="pult-subagent pult-subagent-asleep"
+                  title={`Channel ${slug}, asleep`}
+                >
+                  <i className="codicon codicon-comment-discussion" aria-hidden />
+                  <span className="pult-subagent-title">{slug}</span>
+                  <span className="pult-card-status pult-star-asleep">Asleep</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="pult-subagent"
+                  title={`Channel ${slug}`}
+                  onClick={() => run("pult-shell.openStarChannel", starId, slug)}
+                >
+                  <i className="codicon codicon-comment-discussion" aria-hidden />
+                  <span className="pult-subagent-title">{slug}</span>
+                  <Status
+                    thread={thread}
+                    activity={activities.get(keyOf(thread)) ?? null}
+                    now={now}
+                  />
+                </button>
+              )}
+              {below.length > 0 ? (
+                <ul
+                  className="pult-subagents-list pult-card-children"
+                  aria-label={`Children of ${slug}`}
+                >
+                  {children(below)}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** The Channels header's status: Waiting while a thread in it waits, else Working with the longest elapsed time while one works, else none. */
+function ChannelsStatus({
+  threads,
+  activities,
+}: {
+  threads: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+}) {
+  const activity = (thread: ShellThread) => activities.get(keyOf(thread)) ?? null;
+  if (threads.some((thread) => activity(thread) === "waiting"))
+    return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
+  const working = threads.filter((thread) => activity(thread) === "working");
+  if (working.length === 0) return null;
+  // The longest elapsed time is the earliest start.
+  const since = working
+    .flatMap(({ workingSince }) => (workingSince === null ? [] : [workingSince]))
+    .toSorted((a, b) => Date.parse(a) - Date.parse(b))[0];
+  return (
+    <span className="pult-card-status pult-card-status-working">
+      Working{since === undefined ? null : <Elapsed since={since} />}
+    </span>
   );
 }
 

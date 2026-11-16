@@ -624,6 +624,13 @@
   padding-left: 16px;
 }
 
+/* The Channels header inside a selected Star's card: the subagents' header. */
+.pult-card-channels .pult-shelf-header {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
 /* A selected Star's asks (src/panel/StarAsks.tsx): the subagents' header and rows. */
 .pult-card-asks {
   margin: 0 0 8px;

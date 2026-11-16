@@ -5,6 +5,7 @@ import * as NodeTest from "node:test";
 import type { RouteStar, StarsAnswer } from "./plugin.ts";
 import {
   cardRows,
+  channelThreads,
   channelOf,
   channelRows,
   creationTarget,
@@ -355,7 +356,7 @@ NodeTest.describe("cardRows", () => {
   });
 
   NodeTest.test(
-    "lists each child under its channel's row, `work` with none, `user`'s under the card, oldest first",
+    "lists each child under its channel's row, `work` with none, `user`'s under the card, oldest first, the Channels node holding all but `user`'s",
     () => {
       const threads = [
         thread("a", "u", CREATED),
@@ -377,6 +378,10 @@ NodeTest.describe("cardRows", () => {
           ["work", "w", ["untagged"]],
         ],
       });
+      NodeAssert.deepEqual(
+        channelThreads(cardRows(star, threads)).map(({ id }) => id),
+        ["b", "early", "late", "w", "untagged"],
+      );
     },
   );
 

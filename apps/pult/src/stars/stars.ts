@@ -357,6 +357,13 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   };
 }
 
+/** The threads a card's Channels node holds, whose activity its row shows while collapsed: each open channel's conversation, then its children. */
+export function channelThreads<Thread>(rows: CardRows<Thread>): Thread[] {
+  return rows.channels.flatMap(({ thread, children }) =>
+    thread === null ? children : [thread, ...children],
+  );
+}
+
 /** The threads below a conversation, its subagents' and theirs, as the store has them. */
 export function threadsBelow<Thread extends Pick<ShellThread, "environmentId" | "id" | "rootId">>(
   thread: Pick<ShellThread, "environmentId" | "id">,
