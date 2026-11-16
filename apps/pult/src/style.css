@@ -42,6 +42,43 @@ body,
   font-weight: 600;
 }
 
+/* Beside other tabs, the thread's tab gives way first: its title is cut with an ellipsis, at most 16em and less as the row runs out of room, down to 4em, then the project is cut too, so every tab stays in view; the tab's hover (`ThreadInput.getTitle`) keeps the title whole. Only for the workbench's `sizing-fit` tabs, the default, at its 120px floor, and never a pinned one, whose width the workbench fixes; hence the workbench's selector. */
+.monaco-workbench
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab.sizing-fit:not(:only-child, .sticky-compact, .sticky-shrink):has(
+    > .tab-label.pult-thread-tab
+  ) {
+  width: fit-content;
+  min-width: 120px;
+  flex-shrink: 1;
+
+  > .tab-label > .monaco-icon-label-container {
+    display: flex;
+    min-width: 0;
+
+    > .monaco-icon-name-container {
+      /* 16em is its basis, so it shrinks from there rather than freeze at a max-width: */
+      width: 16em;
+      min-width: 4em;
+      max-width: max-content;
+      flex-shrink: 100000;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Against the title's 100000, shrinks only once the title is at its 4em: its share before then is below a layout unit (1/64px), where a smaller weight left it a fraction of a pixel short, enough for an ellipsis. */
+    > .monaco-icon-description-container {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
 /* The shell-rendered thread pane (src/threads): the thread view fills it. */
 .pult-thread-pane {
   height: 100%;
