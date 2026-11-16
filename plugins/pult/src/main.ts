@@ -4,6 +4,7 @@
  * `host.serve` dispatch below; its tools register last.
  */
 import { Effect, HttpServerResponse, Layer, type PluginHost } from "./host.ts";
+import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import * as Schedules from "./schedules/schedules.ts";
 import * as Delivery from "./stars/deliver.ts";
 import * as MessageTool from "./stars/messageTool.ts";
@@ -22,6 +23,7 @@ const features: ReadonlyArray<string> = [
   "star-sleep-request",
   "star-sleep",
   "star-asks",
+  "usage-limits",
 ];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
@@ -31,6 +33,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, deliverTo(stars)),
     yield* SleepTool.make(stars),
+    yield* UsageLimitsTool.make(),
   );
   yield* host.serve((request, path) => {
     if ((request.method === "GET" || request.method === "HEAD") && path === "/about")

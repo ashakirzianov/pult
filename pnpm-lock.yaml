@@ -2743,6 +2743,9 @@ importers:
       '@t3tools/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.2

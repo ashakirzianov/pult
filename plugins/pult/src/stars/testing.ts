@@ -1,4 +1,4 @@
-// Fakes of the server's project and thread stores, its launches, startup, environment and scheduler,
+// Fakes of the server's project and thread stores, its launches, startup, environment, scheduler and usage limits,
 // for the Stars' tests and the plugin's: a server whose home is `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
   type CommandId,
@@ -13,7 +13,9 @@ import {
   type ProjectId,
   type ProjectWatchEntriesEvent,
   RunId,
+  type ServerProvider,
   ThreadId,
+  type UsageLimitSourceSnapshot,
 } from "@t3tools/contracts";
 
 import {
@@ -28,6 +30,7 @@ import {
   Layer,
   Path,
   ProjectService,
+  ProviderRegistry,
   Scheduler,
   ServerConfig,
   ServerEnvironment,
@@ -35,6 +38,7 @@ import {
   Stream,
   ThreadLaunchService,
   ThreadManagementService,
+  UsageLimitSources,
   WorkspaceEntries,
 } from "../host.ts";
 
@@ -432,6 +436,11 @@ export const fakeServer = Effect.gen(function* () {
     readonly cwd: string;
     readonly queue: Parameters<Parameters<typeof Stream.callback<ProjectWatchEntriesEvent>>[0]>[0];
   }> = [];
+  /** What the server's providers and usage hubs hold now, as `pult_usage_limits` reads them. */
+  const limits: {
+    providers: ReadonlyArray<ServerProvider>;
+    sources: ReadonlyArray<UsageLimitSourceSnapshot>;
+  } = { providers: [], sources: [] };
   const layer = Layer.mergeAll(
     ServerConfig.layerTest(tmp, path.join(tmp, ".t3")),
     Layer.succeed(
@@ -457,7 +466,7 @@ export const fakeServer = Effect.gen(function* () {
       ServerEnvironment.ServerEnvironment,
       ServerEnvironment.ServerEnvironment.of({
         getEnvironmentId: Effect.succeed("env-1" as never),
-        getDescriptor: Effect.succeed({ label: "MacBook" } as never),
+        getDescriptor: Effect.succeed({ environmentId: "env-1", label: "MacBook" } as never),
       }),
     ),
     Layer.succeed(
@@ -472,6 +481,12 @@ export const fakeServer = Effect.gen(function* () {
         }),
       }),
     ),
+    Layer.succeed(ProviderRegistry.ProviderRegistry, {
+      getProviders: Effect.sync(() => limits.providers),
+    } as unknown as ProviderRegistry.ProviderRegistry["Service"]),
+    Layer.succeed(UsageLimitSources.UsageLimitSources, {
+      current: Effect.sync(() => limits.sources),
+    } as unknown as UsageLimitSources.UsageLimitSources["Service"]),
     Layer.succeed(WorkspaceEntries.WorkspaceEntries, {
       watch: (input: { cwd: string }) =>
         Stream.callback<ProjectWatchEntriesEvent>((queue) =>
@@ -487,5 +502,16 @@ export const fakeServer = Effect.gen(function* () {
     Effect.suspend(() => sources.get(name) ?? Effect.die(new Error(`no source ${name}`)));
   /** The Stars' pass, as the tick runs it. */
   const runPass = runSource("pult-stars");
-  return { layer, projects, threads, launches, tmp, directory, runPass, runSource, watches };
+  return {
+    layer,
+    projects,
+    threads,
+    launches,
+    limits,
+    tmp,
+    directory,
+    runPass,
+    runSource,
+    watches,
+  };
 });

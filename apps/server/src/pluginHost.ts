@@ -52,6 +52,8 @@ export * as McpThreadAccess from "./mcp/threadAccess.ts";
 export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 // The Pult plugin's Stars: projects found, created, adopted and titled.
 export * as ProjectService from "./project/ProjectService.ts";
+// The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
+export * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 // The Pult plugin's Stars: the pass that puts conversations to sleep, once a minute.
 export * as Scheduler from "./scheduling/Scheduler.ts";
 // The Pult plugin's Stars: the transcripts' folder and label.
@@ -61,6 +63,8 @@ export * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 // The Pult plugin's Star messages: a wake launches a Star's fresh conversation.
 export * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
+// The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
+export * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 // The Pult plugin's schedules: the watch of the Stars directory says when a Star's schedules changed.
 export * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";

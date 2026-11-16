@@ -9,7 +9,8 @@
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
   "dependencies": {
-    "@t3tools/contracts": "workspace:*"
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*"
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",

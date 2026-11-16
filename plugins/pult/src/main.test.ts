@@ -10,6 +10,8 @@ import {
   ProjectId,
   ProviderInstanceId,
   RunId,
+  type ServerProvider,
+  type ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -60,6 +62,7 @@ import {
   ServerConfig,
   ServerEnvironment,
   ServerRuntimeStartup,
+  UsageLimitSources,
   WorkspaceEntries,
 } from "./host.ts";
 import * as Stars from "./stars/stars.ts";
@@ -97,6 +100,9 @@ it.effect("the plugin activates over the production orchestration services", () 
             ServerEnvironment.ServerEnvironment,
             ServerRuntimeStartup.ServerRuntimeStartup,
             WorkspaceEntries.WorkspaceEntries,
+            // Not the runtime's: the server provides them beside it, as it does the platform.
+            ProviderRegistry.ProviderRegistry,
+            UsageLimitSources.UsageLimitSources,
           ),
         ),
       ),
@@ -195,6 +201,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep-request",
           "star-sleep",
           "star-asks",
+          "usage-limits",
           "star-schedules",
         ],
       },
@@ -702,5 +709,214 @@ it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is re
     // The request's fiber settles the conversation once the turn has ended.
     yield* server.threads.settled(1);
     expect(server.threads.settles).toEqual([own.shell.id]);
+  }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("pult_usage_limits reads this server's accounts, each window paced by the calendar", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2026-11-16T13:00:00.000Z"));
+    const server = yield* fakeServer;
+    const provider = (
+      instanceId: string,
+      driver: string,
+      displayName: string,
+      email: string,
+      usageLimits: ServerProviderUsageLimits,
+    ) =>
+      ({
+        instanceId,
+        driver,
+        displayName,
+        enabled: true,
+        installed: true,
+        availability: "available",
+        auth: { status: "authenticated", email, label: "Max" },
+        usageLimits,
+      }) as unknown as ServerProvider;
+    server.limits.providers = [
+      provider("claude", "claudeAgent", "Claude", "a@example.com", {
+        checkedAt: "2026-11-16T12:58:00.000Z",
+        windows: [
+          // Three of five hours gone, 70% spent: more than five points past even pace.
+          {
+            id: "five_hour",
+            kind: "session",
+            label: "Session",
+            usedPercent: 70,
+            resetsAt: "2026-11-16T15:00:00.000Z",
+            windowDurationMins: 300,
+          },
+          // Nothing spent, still shown.
+          {
+            id: "seven_day",
+            kind: "weekly",
+            label: "Weekly",
+            usedPercent: 0,
+            resetsAt: "2026-11-20T13:00:00.000Z",
+            windowDurationMins: 10080,
+          },
+        ],
+      }),
+      provider("codex", "codex", "Codex", "b@example.com", {
+        checkedAt: "2026-11-16T12:40:00.000Z",
+        windows: [
+          // No reset clock: no pace, and the 95% rule alone.
+          { id: "primary", kind: "session", label: "Session", usedPercent: 97 },
+          {
+            id: "secondary",
+            kind: "weekly",
+            label: "Weekly",
+            usedPercent: 30,
+            resetsAt: "2026-11-18T13:00:00.000Z",
+            windowDurationMins: 10080,
+          },
+        ],
+      }),
+      provider("codex-work", "codex", "Codex Work", "w@example.com", {
+        checkedAt: "2026-11-16T12:59:00.000Z",
+        windows: [],
+        unavailable: { reason: "probeFailed", message: "Codex could not read its limits." },
+      }),
+    ];
+    server.limits.sources = [
+      {
+        id: "hub" as never,
+        kind: "cliproxy",
+        label: "Hub",
+        checkedAt: "2026-11-16T12:59:00.000Z",
+        accounts: [
+          {
+            id: "c@example.com.json",
+            driver: "claudeAgent" as never,
+            email: "c@example.com",
+            plan: "Pro",
+            usageLimits: {
+              checkedAt: "2026-11-16T12:59:00.000Z",
+              windows: [
+                {
+                  id: "seven_day",
+                  kind: "weekly",
+                  label: "Weekly",
+                  usedPercent: 50,
+                  resetsAt: "2026-11-19T13:00:00.000Z",
+                  windowDurationMins: 10080,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        id: "old-hub" as never,
+        kind: "cliproxy",
+        label: "Old hub",
+        checkedAt: "2026-11-16T12:59:00.000Z",
+        accounts: [],
+        error: "Connection refused.",
+      },
+    ];
+    const context = yield* Layer.build(
+      PluginLoader.layer(bundledPlugins).pipe(
+        Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+      ),
+    );
+    const mcp = Context.get(context, McpServer.McpServer);
+    const result = yield* mcp.callTool({ name: "pult_usage_limits", arguments: {} }).pipe(
+      // A read-only client reads them too.
+      Effect.provideService(
+        McpInvocationContext.McpInvocationContext,
+        scopeOf({ client: "read-only" }),
+      ),
+      Effect.provideService(McpSchema.McpServerClient, mcpClient),
+    );
+    const text = result.content[0];
+    expect(result.isError).not.toBe(true);
+    expect(text?.type === "text" ? JSON.parse(text.text) : undefined).toEqual({
+      now: "2026-11-16T13:00:00.000Z",
+      accounts: [
+        {
+          provider: "claudeAgent",
+          displayName: "Claude",
+          email: "a@example.com",
+          plan: "Max",
+          hub: null,
+          checkedAt: "2026-11-16T12:58:00.000Z",
+          windows: [
+            {
+              id: "five_hour",
+              kind: "session",
+              label: "Session",
+              lengthMins: 300,
+              usedPercent: 70,
+              resetsAt: "2026-11-16T15:00:00.000Z",
+              evenPercent: 60,
+              warning: true,
+            },
+            {
+              id: "seven_day",
+              kind: "weekly",
+              label: "Weekly",
+              lengthMins: 10080,
+              usedPercent: 0,
+              resetsAt: "2026-11-20T13:00:00.000Z",
+              evenPercent: 42.9,
+              warning: false,
+            },
+          ],
+        },
+        {
+          provider: "codex",
+          displayName: "Codex",
+          email: "b@example.com",
+          plan: "Max",
+          hub: null,
+          checkedAt: "2026-11-16T12:40:00.000Z",
+          windows: [
+            {
+              id: "primary",
+              kind: "session",
+              label: "Session",
+              lengthMins: null,
+              usedPercent: 97,
+              resetsAt: null,
+              evenPercent: null,
+              warning: true,
+            },
+            {
+              id: "secondary",
+              kind: "weekly",
+              label: "Weekly",
+              lengthMins: 10080,
+              usedPercent: 30,
+              resetsAt: "2026-11-18T13:00:00.000Z",
+              evenPercent: 71.4,
+              warning: false,
+            },
+          ],
+        },
+        {
+          provider: "claudeAgent",
+          displayName: null,
+          email: "c@example.com",
+          plan: "Pro",
+          hub: "Hub",
+          checkedAt: "2026-11-16T12:59:00.000Z",
+          windows: [
+            {
+              id: "seven_day",
+              kind: "weekly",
+              label: "Weekly",
+              lengthMins: 10080,
+              usedPercent: 50,
+              resetsAt: "2026-11-19T13:00:00.000Z",
+              evenPercent: 57.1,
+              warning: false,
+            },
+          ],
+        },
+      ],
+      // The account whose read failed is no account, only its notice.
+      notices: ["Codex Work: Codex could not read its limits.", "Old hub: Connection refused."],
+    });
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
