@@ -199,7 +199,7 @@ const HOST_PATH = /^(\/|~\/|[A-Za-z]:[\\/])/;
 
 /**
  * "Pult: Open Project…": a project of an environment, picked first while the
- * page holds several, or a worktree its threads run in, added as a workspace
+ * page holds several, or a worktree its unsettled threads run in, added as a workspace
  * folder, named with the environment's label too while there are several, or
  * revealed where a folder holds it already;
  * or a path typed in, added to the environment as a project first, as
@@ -223,9 +223,12 @@ async function openProject(accessor: ServicesAccessor): Promise<void> {
   // A Star's folder is no project of the user's (`src/stars/hidden.ts`).
   const shell = environmentShell(environmentId);
   const shown = (projectId: string) => !isHiddenProject(environmentId, projectId);
+  // The worktrees of unsettled threads alone, the ones the explorer shows (`worktreeFolders`, `src/panel/explorer.ts`): a settled one's folder would vanish on the next store change.
+  const unsettled = (threadId: string) =>
+    threadStore.thread(environmentId, threadId)?.settled === false;
   const roots = projectRoots({
     projects: shell.projects.filter((project) => shown(project.id)),
-    threads: shell.threads.filter((thread) => shown(thread.projectId)),
+    threads: shell.threads.filter((thread) => shown(thread.projectId) && unsettled(thread.id)),
   });
   const listed: Array<ProjectItem | IQuickPickSeparator> = [];
   for (const root of roots) {

@@ -24,6 +24,7 @@ import {
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 
+import { checkoutName, checkoutsOf } from "../changes/checkouts.ts";
 import { pickEnvironment } from "../connection/commands.ts";
 import { connection } from "../connection/index.ts";
 import {
@@ -38,6 +39,7 @@ import {
 } from "../files/paths.ts";
 import { environmentHome } from "../files/server.ts";
 import { knownRoots, projectRootPaths } from "../files/workspace.ts";
+import { isHiddenProject } from "../stars/hidden.ts";
 import { starStore } from "../stars/model.ts";
 import { type ProjectIconSource, threadProjectIcon } from "../threads/projectIcon.ts";
 import {
@@ -164,10 +166,11 @@ export async function showThreads(): Promise<void> {
 }
 
 /**
- * The Explorer tab, narrowed to the selected thread's root: the root is the
- * workspace's only folder then, as the explorer shows the workspace's folders
- * and the page's `pult:` provider serves them (`src/files/`). A thread with no project
- * root cannot narrow; its card says so.
+ * The Explorer tab, narrowed to the selected thread's checkout, its worktree
+ * else its project's root: the root is the workspace's only folder then, as
+ * the explorer shows the workspace's folders and the page's `pult:` provider
+ * serves them (`src/files/`). A thread with no checkout cannot narrow; its
+ * card says so.
  */
 async function openThreadExplorer(): Promise<void> {
   if (threadRootOfScope() === undefined) {
@@ -215,10 +218,23 @@ async function setScope(next: Scope): Promise<void> {
   );
 }
 
-/** The thread's own root: its project's, not its worktree (`checkoutRoot`, which the changes view narrows to). */
+/**
+ * The thread's checkout (`checkoutRoot`): its worktree, else its project's
+ * root, named as the changes view names the checkout (`checkoutName`). A
+ * worktree gone from the host narrows all the same, its folder marked gone
+ * by the provider, never the main checkout's files.
+ */
 function threadFolder(thread: ShellThread): Folder | undefined {
-  if (thread.projectRoot === null) return undefined;
-  return { uri: pultUri(thread.environmentId, thread.projectRoot), name: thread.projectName };
+  const { checkoutRoot, projectRoot } = thread;
+  if (checkoutRoot === null) return undefined;
+  const worktree =
+    projectRoot !== null && toUriPath(checkoutRoot) === toUriPath(projectRoot)
+      ? null
+      : { branch: thread.branch };
+  return {
+    uri: pultUri(thread.environmentId, checkoutRoot),
+    name: checkoutName({ ...thread, root: checkoutRoot, worktree }),
+  };
 }
 
 /**
@@ -242,6 +258,35 @@ async function environmentFolder(environmentId: string): Promise<Folder> {
     uri: pultUri(environmentId, path),
     name: threadStore.distinguishing(environmentId) ?? placed,
   };
+}
+
+/**
+ * The worktrees of the environment's unsettled threads that its folder does
+ * not show (`folderShows`), each a folder of its own: T3's worktrees live
+ * outside the projects' folder (`~/.t3/worktrees`). Named as the changes
+ * view names the checkout, and while the page holds several environments
+ * with the environment's name after it, as Open Project names folders. A
+ * settled thread's worktree, one storage cleanup removes, is none.
+ */
+function worktreeFolders(environmentId: string, folder: Folder): Folder[] {
+  const roots = knownRoots(environmentId);
+  const label = threadStore.distinguishing(environmentId);
+  const threads = threadStore
+    .get()
+    .threads.filter(
+      (thread) => !thread.settled && namesEnvironment(thread.environmentId, environmentId),
+    );
+  return checkoutsOf({ projects: [], threads }, isHiddenProject).flatMap((checkout) => {
+    if (checkout.worktree === null || folderShows(folder.uri.path, roots, toUriPath(checkout.root)))
+      return [];
+    const name = checkoutName(checkout);
+    return [
+      {
+        uri: pultUri(environmentId, checkout.root),
+        name: label === undefined ? name : `${name} (${label})`,
+      },
+    ];
+  });
 }
 
 /**
@@ -285,17 +330,22 @@ let updateContextKeys = () => {};
 /**
  * Sets the workspace folders to the scope's, one update at a time: each reads
  * the scope and the folders when its turn comes, after the previous update
- * has landed. The thread scope narrows them to the selected thread's root;
- * the Explorer workspace narrows them to the explored environment's folder
- * (`narrowedEnvironment`), while that folder can be had; the environment
- * scope, and the thread scope of a thread without one, set each held
- * environment's folder (`environmentFolder`), keeping a folder of the held
- * environments already there that its environment's does not list and
- * that is above none of its projects (one "Pult: Open Project" added, until
- * the store lists its project), or all of its folders while its
- * environment's cannot be had; a folder is renamed as the number of
- * environments makes its name carry its environment's or not. Before the restored selection is known, the thread
- * scope leaves the folders as they are. A failure is notified. Resolves to
+ * has landed. The thread scope narrows them to the selected thread's
+ * checkout (`threadFolder`); the Explorer workspace narrows them to the
+ * explored environment's folder (`narrowedEnvironment`) and its worktree
+ * folders, while that folder can be had; the environment scope, and the
+ * thread scope of a thread without one, set each held environment's folder
+ * (`environmentFolder`), then its worktree folders (`worktreeFolders`),
+ * keeping a folder of the held environments already there that its
+ * environment's does not list, that is above none of its projects and
+ * that is no worktree the store knows, which are the worktree folders'
+ * alone, so a thread settling drops its folder (one "Pult: Open Project"
+ * added, until the store lists its project; a deleted thread's worktree,
+ * which the store no longer names, stays, marked gone), or all of its
+ * folders while its environment's cannot be had; a folder is renamed as
+ * the number of environments makes its name carry its environment's or
+ * not. Before the restored selection is known, the thread scope leaves
+ * the folders as they are. A failure is notified. Resolves to
  * whether the folders are the scope's.
  */
 function reroot(): Promise<boolean> {
@@ -327,7 +377,7 @@ function reroot(): Promise<boolean> {
           : { kind: "environment", environment: narrowedRoot.name, path: narrowedRoot.uri.path },
       );
     }
-    const root = effectiveRoot() ?? narrowedRoot;
+    const root = effectiveRoot();
     const current = (await getService(IWorkspaceContextService)).getWorkspace().folders;
     const wanted = new Map<string, Folder>();
     // The thread's root keeps its folder, and its tree, under whichever name it has.
@@ -336,24 +386,41 @@ function reroot(): Promise<boolean> {
         keyOf(root.uri),
         current.find((folder) => keyOf(folder.uri) === keyOf(root.uri)) ?? root,
       );
-    else {
+    else if (narrowed !== undefined && narrowedRoot !== undefined) {
+      for (const folder of [narrowedRoot, ...worktreeFolders(narrowed, narrowedRoot)])
+        wanted.set(keyOf(folder.uri), folder);
+    } else {
       // An environment whose folder cannot be had (no projects listed yet and its server not answering) keeps its folders as they are.
       const environmentFolders = (
         await Promise.all(
           environments.map((environment) =>
-            environmentFolder(environment.id).catch(() => undefined),
+            environmentFolder(environment.id).then(
+              (folder) => ({ environmentId: environment.id, folder }),
+              () => undefined,
+            ),
           ),
         )
-      ).filter((folder) => folder !== undefined);
-      for (const folder of environmentFolders) wanted.set(keyOf(folder.uri), folder);
+      ).filter((held) => held !== undefined);
+      for (const { folder } of environmentFolders) wanted.set(keyOf(folder.uri), folder);
+      // The worktrees after every environment's folder.
+      for (const { environmentId, folder: own } of environmentFolders)
+        for (const folder of worktreeFolders(environmentId, own))
+          wanted.set(keyOf(folder.uri), folder);
       const held = new Set(environments.map((environment) => environment.id.toLowerCase()));
       for (const folder of current) {
-        if (folder.uri.scheme !== PULT_SCHEME || !held.has(folder.uri.authority.toLowerCase()))
+        if (
+          folder.uri.scheme !== PULT_SCHEME ||
+          !held.has(folder.uri.authority.toLowerCase()) ||
+          wanted.has(keyOf(folder.uri))
+        )
           continue;
         const own = environmentFolders.find((candidate) =>
-          namesEnvironment(folder.uri.authority, candidate.uri.authority),
-        );
+          namesEnvironment(folder.uri.authority, candidate.environmentId),
+        )?.folder;
         const roots = knownRoots(folder.uri.authority);
+        // A worktree the store knows is the worktree folders' alone: one of a thread settled since is dropped.
+        const projects = projectRootPaths(folder.uri.authority);
+        if (roots.includes(folder.uri.path) && !projects.includes(folder.uri.path)) continue;
         // A folder above projects is a former environment folder; the projects show under the current one.
         const listed =
           own !== undefined &&

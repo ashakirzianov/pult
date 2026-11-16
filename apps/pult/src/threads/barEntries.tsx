@@ -63,7 +63,7 @@ export function ThreadBarEntries({
     <>
       {createPortal(
         <div data-chat-composer-slot-item="shell" className="pult-bar-entries">
-          {thread.projectRoot === null ? (
+          {thread.checkoutRoot === null ? (
             <span className="pult-bar-entry">No project folder</span>
           ) : (
             <BarTip label="Explorer">

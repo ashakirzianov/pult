@@ -77,5 +77,19 @@ NodeTest.describe("pult: paths", () => {
     // A project's folder, or a folder with no project under it, shows everything.
     NodeAssert.equal(folderShows("/home/repos/pult", roots, "/home/repos/pult/dist"), true);
     NodeAssert.equal(folderShows("/srv", roots, "/srv/logs"), true);
+    // A worktree outside the environment's folder is a folder of its own; one nested in a project shows under it.
+    const withWorktrees = [
+      "/home/repos/pult",
+      "/home/repos/pult/.worktrees/fix",
+      "/home/.t3/worktrees/pult/feature",
+    ];
+    NodeAssert.equal(
+      folderShows("/home/repos", withWorktrees, "/home/.t3/worktrees/pult/feature"),
+      false,
+    );
+    NodeAssert.equal(
+      folderShows("/home/repos", withWorktrees, "/home/repos/pult/.worktrees/fix"),
+      true,
+    );
   });
 });
