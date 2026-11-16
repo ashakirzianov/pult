@@ -244,9 +244,9 @@ function fileUri(change: Change): URI {
   return pultUri(change.environmentId, joinPath(change.repositoryRoot, change.path));
 }
 
-/** A `pult:` file's key among the decorated, the authority in any case. */
+/** A `pult:` file's key among the decorated, the authority in any case; a Graph row's file at a commit, its `ref=` query, is not the live file. */
 function decorationKey(uri: URI): string {
-  return `${uri.authority.toLowerCase()}\n${uri.path}`;
+  return `${uri.authority.toLowerCase()}\n${uri.path}\n${uri.query}`;
 }
 
 function sideUri(change: Change, side: Side["side"]): URI {
@@ -375,7 +375,8 @@ class CheckoutHistory implements ISCMHistoryProvider {
         previousPath: stat.previousPath,
       };
       return {
-        uri: pultUri(environmentId, joinPath(repository, stat.path)),
+        // At the commit, as the git extension's rows are, so the badge of the live file's change does not mark it.
+        uri: pultUri(environmentId, joinPath(repository, stat.path)).with({ query: `ref=${sha}` }),
         originalUri: commitSideUri(file, "old"),
         modifiedUri: commitSideUri(file, "new"),
       };
