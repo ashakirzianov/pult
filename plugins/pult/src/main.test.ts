@@ -15,7 +15,33 @@ import {
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as TestClock from "effect/testing/TestClock";
 
-// The real loader, its bundled list and its routes, which the plugin itself never imports.
+// The real runtime, loader, bundled list and routes, which the plugin itself never imports.
+import * as AnalyticsService from "../../../apps/server/src/telemetry/AnalyticsService.ts";
+import * as CheckpointStore from "../../../apps/server/src/checkpointing/CheckpointStore.ts";
+import * as ManagedEndpoint from "../../../apps/server/src/cloud/ManagedEndpointRuntime.ts";
+import * as GitVcsDriver from "../../../apps/server/src/vcs/GitVcsDriver.ts";
+import * as GitWorkflow from "../../../apps/server/src/git/GitWorkflowService.ts";
+import * as ManagedPolicy from "../../../apps/server/src/policy/ManagedPolicy.ts";
+import * as McpSessions from "../../../apps/server/src/mcp/McpSessionRegistry.testkit.ts";
+import * as PreviewManager from "../../../apps/server/src/preview/Manager.ts";
+import * as ProjectCloneTracker from "../../../apps/server/src/project/ProjectCloneTracker.ts";
+import * as ProjectEnrichmentService from "../../../apps/server/src/project/ProjectEnrichmentService.ts";
+import * as ProjectStore from "../../../apps/server/src/orchestration-v2/ProjectStore.ts";
+import * as ProviderInstanceRegistry from "../../../apps/server/src/provider/ProviderInstanceRegistry.ts";
+import * as ProviderRegistry from "../../../apps/server/src/provider/ProviderRegistry.ts";
+import * as SecretResolver from "../../../apps/server/src/secrets/SecretResolver.ts";
+import * as ServerSecretStore from "../../../apps/server/src/auth/ServerSecretStore.ts";
+import * as SourceControlProviderRegistry from "../../../apps/server/src/sourceControl/SourceControlProviderRegistry.ts";
+import * as TerminalManager from "../../../apps/server/src/terminal/Manager.ts";
+import * as TextGeneration from "../../../apps/server/src/textGeneration/TextGeneration.ts";
+import * as VcsStatusBroadcaster from "../../../apps/server/src/vcs/VcsStatusBroadcaster.ts";
+import * as WorkspacePaths from "../../../apps/server/src/workspace/WorkspacePaths.ts";
+import * as WorktreeSetupTracker from "../../../apps/server/src/project/WorktreeSetupTracker.ts";
+import * as McpProviderSessions from "../../../packages/provider-core/src/server/McpProviderSessions.ts";
+import * as RuntimeLayer from "../../../apps/server/src/orchestration-v2/runtimeLayer.ts";
+import * as SqlitePersistence from "../../../apps/server/src/persistence/Sqlite.ts";
+import * as ServerSettings from "../../../apps/server/src/serverSettings.ts";
+import * as ServerActivation from "../../../apps/server/src/serverActivation.ts";
 import * as EnvironmentAuth from "../../../apps/server/src/auth/EnvironmentAuth.ts";
 import * as McpHttpServer from "../../../apps/server/src/mcp/McpHttpServer.ts";
 import { bundledPlugins } from "../../../apps/server/src/plugins/bundled.ts";
@@ -32,6 +58,9 @@ import {
   McpServer,
   Path,
   ServerConfig,
+  ServerEnvironment,
+  ServerRuntimeStartup,
+  WorkspaceEntries,
 } from "./host.ts";
 import * as Stars from "./stars/stars.ts";
 import { at, fakeServer, run } from "./stars/testing.ts";
@@ -55,6 +84,73 @@ const environmentAuth = {
         });
   },
 } as unknown as EnvironmentAuth.EnvironmentAuth["Service"];
+
+it.effect("the plugin activates over the production orchestration services", () =>
+  Effect.gen(function* () {
+    const server = yield* fakeServer;
+    // Fake orchestration services must not mask missing exports from the runtime.
+    const platform = Layer.effectContext(
+      Layer.build(server.layer).pipe(
+        Effect.map(
+          Context.pick(
+            ServerConfig.ServerConfig,
+            ServerEnvironment.ServerEnvironment,
+            ServerRuntimeStartup.ServerRuntimeStartup,
+            WorkspaceEntries.WorkspaceEntries,
+          ),
+        ),
+      ),
+    );
+    const runtime = RuntimeLayer.layerProduction.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(AnalyticsService.AnalyticsService)({}),
+          Layer.mock(CheckpointStore.CheckpointStore)({}),
+          Layer.mock(ManagedEndpoint.CloudManagedEndpointRuntime)({}),
+          Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+          Layer.mock(GitWorkflow.GitWorkflowService)({}),
+          ManagedPolicy.layerTest(),
+          McpSessions.layer,
+          McpProviderSessions.layer,
+          Layer.mock(PreviewManager.PreviewManager)({}),
+          Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
+          Layer.mock(ProjectEnrichmentService.ProjectEnrichmentService)({}),
+          ProjectStore.layer,
+          Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({}),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+          SecretResolver.layer,
+          ServerSecretStore.layer,
+          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+            resolveLink: () => Effect.die("unused source control link"),
+          }),
+          Layer.mock(TerminalManager.TerminalManager)({}),
+          Layer.mock(TextGeneration.TextGeneration)({}),
+          Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+          WorkspacePaths.layer,
+          Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
+        ),
+      ),
+      Layer.provide(SqlitePersistence.layerMemory),
+      Layer.provide(ServerSettings.layerTest()),
+      Layer.provide(platform),
+    );
+    const context = yield* Layer.build(runtime);
+    const loaderContext = yield* Layer.build(
+      PluginLoader.layer(bundledPlugins).pipe(
+        Layer.provide(Layer.succeedContext(context)),
+        Layer.provide(Layer.merge(platform, McpServer.McpServer.layer)),
+      ),
+    );
+    const loader = Context.get(loaderContext, PluginLoader.PluginLoader);
+    expect(yield* loader.list).toContainEqual(
+      expect.objectContaining({ name: "pult", status: "loaded", error: undefined }),
+    );
+  }).pipe(
+    Effect.scoped,
+    Effect.provideService(ServerActivation.ServerActivation, Effect.never),
+    Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  ),
+);
 
 it.effect("the server activates the plugin, which lists stars in about and serves the Stars", () =>
   Effect.gen(function* () {
