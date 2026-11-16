@@ -62,11 +62,12 @@ function threadViewRelease(): Plugin {
  * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`) and the
  * browser host's (`view/browserHost.tsx`), and what it puts on the page's
  * body: base-ui's portal node for every popover, menu, tooltip, dialog and
- * toast, and upstream's own portals there, the composer's command menu and
- * the cite-selection button.
+ * toast, and upstream's own portals there, the composer's command menu, the
+ * cite-selection button and the context menu a page without the desktop's
+ * native menus draws.
  */
 const VIEW_ROOTS =
-  ".pult-thread-view, .pult-view-theme, [data-base-ui-portal], [data-composer-drawer-layer], [data-assistant-selection-toolbar]";
+  ".pult-thread-view, .pult-view-theme, [data-base-ui-portal], [data-composer-drawer-layer], [data-assistant-selection-toolbar], [data-context-menu]";
 
 /** One selector, parsed by Lightning CSS. */
 function parseSelector(text: string): Selector {
@@ -100,6 +101,20 @@ const isDocumentRoot = (component: SelectorComponent) =>
   (component.type === "type" && (component.name === "html" || component.name === "body")) ||
   (component.type === "pseudo-class" && (component.kind === "root" || component.kind === "host"));
 const hasDocumentRootSubject = (selector: Selector) => subjectOf(selector).own.some(isDocumentRoot);
+/**
+ * Whether a selector's subject already names the scope, `:where(:scope, *)` or a
+ * rule moved onto the thread view's root: a relative `:has()` hides a `:scope` of
+ * its own deeper in, which marks nothing.
+ */
+const isMarked = (selector: Selector) =>
+  subjectOf(selector).own.some(
+    (component) =>
+      component.type === "pseudo-class" &&
+      component.kind === "where" &&
+      component.selectors.some((inner) =>
+        inner.some((part) => part.type === "pseudo-class" && part.kind === "scope"),
+      ),
+  );
 const isToken = (declaration: Declaration) =>
   declaration.property === "custom" && declaration.value.name.startsWith("--");
 
@@ -229,8 +244,7 @@ function scopeThreadViewStylesheet(code: string, filename: string): string {
         },
       },
       Selector(selector) {
-        if (hasDocumentRootSubject(selector) || JSON.stringify(selector).includes('"kind":"scope"'))
-          return selector;
+        if (hasDocumentRootSubject(selector) || isMarked(selector)) return selector;
         const { ancestors, own, elements } = subjectOf(selector);
         return [...ancestors, ...own, ...inScope, ...elements];
       },
