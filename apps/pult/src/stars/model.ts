@@ -92,6 +92,8 @@ interface Reading {
   /** Whether the page asked for a Star on it since it last connected. */
   attempted: boolean;
   wasReady: boolean;
+  /** Whether `answer` was taken since the environment last became ready, so it is this connect's (`notify.ts`). */
+  answeredSinceReady: boolean;
   watch: { readonly directory: string; disposable: Disposable | undefined } | undefined;
   /** What, changing, makes the page ask again: the environment's projects and its Stars' root threads; undefined until its threads are in. */
   trigger: string | undefined;
@@ -258,6 +260,10 @@ class StarsModel {
     return this.readings.get(environmentId)?.status === "read";
   }
 
+  answeredOn(environmentId: string): boolean {
+    return this.readings.get(environmentId)?.answeredSinceReady === true;
+  }
+
   /** Whether a Star may be created on the environment by hand: it is ready and its plugin serves Stars. */
   canCreateOn(environmentId: string): boolean {
     return (
@@ -301,6 +307,7 @@ class StarsModel {
           origin: undefined,
           attempted: false,
           wasReady: false,
+          answeredSinceReady: false,
           watch: undefined,
           trigger: undefined,
           generation: 0,
@@ -314,6 +321,7 @@ class StarsModel {
         reading.attempted = false;
         this.halted = false;
       }
+      if (!ready || !reading.wasReady) reading.answeredSinceReady = false;
       reading.wasReady = ready;
       const features = pluginFeatures(environmentId);
       if (features === undefined || features === reading.features) continue;
@@ -396,6 +404,7 @@ class StarsModel {
     reading.answer = answer;
     reading.origin = origin;
     reading.status = "read";
+    reading.answeredSinceReady = connection.environment(environmentId)?.phase === "ready";
     // The thread model publishes as the hidden projects change: no ask for what this answer brings.
     reading.trigger = undefined;
     setHiddenProjects(environmentId, new Set(answer.hidden));
@@ -504,10 +513,10 @@ class StarsModel {
           ];
     });
     const stars = starsOf(answers, threadStore.get().threads);
-    // The readings too, which tell where a Star may be created.
+    // The readings too, which tell where a Star may be created and whether an answer is this connect's.
     const signature = JSON.stringify([
       starsSignature(stars),
-      [...this.readings.values()].map((reading) => reading.status),
+      [...this.readings.values()].map((reading) => [reading.status, reading.answeredSinceReady]),
     ]);
     if (signature !== this.signature) {
       this.signature = signature;
@@ -670,6 +679,8 @@ export const starRepository = (environmentId: string) => model.repository(enviro
 /** Whether every ready environment has answered (`syncing.ts` waits for it). */
 export const starsRead = () => model.allRead();
 export const starsReadOn = (environmentId: string) => model.readOn(environmentId);
+/** Whether the environment's Stars were answered since it last became ready: its first answer after a connect is the notices' baseline (`notify.ts`). */
+export const starsAnsweredOn = (environmentId: string) => model.answeredOn(environmentId);
 export const setStarFields = (
   starId: string,
   changes: { readonly name?: string; readonly tint?: string },
