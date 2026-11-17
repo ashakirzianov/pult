@@ -54,6 +54,8 @@ export interface KeptView {
   readonly folder: string;
   readonly checkouts: ReadonlyArray<KeptCheckout>;
   readonly refused: ReadonlyArray<{ readonly dir: string; readonly reason: string }>;
+  /** Why the CLI could not list the checkouts (missing, or answering a shape the driver refuses). */
+  readonly unlisted?: string;
 }
 
 export class XaxisKeptError extends Schema.TaggedError<XaxisKeptError>()("XaxisKeptError", {
@@ -224,7 +226,15 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
   yield* scheduler.register("pult-xaxis-kept", pass);
 
   const view = Effect.gen(function* () {
-    const { kept, refused } = yield* list;
+    const listed = yield* list.pipe(
+      Effect.map((each) => ({ ...each, unlisted: undefined })),
+      Effect.catchTag("GitCommandError", (error) =>
+        Effect.succeed({ kept: undefined, refused: [], unlisted: error.detail }),
+      ),
+    );
+    const { kept, refused, unlisted } = listed;
+    if (unlisted !== undefined)
+      return { folder, checkouts: [], refused, unlisted } satisfies KeptView;
     if (kept === undefined) return { folder, checkouts: [], refused } satisfies KeptView;
     const dir = path.resolve(kept.dir);
     const shells = yield* projects.listShells();

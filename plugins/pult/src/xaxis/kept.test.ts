@@ -80,12 +80,16 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         const folder = NodePath.join(pult, "xaxis");
         const interval = { every: Duration.seconds(30) };
         const refreshed: string[] = [];
+        const settingsContext = yield* Layer.build(
+          ServerSettings.layerTest({ xaxisBinaryPath: XAXIS! }),
+        );
+        const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
         const layer = Layer.mergeAll(
           server.layer,
           McpServer.McpServer.layer,
           XaxisVcsDriver.layer.pipe(
             Layer.provide(VcsProcess.layer),
-            Layer.provide(ServerSettings.layerTest({ xaxisBinaryPath: XAXIS! })),
+            Layer.provide(Layer.succeedContext(settingsContext)),
           ),
           Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
             refreshStatus: (cwd: string) =>
@@ -133,7 +137,7 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         const onDisk = (name: string) =>
           NodeFS.existsSync(NodePath.join(folder, "test", "repo", name));
 
-        // No folder: nothing kept, and the CLI not asked.
+        // No folder: nothing kept.
         yield* tick;
         expect(yield* kept).toEqual({ folder, checkouts: [], refused: [] });
 
@@ -236,6 +240,15 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
           worktreePath: NodePath.join(folder, "test"),
         });
         expect((yield* kept).checkouts[0]?.agentThreads).toEqual(["agent", "deeper"]);
+
+        // A CLI that cannot list the checkouts is named, in the driver's words.
+        yield* settings.updateSettings({ xaxisBinaryPath: NodePath.join(pult, "no-xaxis") });
+        expect(yield* kept).toEqual({
+          folder,
+          checkouts: [],
+          refused: [],
+          unlisted: expect.stringContaining("xaxis was not found"),
+        });
       }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
   );
 });
