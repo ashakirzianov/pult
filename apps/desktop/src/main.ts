@@ -118,6 +118,8 @@ const layerDesktopEnvironment = Layer.unwrap(
       platform,
       processArch,
       ...metadata,
+      // Pult: Chromium's own switch, so the release smoke test's app keeps a profile apart from an installed Pult's.
+      userDataDirectory: Electron.app.commandLine.getSwitchValue("user-data-dir") || undefined,
     });
   }),
 );

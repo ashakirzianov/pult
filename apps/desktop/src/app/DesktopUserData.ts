@@ -36,11 +36,14 @@ export class DesktopUserDataInitializationError extends Schema.TaggedError<Deskt
 export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPath")(
   function* (input: {
     readonly appDataDirectory: string;
+    /** Pult: a launch's `--user-data-dir`, taken as is: nothing of the brand's profile is read or adopted. */
+    readonly userDataDirectory?: string | undefined;
     readonly isDevelopment: boolean;
     readonly platform: NodeJS.Platform;
   }) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    if (input.userDataDirectory !== undefined) return path.resolve(input.userDataDirectory);
     const names = brandFor(desktopBrand.userData, input.isDevelopment);
     const destinationPath = path.join(input.appDataDirectory, names.current);
     if (names.legacy === null) return destinationPath;

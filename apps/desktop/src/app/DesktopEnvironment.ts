@@ -29,6 +29,8 @@ export interface MakeDesktopEnvironmentInput {
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   readonly runningUnderArm64Translation: boolean;
+  /** Pult: `--user-data-dir`, the launch's own profile in place of the brand's (`DesktopUserData.ts`). */
+  readonly userDataDirectory?: string | undefined;
 }
 
 export class DesktopEnvironment extends Context.Service<
@@ -45,6 +47,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly resourcesPath: string;
     readonly homeDirectory: string;
     readonly appDataDirectory: string;
+    readonly userDataDirectory?: string | undefined;
     readonly baseDir: string;
     readonly stateDir: string;
     readonly desktopSettingsPath: string;
@@ -200,6 +203,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     resourcesPath,
     homeDirectory,
     appDataDirectory,
+    userDataDirectory: input.userDataDirectory,
     baseDir,
     stateDir,
     desktopSettingsPath: path.join(stateDir, "desktop-settings.json"),

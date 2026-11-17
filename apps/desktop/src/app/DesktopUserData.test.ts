@@ -40,3 +40,23 @@ it.effect.each(["t3code", "T3 Code (Alpha)"])(
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+// Pult: the release smoke test launches the packaged app beside an installed one with --user-data-dir.
+it.effect("takes --user-data-dir as the profile, adopting nothing", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-user-data-dir-" });
+    yield* fs.makeDirectory(path.join(directory, "t3code"), { recursive: true });
+    yield* fs.writeFileString(path.join(directory, "t3code", "Local State"), "{}");
+    const override = path.join(directory, "smoke", "profile");
+    const resolved = yield* resolveUserDataPath({
+      appDataDirectory: directory,
+      userDataDirectory: override,
+      isDevelopment: false,
+      platform: "win32",
+    });
+    assert.equal(resolved, override);
+    assert.deepEqual((yield* fs.readDirectory(directory)).sort(), ["t3code"]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
