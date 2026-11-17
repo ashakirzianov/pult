@@ -285,8 +285,9 @@ export const make = Effect.fn("Schedules.make")(function* (
   }).pipe(Effect.withSpan("Schedules.read"));
 
   /**
-   * One delivery of the run due at `due`, then its record; a failed delivery is recorded and not
-   * retried, and a record that fails to write keeps the run from firing again until a restart.
+   * One delivery of the run due at `due`, or its failure before any, then its record; a failed
+   * delivery is recorded and not retried, and a record that fails to write keeps the run from
+   * firing again until a restart.
    */
   const fire = Effect.fn("Schedules.fire")(function* (
     star: Star,
@@ -399,7 +400,7 @@ export const make = Effect.fn("Schedules.make")(function* (
             text: `\`${SCHEDULES_DIRECTORY}/${schedule.name}.md\`'s command failed: ${outcome.error}. Pult tells you again only after it has run cleanly.`,
             from: `Pult, about schedule ${schedule.name}`,
             key: `schedule-command-failed:${schedule.name}:${iso(due)}`,
-            // Pult's own notice, as a file that is no schedule's.
+            // Pult's own notice, which no user is waiting on.
             to: "work",
             sender: "plugin",
           }).pipe(

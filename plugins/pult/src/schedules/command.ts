@@ -35,7 +35,8 @@ export const runCommand = Effect.fn("Schedules.runCommand")(function* (
       timeout: limit,
       timeoutBehavior: "timedOutResult",
       maxOutputBytes: MAX_OUTPUT_BYTES,
-      outputMode: "error",
+      // Not "error", which would fail a run on too much stderr: stderr decides nothing.
+      outputMode: "truncate",
     })
     .pipe(
       Effect.map((result): CommandOutcome => {
@@ -44,6 +45,7 @@ export const runCommand = Effect.fn("Schedules.runCommand")(function* (
             kind: "failed",
             error: `timed out after ${limit / 1000}s`,
           };
+        if (result.stdoutTruncated) return { kind: "failed", error: "printed more than 64 KiB" };
         if (result.code !== 0)
           return {
             kind: "failed",
@@ -54,15 +56,7 @@ export const runCommand = Effect.fn("Schedules.runCommand")(function* (
           : { kind: "printed", output: result.stdout };
       }),
       Effect.catch((error) =>
-        Effect.succeed<CommandOutcome>({
-          kind: "failed",
-          error:
-            error._tag === "ProcessOutputLimitError"
-              ? error.stream === "stdout"
-                ? "printed more than 64 KiB"
-                : "printed more than 64 KiB to stderr"
-              : error.message,
-        }),
+        Effect.succeed<CommandOutcome>({ kind: "failed", error: error.message }),
       ),
     );
 });

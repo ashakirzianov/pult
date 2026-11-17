@@ -50,10 +50,12 @@ describe("runCommand", () => {
     }),
   );
 
-  it.effect("fails when it printed more than 64 KiB", () =>
+  it.effect("fails when it printed more than 64 KiB, and not for as much on stderr", () =>
     Effect.gen(function* () {
       const { outcome } = yield* run("head -c 65537 /dev/zero | tr '\\0' a");
       assert.deepStrictEqual(outcome, { kind: "failed", error: "printed more than 64 KiB" });
+      const noisy = yield* run("head -c 65537 /dev/zero | tr '\\0' a >&2; echo new");
+      assert.deepStrictEqual(noisy.outcome, { kind: "printed", output: "new\n" });
     }),
   );
 
