@@ -113,6 +113,11 @@ describe("ElectronProtocol", () => {
             response.headers.get("content-security-policy") ?? "",
             "font-src 'self' t3code-dev: data:",
           );
+          // Pult: a stock brand's page loads no webview resources (`ElectronProtocol.webviews.test.ts`).
+          assert.include(
+            response.headers.get("content-security-policy") ?? "",
+            "style-src 'self' 'unsafe-inline';",
+          );
         }),
       );
 

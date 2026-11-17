@@ -68,6 +68,11 @@ export class ElectronProtocol extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
+// Pult: VS Code's webview resource URLs, `https://<scheme>+<authority>.vscode-resource.vscode-cdn.net/...`.
+const WEBVIEW_RESOURCE_SOURCES = desktopBrand.rendererHostsWebviews
+  ? ["https://*.vscode-resource.vscode-cdn.net"]
+  : [];
+
 function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
   const clerkOrigin = input.clerkFrontendApiHostname
     ? `https://${input.clerkFrontendApiHostname}`
@@ -79,6 +84,7 @@ function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInpu
     ...(desktopBrand.rendererAllowsEval ? ["'unsafe-eval'"] : []),
     ...(clerkOrigin ? [clerkOrigin] : []),
     "https://challenges.cloudflare.com",
+    ...WEBVIEW_RESOURCE_SOURCES,
   ];
 
   // User-configured environment origins are unknown here, so allow supported network schemes.
@@ -91,7 +97,7 @@ function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInpu
     `connect-src ${connectSources.join(" ")}`,
     `img-src 'self' ${input.scheme}: blob: data: http: https:`,
     `media-src 'self' ${input.scheme}: blob: http: https:`,
-    "style-src 'self' 'unsafe-inline'",
+    ["style-src 'self' 'unsafe-inline'", ...WEBVIEW_RESOURCE_SOURCES].join(" "),
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
     "frame-src 'self' blob: http: https:",
@@ -121,6 +127,8 @@ function registerDesktopSchemePrivilegesSync(): void {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
+        // Pult: a webview's host page registers a service worker.
+        allowServiceWorkers: desktopBrand.rendererHostsWebviews,
         // Custom schemes must opt into V8 caching; dev URLs serve changing code.
         codeCache: true,
       },
@@ -133,6 +141,7 @@ function registerDesktopSchemePrivilegesSync(): void {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
+        allowServiceWorkers: desktopBrand.rendererHostsWebviews,
       },
     },
   ]);

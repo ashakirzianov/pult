@@ -37,6 +37,12 @@ export interface DesktopBrand {
   readonly rendererAssetsDir: string | null;
   /** The renderer needs `'unsafe-eval'` in its script sources. */
   readonly rendererAllowsEval: boolean;
+  /**
+   * The renderer hosts VS Code's webviews (Pult's workbench): its schemes may
+   * register service workers, and its script and style sources take the
+   * webviews' resource host, whose requests the webview's worker answers.
+   */
+  readonly rendererHostsWebviews: boolean;
   /** `T3CODE_TELEMETRY_ENABLED` for the supervised server when the environment sets none; `null` leaves the server's default. */
   readonly serverTelemetryDefault: boolean | null;
   /**
@@ -104,6 +110,7 @@ export const T3CODE_DESKTOP_BRAND: DesktopBrand = {
   legacyLocalStorageProfiles: ["T3 Code (Alpha)", "t3code"],
   rendererAssetsDir: null,
   rendererAllowsEval: false,
+  rendererHostsWebviews: false,
   serverTelemetryDefault: null,
   serverInstallUpdatesAtRest: false,
   intensiveWakeUpThrottling: true,

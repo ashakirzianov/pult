@@ -56,6 +56,9 @@ const brand: DesktopBrandOverride = {
   rendererAssetsDir: "apps/pult/dist",
   // The workbench's extension host loads extensions with `new Function`.
   rendererAllowsEval: true,
+  // The workbench's webviews (the Markdown preview's) answer their resources from a service worker
+  // (`pult/decisions`, `webview-hosting`).
+  rendererHostsWebviews: true,
   // No analytics from the supervised server unless the environment asks for them.
   serverTelemetryDefault: false,
   // Pult.app installs its updates without asking while the fleet and the host rest; a quit only
