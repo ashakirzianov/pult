@@ -5,6 +5,9 @@
  * module instances. See docs/internals/plugins.md.
  */
 export * as Cause from "effect/Cause";
+// The Pult plugin's keep-awake: the caffeinate child it spawns and ends by its handle.
+export * as ChildProcess from "effect/process/ChildProcess";
+export * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 export * as Context from "effect/Context";
 // The Pult plugin's schedules: a file that is no schedule is told to its Star once per content, keyed by its hash.
 export * as Digest from "effect/crypto/Digest";
@@ -56,6 +59,8 @@ export * as ProjectService from "./project/ProjectService.ts";
 export * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 // The Pult plugin's Stars: the pass that puts conversations to sleep, once a minute.
 export * as Scheduler from "./scheduling/Scheduler.ts";
+// The Pult plugin's keep-awake: it holds the Mac awake while the server is not at rest.
+export * as ServerActivity from "./serverActivity.ts";
 // The Pult plugin's Stars: the transcripts' folder and label.
 export * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 // The Pult plugin's Star messages: a delivery waits for startup recovery before it sends or wakes.

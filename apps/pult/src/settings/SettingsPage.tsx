@@ -13,7 +13,9 @@ import { trayOffer } from "../desktop/updateSteps.ts";
 import { updateOffer } from "../desktop/updates.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, setMode } from "../mode.ts";
+import { onDidChangePluginFeatures, pluginFeatures } from "../stars/about.ts";
 import { starStore } from "../stars/model.ts";
+import { KEEP_AWAKE_FEATURE, readKeepAwake, writeKeepAwake } from "../stars/plugin.ts";
 import { TINTS, tintOf } from "../stars/mark.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { type Star, starName } from "../stars/stars.ts";
@@ -187,6 +189,7 @@ function EnvironmentGroup({
       </div>
       <VersionRow environmentId={environmentId} local={local} />
       {local ? <ReachableRow /> : null}
+      <KeepAwakeRow environmentId={environmentId} />
       {ready || outstanding || access !== undefined ? (
         <div className="pult-settings-row pult-settings-subrow pult-settings-devices">
           <h3 className="pult-settings-row-text">Devices</h3>
@@ -335,6 +338,55 @@ function ReachableRow() {
         checked={exposure === "network-accessible"}
         onChange={(on) => void setNetworkAccess(on)}
       />
+    </div>
+  );
+}
+
+/**
+ * Under an environment's row, where its plugin's `about` lists `keep-awake`
+ * (darwin), whether its server holds its Mac awake while agents work, on by
+ * default; nothing until the switch is read.
+ */
+function KeepAwakeRow({ environmentId }: { environmentId: string }) {
+  const listed = useSyncExternalStore(
+    onDidChangePluginFeatures,
+    () => pluginFeatures(environmentId)?.has(KEEP_AWAKE_FEATURE) === true,
+  );
+  // Keyed by the environment, so another environment's answer never shows here.
+  const [read, setRead] = useState<{ environmentId: string; on: boolean }>();
+  const setOn = (on: boolean) => setRead({ environmentId, on });
+  const on = read?.environmentId === environmentId ? read.on : undefined;
+  useEffect(() => {
+    const credential = connection.credential(environmentId);
+    if (!listed || credential === undefined) return;
+    let current = true;
+    readKeepAwake(credential).then(
+      (answer) => current && setRead({ environmentId, on: answer }),
+      (error) => console.warn(`[pult-shell] could not read keep-awake: ${String(error)}`),
+    );
+    return () => {
+      current = false;
+    };
+  }, [environmentId, listed]);
+  if (!listed || on === undefined) return null;
+  const label = "Keep this Mac awake while agents work";
+  const change = (next: boolean) => {
+    const credential = connection.credential(environmentId);
+    if (credential === undefined) return;
+    writeKeepAwake(credential, next).then(setOn, (error) =>
+      console.warn(`[pult-shell] could not set keep-awake: ${String(error)}`),
+    );
+  };
+  return (
+    <div className="pult-settings-row pult-settings-subrow">
+      <div className="pult-settings-row-text">
+        <div className="pult-settings-row-label">{label}</div>
+        <div className="pult-settings-row-description">
+          While an agent works on this environment, its Mac does not sleep on its own. The display
+          still sleeps, and closing the lid or choosing Sleep still sleeps it.
+        </div>
+      </div>
+      <Switch label={label} checked={on} onChange={change} />
     </div>
   );
 }

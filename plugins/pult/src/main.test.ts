@@ -53,7 +53,9 @@ import {
   Context,
   Effect,
   FileSystem,
+  HostProcess,
   HttpServerRequest,
+  HttpServerResponse,
   Layer,
   McpInvocationContext,
   McpSchema,
@@ -166,7 +168,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
         PluginLoader.layer(bundledPlugins).pipe(
           Layer.provide(Layer.mergeAll(server.layer, McpServer.McpServer.layer)),
         ),
-      ),
+      ).pipe(Effect.provideService(HostProcess.Platform, "darwin")),
       PluginLoader.PluginLoader,
     );
     const [status] = (yield* loader.list).filter((plugin) => plugin.name === "pult");
@@ -202,9 +204,45 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep",
           "star-asks",
           "usage-limits",
+          "keep-awake",
           "star-schedules",
         ],
       },
+    });
+
+    // While the server is busy, one caffeinate holds the Mac awake for as long as the server lives.
+    const keepAwake = server.runSource("pult-keep-awake");
+    const running = () => server.children.map((child) => child.running);
+    yield* keepAwake;
+    yield* keepAwake;
+    expect(server.children).toEqual([
+      { command: "/usr/bin/caffeinate", args: ["-i", "-w", String(process.pid)], running: true },
+    ]);
+    // One that exits on its own, as to an agent's `pkill caffeinate`, is held again by the next pass.
+    server.children[0]!.running = false;
+    yield* keepAwake;
+    expect(running()).toEqual([false, true]);
+    // At rest, it is let go at once.
+    server.activity.atRest = true;
+    yield* keepAwake;
+    expect(running()).toEqual([false, false]);
+    // Off, it spawns nothing while busy; the switch is its route's, with the write scope.
+    server.activity.atRest = false;
+    expect(yield* send("GET", "/keep-awake", "reader")).toEqual({
+      status: 200,
+      body: { on: true },
+    });
+    expect((yield* send("POST", "/keep-awake", "reader", { on: false })).status).toBe(403);
+    expect((yield* send("POST", "/keep-awake", "writer", { on: "no" })).status).toBe(400);
+    expect(yield* send("POST", "/keep-awake", "writer", { on: false })).toEqual({
+      status: 200,
+      body: { on: false },
+    });
+    yield* keepAwake;
+    expect(running()).toEqual([false, false]);
+    expect(yield* send("GET", "/keep-awake", "reader")).toEqual({
+      status: 200,
+      body: { on: false },
     });
     expect(yield* send("GET", "/stars", "reader")).toEqual({
       status: 200,
@@ -261,6 +299,34 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     const { stateDir } = yield* ServerConfig.ServerConfig.pipe(Effect.provide(server.layer));
     yield* fs.makeDirectory(`${stateDir}/plugins/pult`, { recursive: true });
     yield* fs.writeFileString(`${stateDir}/plugins/pult/schedules-off`, "");
+    expect(yield* fs.exists(`${stateDir}/plugins/pult/keep-awake-off`)).toBe(true);
+    // Activated again, the plugin reads the switch from its file; elsewhere than darwin, `about` names no `keep-awake`.
+    const askActivatedOn = (platform: NodeJS.Platform, path: string) =>
+      Effect.gen(function* () {
+        const again = Context.get(
+          yield* Layer.build(
+            PluginLoader.layer(bundledPlugins).pipe(
+              Layer.provide(Layer.mergeAll(server.layer, McpServer.McpServer.layer)),
+            ),
+          ).pipe(Effect.provideService(HostProcess.Platform, platform)),
+          PluginLoader.PluginLoader,
+        );
+        const response = yield* again.route("pult")!(
+          HttpServerRequest.fromWeb(new Request(`http://127.0.0.1/api/plugins/pult${path}`)),
+          path,
+          [AuthOrchestrationReadScope],
+        );
+        const body = yield* Effect.promise(
+          () =>
+            HttpServerResponse.toWeb(response).json() as Promise<{
+              on?: boolean;
+              features?: ReadonlyArray<string>;
+            }>,
+        );
+        return body;
+      });
+    expect(yield* askActivatedOn("darwin", "/keep-awake")).toEqual({ on: false });
+    expect((yield* askActivatedOn("linux", "/about")).features).not.toContain("keep-awake");
     expect((yield* send("GET", "/about", "reader")).body.features).not.toContain("star-schedules");
 
     expect(yield* send("POST", `/stars/${star.id}`, "writer", { name: "Vega" })).toMatchObject({

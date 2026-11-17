@@ -4,6 +4,7 @@
  * `host.serve` dispatch below; its tools register last.
  */
 import { Effect, HttpServerResponse, Layer, type PluginHost } from "./host.ts";
+import * as KeepAwake from "./keepAwake/keepAwake.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import * as Schedules from "./schedules/schedules.ts";
 import * as Delivery from "./stars/deliver.ts";
@@ -16,7 +17,8 @@ import * as Stars from "./stars/stars.ts";
 /**
  * What this build does, one name per feature the page relies on; the page
  * reads it on each connect, and anything but this JSON means no plugin.
- * `star-schedules` is named only where this server fires them.
+ * `star-schedules` is named only where this server fires them, `keep-awake`
+ * only where it holds the Mac awake (darwin).
  */
 const features: ReadonlyArray<string> = [
   "stars",
@@ -31,6 +33,8 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const deliverTo = yield* Delivery.make;
   const stars = yield* Stars.make;
   const schedules = yield* Schedules.make(stars, deliverTo(stars));
+  const keepAwake = yield* KeepAwake.make();
+  const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, deliverTo(stars)),
     yield* ListTool.make(stars),
@@ -41,11 +45,12 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
     if ((request.method === "GET" || request.method === "HEAD") && path === "/about")
       return Effect.map(schedules.firing, (firing) =>
         HttpServerResponse.jsonUnsafe({
-          features: firing ? [...features, "star-schedules"] : features,
+          features: firing ? [...listed, "star-schedules"] : listed,
         }),
       );
     return (
       starsRoute(stars, schedules, request, path) ??
+      keepAwake.route(request, path) ??
       Effect.succeed(HttpServerResponse.empty({ status: 404 }))
     );
   });

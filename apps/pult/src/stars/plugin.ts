@@ -14,6 +14,9 @@ export const SCHEDULES_FEATURE = "star-schedules";
 /** The plugin's feature of putting a Star to sleep by hand, Refresh Context: `POST stars/<id>/sleep`, offered only where `about` lists it. */
 export const SLEEP_FEATURE = "star-sleep";
 
+/** The plugin's feature of keeping its Mac awake while agents work, a switch read and set through `keep-awake`; listed on darwin alone. */
+export const KEEP_AWAKE_FEATURE = "keep-awake";
+
 const PLUGIN_PATH = "/api/plugins/pult";
 
 /** How long a read may take before the server reads as having no plugin, or no Stars: the environment's cards wait on both. */
@@ -457,3 +460,14 @@ export const readStarTranscript = (credential: Credential, id: string, name: str
     `${starPath(id)}/conversations/${encodeURIComponent(name)}`,
     decodeTranscript,
   );
+
+const keepAwakeAnswer = (body: unknown): boolean =>
+  isFields(body) && typeof body.on === "boolean" ? body.on : fail("keep-awake", "{ on }");
+
+/** Whether the server keeps its Mac awake while agents work. */
+export const readKeepAwake = (credential: Credential) =>
+  ask(credential, "GET", "/keep-awake", keepAwakeAnswer);
+
+/** Turns keeping the Mac awake on or off; answered as `readKeepAwake`. */
+export const writeKeepAwake = (credential: Credential, on: boolean) =>
+  ask(credential, "POST", "/keep-awake", keepAwakeAnswer, { on });
