@@ -1,8 +1,13 @@
-// `pult_usage_limits` (xaxis `pult/issues/limits-tool-for-agents.md`): an agent reads this server's
-// usage limits, each window with a linear even pace and a warning; it refreshes nothing. Upstream's
-// `collectLimitAccounts` drops every account whose limits are unavailable, so an account carries no
-// `unavailable`: only a notice tells of it.
-import { IsoDateTime, ProviderDriverKind, ServerProviderUsageWindow } from "@t3tools/contracts";
+// `pult_usage_limits` (xaxis `pult/issues/limits-tool-for-agents.md`, `usage-limits-go-stale.md`): this
+// server's usage limits, paced and warned, refreshed when older than five minutes at most once per five
+// minutes, as upstream's timer needs a page in front. `collectLimitAccounts` drops every account whose
+// limits are unavailable, so an account carries no `unavailable`: only a notice tells of it.
+import {
+  isProviderAvailable,
+  IsoDateTime,
+  ProviderDriverKind,
+  ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 import {
   collectLimitAccounts,
   collectLimitNotices,
@@ -13,6 +18,7 @@ import {
 import {
   DateTime,
   Effect,
+  Fiber,
   McpToolAccess,
   ProviderRegistry,
   Schema,
@@ -27,9 +33,14 @@ import {
 const WARNING_USED_PERCENT = 95;
 const PACE_TOLERANCE_PERCENT = 5;
 
+/** Upstream's provider status interval and Claude's probe cache: both the staleness line and the floor between refreshes. */
+const REFRESH_AFTER_MS = 5 * 60_000;
+/** Above Claude's 25-second probe deadline. */
+const REFRESH_WAIT = "30 seconds";
+
 const UsageLimitsTool = Tool.make("pult_usage_limits", {
   description:
-    "The usage limits this server holds for its provider accounts and its usage hubs, and nothing of other environments: per account, its `checkedAt` (when its limits were read) and each window with its length, the share used, its reset, `evenPercent` (the share of the window's time gone, by the calendar, so spending at that pace uses the window up exactly at its reset; null without a reset time or a length) and `warning` (over 95% used, or more than 5 points past `evenPercent`), and `notices`, upstream's for this server. It refreshes nothing. An account whose limits could not be read, or report none, is not listed, and a notice says why; one with no subscription limits (an API key) is left out with no notice; a hub whose read failed lists none of its accounts, only its notice. A provider whose read fails after a good one keeps its last good windows with their `checkedAt`, so an account whose `checkedAt` is more than fifteen minutes before `now` has no current numbers.",
+    "The usage limits this server holds for its provider accounts and its usage hubs, and nothing of other environments: per account, its `checkedAt` (when its limits were read) and each window with its length, the share used, its reset, `evenPercent` (the share of the window's time gone, by the calendar, so spending at that pace uses the window up exactly at its reset; null without a reset time or a length) and `warning` (over 95% used, or more than 5 points past `evenPercent`), and `notices`, upstream's for this server. A read first refreshes the limits when any is older than five minutes, at most once per five minutes, waiting up to 30 seconds. An account whose limits could not be read, or report none, is not listed, and a notice says why; one with no subscription limits (an API key) is left out with no notice; a hub whose read failed lists none of its accounts, only its notice. A provider whose read fails after a good one keeps its last good windows with their `checkedAt`, so an account whose `checkedAt` is more than fifteen minutes before `now` has no current numbers.",
   parameters: Tool.EmptyParams,
   success: Schema.Struct({
     now: IsoDateTime,
@@ -69,8 +80,39 @@ export const make = Effect.fn("PultTools.makeUsageLimits")(function* () {
   const registry = yield* ProviderRegistry.ProviderRegistry;
   const sources = yield* UsageLimitSources.UsageLimitSources;
   const environment = yield* ServerEnvironment.ServerEnvironment;
+  /** The last refresh this tool asked for, and when, in epoch millis; null before its first. */
+  let last: { readonly at: number; readonly refresh: Fiber.Fiber<void> } | null = null;
+
+  // The shelf's Refresh, `server.refreshProviders`, beside the hubs'. A stale read inside the floor
+  // waits on the last refresh, so readers arriving while it runs answer what it reads.
+  const refreshIfStale = Effect.fn("PultTools.refreshStaleUsageLimits")(function* () {
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const checkedAt = [
+      ...(yield* registry.getProviders).flatMap((provider) =>
+        provider.enabled &&
+        provider.installed &&
+        isProviderAvailable(provider) &&
+        provider.usageLimits !== undefined &&
+        provider.usageLimits.unavailable?.reason !== "unsupported"
+          ? [provider.usageLimits.checkedAt]
+          : [],
+      ),
+      ...(yield* sources.current).map((source) => source.checkedAt),
+    ];
+    if (!checkedAt.some((at) => now - Date.parse(at) > REFRESH_AFTER_MS)) return;
+    if (last === null || now - last.at > REFRESH_AFTER_MS) {
+      // Detached, so the wait's timeout leaves the refresh running rather than interrupting it.
+      const refresh = yield* Effect.all([registry.refresh(), sources.refresh], {
+        concurrency: "unbounded",
+        discard: true,
+      }).pipe(Effect.forkDetach);
+      last = { at: now, refresh };
+    }
+    yield* Fiber.await(last.refresh).pipe(Effect.timeoutOption(REFRESH_WAIT));
+  });
 
   const read = Effect.fn("PultTools.readUsageLimits")(function* () {
+    yield* refreshIfStale();
     const descriptor = yield* environment.getDescriptor;
     const presentations: LimitPresentations = new Map([
       [

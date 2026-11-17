@@ -442,11 +442,14 @@ export const fakeServer = Effect.gen(function* () {
     readonly cwd: string;
     readonly queue: Parameters<Parameters<typeof Stream.callback<ProjectWatchEntriesEvent>>[0]>[0];
   }> = [];
-  /** What the server's providers and usage hubs hold now, as `pult_usage_limits` reads them. */
+  /** What the server's providers and usage hubs hold now, as `pult_usage_limits` reads them; each refresh
+   * asked for, in order, runs `onRefresh` for the providers' (set it to change what they hold). */
   const limits: {
     providers: ReadonlyArray<ServerProvider>;
     sources: ReadonlyArray<UsageLimitSourceSnapshot>;
-  } = { providers: [], sources: [] };
+    refreshed: Array<"providers" | "sources">;
+    onRefresh: () => void;
+  } = { providers: [], sources: [], refreshed: [], onRefresh: () => {} };
   /** Whether the server is at rest, as `ServerActivity` reads it; busy, as the server starts. */
   const activity = { atRest: false };
   /** Each child spawned, in order, with whether it still runs: set `running` false to end it on its own. */
@@ -519,9 +522,16 @@ export const fakeServer = Effect.gen(function* () {
     ),
     Layer.succeed(ProviderRegistry.ProviderRegistry, {
       getProviders: Effect.sync(() => limits.providers),
+      refresh: () =>
+        Effect.sync(() => {
+          limits.refreshed.push("providers");
+          limits.onRefresh();
+          return limits.providers;
+        }),
     } as unknown as ProviderRegistry.ProviderRegistry["Service"]),
     Layer.succeed(UsageLimitSources.UsageLimitSources, {
       current: Effect.sync(() => limits.sources),
+      refresh: Effect.sync(() => void limits.refreshed.push("sources")),
     } as unknown as UsageLimitSources.UsageLimitSources["Service"]),
     Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
     Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),

@@ -855,9 +855,9 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 
-it.effect("pult_usage_limits reads this server's accounts, each window paced by the calendar", () =>
+it.effect("pult_usage_limits refreshes stale limits, then paces each window by the calendar", () =>
   Effect.gen(function* () {
-    yield* TestClock.setTime(Date.parse("2026-11-16T13:00:00.000Z"));
+    yield* TestClock.setTime(Date.parse("2026-11-16T12:44:00.000Z"));
     const server = yield* fakeServer;
     const provider = (
       instanceId: string,
@@ -964,17 +964,37 @@ it.effect("pult_usage_limits reads this server's accounts, each window paced by 
       ),
     );
     const mcp = Context.get(context, McpServer.McpServer);
-    const result = yield* mcp.callTool({ name: "pult_usage_limits", arguments: {} }).pipe(
-      // A read-only client reads them too.
-      Effect.provideService(
-        McpInvocationContext.McpInvocationContext,
-        scopeOf({ client: "read-only" }),
-      ),
-      Effect.provideService(McpSchema.McpServerClient, mcpClient),
-    );
-    const text = result.content[0];
-    expect(result.isError).not.toBe(true);
-    expect(text?.type === "text" ? JSON.parse(text.text) : undefined).toEqual({
+    const read = Effect.gen(function* () {
+      const result = yield* mcp.callTool({ name: "pult_usage_limits", arguments: {} }).pipe(
+        // A read-only client reads them too.
+        Effect.provideService(
+          McpInvocationContext.McpInvocationContext,
+          scopeOf({ client: "read-only" }),
+        ),
+        Effect.provideService(McpSchema.McpServerClient, mcpClient),
+      );
+      const text = result.content[0];
+      expect(result.isError).not.toBe(true);
+      return text?.type === "text" ? JSON.parse(text.text) : undefined;
+    });
+    const checkedAt = (answer: { accounts: ReadonlyArray<{ checkedAt: string }> }) =>
+      answer.accounts.map((account) => account.checkedAt);
+    // Codex was read four minutes ago, the rest later: all fresh, no refresh.
+    yield* read;
+    expect(server.limits.refreshed).toEqual([]);
+    // Codex was read twenty minutes ago: the read refreshes first, once, and answers the new read.
+    yield* TestClock.adjust("16 minutes");
+    server.limits.onRefresh = () => {
+      server.limits.providers = server.limits.providers.map((provider) =>
+        provider.instanceId === "codex"
+          ? {
+              ...provider,
+              usageLimits: { ...provider.usageLimits!, checkedAt: "2026-11-16T13:00:00.000Z" },
+            }
+          : provider,
+      );
+    };
+    expect(yield* read).toEqual({
       now: "2026-11-16T13:00:00.000Z",
       accounts: [
         {
@@ -1013,7 +1033,7 @@ it.effect("pult_usage_limits reads this server's accounts, each window paced by 
           email: "b@example.com",
           plan: "Max",
           hub: null,
-          checkedAt: "2026-11-16T12:40:00.000Z",
+          checkedAt: "2026-11-16T13:00:00.000Z",
           windows: [
             {
               id: "primary",
@@ -1061,5 +1081,20 @@ it.effect("pult_usage_limits reads this server's accounts, each window paced by 
       // The account whose read failed is no account, only its notice.
       notices: ["Codex Work: Codex could not read its limits.", "Old hub: Connection refused."],
     });
+    expect(server.limits.refreshed).toEqual(["providers", "sources"]);
+    // Claude's read is now eight minutes old; this refresh reads nothing new, as a failed one keeps the old reads.
+    server.limits.onRefresh = () => {};
+    yield* TestClock.adjust("6 minutes");
+    const stale = [
+      "2026-11-16T12:58:00.000Z",
+      "2026-11-16T13:00:00.000Z",
+      "2026-11-16T12:59:00.000Z",
+    ];
+    expect(checkedAt(yield* read)).toEqual(stale);
+    expect(server.limits.refreshed).toHaveLength(4);
+    // Inside five minutes of that attempt, still stale, no second one.
+    yield* TestClock.adjust("4 minutes");
+    expect(checkedAt(yield* read)).toEqual(stale);
+    expect(server.limits.refreshed).toHaveLength(4);
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
