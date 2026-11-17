@@ -567,14 +567,17 @@ function makeView(composerOnly: boolean) {
       const stays = isShown(before, target) && mount.home() === from;
       const rested = before.kind === "none";
       if (!stays && !rested) conceal(true);
-      element.append(main, bar);
+      // A bar its composer hosts (`ComposerBarHost`) moves with `main`: taken out, it would stay
+      // out while the view goes from thread to thread in one composer, whose host claims it once.
+      element.append(main);
+      if (!main.contains(bar)) element.append(bar);
       if (stays) mount.remount();
       else go();
     },
     /** Out of its element, to rest unless another mount takes it first. */
     leave() {
       main.remove();
-      bar.remove();
+      if (!main.contains(bar)) bar.remove();
       resting = setTimeout(() => {
         conceal(false);
         mount.show(NOTHING, () => {}, {});

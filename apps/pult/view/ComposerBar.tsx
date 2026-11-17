@@ -106,8 +106,8 @@ export function ComposerBarNotices({
  * Where the composer bar sits while a composer is mounted: at the end of the
  * composer's form, under its message, so the buttons in it submit the form
  * as upstream's do. The bar is the shell's element (`ThreadView.tsx`), moved
- * here and back to where it was when the composer goes, as for a thread
- * that mounts none.
+ * here, and to the end of the view's element when the composer goes, as for
+ * a thread that mounts none.
  */
 export function ComposerBarHost({
   slot,
@@ -120,10 +120,13 @@ export function ComposerBarHost({
   useLayoutEffect(() => {
     const element = host.current;
     if (element === null) return;
-    const home = slot.parentElement;
     element.append(slot);
     return () => {
-      if (home !== null && slot.parentElement === element) home.append(slot);
+      if (slot.parentElement !== element) return;
+      // Back to the end of the view's element it is in now, which the view may have changed since.
+      const view = element.closest(".pult-thread-view");
+      if (view === null) slot.remove();
+      else view.append(slot);
     };
   }, [slot]);
   return <div ref={host} data-chat-composer-bar-host={draft ? "draft" : "thread"} />;
