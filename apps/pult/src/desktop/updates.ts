@@ -37,8 +37,8 @@ import {
  * over `window.desktopBridge`: the palette's Pult: Check for Updates, which
  * checks, downloads what it finds and answers with one notification, and
  * Pult: Restart to Update while a downloaded update waits, which installs it
- * now, asking first while agents work here; and the tray's button, Download
- * Update, then Restart to Update (`updateOffer`). While the local server's
+ * now, asking first while agents work here; and the tray's button, an icon
+ * to download, then to restart (`updateOffer`). While the local server's
  * `autoUpdateDesktopApp` is on, the page downloads an update as the updater
  * finds one, and the server installs it at rest (`InstallAtRest.ts`). None of
  * it is offered outside Pult.app.

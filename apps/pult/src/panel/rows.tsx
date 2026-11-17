@@ -91,37 +91,28 @@ function PanelHeader() {
   );
 }
 
-/** The tray's update button in Pult.app (`updateOffer`): Download Update for an update found, its download under way, then Restart to Update. */
+/** The tray's update button in Pult.app (`updateOffer`), an icon its tooltip names: Download for an update found, a spinner while it downloads, then Restart to Update. */
 function UpdateButton() {
   const offer = useSyncExternalStore(updateOffer.subscribe, updateOffer.get);
   if (offer === null) return null;
-  const { icon, label, title } = {
-    download: {
-      icon: "cloud-download",
-      label: "Download Update",
-      title: `Download Pult ${offer.version}`,
-    },
+  const { icon, title } = {
+    download: { icon: "cloud-download", title: `Download Pult ${offer.version}` },
     downloading: {
       icon: "loading codicon-modifier-spin",
-      label: "Downloading…",
       title: `Downloading Pult ${offer.version}`,
     },
-    restart: {
-      icon: "debug-restart",
-      label: "Restart to Update",
-      title: `Restart Pult to install ${offer.version}`,
-    },
+    restart: { icon: "debug-restart", title: `Restart Pult to install ${offer.version}` },
   }[offer.kind];
   return (
     <button
       type="button"
-      className="pult-panel-update"
+      className="pult-panel-row-button pult-panel-update"
       title={title}
+      aria-label={title}
       disabled={offer.kind === "downloading"}
       onClick={() => void updateOffer.act()}
     >
       <i className={`codicon codicon-${icon}`} aria-hidden />
-      <span className="pult-panel-update-label">{label}</span>
     </button>
   );
 }
