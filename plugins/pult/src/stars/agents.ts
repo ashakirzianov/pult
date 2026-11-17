@@ -7,7 +7,7 @@ import { ASKS_DIRECTORY } from "./asks.ts";
 import { CHANNELS_DIRECTORY, INSTRUCTIONS_FILE, RECORD_FILE, SYSTEM_DIRECTORY } from "./record.ts";
 
 /** The version of `AGENTS_TEXT`, its first line: raised with every change of the text. */
-export const AGENTS_VERSION = 13;
+export const AGENTS_VERSION = 14;
 
 export const AGENTS_TEXT = `<!-- pult-agents-md: ${AGENTS_VERSION} -->
 # Star
@@ -24,7 +24,7 @@ You hold one conversation per channel, each a thread of its own. They can run at
 
 You can also end a conversation yourself. Where you have Pult's \`pult_star_sleep\` tool, call it as the last thing you do in a turn: that conversation ends when the turn ends, and the next message to it wakes you in a fresh thread. Do it in a channel other than \`user\` when a unit of work is done and what must outlive it is written in this folder: a conversation that only grows costs more with every message. The request is for that turn's end alone. If the turn fails, another message is waiting, or a task you delegated from this conversation is still running, the conversation stays open, and you can ask again at the end of a later turn. Never do it in \`user\` while the user is talking with you: the conversation leaves their view.
 
-Pult manages this file and \`${SYSTEM_DIRECTORY}/\`, apart from what is called yours above, and rewrites this file as Pult changes, so anything you write here will be lost. Everything else in this folder is yours. Your own instructions go in \`${INSTRUCTIONS_FILE}\`, which you manage on your own and which is loaded below. If you don't see the contents of \`${INSTRUCTIONS_FILE}\` or \`${RECORD_FILE}\` below, read them before your first reply.
+Pult manages this file and \`${SYSTEM_DIRECTORY}/\`, apart from what is called yours above, and rewrites this file as Pult changes, so anything you write here will be lost. Everything else in this folder is yours. This folder is a git repository of its own: Pult commits what it holds each time all your conversations have ended, and you may commit in it yourself. Your own instructions go in \`${INSTRUCTIONS_FILE}\`, which you manage on your own and which is loaded below. If you don't see the contents of \`${INSTRUCTIONS_FILE}\` or \`${RECORD_FILE}\` below, read them before your first reply.
 
 @${RECORD_FILE}
 @${INSTRUCTIONS_FILE}
