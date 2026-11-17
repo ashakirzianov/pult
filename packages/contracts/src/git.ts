@@ -237,6 +237,22 @@ const VcsStatusChangeRequest = Schema.Struct({
   updatedAt: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
+/**
+ * Pult: what an xaxis checkout's local status adds: the paths a land's conflict
+ * left (`markers` whether the file still holds conflict markers), and the
+ * write that stopped partway, by the verb that finishes it.
+ */
+export const VcsStatusXaxis = Schema.Struct({
+  conflicts: Schema.Array(Schema.Struct({ path: GitFilePath, markers: Schema.Boolean })),
+  interrupted: Schema.NullOr(
+    Schema.Union([
+      Schema.Literals(["get-latest", "commit-land"]),
+      Schema.Struct({ command: TrimmedNonEmptyStringSchema }),
+    ]),
+  ),
+});
+export type VcsStatusXaxis = typeof VcsStatusXaxis.Type;
+
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
   sourceControlProvider: Schema.optional(SourceControlProviderInfo),
@@ -267,6 +283,8 @@ const VcsStatusLocalShape = {
       deletions: NonNegativeInt,
     }),
   ),
+  /** Pult: present for an xaxis checkout alone, its presence naming the kind (`pult/decisions`, `xaxis-status-fields`). */
+  xaxis: Schema.optional(VcsStatusXaxis),
 };
 
 const VcsStatusRemoteShape = {
@@ -275,6 +293,8 @@ const VcsStatusRemoteShape = {
   behindCount: NonNegativeInt,
   aheadOfDefaultCount: Schema.optional(NonNegativeInt),
   pr: Schema.NullOr(VcsStatusChangeRequest),
+  /** Pult: an xaxis checkout's tip could not be read, the counts then 0 behind; absent when it was read. */
+  xaxisTip: Schema.optional(Schema.Literals(["signed-out", "unreachable"])),
 };
 
 export const VcsStatusLocalResult = Schema.Struct(VcsStatusLocalShape);

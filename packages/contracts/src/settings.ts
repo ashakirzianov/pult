@@ -1357,6 +1357,8 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Pult: the desktop app downloads an update as it finds one and installs it at rest (`InstallAtRest.ts`). */
   autoUpdateDesktopApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Pult: the `xaxis` CLI an xaxis checkout's source control runs; empty is `xaxis` on PATH. */
+  xaxisBinaryPath: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
@@ -1805,6 +1807,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   autoUpdateDesktopApp: Schema.optionalKey(Schema.Boolean),
+  xaxisBinaryPath: Schema.optionalKey(TrimmedString),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({

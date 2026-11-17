@@ -283,6 +283,8 @@ describe("applyGitStatusStreamEvent", () => {
         insertions: 1,
         deletions: 0,
       },
+      // Pult: an xaxis checkout's fields ride both parts.
+      xaxis: { conflicts: [{ path: "src/demo.ts", markers: true }], interrupted: null },
       hasUpstream: false,
       aheadCount: 0,
       behindCount: 0,
@@ -302,6 +304,12 @@ describe("applyGitStatusStreamEvent", () => {
       aheadCount: 2,
       behindCount: 1,
       pr: null,
+    });
+    const signedOut = { ...current, xaxisTip: "signed-out" as const };
+    const { xaxis: _, ...local } = current;
+    expect(applyGitStatusStreamEvent(signedOut, { _tag: "localUpdated", local })).toEqual({
+      ...local,
+      xaxisTip: "signed-out",
     });
   });
 });
