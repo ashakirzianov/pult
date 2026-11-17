@@ -27,6 +27,7 @@ import * as Stream from "effect/Stream";
 
 import * as GitManager from "../git/GitManager.ts";
 import * as PreviewManager from "../preview/Manager.ts";
+import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -313,6 +314,7 @@ export const make = Effect.gen(function* () {
   const shellClosedThreads = new Set<ThreadId>();
   const terminals = yield* TerminalManager.TerminalManager;
   const previews = yield* PreviewManager.PreviewManager;
+  const ports = yield* PortScanner.PortDiscovery;
   const projectScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   // Repeated thread.settled retains settledAt; run the action only once per settlement.
   const settleActionRunAt = new Map<ThreadId, number>();
@@ -605,6 +607,25 @@ export const make = Effect.gen(function* () {
       if (settled.settledOverride !== "settled") return;
       yield* terminals.closeOnSettle({ threadId });
       yield* previews.close({ threadId });
+      // Pult (xaxis `pult/decisions`, `settle-stops-agent-servers`): settling a thread, automatic
+      // settles included, stops the listening servers its agent started, which nothing else
+      // reaches on macOS once their shell returns. Terminals' servers stay `closeOnSettle`'s.
+      for (const server of yield* ports.scan()) {
+        if (server.agent?.threadId !== threadId || server.pid === null) continue;
+        const target = { pid: server.pid, port: server.port };
+        yield* ports.stopServer(target).pipe(
+          Effect.catchTags({
+            PreviewStopLocalServerError: ({ reason }) =>
+              reason === "not-found"
+                ? Effect.void
+                : Effect.logWarning("stopping a settled thread's server failed", {
+                    threadId,
+                    ...target,
+                    reason,
+                  }),
+          }),
+        );
+      }
       const worktreePath = settled.worktreePath;
       if (worktreePath === null || !(yield* fileSystem.exists(worktreePath))) return;
       // Recheck after closing and worktree I/O; re-engaged threads must not be cleaned up.

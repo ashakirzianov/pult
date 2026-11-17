@@ -11,6 +11,7 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
+  type DiscoveredLocalServer,
   type OrchestrationProjectShell,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
@@ -18,6 +19,7 @@ import {
   type OrchestrationV2ShellSnapshot,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadShell,
+  type PreviewStopLocalServerInput,
   type PullRequestSummary,
   type ServerSettings as ContractServerSettings,
   type ServerSettingsPatch,
@@ -38,6 +40,7 @@ import { TestClock } from "effect/testing";
 
 import * as GitManager from "../git/GitManager.ts";
 import * as PreviewManager from "../preview/Manager.ts";
+import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerActivation from "../serverActivation.ts";
@@ -569,6 +572,8 @@ interface HarnessOptions {
   readonly currentThreads?: ReadonlyArray<OrchestrationV2AppThread>;
   /** Each thread's subagent records, by thread id; none where a thread is missing. */
   readonly subagents?: Readonly<Record<string, ReadonlyArray<OrchestrationV2Subagent>>>;
+  /** The listening servers each port scan finds; none when omitted. */
+  readonly servers?: ReadonlyArray<DiscoveredLocalServer>;
 }
 
 const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options: HarnessOptions) {
@@ -597,6 +602,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
   const closedIdle = yield* Queue.unbounded<{ readonly threadId: string }>();
   const closedPreviews = yield* Queue.unbounded<{ readonly threadId: string }>();
+  const stoppedServers = yield* Queue.unbounded<PreviewStopLocalServerInput>();
   const settles = yield* Queue.unbounded<SettleCommand>();
   const scriptRuns =
     yield* Queue.unbounded<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>();
@@ -703,6 +709,11 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     Layer.mock(PreviewManager.PreviewManager)({
       close: (input) => Queue.offer(closedPreviews, input),
     }),
+    Layer.mock(PortScanner.PortDiscovery)({
+      scan: () => Effect.succeed(options.servers ?? []),
+      stopServer: (input) => Queue.offer(stoppedServers, input),
+      trackAgent: () => () => undefined,
+    }),
     Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
       runForThread: (input) =>
         Queue.offer(scriptRuns, input).pipe(
@@ -753,6 +764,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     invalidatedCwds,
     closedIdle,
     closedPreviews,
+    stoppedServers,
     settles,
     scriptRuns,
     publishEvent: (event: OrchestrationV2DomainEvent) => PubSub.publish(domainEvents, event),
@@ -1499,16 +1511,34 @@ describe("ThreadSettlementServiceV2 terminals", () => {
   );
 
   it.effect(
-    "closes the previews of a settled thread, not of one re-engaged before the event ran",
+    "closes the previews and stops the agent's servers of a settled thread, not a re-engaged one's",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
           const settled = appThread("reengaged-thread", "settled");
           const reengaged = appThread("reengaged-thread", "active");
           const marker = appThread("marker-thread", "settled");
+          const server = (
+            port: number,
+            owner: Pick<DiscoveredLocalServer, "terminal" | "agent">,
+          ): DiscoveredLocalServer => ({
+            host: "localhost",
+            port,
+            url: `http://localhost:${port}/`,
+            processName: "node",
+            pid: port + 10_000,
+            ...owner,
+          });
           const fixture = yield* makeHarness({
             snapshot: makeSnapshot([]),
             currentThreads: [reengaged, marker],
+            // The settled thread's agent's server comes last, so once it is stopped the pass
+            // has already passed over the others.
+            servers: [
+              server(5101, { terminal: null, agent: { threadId: reengaged.id } }),
+              server(5102, { terminal: { threadId: marker.id, terminalId: "dev" }, agent: null }),
+              server(5103, { terminal: null, agent: { threadId: marker.id } }),
+            ],
           });
 
           yield* Effect.gen(function* () {
@@ -1520,6 +1550,11 @@ describe("ThreadSettlementServiceV2 terminals", () => {
               threadId: marker.id,
             });
             assert.strictEqual(yield* Queue.size(fixture.closedPreviews), 0);
+            assert.deepStrictEqual(yield* Queue.take(fixture.stoppedServers), {
+              pid: 15_103,
+              port: 5103,
+            });
+            assert.strictEqual(yield* Queue.size(fixture.stoppedServers), 0);
           }).pipe(Effect.provide(fixture.layer));
         }),
       ),
