@@ -606,6 +606,11 @@ class ChangesGroup implements ISCMResourceGroup {
 let providers = 0;
 let inputs = 0;
 
+/** Whether a checkout is a thread's xaxis copy (`pult/decisions`, `xaxis-copies`): a worktree its status, read or kept, says is xaxis's. */
+function isCopy(entry: Entry): boolean {
+  return entry.checkout.worktree !== null && entry.sync?.xaxis != null;
+}
+
 /**
  * The source control of one checkout: its history on a server with the
  * fork's log, the turn's group and the server's two, of which one at most
@@ -691,7 +696,12 @@ interface Entry {
   loading: Promise<void> | undefined;
   generation: number;
   registered:
-    | { readonly repository: ISCMRepository; readonly provider: ChangesProvider }
+    | {
+        readonly repository: ISCMRepository;
+        readonly provider: ChangesProvider;
+        /** Whether it was named as an xaxis copy, by its folder (`checkoutName`). */
+        readonly copy: boolean;
+      }
     | undefined;
   /** The message box's text, kept while the view does not show the checkout; null until it first shows. */
   message: string | null;
@@ -1148,11 +1158,13 @@ class ChangesView {
             // A kept checkout's warning keeps it listed, as a conflict does.
             this.keptLine(entry).length > 0
           : entry === narrowed;
-      if (!shows) {
+      // A copy is named by its folder once its status says xaxis, and stays so: the workbench reads a provider's name only
+      // as it registers it, so the copy's is registered again, once.
+      if (!shows || (entry.registered?.copy === false && isCopy(entry))) {
         entry.registered?.repository.dispose();
         entry.registered = undefined;
-        continue;
       }
+      if (!shows) continue;
       entry.registered ??= this.register(entry);
       const registered = entry.registered;
       const entryTurn = entry === narrowed ? turn : undefined;
@@ -1227,11 +1239,12 @@ class ChangesView {
       null,
       URI.from({ scheme: "pult-scm-input", path: `/${++inputs}` }),
     );
+    const copy = isCopy(entry);
     const environment = threadStore.distinguishing(checkout.environmentId);
     const name =
       environment === undefined
-        ? checkoutName(checkout)
-        : `${checkoutName(checkout)} (${environment})`;
+        ? checkoutName(checkout, copy)
+        : `${checkoutName(checkout, copy)} (${environment})`;
     const provider = new ChangesProvider(
       checkout,
       pultUri(checkout.environmentId, checkout.root),
@@ -1251,7 +1264,7 @@ class ChangesView {
       if (entry.registered?.repository === repository) entry.message = value;
     });
     void this.attachHistory(entry, provider);
-    return { repository, provider };
+    return { repository, provider, copy };
   }
 
   /** The checkout's history, on a server that serves the fork's log; a stock server's checkout keeps none, as upstream's view has no Graph. */
@@ -1696,7 +1709,7 @@ class ChangesView {
   }
 
   private nameOf(entry: Entry): string {
-    return entry.registered?.provider.name ?? checkoutName(entry.checkout);
+    return entry.registered?.provider.name ?? checkoutName(entry.checkout, isCopy(entry));
   }
 
   /**
@@ -1931,7 +1944,7 @@ class ChangesView {
       checkouts: [...this.entries.values()].map((entry) => ({
         environmentId: entry.checkout.environmentId,
         root: entry.checkout.root,
-        name: checkoutName(entry.checkout),
+        name: checkoutName(entry.checkout, isCopy(entry)),
         shown: entry.registered !== undefined,
         source: entry.shown?.kind ?? null,
         files: entry.shown?.changes.length ?? 0,

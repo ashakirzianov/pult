@@ -84,10 +84,16 @@ export function checkoutsOf(
   return [...checkouts.values()];
 }
 
-/** How the Repositories list names a checkout: its project's, a worktree's with its branch, or its folder's name when it records none. */
-export function checkoutName(checkout: Checkout): string {
+/**
+ * How the Repositories list names a checkout: its project's, a worktree's
+ * with its branch, or its folder's name when it records none or is an xaxis
+ * copy, whose branch is main like every checkout of its project's
+ * (`pult/decisions`, `xaxis-copies`); `xaxis` is whether its status says so.
+ */
+export function checkoutName(checkout: Checkout, xaxis = false): string {
   if (checkout.worktree === null) return checkout.projectName;
-  return `${checkout.projectName} · ${checkout.worktree.branch ?? checkout.root.split("/").at(-1) ?? checkout.root}`;
+  const folder = checkout.root.split("/").at(-1) ?? checkout.root;
+  return `${checkout.projectName} · ${(xaxis ? null : checkout.worktree.branch) ?? folder}`;
 }
 
 /** A changed file of a checkout's source or a thread's turn, with what the server's file contents RPC needs to show its sides. */

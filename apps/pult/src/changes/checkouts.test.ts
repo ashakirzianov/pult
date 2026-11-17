@@ -56,6 +56,18 @@ NodeTest.describe("checkoutsOf", () => {
         ["a", "/wt/pult-2", "pult · pult-2"],
       ],
     );
+    // An xaxis copy records main, as every checkout of its project does: its folder names it.
+    const copy = {
+      environmentId: "a",
+      root: "/wt/pult/copy-3fa9c1d2",
+      projectId: "pult",
+      projectName: "pult",
+      worktree: { branch: "main" },
+    };
+    NodeAssert.deepEqual(
+      [checkoutName(copy), checkoutName(copy, true)],
+      ["pult · main", "pult · copy-3fa9c1d2"],
+    );
   });
 
   NodeTest.test("leaves a hidden project's folder out, a Star's", () => {
