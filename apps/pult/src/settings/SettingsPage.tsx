@@ -394,9 +394,8 @@ function KeepAwakeRow({ environmentId }: { environmentId: string }) {
 /**
  * The Star (`src/stars/`): per Star the page holds, a group of its Name and
  * Tint, written into the record of every home the page holds, its
- * Instructions (its own `instructions.md` as a tab) and its Folder (the
- * explorer at its folder); then the Stars' Sync, once for all of them; then
- * Show Star (`pult.star.enabled`), a switch, which the palette's Show Star
+ * Instructions (its own `instructions.md` as a tab), its Folder (the
+ * explorer at its folder) and its Sync (`StarSyncRow`); then Show Star (`pult.star.enabled`), a switch, which the palette's Show Star
  * and Hide Star set too: off, the left panel shows no Star's card and Pult
  * creates none, deleting nothing.
  */
@@ -409,7 +408,6 @@ function StarSection() {
       {stars.map((star) => (
         <StarSettings key={star.id} star={star} several={stars.length > 1} />
       ))}
-      {stars.length === 0 ? null : <StarSyncGroup stars={stars} />}
       <div className="pult-settings-group">
         <SwitchRow
           label="Show Star"
@@ -443,98 +441,107 @@ function StarSettings({ star, several }: { star: Star; several: boolean }) {
     if (name.trim() !== star.name) void setStarRecord(star.id, { name: name.trim() });
   };
   return (
-    <div className="pult-settings-group">
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <label className="pult-settings-row-label" htmlFor={`pult-star-name-${star.id}`}>
-            {several ? `Name of ${starName(star)}` : "Name"}
-          </label>
-        </div>
-        <input
-          id={`pult-star-name-${star.id}`}
-          className="pult-settings-input"
-          type="text"
-          placeholder="Star"
-          spellCheck
-          value={shown}
-          onFocus={() => {
-            setName(star.name);
-            setEditing(true);
-          }}
-          onChange={(event) => setName(event.target.value)}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              cancelled.current = true;
+    <>
+      <div className="pult-settings-group">
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <label className="pult-settings-row-label" htmlFor={`pult-star-name-${star.id}`}>
+              {several ? `Name of ${starName(star)}` : "Name"}
+            </label>
+          </div>
+          <input
+            id={`pult-star-name-${star.id}`}
+            className="pult-settings-input"
+            type="text"
+            placeholder="Star"
+            spellCheck
+            value={shown}
+            onFocus={() => {
               setName(star.name);
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      </div>
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">Tint</div>
+              setEditing(true);
+            }}
+            onChange={(event) => setName(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                cancelled.current = true;
+                setName(star.name);
+                event.currentTarget.blur();
+              }
+            }}
+          />
         </div>
-        <div className="pult-settings-swatches" role="radiogroup" aria-label="Tint">
-          {TINTS.map((tint) => (
-            <button
-              key={tint.name}
-              type="button"
-              role="radio"
-              className="pult-settings-swatch"
-              aria-checked={tint.name === tintOf(star.tint).name}
-              title={tint.name[0]?.toUpperCase() + tint.name.slice(1)}
-              style={{ background: `hsl(${tint.hue} 80% 60%)` }}
-              onClick={() => void setStarRecord(star.id, { tint: tint.name })}
-            />
-          ))}
-        </div>
-      </div>
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">Instructions</div>
-          <div className="pult-settings-row-description">
-            Read at the start of every conversation.
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <div className="pult-settings-row-label">Tint</div>
+          </div>
+          <div className="pult-settings-swatches" role="radiogroup" aria-label="Tint">
+            {TINTS.map((tint) => (
+              <button
+                key={tint.name}
+                type="button"
+                role="radio"
+                className="pult-settings-swatch"
+                aria-checked={tint.name === tintOf(star.tint).name}
+                title={tint.name[0]?.toUpperCase() + tint.name.slice(1)}
+                style={{ background: `hsl(${tint.hue} 80% 60%)` }}
+                onClick={() => void setStarRecord(star.id, { tint: tint.name })}
+              />
+            ))}
           </div>
         </div>
-        <button
-          type="button"
-          className="pult-settings-button"
-          onClick={() => run("pult-shell.editStarInstructions", star.id)}
-        >
-          Edit…
-        </button>
-      </div>
-      <div className="pult-settings-row">
-        <div className="pult-settings-row-text">
-          <div className="pult-settings-row-label">Folder</div>
-          <div className="pult-settings-row-description">Where your Star keeps what it needs.</div>
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <div className="pult-settings-row-label">Instructions</div>
+            <div className="pult-settings-row-description">
+              Read at the start of every conversation.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => run("pult-shell.editStarInstructions", star.id)}
+          >
+            Edit…
+          </button>
         </div>
-        <button
-          type="button"
-          className="pult-settings-button"
-          onClick={() => run("pult-shell.openStarFolder", star.id)}
-        >
-          Open
-        </button>
+        <div className="pult-settings-row">
+          <div className="pult-settings-row-text">
+            <div className="pult-settings-row-label">Folder</div>
+            <div className="pult-settings-row-description">
+              Where your Star keeps what it needs.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => run("pult-shell.openStarFolder", star.id)}
+          >
+            Open
+          </button>
+        </div>
+        <StarSyncRow star={star} />
       </div>
-    </div>
+      <p className="pult-settings-footnote">
+        A Git repository this Star's folder syncs with: Pult commits when it connects and each time
+        all the Star's conversations there have ended, then pushes, and pulls before the Star wakes.
+        Empty, it only commits.
+      </p>
+    </>
   );
 }
 
 /**
- * The Stars' Sync (`src/stars/syncing.ts`): the origin of their repository,
- * each environment's Stars directory, a Git URL or a repository's path on the environment,
- * written on Enter or leaving the field into every held environment's
- * repository, empty to stop syncing; Sync Now while it is set; a line per
- * environment of when it last synced, what failed, and what waits or was
- * handed to a Star; and under the group, what syncing does.
+ * A Star's Sync (`src/stars/syncing.ts`): the origin of its folder's
+ * repository, a Git URL or a repository's path on the environment, written
+ * on Enter or leaving the field into its repository on every held home,
+ * empty to stop syncing; Sync Now while it is set; a line per home of when
+ * it last synced, what failed, and what waits or was handed to the Star.
  */
-function StarSyncGroup({ stars }: { stars: ReadonlyArray<Star> }) {
+function StarSyncRow({ star }: { star: Star }) {
   useSyncExternalStore(starSyncStore.subscribe, starSyncStore.get);
-  const origin = stars.find((star) => star.origin !== undefined)?.origin ?? "";
+  const origin = star.homes.find((home) => home.origin !== undefined)?.origin ?? "";
   const [typed, setTyped] = useState(origin);
   const [editing, setEditing] = useState(false);
   // Escape leaves the field through its blur, which this tells to write nothing, as the name's does.
@@ -545,17 +552,12 @@ function StarSyncGroup({ stars }: { stars: ReadonlyArray<Star> }) {
       cancelled.current = false;
       return;
     }
-    if (typed.trim() !== origin) void setStarOrigin(typed.trim());
+    if (typed.trim() !== origin) void setStarOrigin(star.id, typed.trim());
   };
-  const homes = [
-    ...new Map(
-      stars.flatMap((star) => star.homes.map((home) => [home.environmentId, home] as const)),
-    ).values(),
-  ];
-  const lines = homes.flatMap((home) => {
-    const state = starRepositorySync(home.environmentId);
+  const lines = star.homes.flatMap((home) => {
+    const state = starRepositorySync(home.environmentId, star.id);
     const where =
-      homes.length > 1
+      star.homes.length > 1
         ? `${threadStore.environment(home.environmentId)?.name ?? home.environmentId}: `
         : "";
     if (home.origin === undefined)
@@ -572,65 +574,56 @@ function StarSyncGroup({ stars }: { stars: ReadonlyArray<Star> }) {
       ...(state?.note == null ? [] : [{ text: `${where}${state.note}`, error: false }]),
     ];
   });
-  const first = stars[0];
+  const id = `pult-star-origin-${star.id}`;
   return (
-    <>
-      <div className="pult-settings-group">
-        <div className="pult-settings-row">
-          <div className="pult-settings-row-text">
-            <label className="pult-settings-row-label" htmlFor="pult-star-origin">
-              Sync
-            </label>
-            {lines.map((line) => (
-              <div
-                key={line.text}
-                className={line.error ? "pult-settings-row-error" : "pult-settings-row-description"}
-              >
-                {line.text}
-              </div>
-            ))}
+    <div className="pult-settings-row">
+      <div className="pult-settings-row-text">
+        <label className="pult-settings-row-label" htmlFor={id}>
+          Sync
+        </label>
+        {lines.map((line) => (
+          <div
+            key={line.text}
+            className={line.error ? "pult-settings-row-error" : "pult-settings-row-description"}
+          >
+            {line.text}
           </div>
-          <div className="pult-settings-row-actions">
-            <input
-              id="pult-star-origin"
-              className="pult-settings-input pult-settings-input-origin"
-              type="text"
-              placeholder="git@host:you/star.git"
-              spellCheck={false}
-              value={editing ? typed : origin}
-              onFocus={() => {
-                setTyped(origin);
-                setEditing(true);
-              }}
-              onChange={(event) => setTyped(event.target.value)}
-              onBlur={commit}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-                if (event.key === "Escape") {
-                  cancelled.current = true;
-                  setTyped(origin);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-            {origin === "" ? null : (
-              <button
-                type="button"
-                className="pult-settings-button"
-                onClick={() => first !== undefined && void syncStar(first.id)}
-              >
-                Sync Now
-              </button>
-            )}
-          </div>
-        </div>
+        ))}
       </div>
-      <p className="pult-settings-footnote">
-        A Git repository your Stars sync with: Pult commits when it connects and as each
-        conversation ends while it is open, then pushes, and pulls before a Star wakes. Empty, it
-        only commits.
-      </p>
-    </>
+      <div className="pult-settings-row-actions">
+        <input
+          id={id}
+          className="pult-settings-input pult-settings-input-origin"
+          type="text"
+          placeholder="git@host:you/star.git"
+          spellCheck={false}
+          value={editing ? typed : origin}
+          onFocus={() => {
+            setTyped(origin);
+            setEditing(true);
+          }}
+          onChange={(event) => setTyped(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              cancelled.current = true;
+              setTyped(origin);
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {origin === "" ? null : (
+          <button
+            type="button"
+            className="pult-settings-button"
+            onClick={() => void syncStar(star.id)}
+          >
+            Sync Now
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

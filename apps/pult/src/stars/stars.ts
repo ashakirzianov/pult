@@ -16,9 +16,9 @@ import {
 /** A Star's home: its folder and project on one environment, as that environment's plugin serves it. */
 export interface StarHome {
   readonly environmentId: string;
-  /** The environment's Stars directory, its Stars' repository (`syncing.ts`). */
+  /** The environment's Stars directory, which holds the folder. */
   readonly directory: string;
-  /** The folder's host path. */
+  /** The folder's host path, the root of the Star's repository on this environment (`syncing.ts`). */
   readonly root: string;
   readonly projectId: string;
   /** Its `instructions.md`, a host path. */
@@ -35,7 +35,7 @@ export interface StarHome {
   readonly schedules: ReadonlyArray<RouteSchedule>;
   /** Its asks as this environment's plugin read them, by name. */
   readonly asks: ReadonlyArray<RouteAsk>;
-  /** Where the environment's Stars' repository syncs, its `origin`; absent while it does not (`sync.ts`). */
+  /** Where the folder's repository syncs, its `origin`; absent while it does not (`sync.ts`). */
   readonly origin?: string;
 }
 
@@ -75,8 +75,6 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly name: string;
   readonly tint: string;
   readonly created: string;
-  /** Where it syncs, its first home's repository's origin; absent while it does not. */
-  readonly origin?: string;
   readonly homes: ReadonlyArray<StarHome>;
   /** Every open channel whose conversation the page holds open, `user` among them, by slug. */
   readonly channels: ReadonlyArray<StarChannel<Thread>>;
@@ -84,15 +82,15 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly current: Thread | null;
   readonly asleepSince: string;
   readonly state: StarState;
-  /** The environments where a channel of its is open on its home there, whose conversations write in that environment's Stars' repository (`sync.ts`). */
+  /** The environments where a channel of its is open on its home there, whose conversations write in its folder there (`sync.ts`). */
   readonly awakeOn: ReadonlyArray<string>;
 }
 
-/** An environment's answer, as the model holds it, with its repository's origin. */
+/** An environment's answer, as the model holds it, with each Star's repository's origin there, by id. */
 export interface EnvironmentAnswer {
   readonly environmentId: string;
   readonly answer: StarsAnswer;
-  readonly origin?: string;
+  readonly origins?: ReadonlyMap<string, string>;
 }
 
 /** How the UI names a Star: its name, or "Star" while it has none. */
@@ -171,18 +169,12 @@ export function starsOf<Thread extends StarThread>(
   answers: ReadonlyArray<EnvironmentAnswer>,
   threads: ReadonlyArray<Thread>,
 ): Star<Thread>[] {
-  const byId = new Map<
-    string,
-    { first: StarsAnswer["stars"][number]; origin?: string; homes: StarHome[] }
-  >();
-  for (const { environmentId, answer, origin } of answers) {
+  const byId = new Map<string, { first: StarsAnswer["stars"][number]; homes: StarHome[] }>();
+  for (const { environmentId, answer, origins } of answers) {
     for (const star of answer.stars) {
-      const entry = byId.get(star.id) ?? {
-        first: star,
-        ...(origin === undefined ? {} : { origin }),
-        homes: [],
-      };
+      const entry = byId.get(star.id) ?? { first: star, homes: [] };
       byId.set(star.id, entry);
+      const origin = origins?.get(star.id);
       entry.homes.push({
         environmentId,
         directory: answer.directory,
@@ -199,7 +191,7 @@ export function starsOf<Thread extends StarThread>(
       });
     }
   }
-  return [...byId.values()].map(({ first, origin, homes }) => {
+  return [...byId.values()].map(({ first, homes }) => {
     const open = new Map<string, Thread>();
     const live = homes.flatMap((home) =>
       home.channels.flatMap(({ slug, threadId }) => {
@@ -224,7 +216,6 @@ export function starsOf<Thread extends StarThread>(
       name: first.name,
       tint: first.tint,
       created: first.created,
-      ...(origin === undefined ? {} : { origin }),
       homes,
       channels,
       current,
@@ -250,7 +241,6 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
     star.id,
     star.name,
     star.tint,
-    star.origin,
     star.homes,
     star.state,
     star.channels.map(({ slug, thread }) => [slug, thread.id, thread.workingSince]),

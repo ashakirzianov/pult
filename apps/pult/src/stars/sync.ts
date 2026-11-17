@@ -1,8 +1,8 @@
-// How the Stars' repository syncs through its origin, apart from the
-// workbench so `node --test src/stars/sync.test.ts` can run it: which
-// origins the page takes, where it reads the repository's, what each
-// occasion runs, the commits' messages, and the handoff that gives a Star a
-// divergence to reconcile (`syncing.ts` runs it).
+// How a Star's repository, its folder on a home, syncs through its origin,
+// apart from the workbench so `node --test src/stars/sync.test.ts` can run
+// it: which origins the page takes, where it reads the repository's, which
+// folder it refuses, what each occasion runs, the commits' messages, and the
+// handoff that gives a Star a divergence to reconcile (`syncing.ts` runs it).
 import { USER_CHANNEL } from "./plugin.ts";
 import { channelOf } from "./stars.ts";
 
@@ -19,8 +19,8 @@ export function originProblem(url: string): string | undefined {
 }
 
 /**
- * The URL of `origin` in a repository's `.git/config`, the one place the
- * Stars' origin is kept; undefined where it has none.
+ * The URL of `origin` in a repository's `.git/config`, the one place a
+ * Star's origin is kept; undefined where it has none.
  */
 export function originOf(config: string): string | undefined {
   let inOrigin = false;
@@ -36,10 +36,10 @@ export function originOf(config: string): string | undefined {
   return undefined;
 }
 
-/** The Stars' repository as the server's status reads it, after its origin was fetched. */
+/** A Star's folder as the server's status reads it, after its origin was fetched. */
 export interface HomeStatus {
-  /** Whether the folder is a repository's root, not a folder inside another one. */
-  readonly ownRepository: boolean;
+  /** The root of the repository holding the folder, without a trailing slash; null where none does. */
+  readonly repositoryRoot: string | null;
   readonly branch: string | null;
   /** The commit HEAD is at, null before the first one. */
   readonly head: string | null;
@@ -91,55 +91,75 @@ export function syncPlan(
   };
 }
 
-/** A Star as the sync reads it: its homes' environments and those where a channel of its is open. */
+const withoutTrailingSlash = (path: string) => path.replace(/[/\\]+$/, "");
+
+/** A home as the sync reads it: the Star's folder and the Stars directory holding it, host paths. */
+interface SyncedHome {
+  readonly root: string;
+  readonly directory: string;
+}
+
+/**
+ * Makes the Star's folder a repository's root before its occasion runs:
+ * nothing where it is one, `init` where no repository holds it or another
+ * one does (a dev server's Stars directory inside a checkout), and a
+ * failure, writing nothing, where the repository holding it is the Stars
+ * directory itself, still one repository for every Star, as every
+ * directory was until each Star had its own: the split is made by hand
+ * (`pult/issues/star-repo-per-star.md`), never in code. The status after,
+ * for the plan.
+ */
+export async function ownRepository(
+  git: {
+    readonly status: (root: string) => Promise<HomeStatus>;
+    readonly init: (root: string) => Promise<unknown>;
+  },
+  home: SyncedHome,
+): Promise<HomeStatus> {
+  const status = await git.status(home.root);
+  const holder = status.repositoryRoot;
+  if (holder === withoutTrailingSlash(home.root)) return status;
+  if (holder === withoutTrailingSlash(home.directory))
+    throw new Error(
+      `${home.directory} is still one repository for every Star, which Pult no longer commits: each Star's folder must be a repository of its own.`,
+    );
+  await git.init(home.root);
+  return git.status(home.root);
+}
+
+/** A Star as the sync reads it: the environments where a channel of its is open on its home there. */
 interface SyncedStar {
   readonly id: string;
-  readonly homes: ReadonlyArray<{ readonly environmentId: string }>;
   readonly awakeOn: ReadonlyArray<string>;
 }
 
-/** The Stars awake on the environment, a channel of theirs open on their home there, in the Stars' order. */
-const awakeThere = (environmentId: string, stars: ReadonlyArray<SyncedStar>) =>
-  stars
-    .filter(
-      (star) =>
-        star.homes.some((home) => home.environmentId === environmentId) &&
-        star.awakeOn.includes(environmentId),
-    )
-    .map((star) => star.id);
-
 /**
- * Whether the sync may commit and pull the environment's repository now:
- * the environment is `known`, ready with its threads in, where the page
- * holds its Stars' channels' threads, and every Star with a home there
- * sleeps there, no channel of its open on that home, since the repository
- * holds every Star's folder and one awake Star's conversations there write
- * in its own (Anton's ruling, 2026-11-12). Only a Star's conversations on
- * the environment write in its repository, so its channels on another
- * environment, or that environment still loading or offline, do not count.
- * A transcript appearing, or a Star falling asleep, while another is awake
- * there waits for the last one's sleep (`sleepOccasions`).
+ * Whether the sync may commit and pull the Star's repository on the
+ * environment now: the environment is `known`, ready with its threads in,
+ * where the page holds its Stars' channels' threads, and the Star sleeps
+ * there, no channel of its open on that home, since its conversations there
+ * write in its folder. Its channels on another environment, or that
+ * environment still loading or offline, do not count, nor does any other
+ * Star: its repository holds this Star's folder alone.
  */
-export function environmentSleeps(
+export function homeSleeps(
   environmentId: string,
-  stars: ReadonlyArray<SyncedStar>,
+  star: SyncedStar,
   known: (environmentId: string) => boolean,
 ): boolean {
-  return known(environmentId) && awakeThere(environmentId, stars).length === 0;
+  return known(environmentId) && !star.awakeOn.includes(environmentId);
 }
 
 /**
  * The sleeps' occasions since the Stars the sync last saw awake on each
- * environment (`awake`): one on each known environment where some Star was
- * awake then and none is now (`environmentSleeps`), for the first of those
- * that were, which a divergence goes to first; so the last Star there to
- * fall asleep makes it, committing what the channels left and delivering a
- * handoff that waited, however the Stars came to count. An environment not
- * known keeps what was seen of it, its Stars there or not, so a sleep seen
- * while it loads, or while its Stars are missing, is an occasion once it is
- * in; one seen for the first time has none, the
- * connect's sync being its (`syncing.ts`, which forgets an environment no
- * longer ready, so a reconnect is a first sight again).
+ * environment (`awake`): one for each Star awake on a known environment
+ * then and no longer now (`homeSleeps`), committing what its channels left
+ * and delivering a handoff that waited, whatever the other Stars do. An
+ * environment not known keeps what was seen of it, so a sleep seen while
+ * it loads, or while its Stars are missing, is an occasion once it is in;
+ * one seen for the first time has none, the connect's sync being its
+ * (`syncing.ts`, which forgets an environment no longer ready, so a
+ * reconnect is a first sight again).
  */
 export function sleepOccasions(
   awake: ReadonlyMap<string, ReadonlyArray<string>>,
@@ -151,19 +171,16 @@ export function sleepOccasions(
 } {
   const occasions: Array<{ readonly environmentId: string; readonly starId: string }> = [];
   const next = new Map<string, ReadonlyArray<string>>();
-  const environments = new Set([
-    ...awake.keys(),
-    ...stars.flatMap((star) => star.homes.map((home) => home.environmentId)),
-  ]);
+  const environments = new Set([...awake.keys(), ...stars.flatMap((star) => star.awakeOn)]);
   for (const environmentId of environments) {
     const before = awake.get(environmentId);
     if (!known(environmentId)) {
       if (before !== undefined) next.set(environmentId, before);
       continue;
     }
-    const now = awakeThere(environmentId, stars);
-    const starId = before?.[0];
-    if (starId !== undefined && now.length === 0) occasions.push({ environmentId, starId });
+    const now = stars.filter((star) => star.awakeOn.includes(environmentId)).map(({ id }) => id);
+    for (const starId of before ?? [])
+      if (!now.includes(starId)) occasions.push({ environmentId, starId });
     next.set(environmentId, now);
   }
   return { occasions, awake: next };
@@ -171,9 +188,9 @@ export function sleepOccasions(
 
 /**
  * Whether a divergence goes to the Star now, or waits for the sleep's
- * occasion (`sleepOccasions`): now only while every Star on the environment
- * sleeps (`environmentSleeps`), nobody writes to the Star's draft, and the
- * occasion is no pull before a wake, since the user is about to write to it.
+ * occasion (`sleepOccasions`): now only while the Star sleeps there
+ * (`homeSleeps`), nobody writes to its draft, and the occasion is no pull
+ * before a wake, since the user is about to write to it.
  */
 export const handsOffNow = (input: {
   readonly sleeps: boolean;
@@ -208,8 +225,8 @@ export const commitMessages = {
 /**
  * The first message of the conversation a divergence wakes a Star with,
  * built deterministically: what diverged, the files uncommitted, and the
- * ask to reconcile the Stars' repository with git and push, which Pult does
- * not do itself.
+ * ask to reconcile its folder's repository with git and push, which Pult
+ * does not do itself.
  */
 export function handoffMessage(input: {
   readonly environmentName: string;
@@ -219,7 +236,7 @@ export function handoffMessage(input: {
 }): string {
   const upstream = `origin/${input.branch}`;
   return [
-    `Pult could not sync the Stars' repository, \`${input.repository}\` on ${input.environmentName}, with its origin, and hands it to you to reconcile: \`${input.branch}\` and \`${upstream}\` have diverged, or git refused to bring \`${upstream}\` in over the changes here. \`git fetch origin\`, then \`git status\` and \`git log --stat HEAD...${upstream}\` show what differs.`,
+    `Pult could not sync your folder's repository, \`${input.repository}\` on ${input.environmentName}, with its origin, and hands it to you to reconcile: \`${input.branch}\` and \`${upstream}\` have diverged, or git refused to bring \`${upstream}\` in over the changes here. \`git fetch origin\`, then \`git status\` and \`git log --stat HEAD...${upstream}\` show what differs.`,
     input.uncommitted.length === 0
       ? ""
       : `Files changed here and not committed:\n${input.uncommitted.map((file) => `- \`${file}\``).join("\n")}`,
@@ -245,7 +262,7 @@ export function handoffModel<
 }
 
 /** The title of the conversation a handoff wakes, which the server keeps until the Star's first reply retitles it. */
-export const HANDOFF_TITLE = "Reconcile the Stars' repository";
+export const HANDOFF_TITLE = "Reconcile your repository";
 
 /**
  * The handoff's thread id, deterministic from the repository, the commit its
@@ -256,7 +273,7 @@ export const HANDOFF_TITLE = "Reconcile the Stars' repository";
  */
 export async function handoffThreadId(input: {
   readonly environmentId: string;
-  /** The repository's root, the environment's Stars directory. */
+  /** The repository's root, the Star's folder. */
   readonly root: string;
   readonly branch: string;
   readonly head: string | null;

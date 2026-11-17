@@ -425,10 +425,6 @@ export const createStarOn = (
   options: { readonly ifNone: boolean; readonly name?: string },
 ) => ask(credential, "POST", "/stars", decodeStar, options);
 
-/** The plugin's upkeep now, a Star that arrived by a clone or a pull made a project; answered as `readStars`. */
-export const upkeepStars = (credential: Credential) =>
-  ask(credential, "POST", "/stars/upkeep", decodeStars, {});
-
 /** Rewrites those lines of the Star's record and retitles its project. */
 export const writeStarRecord = (
   credential: Credential,

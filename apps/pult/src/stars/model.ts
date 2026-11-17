@@ -8,12 +8,11 @@ import Severity from "@codingame/monaco-vscode-api/vscode/vs/base/common/severit
 import { StorageScope } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 
 import { connection } from "../connection/index.ts";
-import { type Disposable, toFilesError, type WorkspaceServer } from "../files/files.ts";
+import type { Disposable } from "../files/files.ts";
 import { environmentServer } from "../files/server.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
 import { refreshTranscripts } from "./foldState.ts";
-import { starGit } from "./git.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
   channelTranscriptStars,
@@ -27,7 +26,6 @@ import {
   sleepStarOn,
   STARS_FEATURE,
   type StarsAnswer,
-  upkeepStars,
   USER_CHANNEL,
 } from "./plugin.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
@@ -60,13 +58,6 @@ export type StarTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
   | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
 
-/** The environment's Stars' repository, its Stars directory, and where it syncs. */
-export interface StarRepository {
-  readonly environmentId: string;
-  readonly root: string;
-  readonly origin?: string;
-}
-
 /** Transcripts that appeared in a home since the page's earlier answer for it. */
 export interface FoundTranscripts {
   readonly environmentId: string;
@@ -87,8 +78,8 @@ interface Reading {
   /** Pending until `about` and, where it lists `stars`, the first answer are in; none without the plugin. */
   status: "pending" | "read" | "none" | "failed";
   answer: StarsAnswer | undefined;
-  /** The Stars' repository's origin, from its `.git/config`, read with each answer. */
-  origin: string | undefined;
+  /** Each Star's repository's origin here, by id, from its folder's `.git/config`, read with each answer. */
+  origins: ReadonlyMap<string, string>;
   /** Whether the page asked for a Star on it since it last connected. */
   attempted: boolean;
   wasReady: boolean;
@@ -146,37 +137,10 @@ function sleepableHome(star: Star): StarHome | undefined {
 /** The environments told answering in another shape, each once per page session. */
 const misshapen = new Set<string>();
 
-/** A host path's parent and last segment, as the server takes a listing of it. */
-function split(path: string): { readonly parent: string; readonly name: string } {
-  const trimmed = path.replace(/[/\\]+$/, "");
-  const at = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return { parent: at <= 0 ? "/" : trimmed.slice(0, at), name: trimmed.slice(at + 1) };
-}
-
-/**
- * Whether the directory is missing or holds nothing, where a clone may go.
- * The server fails the listing of a missing directory as it fails any
- * other, so a failed listing is absence only when a read of the path finds
- * nothing there.
- */
-async function vacant(server: WorkspaceServer, directory: string): Promise<boolean> {
-  const { parent, name } = split(directory);
-  try {
-    return (await server.listEntries({ cwd: parent, directoryPath: name })).entries.length === 0;
-  } catch (error) {
-    if (toFilesError(error, name).code !== "FileNotFound") throw error;
-    const there = await server
-      .readFile({ cwd: parent, relativePath: name, allowMissing: true })
-      .catch(() => undefined);
-    if (there?.exists === false) return true;
-    throw error;
-  }
-}
-
-/** The URL of the Stars' repository's `origin`, from its `.git/config`, git's own format; undefined where it is no repository or has none. */
-async function originAt(environmentId: string, directory: string): Promise<string | undefined> {
+/** The URL of the `origin` of a Star's repository, from its folder's `.git/config`, git's own format; undefined where it is no repository or has none. */
+async function originAt(environmentId: string, root: string): Promise<string | undefined> {
   const config = await environmentServer(environmentId).readFile({
-    cwd: directory,
+    cwd: root,
     relativePath: ".git/config",
     allowMissing: true,
   });
@@ -272,16 +236,6 @@ class StarsModel {
     );
   }
 
-  repository(environmentId: string): StarRepository | undefined {
-    const reading = this.readings.get(environmentId);
-    if (reading?.answer === undefined) return undefined;
-    return {
-      environmentId,
-      root: reading.answer.directory,
-      ...(reading.origin === undefined ? {} : { origin: reading.origin }),
-    };
-  }
-
   /**
    * Follows every environment the connection holds and no other, asking
    * each one's Stars as its plugin's `about` of a connect comes in; one
@@ -304,7 +258,7 @@ class StarsModel {
           features: undefined,
           status: "pending",
           answer: undefined,
-          origin: undefined,
+          origins: new Map(),
           attempted: false,
           wasReady: false,
           answeredSinceReady: false,
@@ -337,7 +291,7 @@ class StarsModel {
     reading.generation++;
     reading.status = status;
     reading.answer = undefined;
-    reading.origin = undefined;
+    reading.origins = new Map();
     reading.trigger = undefined;
     reading.watch?.disposable?.dispose();
     reading.watch = undefined;
@@ -353,16 +307,19 @@ class StarsModel {
       reading.generation === generation && this.readings.get(environmentId) === reading;
     try {
       const answer = await readStars(this.credential(environmentId));
-      const origin =
-        answer.stars.length === 0
-          ? undefined
-          : await originAt(environmentId, answer.directory).catch((error: unknown) => {
-              console.warn(
-                `[pult-shell] could not read where the Stars of ${environmentId} sync: ${errorMessage(error)}`,
-              );
-              return reading.origin;
-            });
-      if (current()) this.take(environmentId, reading, answer, origin);
+      const origins = new Map<string, string>();
+      await Promise.all(
+        answer.stars.map(async (star) => {
+          const origin = await originAt(environmentId, star.root).catch((error: unknown) => {
+            console.warn(
+              `[pult-shell] could not read where the Star ${star.id} of ${environmentId} syncs: ${errorMessage(error)}`,
+            );
+            return reading.origins.get(star.id);
+          });
+          if (origin !== undefined) origins.set(star.id, origin);
+        }),
+      );
+      if (current()) this.take(environmentId, reading, answer, origins);
     } catch (error) {
       if (!current()) return;
       if (!(error instanceof PluginAnswerError))
@@ -398,11 +355,11 @@ class StarsModel {
     environmentId: string,
     reading: Reading,
     answer: StarsAnswer,
-    origin: string | undefined,
+    origins: ReadonlyMap<string, string>,
   ): void {
     const found = newTranscripts(reading.answer, answer);
     reading.answer = answer;
-    reading.origin = origin;
+    reading.origins = origins;
     reading.status = "read";
     reading.answeredSinceReady = connection.environment(environmentId)?.phase === "ready";
     // The thread model publishes as the hidden projects change: no ask for what this answer brings.
@@ -508,7 +465,7 @@ class StarsModel {
             {
               environmentId: environment.environmentId,
               answer: reading.answer,
-              ...(reading.origin === undefined ? {} : { origin: reading.origin }),
+              origins: reading.origins,
             },
           ];
     });
@@ -551,15 +508,10 @@ class StarsModel {
    * notification says the Star is ready; a failure notifies, and is tried
    * again on the next connect, with no creation by default anywhere until
    * one connects.
-   *
-   * With an `origin`, where the page's Stars sync, the environment's Stars
-   * directory is a clone of it instead, cloned only where it is missing or
-   * empty, every Star in it a home there, made a project by the plugin's
-   * upkeep at once (`POST /stars/upkeep`).
    */
   async create(
     environmentId: string,
-    how: { readonly ifNone: boolean; readonly name?: string } | { readonly origin: string },
+    how: { readonly ifNone: boolean; readonly name?: string },
   ): Promise<void> {
     const reading = this.readings.get(environmentId);
     if (reading === undefined || this.creating) return;
@@ -567,24 +519,7 @@ class StarsModel {
     this.creating = true;
     const notifications = await getService(INotificationService);
     try {
-      const credential = this.credential(environmentId);
-      if ("origin" in how) {
-        const directory = reading.answer?.directory;
-        if (directory === undefined)
-          throw new Error("the environment's Pult plugin has not said where its Stars live");
-        if (!(await vacant(environmentServer(environmentId), directory))) {
-          this.halted = true;
-          notifications.error(
-            `Pult did not clone ${how.origin}: ${directory} holds something already.`,
-          );
-          return;
-        }
-        await starGit(environmentId).clone(how.origin, directory);
-        await upkeepStars(credential);
-        notifications.info(`Your Stars are here too, synced with ${how.origin}.`);
-        return;
-      }
-      const star = await createStarOn(credential, how);
+      const star = await createStarOn(this.credential(environmentId), how);
       notifications.prompt(Severity.Info, "Your Star is ready.", [
         { label: "Open Star", run: () => void openStar(star.id) },
       ]);
@@ -666,16 +601,12 @@ export function starById(starId: string): Star | undefined {
   return model.get().find((star) => star.id === starId);
 }
 
-/** Asks for a new Star named `name` on the environment, or with `origin` clones the Stars' repository syncing through it there. */
-export const createStar = (
-  environmentId: string,
-  how: { readonly name: string } | { readonly origin: string },
-) => model.create(environmentId, "origin" in how ? how : { ifNone: false, name: how.name });
+/** Asks for a new Star named `name` on the environment. */
+export const createStar = (environmentId: string, name: string) =>
+  model.create(environmentId, { ifNone: false, name });
 /** Asks the environment's plugin for its Stars again: after a sync occasion, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);
-/** The environment's Stars' repository, once its plugin answered. */
-export const starRepository = (environmentId: string) => model.repository(environmentId);
 /** Whether every ready environment has answered (`syncing.ts` waits for it). */
 export const starsRead = () => model.allRead();
 export const starsReadOn = (environmentId: string) => model.readOn(environmentId);

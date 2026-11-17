@@ -22,22 +22,20 @@ const withoutTrailingSlash = (path: string) => path.replace(/[/\\]+$/, "");
 /**
  * The server's git calls a Star's sync makes on `environmentId`: the changes
  * view's status, pull and stacked action (`src/changes/server.ts`), and
- * `vcs.init`, `vcs.setRemote` (the fork's; a stock server fails it) and the
- * clone it alone needs. Each waits for a connecting environment, as the
+ * `vcs.init` and `vcs.setRemote` (the fork's; a stock server fails it).
+ * Each waits for a connecting environment, as the
  * files' calls do.
  */
 export function starGit(environmentId: string) {
   const changes = changesServer(environmentId);
   return {
-    /** The folder's repository as the server's status reads it, and whether the folder is its root. */
+    /** The folder's repository as the server's status reads it, and the root of the one holding it. */
     status: async (root: string): Promise<HomeStatus> => {
       const status = await changes.status(root);
       const rootPath = status.workingTree.rootPath;
       return {
-        ownRepository:
-          status.isRepo &&
-          rootPath !== undefined &&
-          withoutTrailingSlash(rootPath) === withoutTrailingSlash(root),
+        repositoryRoot:
+          status.isRepo && rootPath !== undefined ? withoutTrailingSlash(rootPath) : null,
         branch: status.refName,
         head: status.headSha ?? null,
         hasUpstream: status.hasUpstream,
@@ -96,15 +94,6 @@ export function starGit(environmentId: string) {
         throw new Error(commitFailure(progress, error), { cause: error });
       }
       if (progress.failure !== null) throw new Error(progress.failure);
-    },
-    /** Clones `url` into `destination`, a host path that is missing or empty. */
-    clone: async (url: string, destination: string) => {
-      await whenReady(environmentId);
-      const input = { remoteUrl: url, destinationPath: destination };
-      return connection.run(
-        environmentId,
-        unguarded(requestGuarded(WS_METHODS.sourceControlCloneRepository, input)),
-      );
     },
   };
 }

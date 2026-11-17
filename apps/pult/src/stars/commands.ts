@@ -293,8 +293,8 @@ async function openStarFolder(star: Star): Promise<void> {
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
  * [environmentId]`, a new Star on any held environment whose Pult plugin
  * serves Stars, picked among them while there are several, named in an
- * input box first; while the page's Stars sync, their repository cloned
- * there from its origin, where none is, with no name asked), Edit Star Instructions
+ * input box first; not yet on an environment holding no Star while a Star
+ * the page holds syncs, which a clone per Star will bring there), Edit Star Instructions
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
@@ -309,6 +309,11 @@ async function openStarFolder(star: Star): Promise<void> {
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
  */
+/** What the Star's commands do not do yet, loud where it is asked for: `grep 'todo('` lists it. */
+function todo(reason: string): never {
+  throw new Error(`Pult's Stars do not do this yet: ${reason}.`);
+}
+
 export function registerStarCommands(): void {
   const category = { value: "Pult", original: "Pult" };
   registerAction2(
@@ -324,16 +329,17 @@ export function registerStarCommands(): void {
       }
 
       async run(_accessor: ServicesAccessor, environmentId?: unknown): Promise<void> {
-        // Stars that sync are cloned to an environment holding none, each a second home there, rather than a new Star made beside them.
-        // A new Star is named before it is made, its folder named after it by the plugin; a clone brings named Stars, and asks nothing.
+        // A new Star is named before it is made, its folder named after it by the plugin.
         const create = async (environmentId: string) => {
           const holds = starStore
             .get()
             .some((star) => star.homes.some((home) => home.environmentId === environmentId));
-          const origin = holds
-            ? undefined
-            : starStore.get().find((star) => star.origin !== undefined)?.origin;
-          if (origin !== undefined) return createStar(environmentId, { origin });
+          // Stars that sync go to an environment holding none as second homes, cloned there, rather than a new Star made beside them.
+          if (
+            !holds &&
+            starStore.get().some((star) => star.homes.some((home) => home.origin !== undefined))
+          )
+            todo("clone per Star");
           const name = await (
             await getService(IQuickInputService)
           ).input({
@@ -344,7 +350,7 @@ export function registerStarCommands(): void {
             validateInput: async (text) => (text.trim() === "" ? "Enter a name." : undefined),
           });
           if (name === undefined || name.trim() === "") return;
-          return createStar(environmentId, { name: name.trim() });
+          return createStar(environmentId, name.trim());
         };
         if (typeof environmentId === "string") return create(environmentId);
         const candidates = connection.environments.filter((environment) =>

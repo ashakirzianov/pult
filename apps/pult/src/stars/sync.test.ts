@@ -4,21 +4,22 @@ import * as NodeTest from "node:test";
 
 import { starsOf } from "./stars.ts";
 import {
-  environmentSleeps,
   handoffMessage,
   handoffModel,
   handoffThreadId,
   handsOffNow,
+  homeSleeps,
   type HomeStatus,
   originOf,
   originProblem,
+  ownRepository,
   refusedByGit,
   sleepOccasions,
   syncPlan,
 } from "./sync.ts";
 
 const synced: HomeStatus = {
-  ownRepository: true,
+  repositoryRoot: "/Users/a/.pult/stars/vega",
   branch: "main",
   head: "a".repeat(40),
   hasUpstream: true,
@@ -70,7 +71,7 @@ NodeTest.describe("syncPlan", () => {
   });
 
   NodeTest.test("publishes a branch the origin lacks, committing what is uncommitted first", () => {
-    const fresh = { ...synced, hasUpstream: false, uncommitted: ["star/AGENTS.md"] };
+    const fresh = { ...synced, hasUpstream: false, uncommitted: ["AGENTS.md"] };
     NodeAssert.deepEqual(syncPlan(fresh, "full", {}), run(false, true, true));
     NodeAssert.deepEqual(syncPlan(fresh, "pull", {}), run(false, false, false));
     // A new origin without the branch: its stale upstream neither pulls nor diverges.
@@ -84,7 +85,7 @@ NodeTest.describe("syncPlan", () => {
   NodeTest.test("always pulls a tracked branch, and pushes only what it has to", () => {
     NodeAssert.deepEqual(syncPlan(synced, "full", {}), run(true, false, false));
     NodeAssert.deepEqual(
-      syncPlan({ ...synced, uncommitted: ["star/notes.md"] }, "full", {}),
+      syncPlan({ ...synced, uncommitted: ["notes.md"] }, "full", {}),
       run(true, true, true),
     );
     NodeAssert.deepEqual(syncPlan({ ...synced, ahead: 2 }, "full", {}), run(true, false, true));
@@ -95,7 +96,7 @@ NodeTest.describe("syncPlan", () => {
   });
 
   NodeTest.test("without an origin, commits and neither pulls nor pushes", () => {
-    const local = { ...synced, hasUpstream: false, uncommitted: ["star/instructions.md"] };
+    const local = { ...synced, hasUpstream: false, uncommitted: ["instructions.md"] };
     NodeAssert.deepEqual(syncPlan(local, "full", { remote: false }), run(false, true, false));
     NodeAssert.deepEqual(
       syncPlan({ ...synced, ahead: 1, behind: 1 }, "full", { remote: false }),
@@ -128,9 +129,9 @@ NodeTest.test("refusedByGit takes the refusals the server names, and nothing els
 NodeTest.describe("the handoff", () => {
   const input = {
     environmentName: "laptop",
-    repository: "~/.pult/stars",
+    repository: "~/.pult/stars/vega",
     branch: "main",
-    uncommitted: ["star/notes.md"],
+    uncommitted: ["notes.md"],
   };
 
   NodeTest.test(
@@ -139,9 +140,9 @@ NodeTest.describe("the handoff", () => {
       const text = handoffMessage(input);
       NodeAssert.match(
         text,
-        /the Stars' repository, `~\/.pult\/stars` on laptop, with its origin.*`main` and `origin\/main` have diverged/,
+        /your folder's repository, `~\/.pult\/stars\/vega` on laptop, with its origin.*`main` and `origin\/main` have diverged/,
       );
-      NodeAssert.match(text, /- `star\/notes.md`/);
+      NodeAssert.match(text, /- `notes.md`/);
       NodeAssert.match(text, /push to `origin\/main`/);
       NodeAssert.equal(text, handoffMessage(input));
       NodeAssert.doesNotMatch(handoffMessage({ ...input, uncommitted: [] }), /not committed/);
@@ -151,7 +152,7 @@ NodeTest.describe("the handoff", () => {
   NodeTest.test("is one thread per repository and state of both sides", async () => {
     const home = {
       environmentId: "env",
-      root: "/home/me/.pult/stars",
+      root: "/home/me/.pult/stars/vega",
       branch: "main",
       head: "b".repeat(40),
       behind: 1,
@@ -184,6 +185,59 @@ NodeTest.describe("the handoff", () => {
     NodeAssert.equal(handoffModel(noUser, "far")?.id, "review");
     NodeAssert.equal(handoffModel([], "env"), undefined);
   });
+});
+
+NodeTest.describe("a Star's own repository", () => {
+  const home = { root: "/Users/a/.pult/stars/vega/", directory: "/Users/a/.pult/stars" };
+  /** A server whose status puts the folder in `holder`'s repository until `init` makes it its own. */
+  const server = (holder: string | null) => {
+    const calls: string[] = [];
+    let repositoryRoot = holder;
+    return {
+      calls,
+      status: async (root: string) => {
+        calls.push(`status ${root}`);
+        return { ...synced, repositoryRoot };
+      },
+      init: async (root: string) => {
+        calls.push(`init ${root}`);
+        repositoryRoot = root.replace(/\/$/, "");
+      },
+    };
+  };
+
+  NodeTest.test("is left as it is where the folder is its root", async () => {
+    const git = server("/Users/a/.pult/stars/vega");
+    await ownRepository(git, home);
+    NodeAssert.deepEqual(git.calls, [`status ${home.root}`]);
+  });
+
+  NodeTest.test(
+    "is made in place where no repository holds the folder, or another one does",
+    async () => {
+      for (const holder of [null, "/Users/a"]) {
+        const git = server(holder);
+        await ownRepository(git, home);
+        NodeAssert.deepEqual(git.calls, [
+          `status ${home.root}`,
+          `init ${home.root}`,
+          `status ${home.root}`,
+        ]);
+      }
+    },
+  );
+
+  NodeTest.test(
+    "is refused, and nothing written, where the Stars directory is still one repository for every Star",
+    async () => {
+      const git = server("/Users/a/.pult/stars");
+      await NodeAssert.rejects(ownRepository(git, home), {
+        message:
+          "/Users/a/.pult/stars is still one repository for every Star, which Pult no longer commits: each Star's folder must be a repository of its own.",
+      });
+      NodeAssert.deepEqual(git.calls, [`status ${home.root}`]);
+    },
+  );
 });
 
 NodeTest.describe("the sync on a Star's sleep", () => {
@@ -236,17 +290,16 @@ NodeTest.describe("the sync on a Star's sleep", () => {
   // Then `work` sleeps too, the page seeing its conversation settle.
   const allAsleep = starOver([thread("u", true), thread("w", true)]);
 
-  const home = (environmentId: string) => ({ environmentId });
   const all = () => true;
 
   NodeTest.test("syncs nothing while another channel is open, `user` asleep", () => {
     NodeAssert.equal(workOpen.state, "awake");
-    NodeAssert.equal(environmentSleeps("env", [workOpen], all), false);
+    NodeAssert.equal(homeSleeps("env", workOpen, all), false);
     NodeAssert.deepEqual(sleepOccasions(new Map(), [workOpen], all).occasions, []);
   });
 
   NodeTest.test("syncs when the last open channel sleeps, and not again while it sleeps", () => {
-    NodeAssert.equal(environmentSleeps("env", [allAsleep], all), true);
+    NodeAssert.equal(homeSleeps("env", allAsleep, all), true);
     const open = sleepOccasions(new Map(), [workOpen], all);
     NodeAssert.deepEqual(open.awake.get("env"), ["star"]);
     const slept = sleepOccasions(open.awake, [allAsleep], all);
@@ -256,39 +309,45 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     NodeAssert.deepEqual(sleepOccasions(new Map(), [allAsleep], all).occasions, []);
   });
 
-  NodeTest.test("is an occasion on each environment the Star slept on", () => {
-    const star = { id: "star", homes: [home("laptop"), home("desk")], awakeOn: [] };
-    const { occasions, awake } = sleepOccasions(
-      new Map([
-        ["laptop", ["star"]],
-        ["desk", ["star"]],
-      ]),
-      [star],
-      all,
-    );
+  NodeTest.test("is each Star's own sleep, whatever the other Stars on the environment do", () => {
+    const x = { id: "x", awakeOn: [] };
+    const y = { id: "y", awakeOn: ["laptop"] };
+    // X falls asleep while Y is awake on the same environment: X's occasion.
+    const first = sleepOccasions(new Map([["laptop", ["x", "y"]]]), [x, y], all);
+    NodeAssert.deepEqual(first.occasions, [{ environmentId: "laptop", starId: "x" }]);
+    NodeAssert.equal(homeSleeps("laptop", x, all), true);
+    NodeAssert.equal(homeSleeps("laptop", y, all), false);
+    // Then Y: its own.
+    NodeAssert.deepEqual(sleepOccasions(first.awake, [x, { ...y, awakeOn: [] }], all).occasions, [
+      { environmentId: "laptop", starId: "y" },
+    ]);
+  });
+
+  NodeTest.test("is an occasion on each environment the Star slept on, and there alone", () => {
+    const star = { id: "star", awakeOn: [] };
+    const both = new Map([
+      ["laptop", ["star"]],
+      ["desk", ["star"]],
+    ]);
+    const { occasions, awake } = sleepOccasions(both, [star], all);
     NodeAssert.deepEqual(occasions, [
       { environmentId: "laptop", starId: "star" },
       { environmentId: "desk", starId: "star" },
     ]);
     NodeAssert.deepEqual(sleepOccasions(awake, [star], all).occasions, []);
-    // Awake on the desk alone: the desk's occasion alone.
-    NodeAssert.deepEqual(
-      sleepOccasions(
-        new Map([
-          ["laptop", []],
-          ["desk", ["star"]],
-        ]),
-        [star],
-        all,
-      ).occasions,
-      [{ environmentId: "desk", starId: "star" }],
-    );
+    // Asleep on the laptop while a channel stays open on the desk: the laptop's occasion alone.
+    const desk = { ...star, awakeOn: ["desk"] };
+    NodeAssert.deepEqual(sleepOccasions(both, [desk], all).occasions, [
+      { environmentId: "laptop", starId: "star" },
+    ]);
+    NodeAssert.equal(homeSleeps("laptop", desk, all), true);
+    NodeAssert.equal(homeSleeps("desk", desk, all), false);
   });
 
   NodeTest.test(
     "keeps an environment not known as last seen, and catches its sleep once in",
     () => {
-      const star = { id: "star", homes: [home("laptop"), home("desk")], awakeOn: [] };
+      const star = { id: "star", awakeOn: [] };
       const laptopOnly = (environmentId: string) => environmentId === "laptop";
       const loading = sleepOccasions(
         new Map([
@@ -300,6 +359,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
       );
       NodeAssert.deepEqual(loading.occasions, []);
       NodeAssert.deepEqual(loading.awake.get("desk"), ["star"]);
+      NodeAssert.equal(homeSleeps("desk", star, laptopOnly), false);
       NodeAssert.deepEqual(sleepOccasions(loading.awake, [star], all).occasions, [
         { environmentId: "desk", starId: "star" },
       ]);
@@ -309,7 +369,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
   NodeTest.test(
     "keeps an environment whose Stars are missing while it is not known, and catches the sleep when they return",
     () => {
-      const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
+      const x = { id: "x", awakeOn: ["laptop"] };
       const first = sleepOccasions(new Map(), [x], all);
       // The laptop's read fails, dropping its Stars, and the laptop is not known until it answers again.
       const unread = () => false;
@@ -323,99 +383,6 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     },
   );
 
-  NodeTest.test("is not held by a second environment held but offline", () => {
-    // Y, cloned to the desk, which is offline: the laptop's sleeps are still its occasions.
-    const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
-    const y = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["laptop"] };
-    const laptopOnly = (environmentId: string) => environmentId === "laptop";
-    const first = sleepOccasions(new Map(), [x, y], laptopOnly);
-    NodeAssert.deepEqual(first.awake, new Map([["laptop", ["x", "y"]]]));
-    const xSlept = sleepOccasions(first.awake, [{ ...x, awakeOn: [] }, y], laptopOnly);
-    NodeAssert.deepEqual(xSlept.occasions, []);
-    NodeAssert.deepEqual(
-      sleepOccasions(
-        xSlept.awake,
-        [
-          { ...x, awakeOn: [] },
-          { ...y, awakeOn: [] },
-        ],
-        laptopOnly,
-      ).occasions,
-      [{ environmentId: "laptop", starId: "y" }],
-    );
-  });
-
-  NodeTest.test(
-    "waits for every Star on the environment to sleep, the last one's sleep its occasion",
-    () => {
-      const x = { id: "x", homes: [home("laptop")], awakeOn: [] };
-      const yAwake = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["laptop"] };
-      const yAsleep = { ...yAwake, awakeOn: [] };
-      // X falls asleep while Y is awake on the same environment: nothing.
-      const first = sleepOccasions(
-        new Map([
-          ["laptop", ["x", "y"]],
-          ["desk", []],
-        ]),
-        [x, yAwake],
-        all,
-      );
-      NodeAssert.deepEqual(first.occasions, []);
-      NodeAssert.equal(environmentSleeps("laptop", [x, yAwake], all), false);
-      // Then Y: the laptop's occasion, now every Star's there asleep; the desk slept already.
-      NodeAssert.deepEqual(sleepOccasions(first.awake, [x, yAsleep], all).occasions, [
-        { environmentId: "laptop", starId: "y" },
-      ]);
-      // Both at once: one occasion, for the first of them.
-      NodeAssert.deepEqual(
-        sleepOccasions(new Map([["laptop", ["x", "y"]]]), [x, yAsleep], all).occasions,
-        [{ environmentId: "laptop", starId: "x" }],
-      );
-    },
-  );
-
-  NodeTest.test("is not lost when a Star first counts already asleep", () => {
-    // X falls asleep while Y's home on the laptop is not in its answer yet, then Y's comes in asleep.
-    const x = { id: "x", homes: [home("laptop")], awakeOn: ["laptop"] };
-    const y = { id: "y", homes: [home("laptop")], awakeOn: [] };
-    const first = sleepOccasions(new Map(), [x], all);
-    const xSlept = sleepOccasions(first.awake, [{ ...x, awakeOn: [] }], all);
-    NodeAssert.deepEqual(xSlept.occasions, [{ environmentId: "laptop", starId: "x" }]);
-    // Y's home there appearing asleep while X sleeps is no second occasion.
-    NodeAssert.deepEqual(
-      sleepOccasions(xSlept.awake, [{ ...x, awakeOn: [] }, y], all).occasions,
-      [],
-    );
-    // Y counted awake, X asleep, then both asleep: one occasion.
-    const yAwake = sleepOccasions(
-      xSlept.awake,
-      [
-        { ...x, awakeOn: [] },
-        { ...y, awakeOn: ["laptop"] },
-      ],
-      all,
-    );
-    NodeAssert.deepEqual(yAwake.occasions, []);
-    NodeAssert.deepEqual(sleepOccasions(yAwake.awake, [{ ...x, awakeOn: [] }, y], all).occasions, [
-      { environmentId: "laptop", starId: "y" },
-    ]);
-  });
-
-  NodeTest.test("reads an environment by the Stars' homes there alone", () => {
-    const x = { id: "x", homes: [home("laptop")], awakeOn: [] };
-    // Y, cloned to the desk too, has a channel open there alone.
-    const y = { id: "y", homes: [home("laptop"), home("desk")], awakeOn: ["desk"] };
-    NodeAssert.equal(environmentSleeps("laptop", [x, y], all), true);
-    NodeAssert.equal(environmentSleeps("desk", [x, y], all), false);
-    // A channel open on Y's laptop home holds the laptop.
-    NodeAssert.equal(environmentSleeps("laptop", [x, { ...y, awakeOn: ["laptop"] }], all), false);
-    // The desk held but offline, or still loading: the laptop syncs, the desk, unknown, does not.
-    const yAsleep = { ...y, awakeOn: [] };
-    const laptopOnly = (environmentId: string) => environmentId === "laptop";
-    NodeAssert.equal(environmentSleeps("laptop", [x, yAsleep], laptopOnly), true);
-    NodeAssert.equal(environmentSleeps("desk", [x, yAsleep], laptopOnly), false);
-  });
-
   NodeTest.test("reads a Star awake on each environment where its home has a channel open", () => {
     const on = (environmentId: string, id: string, settled = false) => ({
       ...thread(id, settled),
@@ -423,32 +390,19 @@ NodeTest.describe("the sync on a Star's sleep", () => {
     });
     const answers = [answer("laptop", "l"), answer("desk", "d")];
     // `work` open on both homes, the desk's newer, so the Star's `work` is the desk's: the laptop's still writes there.
-    const both = starsOf(answers, [
+    const [both] = starsOf(answers, [
       on("laptop", "l"),
       { ...on("desk", "d"), createdAt: "2026-11-02T00:00:00.000Z" },
     ]);
-    NodeAssert.deepEqual(
-      both.map((star) => star.awakeOn),
-      [["laptop", "desk"]],
-    );
-    NodeAssert.equal(
-      environmentSleeps("laptop", both, () => true),
-      false,
-    );
+    NodeAssert.ok(both !== undefined);
+    NodeAssert.deepEqual(both.awakeOn, ["laptop", "desk"]);
+    NodeAssert.equal(homeSleeps("laptop", both, all), false);
     // The laptop's conversation settled: the laptop sleeps while the desk's goes on.
-    const desk = starsOf(answers, [on("laptop", "l", true), on("desk", "d")]);
-    NodeAssert.deepEqual(
-      desk.map((star) => star.awakeOn),
-      [["desk"]],
-    );
-    NodeAssert.equal(
-      environmentSleeps("laptop", desk, () => true),
-      true,
-    );
-    NodeAssert.equal(
-      environmentSleeps("desk", desk, () => true),
-      false,
-    );
+    const [desk] = starsOf(answers, [on("laptop", "l", true), on("desk", "d")]);
+    NodeAssert.ok(desk !== undefined);
+    NodeAssert.deepEqual(desk.awakeOn, ["desk"]);
+    NodeAssert.equal(homeSleeps("laptop", desk, all), true);
+    NodeAssert.equal(homeSleeps("desk", desk, all), false);
   });
 
   NodeTest.test("a handoff deferred while a channel is open is delivered on that sleep", () => {

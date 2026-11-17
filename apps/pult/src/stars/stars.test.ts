@@ -80,11 +80,12 @@ NodeTest.describe("starsOf", () => {
           {
             environmentId: "a",
             answer: answer([routeStar("one", { name: "Vega" })]),
-            origin: "git@x:s",
+            origins: new Map([["one", "git@x:s"]]),
           },
           {
             environmentId: "b",
             answer: answer([routeStar("one", { name: "Other", projectId: "p" }), routeStar("two")]),
+            origins: new Map([["two", "git@x:two"]]),
           },
         ],
         [],
@@ -103,7 +104,11 @@ NodeTest.describe("starsOf", () => {
           ["b", "p", undefined],
         ],
       );
-      NodeAssert.equal(stars[0]?.origin, "git@x:s");
+      // Each Star's home its own repository's origin.
+      NodeAssert.deepEqual(
+        stars[1]?.homes.map((home) => home.origin),
+        ["git@x:two"],
+      );
     },
   );
 
