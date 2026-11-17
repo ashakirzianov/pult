@@ -39,6 +39,7 @@ import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
 import * as GitManager from "../git/GitManager.ts";
+import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
@@ -721,6 +722,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           Effect.as({ status: "no-script" } as const),
         ),
     }),
+    Layer.mock(GitWorkflowService.GitWorkflowService)({}),
     Layer.mock(GitManager.GitManager)({
       branchPullRequest,
       invalidateStatus: (cwd) => Ref.update(invalidatedCwds, (cwds) => [...cwds, cwd]),

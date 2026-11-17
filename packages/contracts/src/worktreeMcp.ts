@@ -4,7 +4,10 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /** Uses the managed worktree folder; handoff detaches the provider, ending this turn and resuming there next run. */
 export const WorktreeMcpHandoffInput = Schema.Struct({
-  branch: TrimmedNonEmptyString,
+  branch: TrimmedNonEmptyString.annotate({
+    description:
+      "In a project kept in xaxis, which has one line and no branches: `main`, with `baseRef` absent or `main`.",
+  }),
   baseRef: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description: "Default: checked-out branch.",

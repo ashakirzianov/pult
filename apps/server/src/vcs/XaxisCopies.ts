@@ -28,14 +28,37 @@ const MAIN = "main";
 export const NO_BRANCHES =
   "A project kept in xaxis has one line, main, and no branches: pass baseRef main and no branch.";
 
+/** What a settle did with a thread's copy: removed it, or kept it and why. */
+export type SettledCopy =
+  | { readonly removed: true }
+  | { readonly removed: false; readonly reason: string };
+
 export interface XaxisCopies {
-  /** `vcs.createWorktree` for a checkout's root: a copy of its prefix, on `main`. */
+  /**
+   * `vcs.createWorktree` for a checkout's root: a copy of its prefix on `main`, at main's tip, or
+   * at a changeset `base` handed out for `refName`.
+   */
   readonly create: (
     input: VcsCreateWorktreeInput,
     progress?: GitVcsDriver.CreateWorktreeProgress,
   ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
   /** `vcs.removeWorktree` of a copy: `force` lets uncommitted edits go, never a stack or a conflict. */
   readonly remove: (input: VcsRemoveWorktreeInput) => Effect.Effect<void, GitCommandError>;
+  /**
+   * A base naming the changeset the checkout at `cwd` stands on, for `delegate_task`'s isolated
+   * child to start at: refused while it holds commits not landed. Only a base handed out here starts
+   * a copy at a changeset, so the tools' `baseRef` names none (`xaxis-copy-contract`).
+   */
+  readonly base: (cwd: string) => Effect.Effect<string, GitCommandError>;
+  /**
+   * At a thread's settle, `remove` without `force` of its copy at `path`, a copy of the checkout at
+   * `cwd` inside the worktrees folder, unless a thread of `activeThreadIds` is still on it.
+   */
+  readonly cleanSettled: (input: {
+    readonly cwd: string;
+    readonly path: string;
+    readonly activeThreadIds: ReadonlyArray<string>;
+  }) => Effect.Effect<SettledCopy>;
 }
 
 export const make = Effect.fn("XaxisCopies.make")(function* (
@@ -71,13 +94,46 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
       .json({ operation, cwd: root, args: ["status", "--json"] }, XaxisCli.XaxisStatus)
       .pipe(Effect.mapError(refused));
 
+  const worktreesFolder = Effect.fn("XaxisCopies.worktreesFolder")(function* (
+    fail: (detail: string, cause?: unknown) => GitCommandError,
+  ) {
+    const current = yield* settings.getSettings.pipe(
+      Effect.mapError((cause) => fail("Could not read the worktrees setting.", cause)),
+    );
+    const folder = resolveWorktreesDirectory(
+      current.worktreesDirectory,
+      worktreesDir,
+      path,
+      yield* HostProcess.HomeDirectory,
+    );
+    if (folder === null) {
+      return yield* fail(
+        `The worktree location "${current.worktreesDirectory}" must be an absolute folder on this machine, not a drive root. Change it in Settings → Worktrees.`,
+      );
+    }
+    return folder;
+  });
+
+  const randomHex = (bytes: number) =>
+    Effect.all(
+      Array.from({ length: bytes }, () => Random.nextIntBetween(0, 256, { halfOpen: true })),
+    ).pipe(Effect.map((all) => all.map((byte) => byte.toString(16).padStart(2, "0")).join("")));
+
+  /**
+   * The bases `base` handed out, `<changeset>#<nonce>`, the only refs `create` starts a copy at a
+   * changeset from: a hash alone, or one a tool guesses, is refused. Kept for the server's life,
+   * one each delegation, so a retried launch of a delegated child finds its base.
+   */
+  const bases = new Set<string>();
+
   const create: XaxisCopies["create"] = Effect.fn("XaxisCopies.create")(
     function* (input, progress) {
       const operation = "XaxisCopies.create";
       const fail = (detail: string, cause?: unknown) => refuse(operation, input.cwd, detail, cause);
       const newRef = input.newRefName;
+      const at = bases.has(input.refName) ? input.refName.split("#")[0] : undefined;
       if (
-        (input.refName !== MAIN && input.refName !== `refs/heads/${MAIN}`) ||
+        (input.refName !== MAIN && input.refName !== `refs/heads/${MAIN}` && at === undefined) ||
         (newRef !== undefined && newRef !== MAIN && !isTemporaryWorktreeBranch(newRef))
       ) {
         return yield* fail(NO_BRANCHES);
@@ -98,25 +154,8 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
 
       let dir = input.path;
       if (dir === null) {
-        const current = yield* settings.getSettings.pipe(
-          Effect.mapError((cause) => fail("Could not read the worktrees setting.", cause)),
-        );
-        const parent = resolveWorktreesDirectory(
-          current.worktreesDirectory,
-          worktreesDir,
-          path,
-          yield* HostProcess.HomeDirectory,
-        );
-        if (parent === null) {
-          return yield* fail(
-            `The worktree location "${current.worktreesDirectory}" must be an absolute folder on this machine, not a drive root. Change it in Settings → Worktrees.`,
-          );
-        }
-        const bytes = yield* Effect.all(
-          Array.from({ length: 4 }, () => Random.nextIntBetween(0, 256, { halfOpen: true })),
-        );
-        const hex = bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-        dir = path.join(parent, path.basename(root), `copy-${hex}`);
+        const parent = yield* worktreesFolder(fail);
+        dir = path.join(parent, path.basename(root), `copy-${yield* randomHex(4)}`);
       }
       const target = path.resolve(input.cwd, dir);
       const existed = yield* fileSystem.exists(target).pipe(Effect.orElseSucceed(() => true));
@@ -134,6 +173,7 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
             server: source.server,
             prefix: source.prefix,
             dir: target,
+            ...(at === undefined ? {} : { at }),
           })
           .pipe(Effect.mapError(refused));
         const copy = yield* status(`${operation}.status`, target);
@@ -225,5 +265,54 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
     );
   });
 
-  return { create, remove } satisfies XaxisCopies;
+  const base: XaxisCopies["base"] = Effect.fn("XaxisCopies.base")(function* (cwd) {
+    const operation = "XaxisCopies.base";
+    const read = yield* status(operation, cwd);
+    const unlanded =
+      read.conflict !== null
+        ? "a conflict, whose commits are not landed"
+        : read.stack.length > 0
+          ? `${read.stack.length} ${read.stack.length === 1 ? "commit" : "commits"} not landed`
+          : null;
+    if (unlanded !== null) {
+      return yield* refuse(
+        operation,
+        cwd,
+        `The parent's checkout holds ${unlanded}, which a copy cannot start from: land them, or delegate with isolation shared.`,
+      );
+    }
+    const handedOut = `${read.base}#${yield* randomHex(8)}`;
+    bases.add(handedOut);
+    return handedOut;
+  });
+
+  const cleanSettled: XaxisCopies["cleanSettled"] = Effect.fn("XaxisCopies.cleanSettled")(
+    function* (input) {
+      const operation = "XaxisCopies.cleanSettled";
+      if (input.activeThreadIds.length > 0) {
+        return {
+          removed: false,
+          reason: `${input.activeThreadIds.length === 1 ? "another thread is" : `${input.activeThreadIds.length} other threads are`} still on it`,
+        } as const;
+      }
+      return yield* Effect.gen(function* () {
+        const fail = (detail: string, cause?: unknown) =>
+          refuse(operation, input.path, detail, cause);
+        const [copy, folder] = yield* Effect.all([
+          realPath(operation, input.path),
+          worktreesFolder(fail).pipe(Effect.flatMap((folder) => realPath(operation, folder))),
+        ]);
+        const inside = path.relative(folder, copy);
+        if (inside === "" || inside.startsWith("..") || path.isAbsolute(inside)) {
+          return yield* fail(`${copy} is not in the worktrees folder ${folder}.`);
+        }
+        yield* remove({ cwd: input.cwd, path: copy });
+        return { removed: true } as const;
+      }).pipe(
+        Effect.catch((error) => Effect.succeed({ removed: false, reason: error.detail } as const)),
+      );
+    },
+  );
+
+  return { create, remove, base, cleanSettled } satisfies XaxisCopies;
 });

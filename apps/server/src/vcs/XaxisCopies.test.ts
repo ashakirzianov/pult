@@ -13,9 +13,32 @@ import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import {
+  EnvironmentId,
+  NodeId,
+  type OrchestrationV2ServerCommand,
+  type OrchestrationV2ThreadProjection,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  RunId,
+  type ServerProvider,
+  ThreadId,
+} from "@t3tools/contracts";
+
 import * as ServerConfig from "../config.ts";
 import * as GitManager from "../git/GitManager.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
+import * as OrchestratorMcpService from "../mcp/OrchestratorMcpService.ts";
+import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
@@ -87,6 +110,102 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       ),
       Layer.provideMerge(platform),
     );
+
+  // `delegate_task` from a thread whose checkout is `parentDir`, in the project at `root`, each
+  // dispatched command recorded and then refused.
+  const delegateFrom = (parentDir: string, dispatched: Array<OrchestrationV2ServerCommand>) => {
+    const threadId = ThreadId.make("thread:copies-parent");
+    const instanceId = ProviderInstanceId.make("codex");
+    const modelSelection = { instanceId, model: "gpt-5.4" };
+    const projection = {
+      thread: {
+        id: threadId,
+        projectId: ProjectId.make("project:copies"),
+        worktreePath: parentDir,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      },
+      runs: [
+        {
+          id: RunId.make("run:copies-parent"),
+          ordinal: 1,
+          status: "running",
+          rootNodeId: NodeId.make("node:copies-root"),
+          providerInstanceId: instanceId,
+          modelSelection,
+        },
+      ],
+      contextTransfers: [],
+      subagents: [],
+    } as unknown as OrchestrationV2ThreadProjection;
+    const provider = {
+      instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      enabled: true,
+      installed: true,
+      version: "test",
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-11-17T00:00:00.000Z",
+      models: [{ slug: "gpt-5.4", name: "gpt-5.4", isCustom: false, capabilities: null }],
+      slashCommands: [],
+      skills: [],
+    } as ServerProvider;
+    const scope: McpInvocationScope = {
+      environmentId: EnvironmentId.make("environment:copies"),
+      requestNamespace: "provider-session:copies",
+      thread: {
+        threadId,
+        providerSessionId: "provider-session:copies",
+        providerInstanceId: instanceId,
+      },
+      client: undefined,
+      capabilities: new Set(["orchestration"]),
+      issuedAt: 1,
+    };
+    const service = OrchestratorMcpService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            getThreadRecords: () => Effect.succeed(projection),
+            isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+            assertProviderInstanceEnabled: () => Effect.void,
+            dispatch: (command) =>
+              Effect.sync(() => dispatched.push(command)).pipe(
+                Effect.andThen(Effect.fail({ _tag: "Refused" } as never)),
+              ),
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([provider]),
+            refreshInstance: () => Effect.succeed([provider]),
+          }),
+          Layer.succeed(
+            ProviderAdapterRegistry.ProviderAdapterRegistryV2,
+            ProviderAdapterRegistry.ProviderAdapterRegistryV2.of({
+              list: () => Effect.succeed([instanceId]),
+              get: () => Effect.succeed({ instanceId } as never),
+            }),
+          ),
+          Layer.mock(ProjectService.ProjectService)({
+            getById: (id) =>
+              Effect.succeedSome({ id, title: "pult", workspaceRoot: root } as never),
+          }),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        ),
+      ),
+    );
+    return OrchestratorMcpService.OrchestratorMcpService.pipe(
+      Effect.flatMap((mcp) =>
+        mcp.delegateTask(scope, { task: "Build the unit.", isolation: "worktree" }),
+      ),
+      Effect.provide(service),
+    );
+  };
 
   it.layer(Layer.suspend(layer))("over a checkout's root", (it) => {
     it.effect("makes a copy of the root's prefix where worktrees go, on main, and clean", () =>
@@ -247,21 +366,103 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       }),
     );
 
-    it.effect("checks a prefix out at a changeset on main", () =>
+    it.effect(
+      "cleans a settled thread's copy only when no thread is on it and it holds no work",
+      () =>
+        Effect.gen(function* () {
+          const workflow = yield* GitWorkflowService.GitWorkflowService;
+          const make = () =>
+            workflow
+              .createWorktree({ cwd: root, refName: "main", path: null })
+              .pipe(Effect.map((result) => result.worktree.path));
+          const clean = (path: string, activeThreadIds: ReadonlyArray<string> = []) =>
+            workflow.cleanSettledCopy({ cwd: root, path, activeThreadIds });
+
+          const shared = yield* make();
+          assert.deepEqual(yield* clean(shared, ["thread:other"]), {
+            removed: false,
+            reason: "another thread is still on it",
+          });
+          assert.isTrue(NodeFS.existsSync(shared));
+          assert.deepEqual(yield* clean(shared), { removed: true });
+          assert.isFalse(NodeFS.existsSync(shared));
+
+          const edited = yield* make();
+          NodeFS.writeFileSync(NodePath.join(edited, "f.txt"), "edited\n");
+          const keptEdit = yield* clean(edited);
+          assert.isFalse(keptEdit?.removed);
+          assert.include(
+            keptEdit?.removed === false ? keptEdit.reason : "",
+            "holds 1 uncommitted change",
+          );
+          assert.isTrue(NodeFS.existsSync(edited));
+
+          const stacked = yield* make();
+          NodeFS.writeFileSync(NodePath.join(stacked, "n.txt"), "new\n");
+          committed(xaxis(stacked, "commit", "-m", "not landed"));
+          const keptStack = yield* clean(stacked);
+          assert.include(
+            keptStack?.removed === false ? keptStack.reason : "",
+            "holds 1 commit not landed",
+          );
+          assert.isTrue(NodeFS.existsSync(stacked));
+        }),
+    );
+
+    // Last: it moves main past the root's base.
+    it.effect("delegates a child onto a copy at the parent's base, never over its stack", () =>
       Effect.gen(function* () {
-        const cli = XaxisCli.make(yield* VcsProcess.VcsProcess, Effect.succeed(XAXIS!));
-        const dir = NodePath.join(harness.scratch, "at-first");
-        yield* cli.checkout({
-          operation: "test.checkoutAt",
-          cwd: harness.scratch,
-          server: harness.address,
-          prefix: "/test/pult",
-          dir,
-          at: first,
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const parentDir = NodePath.join(harness.scratch, "parent");
+        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "parent");
+        const parentBase = (
+          JSON.parse(xaxis(parentDir, "status", "--json")) as XaxisCli.XaxisStatus
+        ).base;
+        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "ahead");
+        const ahead = NodePath.join(harness.scratch, "ahead");
+        NodeFS.writeFileSync(NodePath.join(ahead, "f.txt"), "three\n");
+        landed((xaxis(ahead, "commit", "-m", "third"), xaxis(ahead, "land")));
+
+        const dispatched: Array<OrchestrationV2ServerCommand> = [];
+        const delegate = delegateFrom(parentDir, dispatched);
+        // The dispatch is refused once recorded, so the launch it would start never runs.
+        yield* delegate.pipe(Effect.flip);
+        const [command] = dispatched;
+        assert.equal(command?.type, "delegated_task.request");
+        const strategy =
+          command?.type === "delegated_task.request" ? command.workspaceStrategy : undefined;
+        assert.isTrue(strategy?.type === "worktree" && strategy.startFromOrigin === false);
+        const baseRef = strategy?.type === "worktree" ? strategy.baseRef : "";
+        assert.match(baseRef, new RegExp(`^${parentBase}#[0-9a-f]{16}$`));
+        // The changeset alone, as a tool would pass it, is no base.
+        const alone = yield* workflow
+          .createWorktree({ cwd: root, refName: parentBase, path: null })
+          .pipe(Effect.flip);
+        assert.equal(alone.detail, NO_BRANCHES);
+
+        // As the launch makes the child's workspace from the strategy.
+        const { worktree } = yield* workflow.createWorktree({
+          cwd: root,
+          refName: baseRef,
+          newRefName: "t3/0a1b2c3d",
+          baseRefName: baseRef,
+          path: null,
         });
-        assert.equal(NodeFS.readFileSync(NodePath.join(dir, "f.txt"), "utf8"), "one\n");
-        const status = JSON.parse(xaxis(dir, "status", "--json")) as XaxisCli.XaxisStatus;
-        assert.equal(status.base, first);
+        assert.equal(worktree.refName, "main");
+        assert.equal(NodeFS.readFileSync(NodePath.join(worktree.path, "f.txt"), "utf8"), "two\n");
+        const status = JSON.parse(xaxis(worktree.path, "status", "--json")) as XaxisCli.XaxisStatus;
+        assert.equal(status.base, parentBase);
+
+        NodeFS.writeFileSync(NodePath.join(parentDir, "n.txt"), "new\n");
+        committed(xaxis(parentDir, "commit", "-m", "not landed"));
+        dispatched.length = 0;
+        const refused = yield* delegate.pipe(Effect.flip);
+        assert.equal(refused.code, "invalid_request");
+        assert.include(
+          refused.message,
+          "holds 1 commit not landed, which a copy cannot start from",
+        );
+        assert.deepEqual(dispatched, []);
       }),
     );
   });

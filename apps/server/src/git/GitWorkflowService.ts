@@ -35,6 +35,7 @@ import {
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import type * as XaxisCopies from "../vcs/XaxisCopies.ts";
 import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
@@ -142,6 +143,20 @@ export class GitWorkflowService extends Context.Service<
       readonly oldBranch: string;
       readonly newBranch: string;
     }) => Effect.Effect<{ readonly branch: string }, GitManagerServiceError>;
+    /**
+     * Pult: the base `delegate_task`'s isolated child of an xaxis checkout starts at, refused while
+     * the checkout holds commits not landed; null for a folder of any other kind.
+     */
+    readonly delegatedCopyBase: (cwd: string) => Effect.Effect<string | null, GitCommandError>;
+    /**
+     * Pult: a settled thread's copy at `path` of the xaxis project at `cwd`, removed unless it holds
+     * work or a thread of `activeThreadIds` is on it; null for a project of any other kind.
+     */
+    readonly cleanSettledCopy: (input: {
+      readonly cwd: string;
+      readonly path: string;
+      readonly activeThreadIds: ReadonlyArray<string>;
+    }) => Effect.Effect<XaxisCopies.SettledCopy | null, GitCommandError>;
   }
 >()("t3/git/GitWorkflowService") {}
 
@@ -598,6 +613,19 @@ export const make = Effect.gen(function* () {
       return ensureGit("GitWorkflowService.renameBranch", input.cwd).pipe(
         Effect.andThen(git.renameBranch(input)),
       );
+    }),
+    // Pult (`pult/decisions`, `xaxis-copy-contract`): a folder that resolves to no driver is
+    // git's to refuse, as before.
+    delegatedCopyBase: Effect.fn("GitWorkflowService.delegatedCopyBase")(function* (cwd) {
+      const handle = yield* registry.resolve({ cwd }).pipe(Effect.orElseSucceed(() => null));
+      if (handle?.kind !== "xaxis") return null;
+      return yield* xaxis.copyBase(cwd);
+    }),
+    // Pult (`pult/decisions`, `xaxis-copy-cleanup`).
+    cleanSettledCopy: Effect.fn("GitWorkflowService.cleanSettledCopy")(function* (input) {
+      const handle = yield* resolveForCommand("GitWorkflowService.cleanSettledCopy", input.cwd);
+      if (handle.kind !== "xaxis") return null;
+      return yield* xaxis.cleanSettledCopy(input);
     }),
   });
 });

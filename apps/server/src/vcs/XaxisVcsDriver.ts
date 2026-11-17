@@ -345,6 +345,10 @@ export class XaxisVcsDriver extends Context.Service<
     readonly createCopy: XaxisCopies.XaxisCopies["create"];
     /** `vcs.removeWorktree` of a copy (`XaxisCopies`). */
     readonly removeCopy: XaxisCopies.XaxisCopies["remove"];
+    /** The base of `delegate_task`'s isolated child of a checkout (`XaxisCopies`). */
+    readonly copyBase: XaxisCopies.XaxisCopies["base"];
+    /** A settled thread's copy, removed unless it holds work (`XaxisCopies`). */
+    readonly cleanSettledCopy: XaxisCopies.XaxisCopies["cleanSettled"];
   }
 >()("t3/vcs/XaxisVcsDriver") {}
 
@@ -1123,6 +1127,8 @@ const make = Effect.gen(function* () {
     checkouts,
     createCopy: copies.create,
     removeCopy: copies.remove,
+    copyBase: copies.base,
+    cleanSettledCopy: copies.cleanSettled,
   });
 });
 

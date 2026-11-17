@@ -26,6 +26,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import * as GitManager from "../git/GitManager.ts";
+import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
@@ -34,6 +35,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { XAXIS_MARKER } from "../vcs/XaxisVcsDriver.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -316,6 +318,7 @@ export const make = Effect.gen(function* () {
   const previews = yield* PreviewManager.PreviewManager;
   const ports = yield* PortScanner.PortDiscovery;
   const projectScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+  const vcs = yield* GitWorkflowService.GitWorkflowService;
   // Repeated thread.settled retains settledAt; run the action only once per settlement.
   const settleActionRunAt = new Map<ThreadId, number>();
 
@@ -600,6 +603,57 @@ export const make = Effect.gen(function* () {
       return sweepThread(threadId).pipe(FiberSet.run(threadSweeps), Effect.asVoid);
     });
 
+  // Pult (xaxis `pult/decisions`, `xaxis-copy-cleanup`): a settled thread's copy of a project kept
+  // in xaxis goes once no other thread is on it and it holds no work; a kept one is logged with why.
+  const cleanSettledCopy = Effect.fn("ThreadSettlementServiceV2.cleanSettledCopy")(
+    function* (thread: Pick<OrchestrationV2ThreadShell, "id" | "projectId">, worktreePath: string) {
+      if (!(yield* fileSystem.exists(path.join(worktreePath, XAXIS_MARKER)))) return;
+      const projectShells = yield* projectStore.listShells();
+      const project = projectShells.find((candidate) => candidate.id === thread.projectId);
+      if (
+        project === undefined ||
+        projectShells.some((candidate) => candidate.workspaceRoot === worktreePath)
+      )
+        return;
+      const { threads } = yield* projections.getShellSnapshot();
+      const activeThreadIds = threads
+        .filter(
+          (other) =>
+            other.id !== thread.id &&
+            other.worktreePath === worktreePath &&
+            other.deletedAt === null &&
+            other.archivedAt === null &&
+            other.settledOverride !== "settled",
+        )
+        .map((other) => other.id);
+      const copy = yield* vcs.cleanSettledCopy({
+        cwd: project.workspaceRoot,
+        path: worktreePath,
+        activeThreadIds,
+      });
+      if (copy === null) return;
+      yield* copy.removed
+        ? Effect.logInfo("removed a settled thread's copy", { threadId: thread.id, worktreePath })
+        : Effect.logInfo("kept a settled thread's copy", {
+            threadId: thread.id,
+            worktreePath,
+            reason: copy.reason,
+          });
+    },
+    (effect, thread, worktreePath) =>
+      effect.pipe(
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          (cause) =>
+            Effect.logWarning("cleaning up a settled thread's copy failed", {
+              threadId: thread.id,
+              worktreePath,
+              cause: Cause.pretty(cause),
+            }),
+        ),
+      ),
+  );
+
   // Skip settle scripts in shared checkouts where other threads may still work.
   const cleanUpSettledThread = Effect.fn("ThreadSettlementServiceV2.cleanUpSettledThread")(
     function* (threadId: ThreadId) {
@@ -644,6 +698,9 @@ export const make = Effect.gen(function* () {
       if (run.status === "started" && run.completion) {
         yield* run.completion.pipe(Effect.forkDetach);
       }
+      // Pult: a copy a settle script runs in is the script's, and a link's is not ours to touch
+      // (`cleanSettledCopy` below).
+      if (run.status === "no-script") yield* cleanSettledCopy(thread, worktreePath);
     },
     (effect, threadId) =>
       effect.pipe(

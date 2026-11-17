@@ -104,6 +104,7 @@ import { runOutcome } from "../orchestration-v2/RestartBackgroundNote.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -1036,6 +1037,7 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectService.ProjectService;
   const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
+  const vcs = yield* GitWorkflowService.GitWorkflowService;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
 
@@ -2484,7 +2486,21 @@ const make = Effect.gen(function* () {
         input.interactionMode,
       );
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
-      if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
+      // Pult (xaxis `pult/decisions`, `xaxis-copy-contract`): an xaxis parent's child is a copy at
+      // the changeset the parent's checkout stands on, a base the server alone names.
+      const xaxisBase =
+        input.isolation === "worktree" && !isRetryOfAcceptedDelegation
+          ? yield* requireProject(parent.thread.projectId).pipe(
+              Effect.flatMap((project) =>
+                vcs
+                  .delegatedCopyBase(parent.thread.worktreePath ?? project.workspaceRoot)
+                  .pipe(Effect.mapError((error) => failure("invalid_request", error.detail))),
+              ),
+            )
+          : null;
+      if (xaxisBase !== null) {
+        workspaceStrategy = { type: "worktree", baseRef: xaxisBase, startFromOrigin: false };
+      } else if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
         const base = yield* gitDriver
           .resolveCommit({
@@ -3369,6 +3385,7 @@ export const layer: Layer.Layer<
   | ThreadManagementService.ThreadManagementService
   | ThreadLaunchService.ThreadLaunchService
   | GitVcsDriver.GitVcsDriver
+  | GitWorkflowService.GitWorkflowService
   | ProviderRegistry.ProviderRegistry
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2
   | ScheduledTaskService.ScheduledTaskService
