@@ -42,6 +42,7 @@
     "@codingame/monaco-vscode-localization-service-override": "37.6.1",
     "@codingame/monaco-vscode-log-service-override": "37.6.1",
     "@codingame/monaco-vscode-markdown-basics-default-extension": "37.6.1",
+    "@codingame/monaco-vscode-markdown-language-features-default-extension": "37.6.1",
     "@codingame/monaco-vscode-markers-service-override": "37.6.1",
     "@codingame/monaco-vscode-model-service-override": "37.6.1",
     "@codingame/monaco-vscode-multi-diff-editor-service-override": "37.6.1",

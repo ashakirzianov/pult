@@ -910,6 +910,9 @@ importers:
       '@codingame/monaco-vscode-markdown-basics-default-extension':
         specifier: 37.6.1
         version: 37.6.1
+      '@codingame/monaco-vscode-markdown-language-features-default-extension':
+        specifier: 37.6.1
+        version: 37.6.1
       '@codingame/monaco-vscode-markers-service-override':
         specifier: 37.6.1
         version: 37.6.1
@@ -3898,6 +3901,9 @@ packages:
 
   '@codingame/monaco-vscode-markdown-basics-default-extension@37.6.1':
     resolution: {integrity: sha512-6fBU+bvWG7dV9RdESfKDV0BptIkoIXUj0oxOY0jkKsJgMbmmZRnW9t+4cF39aREOKx6PWZa/Yqi14bfrgNTJUA==}
+
+  '@codingame/monaco-vscode-markdown-language-features-default-extension@37.6.1':
+    resolution: {integrity: sha512-dT51Oak3p2UsN2NSIsK38jQIrCnCt5AEMVUOmEujwPVyuLd4rL8AVpIybOL35+XvGSU0P7dfq6OtdxCmlJOJ9Q==}
 
   '@codingame/monaco-vscode-markers-service-override@37.6.1':
     resolution: {integrity: sha512-dWnkYqjVfF/eLNOCaVt9XBCok6SxZnDTutpxLlkMmfqCPOmsobdr51dcqjgFBpxbbJQoBFmuSFzi6K1CmU/OEw==}
@@ -14075,6 +14081,10 @@ snapshots:
       '@codingame/monaco-vscode-environment-service-override': 37.6.1
 
   '@codingame/monaco-vscode-markdown-basics-default-extension@37.6.1':
+    dependencies:
+      '@codingame/monaco-vscode-api': 37.6.1
+
+  '@codingame/monaco-vscode-markdown-language-features-default-extension@37.6.1':
     dependencies:
       '@codingame/monaco-vscode-api': 37.6.1
 

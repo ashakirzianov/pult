@@ -300,6 +300,17 @@ export default defineConfig({
     // (every workbench grammar, theme or manifest under 4 KB) fails the workbench's fetch and leaves
     // the editor plain.
     assetsInlineLimit: 0,
+    rolldownOptions: {
+      output: {
+        // A workbench webview's host page registers its service worker at the worker's own
+        // directory; alone in `assets/webview/`, it controls the webviews and nothing else,
+        // not the extension host's iframe and the workers beside them in `assets/`.
+        assetFileNames: (asset) =>
+          asset.originalFileNames.some((name) => name.includes("/webview/browser/pre/"))
+            ? "assets/webview/[name]-[hash][extname]"
+            : "assets/[name]-[hash][extname]",
+      },
+    },
   },
   // Upstream's too: the view's file viewers start module workers.
   worker: { format: "es" },

@@ -76,6 +76,14 @@ body,
   overflow: hidden;
 }
 
+/* A workbench webview (the Markdown preview's): its document's color-scheme is `normal`, and an
+   iframe whose element's scheme differs from its document's gets an opaque backdrop from
+   Chromium, white behind the dark theme's text, so the element takes its document's (src/theme.ts
+   sets the page's). */
+iframe.webview {
+  color-scheme: normal;
+}
+
 /* While a tab is dragged, the hosted webviews (view/browserHost.tsx) let the pointer through to the editor group's drop zones. */
 body.pult-dragging .pult-browser-host webview {
   pointer-events: none !important;
