@@ -607,12 +607,28 @@ type View = ReturnType<typeof makeView>;
  * and toggle the sidebar. A key the view leaves goes on to the workbench.
  */
 function stopHandledKey(event: KeyboardEvent) {
-  if (!event.defaultPrevented) return;
+  if (!event.defaultPrevented || isSaveAsChord(event)) return;
   // The composer swallows Cmd+B with nothing selected, leaving it to the app's sidebar toggle: here the workbench's.
   const bold = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
   if (bold && event.code === "KeyB" && !isRichTextBoldShortcut(event, window.getSelection()))
     return;
   event.stopPropagation();
+}
+
+/**
+ * Cmd+Shift+S is the workbench's in the composer too (Pult: Settle Thread in a
+ * thread tab, else Save As), not its strikethrough's, which `~~text~~` still
+ * types: marked handled on its way down, which ProseMirror's editor ignores a
+ * handled key for, and let on past `stopHandledKey` to the workbench.
+ */
+function yieldSaveAsChord(event: KeyboardEvent) {
+  if (isSaveAsChord(event)) event.preventDefault();
+}
+
+function isSaveAsChord(event: KeyboardEvent): boolean {
+  return (
+    (event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.code === "KeyS"
+  );
 }
 
 /** The views no element mounts, one per kind at most: the next mount of the kind takes it. */
@@ -638,6 +654,7 @@ function mountView(
   delete atRest[kind];
   element.classList.add("pult-thread-view");
   element.classList.toggle("pult-composer-only", composerOnly);
+  element.addEventListener("keydown", yieldSaveAsChord, true);
   element.addEventListener("keydown", stopHandledKey);
   view.enter(element, target, onPromoted, options);
   let disposed = false;
@@ -649,6 +666,7 @@ function mountView(
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      element.removeEventListener("keydown", yieldSaveAsChord, true);
       element.removeEventListener("keydown", stopHandledKey);
       view.leave();
       if (atRest[kind] === undefined) atRest[kind] = view;

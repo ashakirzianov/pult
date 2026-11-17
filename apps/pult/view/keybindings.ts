@@ -18,8 +18,8 @@ const VIEW_ELEMENTS = ".pult-thread-view, .pult-view-theme, [data-base-ui-portal
  * Command Palette, over Pin Thread; Cmd+Shift+S, Save As, over Settle
  * Thread, which would settle in place, bypassing the shell's move to the next
  * card; Cmd+Shift+G, Source Control, over the branch picker. By key, so a
- * user's own binding of those commands elsewhere still works. In the
- * composer, Cmd+Shift+S is its strikethrough's, which takes it first.
+ * user's own binding of those commands elsewhere still works, in the composer
+ * too, whose strikethrough gives Cmd+Shift+S up (`ThreadView.tsx`).
  */
 const WORKBENCH_CHORDS = new Set(["KeyP", "KeyS", "KeyG"]);
 
