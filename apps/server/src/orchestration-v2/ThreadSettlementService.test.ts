@@ -5,6 +5,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
   EventId,
+  NodeId,
   ProviderInstanceId,
   RuntimeRequestId,
   RunId,
@@ -15,6 +16,7 @@ import {
   type OrchestrationV2Command,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ShellSnapshot,
+  type OrchestrationV2Subagent,
   type OrchestrationV2ThreadShell,
   type PullRequestSummary,
   type ServerSettings as ContractServerSettings,
@@ -468,6 +470,7 @@ describe("autoSettlementSettingsKey", () => {
 });
 
 type AutoSettleCommand = Extract<OrchestrationV2Command, { readonly type: "thread.auto-settle" }>;
+type SettleCommand = Extract<OrchestrationV2Command, { readonly type: "thread.settle" }>;
 
 const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(1));
 
@@ -564,6 +567,8 @@ interface HarnessOptions {
   ) => Effect.Effect<void>;
   readonly onCloseIdle?: () => Effect.Effect<void>;
   readonly currentThreads?: ReadonlyArray<OrchestrationV2AppThread>;
+  /** Each thread's subagent records, by thread id; none where a thread is missing. */
+  readonly subagents?: Readonly<Record<string, ReadonlyArray<OrchestrationV2Subagent>>>;
 }
 
 const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options: HarnessOptions) {
@@ -592,6 +597,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
   const closedIdle = yield* Queue.unbounded<{ readonly threadId: string }>();
   const closedPreviews = yield* Queue.unbounded<{ readonly threadId: string }>();
+  const settles = yield* Queue.unbounded<SettleCommand>();
   const scriptRuns =
     yield* Queue.unbounded<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>();
 
@@ -632,6 +638,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     });
 
   const dispatch: Orchestrator.OrchestratorV2Shape["dispatch"] = (command) => {
+    if (command.type === "thread.settle") {
+      return Queue.offer(settles, command).pipe(Effect.as({ sequence: 1, storedEvents: [] }));
+    }
     if (command.type !== "thread.auto-settle") {
       return Effect.die(new Error(`Unexpected command: ${command.type}`));
     }
@@ -678,6 +687,10 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           ? Effect.succeed(thread)
           : Effect.die(new Error(`Unexpected thread read: ${threadId}`));
       },
+      getThreadRecords: (threadId, fields) =>
+        fields.length === 1 && fields[0] === "subagents"
+          ? Effect.succeed({ subagents: options.subagents?.[threadId] ?? [] } as never)
+          : Effect.die(new Error(`Unexpected records read: ${fields.join(", ")}`)),
     }),
     Layer.mock(Orchestrator.OrchestratorV2)({
       streamDomainEvents: Stream.fromPubSub(domainEvents),
@@ -740,6 +753,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     invalidatedCwds,
     closedIdle,
     closedPreviews,
+    settles,
     scriptRuns,
     publishEvent: (event: OrchestrationV2DomainEvent) => PubSub.publish(domainEvents, event),
     updateSettings,
@@ -1509,6 +1523,74 @@ describe("ThreadSettlementServiceV2 terminals", () => {
           }).pipe(Effect.provide(fixture.layer));
         }),
       ),
+  );
+
+  it.effect("settles a settled thread's subagents, and un-settling it leaves them settled", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const parent = appThread("parent-thread", "settled");
+        const subagentThread = (
+          id: string,
+          settledOverride: OrchestrationV2AppThread["settledOverride"],
+        ): OrchestrationV2AppThread => ({
+          ...appThread(id, settledOverride),
+          lineage: {
+            parentThreadId: parent.id,
+            relationshipToParent: "subagent",
+            rootThreadId: parent.id,
+          },
+        });
+        const idle = subagentThread("idle-subagent", null);
+        const alreadySettled = subagentThread("settled-subagent", "settled");
+        const marker = appThread("marker-thread", "settled");
+        const record = (child: OrchestrationV2AppThread | null): OrchestrationV2Subagent => ({
+          id: NodeId.make(`node:${child?.id ?? "remote"}`),
+          threadId: parent.id,
+          runId: null,
+          parentNodeId: NodeId.make("node:parent"),
+          origin: "provider_native",
+          createdBy: "agent",
+          driver: "codex" as OrchestrationV2Subagent["driver"],
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          providerThreadId: null,
+          childThreadId: child?.id ?? null,
+          nativeTaskRef: null,
+          prompt: "Review",
+          title: "Review",
+          model: null,
+          status: "completed",
+          result: null,
+          startedAt: null,
+          completedAt: null,
+          updatedAt: DateTime.makeUnsafe(NOW),
+        });
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([]),
+          currentThreads: [parent, idle, alreadySettled, marker],
+          subagents: { [parent.id]: [record(idle), record(alreadySettled), record(null)] },
+        });
+
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          yield* fixture.publishEvent(settledEvent(parent));
+          const settle = yield* Queue.take(fixture.settles);
+          assert.strictEqual(settle.threadId, idle.id);
+          yield* Queue.take(fixture.closedIdle);
+          yield* fixture.publishEvent({
+            type: "thread.unsettled",
+            id: EventId.make("event:unsettled:parent-thread"),
+            threadId: parent.id,
+            occurredAt: DateTime.makeUnsafe(NOW),
+            payload: { ...parent, settledOverride: "active", settledAt: null },
+          });
+          // The marker's cleanup runs after the un-settlement, so no settle has come of it.
+          yield* fixture.publishEvent(settledEvent(marker));
+          yield* Queue.take(fixture.closedIdle);
+          assert.strictEqual(yield* Queue.size(fixture.settles), 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
   );
 
   it.effect("runs the settle script in the thread's own worktree", () =>

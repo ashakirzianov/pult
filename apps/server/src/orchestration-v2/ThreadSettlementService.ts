@@ -637,10 +637,67 @@ export const make = Effect.gen(function* () {
       ),
   );
 
+  // Pult (xaxis `pult/decisions`, `settle-cascades-to-subagents`): settling a thread settles its
+  // subagent threads, whose idle rows otherwise outlive it; un-settling it restores none. Each
+  // child's own settlement cascades to its subagents in turn, and a child the server refuses to
+  // settle, one still running, is logged and left as it is.
+  const settleSubagent = Effect.fn("ThreadSettlementServiceV2.settleSubagent")(
+    function* (threadId: ThreadId, childThreadId: ThreadId) {
+      const child = yield* projections.getThread(childThreadId);
+      if (
+        child.settledOverride === "settled" ||
+        child.archivedAt !== null ||
+        child.deletedAt !== null
+      )
+        return;
+      const uuid = yield* random.uuidV4();
+      yield* orchestrator.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make(`server:settle-subagent:${childThreadId}:${uuid}`),
+        threadId: childThreadId,
+      });
+    },
+    (effect, threadId, childThreadId) =>
+      effect.pipe(
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          (cause) =>
+            Effect.logWarning("settling a settled thread's subagent failed", {
+              threadId,
+              childThreadId,
+              cause: Cause.pretty(cause),
+            }),
+        ),
+      ),
+  );
+  const settleSubagentsOf = Effect.fn("ThreadSettlementServiceV2.settleSubagentsOf")(
+    function* (threadId: ThreadId) {
+      if ((yield* projections.getThread(threadId)).settledOverride !== "settled") return;
+      const { subagents } = yield* projections.getThreadRecords(threadId, ["subagents"]);
+      for (const childThreadId of new Set(subagents.map((subagent) => subagent.childThreadId))) {
+        if (childThreadId !== null) yield* settleSubagent(threadId, childThreadId);
+      }
+    },
+    (effect, threadId) =>
+      effect.pipe(
+        Effect.catchCauseIf(
+          (cause) => !Cause.hasInterruptsOnly(cause),
+          (cause) =>
+            Effect.logWarning("settling a settled thread's subagents failed", {
+              threadId,
+              cause: Cause.pretty(cause),
+            }),
+        ),
+      ),
+  );
+
   const processEvent = (event: OrchestrationV2DomainEvent) => {
     switch (event.type) {
       case "thread.settled":
-        return cleanUpSettledThread(event.threadId);
+        return Effect.andThen(
+          cleanUpSettledThread(event.threadId),
+          settleSubagentsOf(event.threadId),
+        );
       case "thread.pull-request-link-updated":
       case "thread.pull-request-synced":
       case "provider-session.detached":
