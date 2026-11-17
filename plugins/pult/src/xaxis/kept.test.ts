@@ -87,7 +87,8 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         const layer = Layer.mergeAll(
           McpServer.McpServer.layer,
           XaxisVcsDriver.layer.pipe(
-            Layer.provide(VcsProcess.layer),
+            // The real spawner: the server layer's fake one, which the Stars spawn through, has no output.
+            Layer.provide(VcsProcess.layer.pipe(Layer.provide(NodeServices.layer))),
             Layer.provide(Layer.succeedContext(settingsContext)),
           ),
           Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
