@@ -18,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/platform";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { layerRemoteHttpClient } from "@t3tools/client-runtime/rpc";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -25,6 +26,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
+import { connectionStorageLayer } from "../../view/environmentCache.ts";
 import { desktopHost } from "../desktop/host.ts";
 
 const unsupported = (detail: string) =>
@@ -48,8 +50,18 @@ function domEvents<A>(target: EventTarget, events: ReadonlyArray<[string, A]>) {
 
 const networkStatus = (): NetworkStatus => (navigator.onLine ? "online" : "offline");
 
-/** In memory: the page holds the environments `connection.ts` registers, and keeps no offline copy. */
+/**
+ * In memory: the page holds the environments `connection.ts` registers, and keeps no offline
+ * copy of them, its catalog being the workbench's secret storage. The environment cache is the
+ * exception: upstream's IndexedDB store, built whole with the others it makes and kept alone
+ * (`pult/decisions`, `page-cache-store`); the others open nothing until used, and are never used.
+ */
 const layerStores = Layer.mergeAll(
+  Layer.effectContext(
+    Layer.build(connectionStorageLayer).pipe(
+      Effect.map(Context.pick(Persistence.EnvironmentCacheStore)),
+    ),
+  ),
   Layer.sync(ProfileStore.ConnectionProfileStore, () => {
     const profiles = new Map<string, ConnectionProfile>();
     return ProfileStore.make({
@@ -75,20 +87,6 @@ const layerStores = Layer.mergeAll(
     setRoutes: () => Effect.void,
     remove: () => Effect.void,
     setEnabled: () => Effect.void,
-  }),
-  Layer.succeed(Persistence.EnvironmentCacheStore, {
-    loadShell: () => Effect.succeedNone,
-    saveShell: () => Effect.void,
-    loadThread: () => Effect.succeedNone,
-    saveThread: () => Effect.void,
-    removeThread: () => Effect.void,
-    loadServerConfig: () => Effect.succeedNone,
-    saveServerConfig: () => Effect.void,
-    loadVcsRefs: () => Effect.succeedNone,
-    saveVcsRefs: () => Effect.void,
-    removeVcsRefs: () => Effect.void,
-    clearVcsRefs: () => Effect.void,
-    clear: () => Effect.void,
   }),
   Layer.succeed(
     TokenStore.RemoteDpopAccessTokenStore,

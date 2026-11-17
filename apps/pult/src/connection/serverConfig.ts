@@ -13,8 +13,8 @@ import { connection, SERVER_CONFIG_OPTIONS } from "./connection.ts";
  * Hands `publish` an environment's server config, as the registry's supervisor keeps it live, on
  * the same subscription the session holds (`SERVER_CONFIG_OPTIONS`), which it replays rather than
  * opening another, until the returned function stops it. Every change to the registry entry
- * restarts `followStream`, and so the config's state, empty until the session replays it; the
- * page's cache store keeps nothing to start it from.
+ * restarts `followStream`, and so the config's state, which starts from the page's cache store's
+ * copy (`source: "cache"`), when it has one, until the session replays the live one.
  */
 export function followServerConfig(
   environmentId: string,
