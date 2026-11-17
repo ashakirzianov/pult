@@ -294,7 +294,13 @@ const threadViewEnv = {
 };
 
 export default defineConfig({
-  build: { target: "esnext" },
+  build: {
+    target: "esnext",
+    // Pult.app's scheme allows no `data:` in `connect-src` or `worker-src`, so an asset inlined as one
+    // (every workbench grammar, theme or manifest under 4 KB) fails the workbench's fetch and leaves
+    // the editor plain.
+    assetsInlineLimit: 0,
+  },
   // Upstream's too: the view's file viewers start module workers.
   worker: { format: "es" },
   // The view's file viewers load WebAssembly decoders as assets.
