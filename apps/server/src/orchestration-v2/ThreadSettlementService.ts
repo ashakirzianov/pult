@@ -533,7 +533,13 @@ export const make = Effect.gen(function* () {
         return yield* Effect.die(new Error("thread project not found"));
       }
       const refresh = group.filter((member) => shellClosedThreads.delete(member.id)).length > 0;
-      return yield* git.branchPullRequest({ cwd, branch: thread.branch }, { refresh });
+      // A folder that is not a git repository, an xaxis root among them, has no pull request.
+      return yield* git.branchPullRequest({ cwd, branch: thread.branch }, { refresh }).pipe(
+        Effect.catchIf(
+          (error) => error._tag === "GitCommandError" && error.reason === "not_a_repository",
+          () => Effect.succeed(null),
+        ),
+      );
     });
 
     yield* Effect.forEach(

@@ -5,6 +5,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProjectId,
   EventId,
+  GitCommandError,
   NodeId,
   ProviderInstanceId,
   RuntimeRequestId,
@@ -30,6 +31,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as PubSub from "effect/PubSub";
@@ -1053,6 +1055,59 @@ describe("ThreadSettlementServiceV2 worker", () => {
             ThreadId.make("readable-worktree"),
           ]);
         }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("decides a thread in a folder that is not a git repository without a warning", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const warnings: Array<unknown> = [];
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([
+            // An xaxis root: git there fails with not_a_repository.
+            makeThread("xaxis-root", {
+              branch: "main",
+              latestUserMessageAt: DateTime.makeUnsafe("2026-08-27T00:00:00.000Z"),
+            }),
+          ]),
+          branchPullRequest: (input) =>
+            Effect.fail(
+              new GitCommandError({
+                operation: "branchPullRequest",
+                command: "git for-each-ref",
+                cwd: input.cwd,
+                reason: "not_a_repository",
+                detail: "not a git repository",
+              }),
+            ),
+        });
+
+        yield* Effect.gen(function* () {
+          const reactor = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(reactor, fixture.activation, fixture.snapshotReads);
+          expect((yield* Ref.get(fixture.branchCalls)).map((call) => call.branch)).toEqual([
+            "main",
+          ]);
+          expect(yield* Ref.get(fixture.commands)).toEqual([]);
+          expect(warnings).toEqual([]);
+        }).pipe(
+          Effect.provide(
+            fixture.layer.pipe(
+              Layer.provideMerge(
+                Logger.layer(
+                  [
+                    Logger.make(({ logLevel, message }) => {
+                      if (logLevel === "Warn") warnings.push(message);
+                    }),
+                  ],
+                  { mergeWithExisting: false },
+                ),
+              ),
+            ),
+          ),
+        );
       }),
     ),
   );
