@@ -13,6 +13,7 @@ import * as MessageTool from "./stars/messageTool.ts";
 import * as SleepTool from "./stars/sleepTool.ts";
 import { starsRoute } from "./stars/routes.ts";
 import * as Stars from "./stars/stars.ts";
+import * as XaxisKept from "./xaxis/kept.ts";
 
 /**
  * What this build does, one name per feature the page relies on; the page
@@ -27,6 +28,7 @@ const features: ReadonlyArray<string> = [
   "star-sleep",
   "star-asks",
   "usage-limits",
+  "xaxis-kept",
 ];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
@@ -35,6 +37,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const schedules = yield* Schedules.make(stars, deliverTo(stars));
   const keepAwake = yield* KeepAwake.make();
   const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
+  const kept = yield* XaxisKept.make(stars.directory);
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, deliverTo(stars)),
     yield* ListTool.make(stars),
@@ -47,6 +50,13 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
         HttpServerResponse.jsonUnsafe({
           features: firing ? [...listed, "star-schedules"] : listed,
         }),
+      );
+    if ((request.method === "GET" || request.method === "HEAD") && path === "/xaxis/kept")
+      return kept.view.pipe(
+        Effect.map((view) => HttpServerResponse.jsonUnsafe(view)),
+        Effect.catch((error) =>
+          Effect.succeed(HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 500 })),
+        ),
       );
     return (
       starsRoute(stars, schedules, request, path) ??

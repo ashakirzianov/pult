@@ -1,5 +1,5 @@
 // Fakes of the server's project and thread stores, its launches, startup, environment, scheduler, usage limits,
-// activity and child processes,
+// activity, child processes and source control (unused, the kept xaxis checkout's suite bringing the real driver),
 // for the Stars' tests and the plugin's: a server whose home is `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
   type CommandId,
@@ -43,7 +43,9 @@ import {
   ThreadLaunchService,
   ThreadManagementService,
   UsageLimitSources,
+  VcsStatusBroadcaster,
   WorkspaceEntries,
+  XaxisVcsDriver,
 } from "../host.ts";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -521,6 +523,8 @@ export const fakeServer = Effect.gen(function* () {
     Layer.succeed(UsageLimitSources.UsageLimitSources, {
       current: Effect.sync(() => limits.sources),
     } as unknown as UsageLimitSources.UsageLimitSources["Service"]),
+    Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
+    Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
     Layer.succeed(WorkspaceEntries.WorkspaceEntries, {
       watch: (input: { cwd: string }) =>
         Stream.callback<ProjectWatchEntriesEvent>((queue) =>

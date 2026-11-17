@@ -481,7 +481,8 @@ const layerVcs = Layer.empty.pipe(
   Layer.provideMerge(
     VcsStatusBroadcaster.layer.pipe(
       Layer.provide(layerGitWorkflow),
-      Layer.provide(VcsStatusBroadcaster.layerAutomaticFetchInterval),
+      // Pult: merged, so the Pult plugin's kept xaxis checkout moves at the interval the settings name.
+      Layer.provideMerge(VcsStatusBroadcaster.layerAutomaticFetchInterval),
       // The orchestration runtime also consumes the broadcaster (run
       // finalization), so the policy cannot read the store from the runtime's
       // output.

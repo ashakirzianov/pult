@@ -39,6 +39,7 @@ import * as TextGeneration from "../../../apps/server/src/textGeneration/TextGen
 import * as VcsStatusBroadcaster from "../../../apps/server/src/vcs/VcsStatusBroadcaster.ts";
 import * as WorkspacePaths from "../../../apps/server/src/workspace/WorkspacePaths.ts";
 import * as WorktreeSetupTracker from "../../../apps/server/src/project/WorktreeSetupTracker.ts";
+import * as XaxisVcsDriver from "../../../apps/server/src/vcs/XaxisVcsDriver.ts";
 import * as McpProviderSessions from "../../../packages/provider-core/src/server/McpProviderSessions.ts";
 import * as RuntimeLayer from "../../../apps/server/src/orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../../../apps/server/src/persistence/Sqlite.ts";
@@ -146,7 +147,15 @@ it.effect("the plugin activates over the production orchestration services", () 
     const loaderContext = yield* Layer.build(
       PluginLoader.layer(bundledPlugins).pipe(
         Layer.provide(Layer.succeedContext(context)),
-        Layer.provide(Layer.merge(platform, McpServer.McpServer.layer)),
+        Layer.provide(
+          Layer.mergeAll(
+            platform,
+            McpServer.McpServer.layer,
+            // Not the runtime's either: the server's source control layers sit beside it.
+            Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
+            Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+          ),
+        ),
       ),
     );
     const loader = Context.get(loaderContext, PluginLoader.PluginLoader);
@@ -204,6 +213,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep",
           "star-asks",
           "usage-limits",
+          "xaxis-kept",
           "keep-awake",
           "star-schedules",
         ],
