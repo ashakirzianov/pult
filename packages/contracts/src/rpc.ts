@@ -141,6 +141,7 @@ import {
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   VcsPullInput,
+  VcsResolveConflictInput,
   GitPullRequestRefInput,
   VcsPullResult,
   VcsRemoveWorktreeInput,
@@ -495,6 +496,8 @@ export const WS_METHODS = {
   vcsInit: "vcs.init",
   // Pult: points a repository's remote at a URL (xaxis `pult/issues/star-sync`).
   vcsSetRemote: "vcs.setRemote",
+  // Pult: takes one side of an xaxis checkout's conflicted paths (xaxis `pult/issues/xaxis-source-control`).
+  vcsResolveConflict: "vcs.resolveConflict",
 
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
@@ -1581,6 +1584,12 @@ const WsVcsPullRpc = Rpc.make(WS_METHODS.vcsPull, {
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
 });
 
+const WsVcsResolveConflictRpc = Rpc.make(WS_METHODS.vcsResolveConflict, {
+  payload: VcsResolveConflictInput,
+  success: Schema.Void,
+  error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
+});
+
 const WsVcsRefreshStatusRpc = Rpc.make(WS_METHODS.vcsRefreshStatus, {
   payload: Schema.Struct({
     ...VcsStatusInput.fields,
@@ -2314,6 +2323,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
+  WsVcsResolveConflictRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,

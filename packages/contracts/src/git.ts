@@ -126,6 +126,16 @@ export const VcsPullInput = Schema.Struct({
 });
 export type VcsPullInput = typeof VcsPullInput.Type;
 
+/** Pult: one side of an xaxis checkout's conflicted paths, taken whole (`xaxis resolve`). */
+export const VcsResolveConflictInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  /** From the checkout's root, as its status's `xaxis.conflicts` names them. */
+  paths: Schema.Array(GitFilePath).check(Schema.isMinLength(1)),
+  /** `mine` keeps this checkout's version, `main` takes main's (the shell's "Take latest"). */
+  side: Schema.Literals(["mine", "main"]),
+});
+export type VcsResolveConflictInput = typeof VcsResolveConflictInput.Type;
+
 export const GitRunStackedActionInput = Schema.Struct({
   actionId: TrimmedNonEmptyStringSchema,
   cwd: TrimmedNonEmptyStringSchema,

@@ -687,6 +687,8 @@ export const ServerConfig = Schema.Struct({
   desktopAppStatus: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether review.getLog and review.getRefs exist; absent on stock servers, which show no history. */
   reviewLog: Schema.optionalKey(Schema.Boolean),
+  /** Pult: whether vcs.resolveConflict exists; absent on stock servers, whose xaxis conflicts are fixed by hand. */
+  vcsResolveConflict: Schema.optionalKey(Schema.Boolean),
   newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),
   /**
    * The latest stall long enough to notice, sent only for a few minutes after
