@@ -17,7 +17,15 @@ import {
   Action2,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  type IKeybindingRule,
+  KeybindingWeight,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import type { EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import * as Operations from "@t3tools/client-runtime/operations";
@@ -352,9 +360,11 @@ export const ThreadSelectedContext = new RawContextKey<boolean>("pult.selectedTh
  * The palette's thread commands, on the selected thread, each offered while
  * the thread's shelf and the server allow it: Pult: Settle Thread,
  * Un-settle Thread, Snooze Thread… (a pick of the presets), Wake Thread,
- * Pin Thread, Unpin Thread, and Copy Thread Link. No keybinding: the thread
- * view handles its own Cmd+Shift+S (upstream's `thread.settle`) on the page's
- * window.
+ * Pin Thread, Unpin Thread, and Copy Thread Link. Settle Thread is
+ * Cmd+Shift+S while it is offered and the active editor is a thread's or
+ * Star's tab, over the workbench's Save As, which keeps the key everywhere
+ * else; the view yields the key to the workbench (`view/keybindings.ts`) but
+ * in the composer, whose strikethrough takes it first.
  */
 export function registerParkCommands(): void {
   // The selected thread, or the selected Star's conversation, which Settle Thread puts to sleep: the selection stays on the Star.
@@ -369,6 +379,7 @@ export function registerParkCommands(): void {
     id: string,
     title: string,
     run: (target: ShellThread, accessor: ServicesAccessor) => unknown,
+    keybinding?: Omit<IKeybindingRule, "id">,
   ) =>
     registerAction2(
       class extends Action2 {
@@ -379,6 +390,7 @@ export function registerParkCommands(): void {
             category: { value: "Pult", original: "Pult" },
             f1: true,
             precondition,
+            keybinding,
           });
         }
 
@@ -388,8 +400,20 @@ export function registerParkCommands(): void {
         }
       },
     );
-  command(CONTEXT_KEYS.settle, "pult-shell.settleThread", "Settle Thread", (target) =>
-    settleThread(target),
+  command(
+    CONTEXT_KEYS.settle,
+    "pult-shell.settleThread",
+    "Settle Thread",
+    (target) => settleThread(target),
+    {
+      primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyS,
+      // A lead tab (a thread's, draft's or Star's), the pane's tabs that cannot close: not a Star's channel's or child's, whose thread is not the selection's.
+      when: ContextKeyExpr.and(
+        ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane"),
+        ContextKeyExpr.has("activeEditorCannotClose"),
+      ),
+      weight: KeybindingWeight.WorkbenchContrib + 1,
+    },
   );
   command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) =>
     unsettleThread(target),
