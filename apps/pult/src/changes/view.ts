@@ -26,6 +26,7 @@ import { observableValue } from "@codingame/monaco-vscode-api/vscode/vs/base/com
 import { autorun } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/reactions/autorun";
 import { transaction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/observableInternal/transaction";
 import type { IExtUri } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
+import type { Command } from "@codingame/monaco-vscode-api/vscode/vs/editor/common/languages";
 import { ResourceTree } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resourceTree";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import type { ITextModel } from "@codingame/monaco-vscode-api/vscode/vs/editor/common/model";
@@ -92,6 +93,7 @@ import {
   checkoutName,
   checkoutsOf,
   shownChanges,
+  withoutConflicts,
 } from "./checkouts.ts";
 import {
   actionStarted,
@@ -107,6 +109,7 @@ import { setRepository } from "./repositories.ts";
 import { changesServer } from "./server.ts";
 import {
   afterStep,
+  failedRead,
   hasSync,
   pullFailure,
   SYNC_INTERVAL_MS,
@@ -116,6 +119,9 @@ import {
   syncSteps,
   syncTitle,
   syncTooltip,
+  XAXIS_PLACEHOLDER,
+  type XaxisState,
+  xaxisStateLine,
 } from "./sync.ts";
 
 /** The scheme of a change's two sides, served by the view's content provider from the server's file contents RPC. */
@@ -137,6 +143,10 @@ const SYNC_COMMAND = "pult-shell.sync";
 const PULL_COMMAND = "pult-shell.pull";
 /** Pushes a checkout's branch, publishing it when it has no upstream. */
 const PUSH_COMMAND = "pult-shell.push";
+/** Opens the first file of an xaxis checkout's conflict that holds markers, else shows the Conflicts group: its state line's click. */
+const OPEN_CONFLICT_COMMAND = "pult-shell.openConflict";
+/** An xaxis conflict's row's `contextValue` while its server serves `vcs.resolveConflict`, for Keep mine and Take latest. */
+const RESOLVABLE_CONFLICT = "pult-xaxis-conflict";
 
 /** While the view shows one thread's checkout, under its card: for `when` clauses. */
 const ChangesFilteredContext = new RawContextKey<boolean>("pult.changesFiltered", false);
@@ -164,6 +174,8 @@ const HISTORY_PAGE = 50;
 
 /** The group of a turn the thread view named, alone in the view while the filter's thread has one. */
 const TURN_GROUP = "turn";
+/** An xaxis checkout's conflicted paths, above its changes, which leave them out. */
+const CONFLICTS_GROUP = "conflicts";
 
 const GROUPS: ReadonlyArray<{
   readonly id: string;
@@ -513,8 +525,41 @@ class ChangeResource implements ISCMResource {
   }
 }
 
+/** A path of an xaxis checkout's conflict: opens the live file; Keep mine and Take latest beside it while its server resolves. */
+class ConflictResource implements ISCMResource {
+  readonly sourceUri: URI;
+  readonly decorations: ISCMResourceDecorations;
+  readonly contextValue: string | undefined;
+  readonly command = undefined;
+  readonly multiDiffEditorOriginalUri = undefined;
+  readonly multiDiffEditorModifiedUri = undefined;
+
+  constructor(
+    readonly resourceGroup: ChangesGroup,
+    /** The checkout's `checkoutKey`. */
+    readonly key: string,
+    readonly conflict: XaxisState["conflicts"][number],
+    root: URI,
+    resolvable: boolean,
+    private readonly opener: (uri: URI, preserveFocus: boolean) => Promise<void>,
+  ) {
+    this.sourceUri = URI.joinPath(root, conflict.path);
+    this.contextValue = resolvable ? RESOLVABLE_CONFLICT : undefined;
+    const icon = { ...Codicon.warning, color: { id: "gitDecoration.modifiedResourceForeground" } };
+    this.decorations = {
+      icon,
+      iconDark: icon,
+      tooltip: conflict.markers ? "Conflict: the file holds markers" : "Conflict: keep a side",
+    };
+  }
+
+  open(preserveFocus: boolean): Promise<void> {
+    return this.opener(this.sourceUri, preserveFocus);
+  }
+}
+
 class ChangesGroup implements ISCMResourceGroup {
-  resources: ReadonlyArray<ChangeResource> = [];
+  resources: ReadonlyArray<ChangeResource | ConflictResource> = [];
   contextValue: string | undefined = undefined;
   readonly hideWhenEmpty = true;
   readonly multiDiffEditorEnableViewChanges = false;
@@ -522,7 +567,7 @@ class ChangesGroup implements ISCMResourceGroup {
   readonly onDidChange = Event.None;
   private readonly resourcesChanged = new Emitter<void>();
   readonly onDidChangeResources = this.resourcesChanged.event;
-  private tree: ResourceTree<ChangeResource, ChangesGroup> | undefined;
+  private tree: ResourceTree<ChangeResource | ConflictResource, ChangesGroup> | undefined;
 
   constructor(
     readonly provider: ChangesProvider,
@@ -534,7 +579,7 @@ class ChangesGroup implements ISCMResourceGroup {
   /** The tree view's folders, built when the view first asks. */
   get resourceTree() {
     if (this.tree === undefined) {
-      this.tree = new ResourceTree<ChangeResource, ChangesGroup>(
+      this.tree = new ResourceTree<ChangeResource | ConflictResource, ChangesGroup>(
         this,
         this.provider.rootUri,
         this.extUri,
@@ -544,7 +589,7 @@ class ChangesGroup implements ISCMResourceGroup {
     return this.tree;
   }
 
-  set(resources: ReadonlyArray<ChangeResource>): void {
+  set(resources: ReadonlyArray<ChangeResource | ConflictResource>): void {
     this.resources = resources;
     this.tree = undefined;
     this.resourcesChanged.fire();
@@ -580,7 +625,8 @@ class ChangesProvider implements ISCMProvider {
   readonly historyProvider = observableValue<CheckoutHistory | undefined>(this, undefined);
   /** The Commit button, set by the view as the checkout's changes and its commit go. */
   readonly actionButton = observableValue<ISCMActionButtonDescriptor | undefined>(this, undefined);
-  readonly statusBarCommands = constObservable(undefined);
+  /** An xaxis checkout's state line (`xaxisStateLine`); none for git's. */
+  readonly statusBarCommands = observableValue<ReadonlyArray<Command> | undefined>(this, undefined);
   /** Cmd+Enter in the message box, through the workbench's `scm.acceptInput`. */
   readonly acceptInputCommand: NonNullable<ISCMProvider["acceptInputCommand"]>;
   readonly iconPath: ThemeIcon;
@@ -602,6 +648,7 @@ class ChangesProvider implements ISCMProvider {
     this.iconPath = checkout.worktree === null ? Codicon.repo : Codicon.worktree;
     this.groups = [
       new ChangesGroup(this, TURN_GROUP, "Changed Files", extUri),
+      new ChangesGroup(this, CONFLICTS_GROUP, "Conflicts", extUri),
       ...GROUPS.map(({ id, label }) => new ChangesGroup(this, id, label, extUri)),
     ];
   }
@@ -652,6 +699,12 @@ interface Entry {
   /** When its status was last asked for, which every read fetches, so a read waits `SYNC_INTERVAL_MS` unless forced. */
   syncReadAt: number | undefined;
   syncGeneration: number;
+  /** An xaxis checkout's root, its conflict's paths' base, from its status; undefined for git's or before a read. */
+  xaxisRoot: string | undefined;
+  /** Whether its server serves `vcs.resolveConflict`, asked once its status first says xaxis. */
+  resolvable: boolean | undefined;
+  /** After a Commit & Land that failed: the next status read opens its conflict. */
+  revealConflict: boolean;
 }
 
 type Services = {
@@ -886,6 +939,9 @@ class ChangesView {
         sync: undefined,
         syncReadAt: undefined,
         syncGeneration: 0,
+        xaxisRoot: undefined,
+        resolvable: undefined,
+        revealConflict: false,
       };
       this.entries.set(key, entry);
       added.push(entry);
@@ -1003,19 +1059,58 @@ class ChangesView {
     let sync: SyncState | undefined;
     // A failed read counts as a repository, for the thread bar's Source Control.
     let isRepo = true;
+    let xaxisRoot: string | undefined;
     try {
-      const status = await limited(() => changesServer(environmentId).status(root));
+      const server = changesServer(environmentId);
+      const status = await limited(() => server.status(root));
       sync = syncState(status);
       isRepo = status.isRepo;
-    } catch {
-      // Not a repository, a worktree gone: nothing to sync.
-      sync = undefined;
+      if (status.xaxis !== undefined) {
+        xaxisRoot = checkoutRepositoryRoot(root, status.workingTree.rootPath);
+        // A failed ask is asked again on the next read.
+        entry.resolvable ??= await server.canResolveConflicts().catch(() => undefined);
+      }
+    } catch (error) {
+      // Not a repository, a worktree gone: nothing to sync; an xaxis checkout keeps its words and tells the failure.
+      sync = failedRead(entry.sync, errorDetail(error));
+      xaxisRoot = entry.xaxisRoot;
     }
     if (generation !== entry.syncGeneration || this.entries.get(entry.key) !== entry) return;
     setRepository(entry.key, isRepo);
+    entry.xaxisRoot = xaxisRoot;
+    if (entry.revealConflict) {
+      entry.revealConflict = false;
+      if ((sync?.xaxis?.conflicts.length ?? 0) > 0) void this.openConflict(entry, sync);
+    }
     if (JSON.stringify(sync) === JSON.stringify(entry.sync)) return;
     entry.sync = sync;
+    // The Conflicts group is the status's, which the groups are filled from on a new version.
+    entry.version += 1;
     this.render();
+  }
+
+  /** The state line's click on a conflict: the checkout its key names. */
+  async openConflictOf(key: string): Promise<void> {
+    const entry = this.entries.get(key);
+    if (entry !== undefined) await this.openConflict(entry);
+  }
+
+  /** The first file of the checkout's conflict that holds markers, open; else Source Control shown, the Conflicts group at its top. */
+  async openConflict(entry: Entry, sync = entry.sync): Promise<void> {
+    const conflicts = sync?.xaxis?.conflicts ?? [];
+    const marked = conflicts.find((conflict) => conflict.markers);
+    if (marked === undefined || entry.xaxisRoot === undefined) {
+      await this.services.commands.executeCommand("workbench.view.scm");
+      return;
+    }
+    await this.openFile(
+      URI.joinPath(pultUri(entry.checkout.environmentId, entry.xaxisRoot), marked.path),
+      false,
+    );
+  }
+
+  private async openFile(uri: URI, preserveFocus: boolean): Promise<void> {
+    await this.services.editors.openEditor({ resource: uri, options: { preserveFocus } });
   }
 
   /** The filter's thread's turn, when loaded and read under the thread's checkout. */
@@ -1063,10 +1158,30 @@ class ChangesView {
       turnGroup.set(
         (entryTurn?.changes ?? []).map((change) => new ChangeResource(turnGroup, change, open)),
       );
+      const conflicts = entry.sync?.xaxis?.conflicts ?? [];
+      const conflictsGroup = provider.group(CONFLICTS_GROUP);
+      const xaxisRoot = entry.xaxisRoot;
+      conflictsGroup.set(
+        entryTurn !== undefined || xaxisRoot === undefined
+          ? []
+          : conflicts.map(
+              (conflict) =>
+                new ConflictResource(
+                  conflictsGroup,
+                  entry.key,
+                  conflict,
+                  pultUri(entry.checkout.environmentId, xaxisRoot),
+                  entry.resolvable === true,
+                  (uri, preserveFocus) => this.openFile(uri, preserveFocus),
+                ),
+            ),
+      );
       for (const { id, kind } of GROUPS) {
         const group = provider.group(id);
         const changes =
-          entryTurn === undefined && entry.shown?.kind === kind ? entry.shown.changes : [];
+          entryTurn === undefined && entry.shown?.kind === kind
+            ? withoutConflicts(entry.shown.changes, conflicts)
+            : [];
         group.set(changes.map((change) => new ChangeResource(group, change, open)));
       }
       // The badge counts what is left to commit, under a turn too.
@@ -1161,11 +1276,33 @@ class ChangesView {
     const { repository, provider } = registered;
     if (repository.input.visible === turnShown) repository.input.visible = !turnShown;
     const branch = this.branchOf(entry);
-    const placeholder = commitPlaceholder(branch);
+    const xaxis = entry.sync?.xaxis ?? null;
+    const placeholder = xaxis === null ? commitPlaceholder(branch) : XAXIS_PLACEHOLDER;
     if (repository.input.placeholder !== placeholder) repository.input.placeholder = placeholder;
     const button = turnShown ? undefined : this.actionButton(entry, branch);
     if (JSON.stringify(button) !== JSON.stringify(provider.actionButton.get()))
       provider.actionButton.set(button, undefined);
+    const line =
+      entry.sync === undefined || xaxis === null
+        ? undefined
+        : xaxisStateLine(
+            entry.sync,
+            xaxis,
+            entry.shown?.kind === "working-tree" ? entry.shown.changes.length : 0,
+          ).map((item): Command => ({
+            id:
+              item.click === "open-conflict"
+                ? OPEN_CONFLICT_COMMAND
+                : item.click === "get-latest"
+                  ? PULL_COMMAND
+                  : // Nothing to do but show the checkout.
+                    "workbench.view.scm",
+            title: item.title,
+            tooltip: item.tooltip,
+            arguments: item.click === null ? [] : [entry.key],
+          }));
+    if (JSON.stringify(line) !== JSON.stringify(provider.statusBarCommands.get()))
+      provider.statusBarCommands.set(line, undefined);
   }
 
   /** The checkout's branch: its status's, else a worktree's own, else the filter's thread's on it, which a project's root does not record. */
@@ -1241,6 +1378,18 @@ class ChangesView {
           },
           enabled: true,
         };
+      case "commit-land":
+      case "get-latest":
+        return {
+          command: {
+            // Commit commits and lands on an xaxis checkout; Pull is Get latest.
+            id: action.kind === "commit-land" ? COMMIT_COMMAND : PULL_COMMAND,
+            title: action.title,
+            tooltip: action.tooltip,
+            arguments: [entry.key],
+          },
+          enabled: action.enabled,
+        };
     }
   }
 
@@ -1275,6 +1424,8 @@ class ChangesView {
    * server's message.
    */
   async commit(entry: Entry, push = false): Promise<void> {
+    const xaxis = entry.sync?.xaxis ?? null;
+    if (xaxis !== null) return this.commitAndLand(entry, xaxis);
     const name = this.nameOf(entry);
     const message = (entry.message ?? "").trim();
     await this.runAction(entry, COMMIT_STARTED.label, async (progressed) => {
@@ -1303,6 +1454,95 @@ class ChangesView {
     });
   }
 
+  /**
+   * An xaxis checkout's Commit & Land: every change committed, then landed on
+   * main. A commit needs a message, which the server never writes for xaxis:
+   * the box's text, else the filter's thread's title on the checkout, else
+   * one the shell asks for. A failure is the server's message, and the status
+   * read after it opens the conflict it left.
+   */
+  private async commitAndLand(entry: Entry, xaxis: XaxisState): Promise<void> {
+    const name = this.nameOf(entry);
+    const uncommitted = entry.shown?.kind === "working-tree";
+    // Cmd+Enter in the box, whatever the button offers.
+    const offered = syncAction(uncommitted, entry.sync);
+    if (offered.kind !== "commit-land" || !offered.enabled) {
+      this.services.notifications.info(`Pult: nothing to commit or land in ${name}.`);
+      return;
+    }
+    const typed = (entry.message ?? "").trim();
+    // A pending conflict is cleared only by a commit, though Take latest may have left nothing to commit.
+    const commits = uncommitted || xaxis.conflicts.length > 0;
+    let message = typed;
+    if (message === "" && commits) {
+      const filtered = this.filterThread();
+      message =
+        filtered !== undefined && this.entryOf(filtered) === entry ? filtered.title.trim() : "";
+    }
+    if (message === "" && commits) {
+      message =
+        (
+          await this.services.quickInput.input({
+            title: `Commit & Land in ${name}`,
+            placeHolder: "Message",
+            prompt: "xaxis needs a message for every commit",
+            validateInput: async (value) =>
+              value.trim() === "" ? "Type a message to commit with" : undefined,
+          })
+        )?.trim() ?? "";
+      if (message === "") return;
+    }
+    await this.runAction(entry, COMMIT_STARTED.label, async (progressed) => {
+      const { notifications } = this.services;
+      try {
+        const latest = await this.stacked(entry, "commit_push", message, progressed);
+        if (typed !== "" && commits) {
+          entry.message = "";
+          // Not transient, so the message joins the box's history.
+          entry.registered?.repository.input.setValue("", false);
+        }
+        if (latest.result !== null) notifications.info(`Pult: ${toast(latest.result)}`);
+      } catch (error) {
+        entry.revealConflict = true;
+        notifications.error(
+          `Pult could not commit and land in ${name}. ${error instanceof ActionFailed ? error.message : String(error)}`,
+        );
+      }
+    });
+  }
+
+  /** Keeps one side of the conflicted paths `resources` name, `mine` or main's, each checkout's at once. */
+  async resolve(resources: ReadonlyArray<ConflictResource>, side: "mine" | "main"): Promise<void> {
+    const byKey = new Map<string, ConflictResource[]>();
+    for (const resource of resources)
+      byKey.set(resource.key, [...(byKey.get(resource.key) ?? []), resource]);
+    await Promise.all(
+      [...byKey].map(async ([key, rows]) => {
+        const entry = this.entries.get(key);
+        if (entry === undefined) return;
+        const name = this.nameOf(entry);
+        await this.runAction(
+          entry,
+          side === "mine" ? "Keeping mine…" : "Taking latest…",
+          async () => {
+            try {
+              await changesServer(entry.checkout.environmentId).resolveConflict({
+                cwd: entry.checkout.root,
+                paths: rows.map((row) => row.conflict.path),
+                side,
+              });
+            } catch (error) {
+              console.error("[pult-shell] the resolve failed", error);
+              this.services.notifications.error(
+                `Pult could not ${side === "mine" ? "keep your side" : "take the latest"} in ${name}. ${errorDetail(error)}`,
+              );
+            }
+          },
+        );
+      }),
+    );
+  }
+
   /** Pushes the checkout's branch, publishing it with an upstream when it has none. */
   async push(entry: Entry): Promise<void> {
     const name = this.nameOf(entry);
@@ -1321,7 +1561,8 @@ class ChangesView {
 
   /** Fast-forwards the checkout's branch from its upstream; a diverged branch fails, told as such. */
   async pull(entry: Entry): Promise<void> {
-    await this.runAction(entry, "Pulling…", async () => {
+    const label = entry.sync?.xaxis == null ? "Pulling…" : "Getting latest…";
+    await this.runAction(entry, label, async () => {
       await this.pullStep(entry);
     });
   }
@@ -1363,8 +1604,9 @@ class ChangesView {
       return true;
     } catch (error) {
       console.error("[pult-shell] the pull failed", error);
+      const verb = entry.sync?.xaxis == null ? "pull" : "get the latest in";
       this.services.notifications.error(
-        `Pult could not pull ${name}. ${pullFailure(entry.sync, errorDetail(error))}`,
+        `Pult could not ${verb} ${name}. ${pullFailure(entry.sync, errorDetail(error))}`,
       );
       return false;
     }
@@ -2013,6 +2255,43 @@ export function registerChanges(): void {
 
         async run(_accessor: unknown, key: unknown): Promise<void> {
           await (await started)?.command(kind, typeof key === "string" ? key : null);
+        }
+      },
+    );
+  }
+  CommandsRegistry.registerCommand(OPEN_CONFLICT_COMMAND, async (_accessor, key: unknown) => {
+    const view = await started;
+    if (view !== undefined && typeof key === "string") await view.openConflictOf(key);
+  });
+  // An xaxis conflict's rows, while their server resolves: one side of every selected row, each checkout's at once.
+  const resolvable = ContextKeyExpr.and(
+    ContextKeyExpr.equals("scmProvider", PROVIDER_ID),
+    ContextKeyExpr.equals("scmResourceGroup", CONFLICTS_GROUP),
+    ContextKeyExpr.equals("scmResourceState", RESOLVABLE_CONFLICT),
+  );
+  for (const [id, side, title, icon] of [
+    ["pult-shell.keepMine", "mine", "Keep mine", Codicon.check],
+    ["pult-shell.takeLatest", "main", "Take latest", Codicon.cloudDownload],
+  ] as const) {
+    registerAction2(
+      class extends Action2 {
+        constructor() {
+          super({
+            id,
+            title: { value: title, original: title },
+            icon,
+            menu: [
+              { id: MenuId.SCMResourceContext, group: "inline", when: resolvable },
+              { id: MenuId.SCMResourceContext, group: "1_modification", when: resolvable },
+            ],
+          });
+        }
+
+        async run(_accessor: unknown, ...resources: unknown[]): Promise<void> {
+          const rows = resources.filter(
+            (resource): resource is ConflictResource => resource instanceof ConflictResource,
+          );
+          if (rows.length > 0) await (await started)?.resolve(rows, side);
         }
       },
     );

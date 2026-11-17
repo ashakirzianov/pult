@@ -55,7 +55,7 @@ export function historyRefs(result: ReviewRefsResult, baseRef: string | null): H
       ? undefined
       : {
           id: head.ref ?? head.sha,
-          name: head.ref === null ? head.sha.slice(0, 8) : refOf(head.ref, "").name,
+          name: head.ref === null ? shortHash(head.sha, 8) : refOf(head.ref, "").name,
           revision: head.sha,
           color: CURRENT_COLOR,
           icon: { id: "target" },
@@ -91,12 +91,17 @@ export function historyItem(
     parentIds: [...commit.parents],
     subject: commit.subject,
     message: commit.message,
-    displayId: commit.sha.slice(0, 7),
+    displayId: shortHash(commit.sha, 7),
     author: commit.authorName,
     authorEmail: commit.authorEmail,
     ...(Number.isNaN(timestamp) ? {} : { timestamp }),
     references,
   };
+}
+
+/** A commit's short hash: git's first `digits`, an xaxis changeset's (`sha256:…`) seven after its prefix. */
+function shortHash(sha: string, digits: number): string {
+  return sha.startsWith("sha256:") ? sha.slice(7, 14) : sha.slice(0, digits);
 }
 
 function rank(

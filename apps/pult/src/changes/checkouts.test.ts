@@ -4,7 +4,7 @@ import * as NodeTest from "node:test";
 
 import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 
-import { checkoutName, checkoutsOf, shownChanges } from "./checkouts.ts";
+import { checkoutName, checkoutsOf, shownChanges, withoutConflicts } from "./checkouts.ts";
 
 const project = (environmentId: string, id: string, root: string | null) => ({
   environmentId,
@@ -148,4 +148,22 @@ NodeTest.describe("shownChanges", () => {
     );
     NodeAssert.equal(shownChanges("a", "/repo", "/repo", []), undefined);
   });
+});
+
+NodeTest.describe("withoutConflicts", () => {
+  NodeTest.test(
+    "leaves an xaxis conflict's paths out of the changes, which Conflicts lists",
+    () => {
+      const shown = shownChanges("a", "/notes", "/notes", [
+        source("working-tree", ["a.md", "b.md", "c.md"]),
+      ]);
+      NodeAssert.deepEqual(
+        withoutConflicts(shown?.changes ?? [], [
+          { path: "b.md", markers: true },
+          { path: "gone.md", markers: false },
+        ]).map((change) => change.path),
+        ["a.md", "c.md"],
+      );
+    },
+  );
 });

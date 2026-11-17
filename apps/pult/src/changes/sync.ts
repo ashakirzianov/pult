@@ -1,14 +1,26 @@
 // A checkout's branch against its upstream and the action its button offers,
 // apart from the workbench so `node --test src/changes/sync.test.ts` can run it.
-import type { VcsStatusResult } from "@t3tools/contracts";
+import type { VcsStatusResult, VcsStatusXaxis } from "@t3tools/contracts";
 
 /** A checkout's branch against its upstream, as the server's status last had it. */
 export interface SyncState {
   /** Null on a detached HEAD. */
   readonly branch: string | null;
   readonly hasUpstream: boolean;
+  /** An xaxis checkout's: its stack's length, and how far main's tip is past its base. */
   readonly ahead: number;
   readonly behind: number;
+  /** An xaxis checkout's own state, its presence naming the kind (`pult/decisions`, `xaxis-status-fields`); null for git's. */
+  readonly xaxis: XaxisState | null;
+}
+
+/** What an xaxis checkout's status adds: a land's conflict, a write stopped partway, a tip it could not read. */
+export interface XaxisState {
+  readonly conflicts: VcsStatusXaxis["conflicts"];
+  readonly interrupted: VcsStatusXaxis["interrupted"];
+  readonly tip: NonNullable<VcsStatusResult["xaxisTip"]> | null;
+  /** Why the latest read failed, after one that said xaxis, whose state it keeps; null when it went through. */
+  readonly failure: string | null;
 }
 
 /** How long a checkout's status stands before a read asks again, since every read fetches its upstream. */
@@ -21,12 +33,38 @@ export function syncState(status: VcsStatusResult): SyncState | undefined {
     hasUpstream: status.hasUpstream,
     ahead: status.aheadCount,
     behind: status.behindCount,
+    xaxis:
+      status.xaxis === undefined
+        ? null
+        : {
+            conflicts: status.xaxis.conflicts,
+            interrupted: status.xaxis.interrupted,
+            tip: status.xaxisTip ?? null,
+            failure: null,
+          },
   };
 }
 
-/** Whether the checkout has commits to pull or push, which keeps it in the view with a clean working tree. */
+/** A failed read of a checkout last read as xaxis's: its state kept, the failure told (undefined for any other). */
+export function failedRead(state: SyncState | undefined, message: string): SyncState | undefined {
+  if (state?.xaxis == null) return undefined;
+  return { ...state, xaxis: { ...state.xaxis, failure: message } };
+}
+
+/**
+ * Whether the checkout has commits to pull or push, which keeps it in the
+ * view with a clean working tree; an xaxis checkout's conflict or
+ * interrupted write too, which Take latest on every path leaves with
+ * nothing else to show.
+ */
 export function hasSync(state: SyncState | undefined): boolean {
-  return state !== undefined && state.hasUpstream && (state.ahead > 0 || state.behind > 0);
+  if (state === undefined) return false;
+  if (
+    state.xaxis !== null &&
+    (state.xaxis.conflicts.length > 0 || state.xaxis.interrupted !== null)
+  )
+    return true;
+  return state.hasUpstream && (state.ahead > 0 || state.behind > 0);
 }
 
 /**
@@ -38,9 +76,19 @@ export function hasSync(state: SyncState | undefined): boolean {
 export type SyncAction =
   | { readonly kind: "commit"; readonly enabled: boolean }
   | { readonly kind: "sync" | "diverged"; readonly ahead: number; readonly behind: number }
-  | { readonly kind: "publish" };
+  | { readonly kind: "publish" }
+  | XaxisAction;
+
+/** An xaxis checkout's button, in its own words (xaxis `pult/issues/xaxis-source-control`). */
+export interface XaxisAction {
+  readonly kind: "commit-land" | "get-latest";
+  readonly enabled: boolean;
+  readonly title: string;
+  readonly tooltip: string;
+}
 
 export function syncAction(uncommitted: boolean, state: SyncState | undefined): SyncAction {
+  if (state?.xaxis != null) return xaxisAction(uncommitted, state, state.xaxis);
   if (uncommitted) return { kind: "commit", enabled: true };
   if (state !== undefined && hasSync(state)) {
     return {
@@ -52,6 +100,137 @@ export function syncAction(uncommitted: boolean, state: SyncState | undefined): 
   if (state !== undefined && !state.hasUpstream && state.branch !== null)
     return { kind: "publish" };
   return { kind: "commit", enabled: false };
+}
+
+/** The message box's placeholder on an xaxis checkout, `{0}` the workbench's Accept Input keybinding. */
+export const XAXIS_PLACEHOLDER = "Message ({0} to commit and land)";
+
+const COMMIT_LAND = "$(check) Commit & Land";
+const COMMIT_EVERYTHING = "Commit every change and land it on main";
+
+/**
+ * An xaxis checkout's button: under an interrupted write the verb that
+ * finishes it (none in Pult for another command); else Commit & Land
+ * while a conflict is pending, which only a commit clears, or while there
+ * are uncommitted changes or commits not landed, since a land rebases
+ * onto main's tip, behind or not; else Get latest while behind; else
+ * Commit & Land, disabled.
+ */
+function xaxisAction(uncommitted: boolean, state: SyncState, xaxis: XaxisState): XaxisAction {
+  const { interrupted } = xaxis;
+  const getLatest: XaxisAction = {
+    kind: "get-latest",
+    enabled: true,
+    title: `$(cloud-download) Get latest${state.behind > 0 ? ` ${state.behind}$(arrow-down)` : ""}`,
+    tooltip:
+      state.behind > 0 ? `Bring ${changes(state.behind)} from main` : "Finish getting the latest",
+  };
+  if (interrupted === "get-latest") return getLatest;
+  if (interrupted === "commit-land")
+    return {
+      kind: "commit-land",
+      enabled: true,
+      title: COMMIT_LAND,
+      tooltip: "Finish landing on main",
+    };
+  if (interrupted !== null)
+    return {
+      kind: "commit-land",
+      enabled: false,
+      title: COMMIT_LAND,
+      tooltip: `A write stopped partway: run \`${interrupted.command}\` in a terminal`,
+    };
+  if (uncommitted || xaxis.conflicts.length > 0)
+    return { kind: "commit-land", enabled: true, title: COMMIT_LAND, tooltip: COMMIT_EVERYTHING };
+  if (state.ahead > 0)
+    return {
+      kind: "commit-land",
+      enabled: true,
+      title: COMMIT_LAND,
+      tooltip: `Land ${commits(state.ahead)} on main`,
+    };
+  if (state.behind > 0) return getLatest;
+  return { kind: "commit-land", enabled: false, title: COMMIT_LAND, tooltip: COMMIT_EVERYTHING };
+}
+
+/** One item of an xaxis checkout's state line, and what a click on it does. */
+export interface XaxisStateItem {
+  readonly title: string;
+  readonly tooltip: string;
+  readonly click: "open-conflict" | "get-latest" | null;
+}
+
+/**
+ * An xaxis checkout's state line, the provider's status bar commands: the
+ * first that holds of its conflict, an interrupted write, uncommitted
+ * changes (with how far behind it is), commits not landed, behind, and up
+ * to date; beside it a tip it could not read. A failed read says so alone,
+ * its counts being stale.
+ */
+export function xaxisStateLine(
+  state: SyncState,
+  xaxis: XaxisState,
+  uncommitted: number,
+): ReadonlyArray<XaxisStateItem> {
+  if (xaxis.failure !== null)
+    return [{ title: "Could not read the checkout", tooltip: xaxis.failure, click: null }];
+  const behind = `Behind by ${state.behind}`;
+  const { interrupted } = xaxis;
+  const main: XaxisStateItem =
+    xaxis.conflicts.length > 0
+      ? {
+          title: `Conflicts in ${files(xaxis.conflicts.length)}`,
+          tooltip: "Fix the markers or keep a side, then Commit & Land",
+          click: "open-conflict",
+        }
+      : interrupted !== null
+        ? {
+            title: "Interrupted",
+            tooltip:
+              interrupted === "get-latest"
+                ? "A Get latest stopped partway: Get latest finishes it"
+                : interrupted === "commit-land"
+                  ? "A land stopped partway: Commit & Land finishes it"
+                  : `A write stopped partway: run \`${interrupted.command}\` in a terminal`,
+            click: null,
+          }
+        : uncommitted > 0
+          ? {
+              title: [
+                `${uncommitted} uncommitted ${uncommitted === 1 ? "change" : "changes"}`,
+                ...(state.behind > 0 ? [behind] : []),
+              ].join(" · "),
+              tooltip: COMMIT_EVERYTHING,
+              click: null,
+            }
+          : state.ahead > 0
+            ? {
+                title: `${commits(state.ahead)} not landed`,
+                tooltip: `Land ${commits(state.ahead)} on main`,
+                click: null,
+              }
+            : state.behind > 0
+              ? {
+                  title: behind,
+                  tooltip: `Bring ${changes(state.behind)} from main`,
+                  click: "get-latest",
+                }
+              : { title: "Up to date", tooltip: "Nothing to land, nothing to get", click: null };
+  const tip: ReadonlyArray<XaxisStateItem> =
+    xaxis.tip === "signed-out"
+      ? [{ title: "Signed out of xaxis", tooltip: "Run `xaxis login` in a terminal", click: null }]
+      : xaxis.tip === "unreachable"
+        ? [{ title: "Could not reach xaxis", tooltip: "Main's tip could not be read", click: null }]
+        : [];
+  return [main, ...tip];
+}
+
+function files(count: number): string {
+  return count === 1 ? "1 file" : `${count} files`;
+}
+
+function changes(count: number): string {
+  return count === 1 ? "1 change" : `${count} changes`;
 }
 
 /** The Sync or Diverged button's title, with its counts as VS Code's git extension writes them. */
@@ -110,7 +289,8 @@ export function afterStep(
 
 /** Why a pull failed: a branch both ahead and behind cannot fast-forward, which the server's message does not say. */
 export function pullFailure(state: SyncState | undefined, message: string): string {
-  if (state !== undefined && state.ahead > 0 && state.behind > 0) {
+  // An xaxis checkout's refusal says why itself.
+  if (state !== undefined && state.xaxis === null && state.ahead > 0 && state.behind > 0) {
     return `"${state.branch ?? "HEAD"}" has diverged from its upstream (${commits(state.ahead)} ahead, ${state.behind} behind); merge or rebase it in a terminal.`;
   }
   return message;

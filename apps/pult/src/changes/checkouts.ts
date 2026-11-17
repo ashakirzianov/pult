@@ -1,6 +1,10 @@
 // The changes view's checkouts and what each shows, apart from the workbench
 // so `node --test src/changes/checkouts.test.ts` can run it.
-import type { ReviewDiffPreviewSource, ReviewDiffPreviewSourceKind } from "@t3tools/contracts";
+import type {
+  ReviewDiffPreviewSource,
+  ReviewDiffPreviewSourceKind,
+  VcsStatusXaxis,
+} from "@t3tools/contracts";
 
 import type { ShellProject, ShellThread } from "../threads/store.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
@@ -165,4 +169,14 @@ export function shownChanges(
 function againstOwnUpstream({ kind, baseRef, headRef }: ReviewDiffPreviewSource): boolean {
   if (kind !== "branch-range" || baseRef === null || headRef === null) return false;
   return baseRef === headRef || baseRef.slice(baseRef.indexOf("/") + 1) === headRef;
+}
+
+/** A checkout's shown changes but its xaxis conflict's paths, which the Conflicts group lists instead; the paths are its root's, as the server names both. */
+export function withoutConflicts(
+  changes: ReadonlyArray<Change>,
+  conflicts: VcsStatusXaxis["conflicts"],
+): ReadonlyArray<Change> {
+  if (conflicts.length === 0) return changes;
+  const conflicted = new Set(conflicts.map((conflict) => conflict.path));
+  return changes.filter((change) => !conflicted.has(change.path));
 }

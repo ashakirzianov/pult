@@ -100,6 +100,28 @@ NodeTest.describe("historyItem", () => {
     NodeAssert.deepEqual(item.parentIds, [UPSTREAM]);
     NodeAssert.equal(item.timestamp, Date.parse("2026-11-09T11:00:00Z"));
   });
+
+  NodeTest.test("shortens an xaxis changeset's hash past its `sha256:` prefix", () => {
+    const hash = `sha256:${"0123456789abcdef".repeat(4)}`;
+    const item = historyItem(
+      {
+        sha: hash,
+        parents: [],
+        subject: "Notes",
+        message: "Notes",
+        authorName: "Ada",
+        authorEmail: "",
+        authoredAt: "2026-11-16T12:00:00Z",
+        refs: [],
+      },
+      undefined,
+    );
+    NodeAssert.equal(item.displayId, "0123456");
+    NodeAssert.equal(
+      historyRefs({ head: { ref: null, sha: hash }, refs: [] }, null).current?.name,
+      "0123456",
+    );
+  });
 });
 
 NodeTest.describe("refsChange", () => {

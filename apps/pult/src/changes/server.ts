@@ -20,6 +20,7 @@ import {
   type ReviewLogResult,
   type ReviewRefsResult,
   type VcsPullResult,
+  type VcsResolveConflictInput,
   type VcsStatusResult,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -45,6 +46,23 @@ export function changesServer(environmentId: string) {
     hasHistory: async (): Promise<boolean> => {
       await whenReady(environmentId);
       return (await connection.run(environmentId, getInitialServerConfig())).reviewLog === true;
+    },
+    /** Whether the server serves `vcs.resolveConflict`, the fork's, which a stock server lacks (`pult/decisions`, `capability-gated-rpcs`). */
+    canResolveConflicts: async (): Promise<boolean> => {
+      await whenReady(environmentId);
+      return (
+        (await connection.run(environmentId, getInitialServerConfig())).vcsResolveConflict === true
+      );
+    },
+    /** One side of an xaxis checkout's conflicted paths, taken whole: Keep mine, Take latest. */
+    resolveConflict: async (input: VcsResolveConflictInput): Promise<void> => {
+      await whenReady(environmentId);
+      return connection.run(
+        environmentId,
+        requestGuarded(WS_METHODS.vcsResolveConflict, input).pipe(
+          Effect.provideService(RpcPermissionGuard, serverChecks),
+        ),
+      );
     },
     /** A page of the checkout's commits, from `refs` or HEAD. */
     log: async (input: ReviewLogInput): Promise<ReviewLogResult> => {
