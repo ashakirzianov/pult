@@ -11,8 +11,22 @@
  *   node apps/pult/desktop/scripts/smoke.ts --dmg <Pult-x.y.z-arm64.dmg> [--artifacts-dir <dir>]
  *
  * On failure the artifacts directory holds a screenshot of the window and the
- * server's logs. Run it on CI, not on a machine with an installed Pult: the
- * packaged app's `userData` is the installed one's.
+ * server's logs.
+ *
+ * It runs on Pult's own runner, a Mac in use beside an installed Pult
+ * (xaxis `pult/issues/release-on-own-runner.md`), so the app under test keeps
+ * apart from it: its `userData` is a temporary folder (Chromium's
+ * `--user-data-dir`, which the desktop main honours), and with it the
+ * single-instance lock; its server's home is another (`T3CODE_HOME`); none of
+ * the runner's `T3CODE_*` settings reach it, so its server scans for a free
+ * port from 3773 and its updater stays off; Chromium's mock Keychain
+ * (`--use-mock-keychain`) keeps its safe storage off the installed app's
+ * `pult Safe Storage` item; a marker in its home keeps it from installing the
+ * `t3` command on its first launch. At the end it quits the app, then kills the process group
+ * Playwright made it lead, nothing found by name; the server, in a group of
+ * its own, stops once it loses the app (`apps/server/src/launcherWatch.ts`).
+ * It takes the bundle off Launch Services, which registered it at its
+ * launch. A mount it cannot detach fails the test, naming it.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -44,13 +58,19 @@ const artifactsDir = NodePath.resolve(values["artifacts-dir"] ?? "pult-smoke");
 const temp = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pult-smoke-"));
 const mount = NodePath.join(temp, "dmg");
 const t3Home = NodePath.join(temp, "t3");
+const userData = NodePath.join(temp, "user-data");
+const LSREGISTER =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 NodeFS.mkdirSync(NodePath.join(t3Home, "userdata"), { recursive: true });
 NodeFS.copyFileSync(FIXTURE_DB, NodePath.join(t3Home, "userdata/statev2.sqlite"));
+// Upstream's first launch links `t3` into the user's ~/.local/bin unless it finds this (`DesktopCliCommand.ts`).
+NodeFS.writeFileSync(NodePath.join(t3Home, "userdata/cli-command-first-launch"), "");
 
 let step = "mounting the dmg";
 let app: ElectronApplication | undefined;
 let page: Page | undefined;
 let mounted = false;
+let appBundle: string | undefined;
 try {
   NodeChildProcess.execFileSync("hdiutil", [
     "attach",
@@ -63,6 +83,7 @@ try {
   mounted = true;
   const bundle = NodeFS.readdirSync(mount).find((name) => name.endsWith(".app"));
   if (bundle === undefined) throw new Error(`No .app in ${values.dmg}.`);
+  appBundle = NodePath.join(mount, bundle);
   const plist = NodePath.join(mount, bundle, "Contents/Info.plist");
   const executable = NodeChildProcess.execFileSync(
     "/usr/libexec/PlistBuddy",
@@ -73,9 +94,11 @@ try {
   step = "launching the app";
   app = await _electron.launch({
     executablePath: NodePath.join(mount, bundle, "Contents/MacOS", executable),
-    // HOME stays real: a fake HOME has no login keychain, and safeStorage blocks on a keychain dialog.
+    // Playwright adds its own switches, the mock Keychain among them, only to an Electron it starts itself.
+    args: [`--user-data-dir=${userData}`, "--use-mock-keychain"],
+    // HOME stays real: the server's providers and the shell environment read it.
     env: {
-      ...process.env,
+      ...inheritedEnv(),
       T3CODE_HOME: t3Home,
       T3CODE_TELEMETRY_ENABLED: "false",
       T3CODE_DISABLE_AUTO_UPDATE: "true",
@@ -154,14 +177,49 @@ try {
     const child = app.process();
     const closed = app.close().catch(() => {});
     await Promise.race([closed, NodeTimersPromises.setTimeout(10_000, undefined, { ref: false })]);
-    child.kill("SIGKILL");
-  }
-  if (mounted) {
-    try {
-      NodeChildProcess.execFileSync("hdiutil", ["detach", mount, "-force"]);
-    } catch {
-      // The runner discards the mount with the job.
+    // The group Playwright started the app as the leader of (`detached`), whatever of it is left.
+    if (child.pid !== undefined) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // ESRCH: the group is gone already.
+      }
     }
   }
-  NodeFS.rmSync(temp, { recursive: true, force: true, maxRetries: 5 });
+  // Launched, the bundle is registered with Launch Services, a newer Pult than the installed one
+  // for `pult://` links and `open -a Pult`, and the entry outlives the mount.
+  if (appBundle !== undefined) {
+    try {
+      NodeChildProcess.execFileSync(LSREGISTER, ["-u", appBundle], { stdio: "pipe" });
+    } catch {
+      console.error(`Pult smoke test could not unregister ${appBundle} from Launch Services.`);
+    }
+  }
+  if (mounted) mounted = !(await detach(mount));
+  if (mounted) {
+    console.error(`Pult smoke test could not detach ${mount}; detach it, then remove ${temp}.`);
+    process.exitCode = 1;
+  } else {
+    NodeFS.rmSync(temp, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+/** The runner's environment without the settings of a Pult or T3 Code it may run under. */
+function inheritedEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !/^(T3CODE_|VITE_|PULT_|ELECTRON_)/.test(name)),
+  );
+}
+
+/** Detaches the dmg, retrying while the app's last files close; whether it is gone. */
+async function detach(mountPoint: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      NodeChildProcess.execFileSync("hdiutil", ["detach", mountPoint, "-force"], { stdio: "pipe" });
+      return true;
+    } catch {
+      await NodeTimersPromises.setTimeout(2_000);
+    }
+  }
+  return false;
 }
