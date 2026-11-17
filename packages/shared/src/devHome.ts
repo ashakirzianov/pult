@@ -23,6 +23,8 @@ const pointsAtLinkedWorktree = (gitFileContents: string, path: Path.Path): boole
   return segments.length >= 3 && segments.at(-2) === "worktrees";
 };
 
+const XAXIS_CHECKOUT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export const resolveGitWorktreePath = Effect.fn("devHome.resolveGitWorktreePath")(function* (
   cwd: string,
 ): Effect.fn.Return<string | undefined, never, FileSystem.FileSystem | Path.Path> {
@@ -33,6 +35,23 @@ export const resolveGitWorktreePath = Effect.fn("devHome.resolveGitWorktreePath"
   for (;;) {
     const gitPath = path.join(directory, ".git");
     const info = yield* fileSystem.stat(gitPath).pipe(Effect.option);
+    // Pult: an xaxis checkout, known by its marker (a file holding the checkout's id, as the
+    // server's `XaxisVcsDriver` reads it), keeps state of its own as a linked worktree does. The
+    // nearer of the marker and `.git` decides (`pult/decisions`, `vcs-detection-nearest`), and both
+    // in one folder is refused.
+    const xaxisMarker = yield* fileSystem
+      .readFileString(path.join(directory, ".xaxis-checkout"))
+      .pipe(Effect.orElseSucceed(() => ""));
+    if (XAXIS_CHECKOUT_ID.test(xaxisMarker.trim())) {
+      if (Option.isSome(info)) {
+        return yield* Effect.die(
+          new Error(
+            `${directory} holds both .git and .xaxis-checkout; which one it is is unknown.`,
+          ),
+        );
+      }
+      return directory;
+    }
     if (Option.isSome(info)) {
       if (info.value.type !== "File") {
         return undefined;

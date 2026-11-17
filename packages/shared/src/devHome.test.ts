@@ -5,8 +5,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 
 import { resolveGitWorktreePath, resolveWorktreeT3Home } from "./devHome.ts";
+
+const XAXIS_CHECKOUT_ID = "c078d1e2-6c3d-421c-b76d-a859c655780a";
 
 const makeRepo = (
   kind:
@@ -16,7 +19,9 @@ const makeRepo = (
     | "submodule"
     | "unreadable-git-file"
     | "bare-repo-worktree"
-    | "custom-common-dir-worktree",
+    | "custom-common-dir-worktree"
+    | "xaxis-checkout"
+    | "xaxis-checkout-in-git-folder",
 ) =>
   Effect.acquireRelease(
     Effect.sync(() => {
@@ -31,6 +36,9 @@ const makeRepo = (
         NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: ../.git/modules/sub\n");
       } else if (kind === "unreadable-git-file") {
         NodeFS.writeFileSync(NodePath.join(root, ".git"), "not a gitdir pointer\n");
+      } else if (kind === "xaxis-checkout" || kind === "xaxis-checkout-in-git-folder") {
+        NodeFS.writeFileSync(NodePath.join(root, ".xaxis-checkout"), `${XAXIS_CHECKOUT_ID}\n`);
+        if (kind === "xaxis-checkout-in-git-folder") NodeFS.mkdirSync(NodePath.join(root, ".git"));
       } else if (kind === "checkout") {
         NodeFS.mkdirSync(NodePath.join(root, ".git"));
       }
@@ -60,6 +68,25 @@ describe("resolveGitWorktreePath", () => {
     Effect.gen(function* () {
       const { nested } = yield* makeRepo("submodule");
       assert.equal(yield* resolveGitWorktreePath(nested), undefined);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  // Pult: an xaxis checkout has no `.git`; its marker makes it a worktree of its own.
+  it.effect("finds an xaxis checkout's root as a worktree", () =>
+    Effect.gen(function* () {
+      const { root, nested } = yield* makeRepo("xaxis-checkout");
+      assert.equal(yield* resolveGitWorktreePath(nested), NodePath.resolve(root));
+      // A marker that holds no checkout's id is no checkout's.
+      NodeFS.writeFileSync(NodePath.join(root, ".xaxis-checkout"), "");
+      assert.equal(yield* resolveGitWorktreePath(nested), undefined);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("refuses a folder that is both an xaxis checkout and a git repository", () =>
+    Effect.gen(function* () {
+      const { nested } = yield* makeRepo("xaxis-checkout-in-git-folder");
+      const exit = yield* Effect.exit(resolveGitWorktreePath(nested));
+      assert.isTrue(Exit.hasDies(exit));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 

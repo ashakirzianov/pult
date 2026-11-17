@@ -18,14 +18,16 @@
  *   (`pult/decisions`, `update-feed`).
  *
  * Unsigned, the bundle is signed ad hoc (`ad-hoc-signing`). Last, it writes
- * `COMMIT` beside the artifacts: the commit they were built from, followed by
- * `dirty` when the working tree had uncommitted changes.
+ * `COMMIT` beside the artifacts: the commit they were built from, or in an
+ * xaxis checkout the changeset, followed by `dirty` when the working tree had
+ * uncommitted changes (`commitNote.ts`).
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { UPDATE_FEED_REPOSITORY } from "../src/brand.ts";
+import { commitNote } from "./commitNote.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "../../../..");
 const {
@@ -102,9 +104,9 @@ function outputDir(): string {
 }
 
 function writeCommitNote(): void {
-  const git = (...gitArgs: string[]) =>
-    NodeChildProcess.execFileSync("git", gitArgs, { cwd: root, encoding: "utf8" }).trim();
-  const commit = `${git("rev-parse", "HEAD")}${git("status", "--porcelain") === "" ? "" : " dirty"}`;
+  const commit = commitNote(root, (file, fileArgs) =>
+    NodeChildProcess.execFileSync(file, fileArgs, { cwd: root, encoding: "utf8" }),
+  );
   const note = NodePath.join(outputDir(), "COMMIT");
   NodeFS.writeFileSync(note, `${commit}\n`);
   console.log(`[pult-package] ${note}: ${commit}`);
