@@ -85,7 +85,6 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         );
         const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
         const layer = Layer.mergeAll(
-          server.layer,
           McpServer.McpServer.layer,
           XaxisVcsDriver.layer.pipe(
             Layer.provide(VcsProcess.layer),
@@ -102,7 +101,7 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
             VcsStatusBroadcaster.VcsAutomaticFetchInterval,
             Effect.sync(() => interval.every),
           ),
-        );
+        ).pipe(Layer.provideMerge(server.layer));
         const loader = Context.get(
           yield* Layer.build(PluginLoader.layer(bundledPlugins).pipe(Layer.provide(layer))),
           PluginLoader.PluginLoader,
