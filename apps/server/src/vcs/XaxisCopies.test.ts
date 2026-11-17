@@ -409,34 +409,33 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
         }),
     );
 
-    // Last: it moves main past the root's base.
-    it.effect("delegates a child onto a copy at the parent's base, never over its stack", () =>
+    // It moves main past the root's base, so it runs after the cases above.
+    it.effect("delegates a child onto a copy at the parent's head, its stack inherited", () =>
       Effect.gen(function* () {
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         const parentDir = NodePath.join(harness.scratch, "parent");
         xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "parent");
-        const parentBase = (
-          JSON.parse(xaxis(parentDir, "status", "--json")) as XaxisCli.XaxisStatus
-        ).base;
+        NodeFS.writeFileSync(NodePath.join(parentDir, "n.txt"), "new\n");
+        committed(xaxis(parentDir, "commit", "-m", "not landed"));
+        const parent = JSON.parse(xaxis(parentDir, "status", "--json")) as XaxisCli.XaxisStatus;
         xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "ahead");
         const ahead = NodePath.join(harness.scratch, "ahead");
         NodeFS.writeFileSync(NodePath.join(ahead, "f.txt"), "three\n");
         landed((xaxis(ahead, "commit", "-m", "third"), xaxis(ahead, "land")));
 
         const dispatched: Array<OrchestrationV2ServerCommand> = [];
-        const delegate = delegateFrom(parentDir, dispatched);
         // The dispatch is refused once recorded, so the launch it would start never runs.
-        yield* delegate.pipe(Effect.flip);
+        yield* delegateFrom(parentDir, dispatched).pipe(Effect.flip);
         const [command] = dispatched;
         assert.equal(command?.type, "delegated_task.request");
         const strategy =
           command?.type === "delegated_task.request" ? command.workspaceStrategy : undefined;
         assert.isTrue(strategy?.type === "worktree" && strategy.startFromOrigin === false);
         const baseRef = strategy?.type === "worktree" ? strategy.baseRef : "";
-        assert.match(baseRef, new RegExp(`^${parentBase}#[0-9a-f]{16}$`));
+        assert.match(baseRef, new RegExp(`^${parent.head}#[0-9a-f]{16}$`));
         // The changeset alone, as a tool would pass it, is no base.
         const alone = yield* workflow
-          .createWorktree({ cwd: root, refName: parentBase, path: null })
+          .createWorktree({ cwd: root, refName: parent.head, path: null })
           .pipe(Effect.flip);
         assert.equal(alone.detail, NO_BRANCHES);
 
@@ -450,19 +449,38 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
         });
         assert.equal(worktree.refName, "main");
         assert.equal(NodeFS.readFileSync(NodePath.join(worktree.path, "f.txt"), "utf8"), "two\n");
+        assert.equal(NodeFS.readFileSync(NodePath.join(worktree.path, "n.txt"), "utf8"), "new\n");
         const status = JSON.parse(xaxis(worktree.path, "status", "--json")) as XaxisCli.XaxisStatus;
-        assert.equal(status.base, parentBase);
+        assert.equal(status.base, parent.base);
+        assert.deepEqual(status.stack, parent.stack);
+      }),
+    );
 
-        NodeFS.writeFileSync(NodePath.join(parentDir, "n.txt"), "new\n");
-        committed(xaxis(parentDir, "commit", "-m", "not landed"));
-        dispatched.length = 0;
-        const refused = yield* delegate.pipe(Effect.flip);
-        assert.equal(refused.code, "invalid_request");
-        assert.include(
-          refused.message,
-          "holds 1 commit not landed, which a copy cannot start from",
-        );
-        assert.deepEqual(dispatched, []);
+    it.effect("fails a delegated copy the CLI refuses, by its code, leaving no folder", () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        // A parent over more of the tree than the project, its commit outside the project's prefix.
+        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test", "wide");
+        const wide = NodePath.join(harness.scratch, "wide");
+        NodeFS.mkdirSync(NodePath.join(wide, "other"));
+        NodeFS.writeFileSync(NodePath.join(wide, "other", "o.txt"), "o\n");
+        committed(xaxis(wide, "commit", "-m", "outside"));
+
+        const dispatched: Array<OrchestrationV2ServerCommand> = [];
+        yield* delegateFrom(wide, dispatched).pipe(Effect.flip);
+        const [command] = dispatched;
+        const baseRef =
+          command?.type === "delegated_task.request" &&
+          command.workspaceStrategy?.type === "worktree"
+            ? command.workspaceStrategy.baseRef
+            : "";
+        const before = copiesOfRoot();
+        const refused = yield* workflow
+          .createWorktree({ cwd: root, refName: baseRef, path: null })
+          .pipe(Effect.flip);
+        assert.equal(XaxisCli.refusalCode(refused), "checkout-stack-outside-prefix");
+        assert.include(refused.detail, "(checkout-stack-outside-prefix)");
+        assert.deepEqual(copiesOfRoot(), before);
       }),
     );
   });

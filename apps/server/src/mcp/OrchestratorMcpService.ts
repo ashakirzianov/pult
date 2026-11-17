@@ -2487,7 +2487,7 @@ const make = Effect.gen(function* () {
       );
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
       // Pult (xaxis `pult/decisions`, `xaxis-copy-contract`): an xaxis parent's child is a copy at
-      // the changeset the parent's checkout stands on, a base the server alone names.
+      // the parent checkout's head, commits not landed included, a base the server alone names.
       const xaxisBase =
         input.isolation === "worktree" && !isRetryOfAcceptedDelegation
           ? yield* requireProject(parent.thread.projectId).pipe(

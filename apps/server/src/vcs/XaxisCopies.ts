@@ -36,7 +36,7 @@ export type SettledCopy =
 export interface XaxisCopies {
   /**
    * `vcs.createWorktree` for a checkout's root: a copy of its prefix on `main`, at main's tip, or
-   * at a changeset `base` handed out for `refName`.
+   * at a checkout's head `base` handed out for `refName`, inheriting its stack.
    */
   readonly create: (
     input: VcsCreateWorktreeInput,
@@ -45,9 +45,9 @@ export interface XaxisCopies {
   /** `vcs.removeWorktree` of a copy: `force` lets uncommitted edits go, never a stack or a conflict. */
   readonly remove: (input: VcsRemoveWorktreeInput) => Effect.Effect<void, GitCommandError>;
   /**
-   * A base naming the changeset the checkout at `cwd` stands on, for `delegate_task`'s isolated
-   * child to start at: refused while it holds commits not landed. Only a base handed out here starts
-   * a copy at a changeset, so the tools' `baseRef` names none (`xaxis-copy-contract`).
+   * A base naming the head of the checkout at `cwd`, its commits not landed included, for
+   * `delegate_task`'s isolated child to start at: refused during a conflict. Only a base handed out
+   * here starts a copy at a changeset, so the tools' `baseRef` names none (`xaxis-copy-contract`).
    */
   readonly base: (cwd: string) => Effect.Effect<string, GitCommandError>;
   /**
@@ -175,7 +175,20 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
             dir: target,
             ...(at === undefined ? {} : { at }),
           })
-          .pipe(Effect.mapError(refused));
+          .pipe(
+            // The launch's failure names the code: `checkout-stack-incomplete`,
+            // `checkout-stack-outside-prefix`, `unknown-changeset`, `not-on-main`, `too-large`, …
+            Effect.mapError((error) =>
+              error._tag === "XaxisRefusal"
+                ? refuse(
+                    operation,
+                    input.cwd,
+                    `xaxis refused the copy (${error.code}): ${error.message}`,
+                    error,
+                  )
+                : error,
+            ),
+          );
         const copy = yield* status(`${operation}.status`, target);
         const real = yield* realPath(operation, target);
         if (copy.dir !== real || copy.prefix !== source.prefix || copy.server !== source.server) {
@@ -268,20 +281,15 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
   const base: XaxisCopies["base"] = Effect.fn("XaxisCopies.base")(function* (cwd) {
     const operation = "XaxisCopies.base";
     const read = yield* status(operation, cwd);
-    const unlanded =
-      read.conflict !== null
-        ? "a conflict, whose commits are not landed"
-        : read.stack.length > 0
-          ? `${read.stack.length} ${read.stack.length === 1 ? "commit" : "commits"} not landed`
-          : null;
-    if (unlanded !== null) {
+    // A conflict's changesets wait outside the head, so a copy at it would miss them.
+    if (read.conflict !== null) {
       return yield* refuse(
         operation,
         cwd,
-        `The parent's checkout holds ${unlanded}, which a copy cannot start from: land them, or delegate with isolation shared.`,
+        "The parent's checkout holds a conflict, which a copy cannot start from: resolve it, or delegate with isolation shared.",
       );
     }
-    const handedOut = `${read.base}#${yield* randomHex(8)}`;
+    const handedOut = `${read.head}#${yield* randomHex(8)}`;
     bases.add(handedOut);
     return handedOut;
   });

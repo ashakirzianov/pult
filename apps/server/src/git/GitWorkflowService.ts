@@ -144,8 +144,8 @@ export class GitWorkflowService extends Context.Service<
       readonly newBranch: string;
     }) => Effect.Effect<{ readonly branch: string }, GitManagerServiceError>;
     /**
-     * Pult: the base `delegate_task`'s isolated child of an xaxis checkout starts at, refused while
-     * the checkout holds commits not landed; null for a folder of any other kind.
+     * Pult: the base `delegate_task`'s isolated child of an xaxis checkout starts at, the
+     * checkout's head, refused during a conflict; null for a folder of any other kind.
      */
     readonly delegatedCopyBase: (cwd: string) => Effect.Effect<string | null, GitCommandError>;
     /**
