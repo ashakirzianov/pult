@@ -55,6 +55,8 @@ export { toolkitRegistration } from "./mcp/McpHttpServer.ts";
 // The Pult plugin's Star messages: upstream's rule that a thread's target be no broader than it.
 export * as McpThreadAccess from "./mcp/threadAccess.ts";
 export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
+// The Pult plugin's schedules: a watcher's command, run in its Star's folder.
+export * as ProcessRunner from "./processRunner.ts";
 // The Pult plugin's Stars: projects found, created, adopted and titled.
 export * as ProjectService from "./project/ProjectService.ts";
 // The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
