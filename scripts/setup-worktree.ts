@@ -114,3 +114,15 @@ for (const file of ENV_FILES) {
   if (existing) NodeFS.rmSync(target);
   NodeFS.symlinkSync(source, target);
 }
+
+// `.claude/skills` links upstream's skills for Claude Code. xaxis holds no symlinks, so
+// the link is kept out of the tree and made here; anything else at its path is a surprise.
+const skillsLink = NodePath.join(worktree, ".claude", "skills");
+const skillsTarget = NodePath.join("..", ".agents", "skills");
+const skillsExisting = NodeFS.lstatSync(skillsLink, { throwIfNoEntry: false });
+if (!skillsExisting) {
+  NodeFS.mkdirSync(NodePath.dirname(skillsLink), { recursive: true });
+  NodeFS.symlinkSync(skillsTarget, skillsLink);
+} else if (!skillsExisting.isSymbolicLink() || NodeFS.readlinkSync(skillsLink) !== skillsTarget) {
+  throw new Error(`${skillsLink} exists and is not a link to ${skillsTarget}.`);
+}

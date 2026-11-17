@@ -17,9 +17,10 @@ release/
 release-mock/
 .t3
 .pult
-# Kept out of the tree for xaxis: the reference repositories come from
-# `node scripts/sync-reference-repos.ts`.
+# Kept out of the tree for xaxis, which holds no symlinks: the reference repositories
+# come from `node scripts/sync-reference-repos.ts`, the skills link from setup.
 /.repos/
+/.claude/skills
 .idea/
 apps/web/.playwright
 apps/web/playwright-report
