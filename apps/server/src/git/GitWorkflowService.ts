@@ -269,6 +269,18 @@ export const make = Effect.gen(function* () {
     return handle;
   });
 
+  // Pult: whether a worktree call or a git question asked around one is an xaxis checkout's
+  // to answer (`pult/decisions`, `xaxis-copies`), git's checks for every other kind.
+  const isXaxisCommand = Effect.fn("GitWorkflowService.isXaxisCommand")(function* (
+    operation: string,
+    cwd: string,
+  ) {
+    const handle = yield* resolveForCommand(operation, cwd);
+    if (handle.kind === "xaxis") return true;
+    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
+    return false;
+  });
+
   // Pult: the handle, which callers route by kind; git's routes take `kind === "git"` alone.
   const detectRepositoryForStatus = Effect.fn("GitWorkflowService.detectRepositoryForStatus")(
     function* (operation: string, cwd: string) {
@@ -329,18 +341,16 @@ export const make = Effect.gen(function* () {
         ),
       );
     }),
-    hasCommit: Effect.fn("GitWorkflowService.hasCommit")(function (input) {
-      return ensureGitCommand("GitWorkflowService.hasCommit", input.cwd).pipe(
-        Effect.andThen(
-          git.execute({
-            operation: "GitWorkflowService.hasCommit",
-            cwd: input.cwd,
-            args: ["rev-parse", "--verify", `${input.refName}^{commit}`],
-            allowNonZeroExit: true,
-          }),
-        ),
-        Effect.map((result) => result.exitCode === 0),
-      );
+    hasCommit: Effect.fn("GitWorkflowService.hasCommit")(function* (input) {
+      // Pult: an xaxis checkout has no commits by git's names.
+      if (yield* isXaxisCommand("GitWorkflowService.hasCommit", input.cwd)) return false;
+      const result = yield* git.execute({
+        operation: "GitWorkflowService.hasCommit",
+        cwd: input.cwd,
+        args: ["rev-parse", "--verify", `${input.refName}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      return result.exitCode === 0;
     }),
     hasRefNamed: Effect.fn("GitWorkflowService.hasRefNamed")(function (input) {
       // Pattern characters would widen the ref match.
@@ -497,15 +507,17 @@ export const make = Effect.gen(function* () {
         ),
       );
     }),
-    createWorktree: Effect.fn("GitWorkflowService.createWorktree")(function (input, options) {
-      return ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(
-        Effect.andThen(gitManager.createWorktree(input, options)),
-      );
+    createWorktree: Effect.fn("GitWorkflowService.createWorktree")(function* (input, options) {
+      // Pult: an xaxis checkout's worktree is a copy.
+      if (yield* isXaxisCommand("GitWorkflowService.createWorktree", input.cwd)) {
+        return yield* xaxis.createCopy(input, options?.progress);
+      }
+      return yield* gitManager.createWorktree(input, options);
     }),
-    listLocalBranchNames: Effect.fn("GitWorkflowService.listLocalBranchNames")(function (cwd) {
-      return ensureGitCommand("GitWorkflowService.listLocalBranchNames", cwd).pipe(
-        Effect.andThen(git.listLocalBranchNames(cwd)),
-      );
+    listLocalBranchNames: Effect.fn("GitWorkflowService.listLocalBranchNames")(function* (cwd) {
+      // Pult: an xaxis checkout has no branches.
+      if (yield* isXaxisCommand("GitWorkflowService.listLocalBranchNames", cwd)) return [];
+      return yield* git.listLocalBranchNames(cwd);
     }),
     fetchRemote: Effect.fn("GitWorkflowService.fetchRemote")(function (input) {
       return ensureGitCommand("GitWorkflowService.fetchRemote", input.cwd).pipe(
@@ -530,33 +542,36 @@ export const make = Effect.gen(function* () {
       },
     ),
     resolveWorktreeBaseRemote: Effect.fn("GitWorkflowService.resolveWorktreeBaseRemote")(
-      function (input) {
-        return ensureGitCommand("GitWorkflowService.resolveWorktreeBaseRemote", input.cwd).pipe(
-          Effect.andThen(git.resolveWorktreeBaseRemote(input)),
-        );
+      function* (input) {
+        // Pult: a copy has no remote base, so nothing is fetched.
+        if (yield* isXaxisCommand("GitWorkflowService.resolveWorktreeBaseRemote", input.cwd)) {
+          return null;
+        }
+        return yield* git.resolveWorktreeBaseRemote(input);
       },
     ),
     fetchWorktreeBaseCommit: Effect.fn("GitWorkflowService.fetchWorktreeBaseCommit")(
-      function (input) {
-        return ensureGitCommand("GitWorkflowService.fetchWorktreeBaseCommit", input.cwd).pipe(
-          Effect.andThen(git.fetchWorktreeBaseCommit(input)),
-        );
+      function* (input) {
+        if (yield* isXaxisCommand("GitWorkflowService.fetchWorktreeBaseCommit", input.cwd)) {
+          return null;
+        }
+        return yield* git.fetchWorktreeBaseCommit(input);
       },
     ),
-    removeWorktree: Effect.fn("GitWorkflowService.removeWorktree")(function (input) {
-      return ensureGitCommand("GitWorkflowService.removeWorktree", input.cwd).pipe(
-        Effect.andThen(git.removeWorktree(input)),
-      );
+    removeWorktree: Effect.fn("GitWorkflowService.removeWorktree")(function* (input) {
+      if (yield* isXaxisCommand("GitWorkflowService.removeWorktree", input.cwd)) {
+        return yield* xaxis.removeCopy(input);
+      }
+      return yield* git.removeWorktree(input);
     }),
-    pruneWorktrees: Effect.fn("GitWorkflowService.pruneWorktrees")(function (input) {
-      return ensureGitCommand("GitWorkflowService.pruneWorktrees", input.cwd).pipe(
-        Effect.andThen(git.pruneWorktrees(input)),
-      );
+    pruneWorktrees: Effect.fn("GitWorkflowService.pruneWorktrees")(function* (input) {
+      // Pult: a copy keeps no worktree registry, and no branches below.
+      if (yield* isXaxisCommand("GitWorkflowService.pruneWorktrees", input.cwd)) return;
+      return yield* git.pruneWorktrees(input);
     }),
-    deleteLocalBranch: Effect.fn("GitWorkflowService.deleteLocalBranch")(function (input) {
-      return ensureGitCommand("GitWorkflowService.deleteLocalBranch", input.cwd).pipe(
-        Effect.andThen(git.deleteLocalBranch(input)),
-      );
+    deleteLocalBranch: Effect.fn("GitWorkflowService.deleteLocalBranch")(function* (input) {
+      if (yield* isXaxisCommand("GitWorkflowService.deleteLocalBranch", input.cwd)) return;
+      return yield* git.deleteLocalBranch(input);
     }),
     createRef: Effect.fn("GitWorkflowService.createRef")(function (input) {
       return ensureGitCommand("GitWorkflowService.createRef", input.cwd).pipe(

@@ -184,6 +184,18 @@ export interface XaxisCli {
   readonly checkouts: (
     input: Omit<XaxisRunInput, "args">,
   ) => Effect.Effect<ReadonlyArray<XaxisCheckout>, XaxisCliError>;
+  /**
+   * `checkout <prefix> <dir>` of `server`, at main's tip or at the changeset `at`, run in `cwd`:
+   * a write as `write`'s are, one at a time per `dir` (absolute, new or empty).
+   */
+  readonly checkout: (input: {
+    readonly operation: string;
+    readonly cwd: string;
+    readonly server: string;
+    readonly prefix: string;
+    readonly dir: string;
+    readonly at?: string;
+  }) => Effect.Effect<VcsProcess.VcsProcessOutput, XaxisCliError>;
 }
 
 /** The CLI at `binaryPath`, empty for `xaxis` on PATH. */
@@ -212,7 +224,11 @@ export const make = (
         )
       : commandError(input, error.message, error);
 
-  const spawn = Effect.fn("XaxisCli.spawn")(function* (input: XaxisRunInput, timeoutMs: number) {
+  const spawn = Effect.fn("XaxisCli.spawn")(function* (
+    input: XaxisRunInput,
+    timeoutMs: number,
+    checkout: string = input.cwd,
+  ) {
     const binary = yield* command;
     return yield* vcsProcess
       .run({
@@ -224,7 +240,7 @@ export const make = (
         timeoutMs,
         maxOutputBytes: READ_MAX_OUTPUT_BYTES,
         // Every command holds the checkout's lock and refuses `checkout-busy` while another does.
-        concurrency: { key: `xaxis:${input.cwd}`, limit: 1 },
+        concurrency: { key: `xaxis:${checkout}`, limit: 1 },
       })
       .pipe(Effect.mapError(fromProcessError(input, binary)));
   });
@@ -293,5 +309,21 @@ export const make = (
       Effect.map((listed) => listed.checkouts),
     );
 
-  return { run, write, land, json, checkouts };
+  const checkout: XaxisCli["checkout"] = Effect.fn("XaxisCli.checkout")(function* (input) {
+    const run = {
+      operation: input.operation,
+      cwd: input.cwd,
+      args: [
+        "checkout",
+        "--server",
+        input.server,
+        ...(input.at === undefined ? [] : ["--at", input.at]),
+        input.prefix,
+        input.dir,
+      ],
+    };
+    return yield* settle(run, yield* spawn(run, Number.POSITIVE_INFINITY, input.dir));
+  });
+
+  return { run, write, land, json, checkouts, checkout };
 };

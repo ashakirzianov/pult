@@ -47,6 +47,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import * as XaxisCli from "./XaxisCli.ts";
+import * as XaxisCopies from "./XaxisCopies.ts";
 
 export const XAXIS_MARKER = ".xaxis-checkout";
 /** A checkout's id, as the CLI writes it into the marker. */
@@ -340,6 +341,10 @@ export class XaxisVcsDriver extends Context.Service<
       root: string,
       input: VcsResolveConflictInput,
     ) => Effect.Effect<void, GitCommandError>;
+    /** `vcs.createWorktree` for a checkout's root: a thread's copy (`XaxisCopies`). */
+    readonly createCopy: XaxisCopies.XaxisCopies["create"];
+    /** `vcs.removeWorktree` of a copy (`XaxisCopies`). */
+    readonly removeCopy: XaxisCopies.XaxisCopies["remove"];
   }
 >()("t3/vcs/XaxisVcsDriver") {}
 
@@ -1103,6 +1108,8 @@ const make = Effect.gen(function* () {
   const checkouts: XaxisVcsDriver["Service"]["checkouts"] = (cwd) =>
     cli.checkouts({ operation: "XaxisVcsDriver.checkouts", cwd }).pipe(Effect.mapError(refused));
 
+  const copies = yield* XaxisCopies.make(cli, writeLocks);
+
   return XaxisVcsDriver.of({
     localStatus,
     remoteStatus,
@@ -1114,6 +1121,8 @@ const make = Effect.gen(function* () {
     runStackedAction,
     resolveConflict,
     checkouts,
+    createCopy: copies.create,
+    removeCopy: copies.remove,
   });
 });
 
