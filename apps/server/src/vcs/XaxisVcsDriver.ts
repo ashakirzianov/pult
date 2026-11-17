@@ -41,6 +41,8 @@ import {
 } from "@t3tools/contracts";
 
 import type * as GitManager from "../git/GitManager.ts";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
+
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -321,8 +323,12 @@ export class XaxisVcsDriver extends Context.Service<
       input: ReviewLogInput,
     ) => Effect.Effect<ReviewLogResult, GitCommandError>;
     readonly getRefs: (root: string) => Effect.Effect<ReviewRefsResult, GitCommandError>;
-    /** `vcsPull`: Get latest, the checkout moved to main's tip. */
+    /** `vcsPull`: Get latest, the checkout moved to main's tip; a refusal keeps its code (`XaxisCli.refusalCode`). */
     readonly getLatest: (root: string) => Effect.Effect<VcsPullResult, GitCommandError>;
+    /** This machine's checkouts, as the CLI's registry lists them; `cwd` is where the CLI runs. */
+    readonly checkouts: (
+      cwd: string,
+    ) => Effect.Effect<ReadonlyArray<XaxisCli.XaxisCheckout>, GitCommandError>;
     /** `gitRunStackedAction`: `commit` commits, `push` lands, `commit_push` is Commit & Land. */
     readonly runStackedAction: (
       root: string,
@@ -367,6 +373,11 @@ const make = Effect.gen(function* () {
     );
   /** The last tip read per checkout, against the base it was read at. */
   const tips = new Map<string, TipRead>();
+  /**
+   * One write verb per checkout at a time: the CLI's own lock refuses `checkout-busy` rather than
+   * wait, and a verb's status reads around its write must see that write alone.
+   */
+  const writeLocks = yield* KeyedLock.make<string>();
 
   const refused = (error: XaxisCli.XaxisCliError) =>
     error._tag === "XaxisRefusal" ? error.toCommandError() : error;
@@ -915,19 +926,24 @@ const make = Effect.gen(function* () {
 
   const getLatest: XaxisVcsDriver["Service"]["getLatest"] = Effect.fn("XaxisVcsDriver.getLatest")(
     function* (root) {
-      const before = yield* status("XaxisVcsDriver.getLatest.status", root);
-      yield* cli
-        .write({ operation: "XaxisVcsDriver.getLatest", cwd: root, args: ["goto"] })
-        .pipe(Effect.mapError(refused));
-      const after = yield* status("XaxisVcsDriver.getLatest.status", root);
-      return {
-        status:
-          after.base === before.base && after.head === before.head
-            ? "skipped_up_to_date"
-            : "pulled",
-        refName: "main",
-        upstreamRef: null,
-      } satisfies VcsPullResult;
+      return yield* writeLocks.withLock(
+        root,
+        Effect.gen(function* () {
+          const before = yield* status("XaxisVcsDriver.getLatest.status", root);
+          yield* cli
+            .write({ operation: "XaxisVcsDriver.getLatest", cwd: root, args: ["goto"] })
+            .pipe(Effect.mapError(refused));
+          const after = yield* status("XaxisVcsDriver.getLatest.status", root);
+          return {
+            status:
+              after.base === before.base && after.head === before.head
+                ? "skipped_up_to_date"
+                : "pulled",
+            refName: "main",
+            upstreamRef: null,
+          } satisfies VcsPullResult;
+        }),
+      );
     },
   );
 
@@ -1060,7 +1076,7 @@ const make = Effect.gen(function* () {
       return result;
     });
 
-    return yield* steps.pipe(
+    return yield* writeLocks.withLock(root, steps).pipe(
       Effect.tapError((error) =>
         emit({
           kind: "action_failed",
@@ -1081,8 +1097,11 @@ const make = Effect.gen(function* () {
         cwd: root,
         args: ["resolve", `--${input.side}`, "--", ...input.paths],
       })
-      .pipe(Effect.mapError(refused));
+      .pipe(Effect.mapError(refused), (write) => writeLocks.withLock(root, write));
   });
+
+  const checkouts: XaxisVcsDriver["Service"]["checkouts"] = (cwd) =>
+    cli.checkouts({ operation: "XaxisVcsDriver.checkouts", cwd }).pipe(Effect.mapError(refused));
 
   return XaxisVcsDriver.of({
     localStatus,
@@ -1094,6 +1113,7 @@ const make = Effect.gen(function* () {
     getLatest,
     runStackedAction,
     resolveConflict,
+    checkouts,
   });
 });
 

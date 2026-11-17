@@ -4,9 +4,7 @@
 // real `xaxis` against `scm-server serve` on a memory store (xaxis
 // `pult/issues/xaxis-source-control`, "Test plan"). Skipped, with the reason printed,
 // unless XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the two binaries.
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -27,61 +25,36 @@ import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
 import { XAXIS_HEAD_REF, XAXIS_TIP_REF } from "./XaxisVcsDriver.ts";
+import * as XaxisCli from "./XaxisCli.ts";
 import * as XaxisVcsDriver from "./XaxisVcsDriver.ts";
+import {
+  committed,
+  landed,
+  skipped,
+  startXaxisTestServer,
+  suiteName,
+  UNKNOWN_TOKEN,
+  XAXIS,
+  type XaxisTestServer,
+} from "./XaxisVcsDriver.testkit.ts";
 
-const XAXIS = process.env.XAXIS_TEST_BIN;
-const SERVER = process.env.XAXIS_TEST_SERVER_BIN;
-const skipped = !XAXIS || !SERVER;
-// The reason rides the suite's name, which the reporter prints for a skipped suite.
-const suite = skipped
-  ? "XaxisVcsDriver (skipped: XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name no xaxis CLI and scm-server of JSON format 1)"
-  : "XaxisVcsDriver";
+const suite = suiteName("XaxisVcsDriver");
 
 const platform = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 describe.skipIf(skipped)(suite, () => {
-  let server: NodeChildProcess.ChildProcess | undefined;
+  let harness: XaxisTestServer;
   let scratch = "";
   let a = "";
   let b = "";
-  const saved = { token: process.env.XAXIS_TOKEN, config: process.env.XAXIS_CONFIG_DIR };
   const hashes = { first: "", stacked: "", other1: "", other2: "" };
-
-  const xaxis = (cwd: string, ...args: string[]) =>
-    NodeChildProcess.execFileSync(XAXIS!, args, {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  const committed = (output: string) => /as (sha256:[0-9a-f]{64})/.exec(output)![1]!;
-  // A land rebases, so a changeset's landed hash is main's tip after it.
-  const landed = (output: string) => /main is at (sha256:[0-9a-f]{64})/.exec(output)![1]!;
+  const xaxis = (cwd: string, ...args: string[]) => harness.xaxis(cwd, ...args);
 
   beforeAll(async () => {
-    scratch = NodeFS.realpathSync(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-xaxis-")));
-    const child = NodeChildProcess.spawn(SERVER!, ["serve", "--listen", "127.0.0.1:0"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    server = child;
-    let stdout = "";
-    let stderr = "";
-    const { address, token } = await new Promise<{ address: string; token: string }>(
-      (resolve, reject) => {
-        const check = () => {
-          const listening = /"address":"([^"]+)"/.exec(stdout)?.[1];
-          const root = /root key: (\S+)/.exec(stderr)?.[1];
-          if (listening && root) resolve({ address: listening, token: root });
-        };
-        child.stdout!.on("data", (chunk) => ((stdout += chunk), check()));
-        child.stderr!.on("data", (chunk) => ((stderr += chunk), check()));
-        child.on("exit", (code) => reject(new Error(`scm-server exited ${code}: ${stderr}`)));
-      },
-    );
-    // The CLI runs on the server's environment as it is: these are what it reads.
-    process.env.XAXIS_TOKEN = token;
-    process.env.XAXIS_CONFIG_DIR = NodePath.join(scratch, "config");
-    xaxis(scratch, "--server", address, "checkout", "/test/repo", "a");
-    xaxis(scratch, "--server", address, "checkout", "/test/repo", "b");
+    harness = await startXaxisTestServer();
+    scratch = harness.scratch;
+    xaxis(scratch, "--server", harness.address, "checkout", "/test/repo", "a");
+    xaxis(scratch, "--server", harness.address, "checkout", "/test/repo", "b");
     a = NodePath.join(scratch, "a");
     b = NodePath.join(scratch, "b");
     NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\ntwo\n");
@@ -91,15 +64,7 @@ describe.skipIf(skipped)(suite, () => {
     hashes.first = landed(xaxis(a, "land"));
   });
 
-  afterAll(() => {
-    // The PID captured at spawn, nothing found by name.
-    server?.kill();
-    process.env.XAXIS_TOKEN = saved.token;
-    process.env.XAXIS_CONFIG_DIR = saved.config;
-    if (saved.token === undefined) delete process.env.XAXIS_TOKEN;
-    if (saved.config === undefined) delete process.env.XAXIS_CONFIG_DIR;
-    if (scratch) NodeFS.rmSync(scratch, { recursive: true, force: true });
-  });
+  afterAll(() => harness?.stop());
 
   const layer = () =>
     Layer.mergeAll(GitWorkflowService.layer, ReviewService.layer).pipe(
@@ -170,7 +135,7 @@ describe.skipIf(skipped)(suite, () => {
         });
 
         const token = process.env.XAXIS_TOKEN;
-        process.env.XAXIS_TOKEN = `xk:/root:${"0".repeat(64)}`;
+        process.env.XAXIS_TOKEN = UNKNOWN_TOKEN;
         const signedOut = yield* workflow
           .remoteStatus({ cwd: a })
           .pipe(Effect.ensuring(Effect.sync(() => (process.env.XAXIS_TOKEN = token))));
@@ -577,6 +542,46 @@ describe.skipIf(skipped)(suite, () => {
         const latest = yield* workflow.localStatus({ cwd: a });
         assert.deepEqual([latest.hasWorkingTreeChanges, latest.xaxis?.conflicts], [false, []]);
         assert.equal(NodeFS.readFileSync(NodePath.join(a, "f.txt"), "utf8"), "from b again\n");
+      }),
+    );
+
+    it.effect("queues one checkout's verbs, so none meets the CLI's lock", () =>
+      Effect.gen(function* () {
+        const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        NodeFS.writeFileSync(NodePath.join(a, "q.txt"), "queued\n");
+        xaxis(a, "commit", "-m", "for b to get");
+        xaxis(a, "land");
+        // Two Get latests at once: the second waits for the first, then finds main where it is.
+        const twice = yield* Effect.all([driver.getLatest(b), driver.getLatest(b)], {
+          concurrency: "unbounded",
+        });
+        assert.deepEqual(twice.map((result) => result.status).toSorted(), [
+          "pulled",
+          "skipped_up_to_date",
+        ]);
+
+        // A Get latest beside a Commit & Land: the land goes through, and the Get latest either
+        // lands after it or waits on the edit or the stack, never on the lock.
+        NodeFS.writeFileSync(NodePath.join(b, "q.txt"), "queued again\n");
+        const [latest, both] = yield* Effect.all(
+          [
+            Effect.result(driver.getLatest(b)),
+            workflow.runStackedAction({
+              actionId: "action",
+              cwd: b,
+              action: "commit_push",
+              commitMessage: "beside a Get latest",
+            }),
+          ],
+          { concurrency: "unbounded" },
+        );
+        assert.equal(both.push.status, "pushed");
+        if (latest._tag === "Failure")
+          assert.include(
+            ["uncommitted-edits", "unlanded-changes"],
+            XaxisCli.refusalCode(latest.failure),
+          );
       }),
     );
   });

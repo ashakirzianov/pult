@@ -79,6 +79,22 @@ export const XaxisLog = Schema.Struct({
 });
 export type XaxisLog = typeof XaxisLog.Type;
 
+export const XaxisCheckouts = Schema.Struct({
+  format: Schema.Literal(XAXIS_JSON_FORMAT),
+  /** This machine's checkouts, after the registry prunes the ones whose folder is gone. */
+  checkouts: Schema.Array(
+    Schema.Struct({
+      dir: Schema.String,
+      /** The tree path it holds, `/` for the whole tree. */
+      prefix: Schema.String.check(Schema.isPattern(/^\//)),
+      server: Schema.String,
+      /** Null where its state is missing or unreadable. */
+      base: Schema.NullOr(Hash),
+    }),
+  ),
+});
+export type XaxisCheckout = (typeof XaxisCheckouts.Type)["checkouts"][number];
+
 /** The CLI refused (exit 1): `error: <message> (<code>)` on stderr, a hint on the lines after. */
 export class XaxisRefusal extends Schema.TaggedError<XaxisRefusal>()("XaxisRefusal", {
   operation: Schema.String,
@@ -91,7 +107,7 @@ export class XaxisRefusal extends Schema.TaggedError<XaxisRefusal>()("XaxisRefus
     return this.hint === null ? this.detail : `${this.detail} ${this.hint}`;
   }
 
-  /** As the RPCs' error, the CLI's message and hint as they are. */
+  /** As the RPCs' error, the CLI's message and hint as they are, the refusal its cause for its code. */
   toCommandError(): GitCommandError {
     return new GitCommandError({
       operation: this.operation,
@@ -99,6 +115,7 @@ export class XaxisRefusal extends Schema.TaggedError<XaxisRefusal>()("XaxisRefus
       cwd: this.cwd,
       exitCode: 1,
       detail: this.message,
+      cause: this,
     });
   }
 }
@@ -110,6 +127,13 @@ export class XaxisLandConflicted extends Schema.TaggedError<XaxisLandConflicted>
 ) {}
 
 export type XaxisCliError = XaxisRefusal | GitCommandError;
+
+const isRefusal = Schema.is(XaxisRefusal);
+
+/** The CLI's code where `error` is a refusal it printed, as `toCommandError` keeps it. */
+export function refusalCode(error: GitCommandError): string | null {
+  return isRefusal(error.cause) ? error.cause.code : null;
+}
 
 /** The first `error: <message> (<code>)` line of a refusal, and what follows as its hint. */
 function parseRefusal(
@@ -156,6 +180,10 @@ export interface XaxisCli {
     input: XaxisRunInput,
     schema: S,
   ) => Effect.Effect<S["Type"], XaxisCliError>;
+  /** `checkouts --json`, run in `cwd`, any folder: the registry is the machine's, not a checkout's. */
+  readonly checkouts: (
+    input: Omit<XaxisRunInput, "args">,
+  ) => Effect.Effect<ReadonlyArray<XaxisCheckout>, XaxisCliError>;
 }
 
 /** The CLI at `binaryPath`, empty for `xaxis` on PATH. */
@@ -260,5 +288,10 @@ export const make = (
     );
   });
 
-  return { run, write, land, json };
+  const checkouts: XaxisCli["checkouts"] = (input) =>
+    json({ ...input, args: ["checkouts", "--json"] }, XaxisCheckouts).pipe(
+      Effect.map((listed) => listed.checkouts),
+    );
+
+  return { run, write, land, json, checkouts };
 };
