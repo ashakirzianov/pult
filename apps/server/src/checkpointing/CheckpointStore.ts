@@ -85,10 +85,11 @@ export const make = Effect.gen(function* () {
     return handle.driver.checkpoints satisfies VcsCheckpointOps;
   });
 
+  // Pult: detected as any VCS, so an xaxis checkout inside a git repository keeps no checkpoints.
   const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = (cwd) =>
     vcsRegistry
-      .detect({ cwd, requestedKind: "git" })
-      .pipe(Effect.map((repository) => repository !== null));
+      .detect({ cwd, requestedKind: "auto" })
+      .pipe(Effect.map((repository) => repository?.kind === "git"));
 
   const captureCheckpoint: CheckpointStore["Service"]["captureCheckpoint"] = Effect.fn(
     "captureCheckpoint",

@@ -12,6 +12,7 @@ import { VcsUnsupportedOperationError } from "@t3tools/contracts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
 import * as VcsDriver from "./VcsDriver.ts";
+import * as XaxisVcsDriver from "./XaxisVcsDriver.ts";
 
 const DETECTION_CACHE_CAPACITY = 2_048;
 // Detection costs three git processes per cwd; cached hits still stat disk, so TTL bounds only undetectable changes.
@@ -62,8 +63,11 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const projectConfig = yield* VcsProjectConfig.VcsProjectConfig;
   const git = yield* GitVcsDriver.makeVcsDriver;
+  // Pult: an xaxis checkout, known by its marker (xaxis `pult/issues/xaxis-source-control`).
+  const xaxis = yield* XaxisVcsDriver.makeVcsDriver;
   const drivers: Partial<Record<VcsDriverKind, VcsDriver.VcsDriver["Service"]>> = {
     git,
+    xaxis,
   };
 
   const get: VcsDriverRegistry["Service"]["get"] = (kind) => {
@@ -107,6 +111,12 @@ export const make = Effect.gen(function* () {
       return yield* detectWithDriver(requestedKind, driver, input.cwd);
     }
 
+    // Pult: the nearer of `.xaxis-checkout` and `.git` decides (`pult/decisions`, `vcs-detection-nearest`).
+    const nearest = yield* XaxisVcsDriver.nearestRepositoryMarker(input.cwd).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+    if (nearest?.kind === "xaxis") return yield* detectWithDriver("xaxis", xaxis, input.cwd);
     return yield* detectWithDriver("git", git, input.cwd);
   });
 
@@ -119,10 +129,15 @@ export const make = Effect.gen(function* () {
     );
   };
 
+  // Pult: an `.xaxis-checkout` marker appearing below the root moves the nearest repository too.
   const readDiskState = (cwd: string, repository: VcsRepositoryIdentity) =>
     Effect.all({
-      gitEntries: Effect.forEach(foldersBelowRoot(cwd, repository.rootPath), (folder) =>
-        fileSystem.exists(path.join(folder, ".git")),
+      gitEntries: Effect.forEach(
+        foldersBelowRoot(cwd, repository.rootPath).flatMap((folder) => [
+          path.join(folder, ".git"),
+          path.join(folder, XaxisVcsDriver.XAXIS_MARKER),
+        ]),
+        (entry) => fileSystem.exists(entry),
       ),
       repositoryOnDisk: Effect.forEach(
         repository.metadataPath === null

@@ -24,6 +24,7 @@ import {
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import * as ReviewLog from "./ReviewLog.ts";
 
@@ -65,6 +66,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const xaxis = yield* XaxisVcsDriver.XaxisVcsDriver;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
 
   const canonicalizePath = (value: string) => {
@@ -138,6 +140,10 @@ export const make = Effect.gen(function* () {
         sources: [],
       };
     }
+    // Pult: an xaxis checkout's diff from its CLI.
+    if (handle.kind === "xaxis") {
+      return yield* xaxis.getDiffPreview(handle.repository.rootPath, input);
+    }
 
     return yield* git.getReviewDiffPreview(input);
   });
@@ -148,6 +154,10 @@ export const make = Effect.gen(function* () {
     yield* assertWorkspaceBoundCwd("ReviewService.getDiffFileContents", input.cwd);
 
     const handle = yield* vcsRegistry.detect({ cwd: input.cwd, requestedKind: "auto" });
+    // Pult: an xaxis checkout's sides from its CLI and the disk.
+    if (handle?.kind === "xaxis") {
+      return yield* xaxis.getDiffFileContents(handle.repository.rootPath, input);
+    }
     if (handle?.kind !== "git") {
       return yield* new VcsUnsupportedOperationError({
         operation: "ReviewService.getDiffFileContents",
@@ -159,32 +169,35 @@ export const make = Effect.gen(function* () {
     return yield* git.getReviewDiffFileContents(input);
   });
 
-  // Pult: a checkout's history for the shell's Source Control Graph, Git's alone.
-  const requireGit = Effect.fn("ReviewService.requireGit")(function* (
+  // Pult: a checkout's history for the shell's Source Control Graph, Git's or an xaxis checkout's.
+  const requireHistory = Effect.fn("ReviewService.requireHistory")(function* (
     operation: "ReviewService.getLog" | "ReviewService.getRefs",
     cwd: string,
   ) {
     yield* assertWorkspaceBoundCwd(operation, cwd);
     const handle = yield* vcsRegistry.detect({ cwd, requestedKind: "auto" });
-    if (handle?.kind !== "git") {
+    if (handle?.kind !== "git" && handle?.kind !== "xaxis") {
       return yield* new VcsUnsupportedOperationError({
         operation,
         kind: handle?.kind ?? "unknown",
-        detail: "Commit history requires a Git repository.",
+        detail: "Commit history requires a Git repository or an xaxis checkout.",
       });
     }
+    return handle;
   });
 
   const getLog: ReviewService["Service"]["getLog"] = Effect.fn("ReviewService.getLog")(
     function* (input) {
-      yield* requireGit("ReviewService.getLog", input.cwd);
+      const handle = yield* requireHistory("ReviewService.getLog", input.cwd);
+      if (handle.kind === "xaxis") return yield* xaxis.getLog(handle.repository.rootPath, input);
       return yield* ReviewLog.getLog(git, input);
     },
   );
 
   const getRefs: ReviewService["Service"]["getRefs"] = Effect.fn("ReviewService.getRefs")(
     function* (input) {
-      yield* requireGit("ReviewService.getRefs", input.cwd);
+      const handle = yield* requireHistory("ReviewService.getRefs", input.cwd);
+      if (handle.kind === "xaxis") return yield* xaxis.getRefs(handle.repository.rootPath);
       return yield* ReviewLog.getRefs(git, input);
     },
   );

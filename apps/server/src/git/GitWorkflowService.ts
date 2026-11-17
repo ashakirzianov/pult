@@ -34,6 +34,7 @@ import {
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
 export class GitWorkflowService extends Context.Service<
@@ -180,6 +181,7 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const xaxis = yield* XaxisVcsDriver.XaxisVcsDriver;
   const fileSystem = yield* FileSystem.FileSystem;
 
   // Nested projects and path aliases must share the checkout's branch-mutation lease.
@@ -204,6 +206,14 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
+    // Pult: another kind's checkout, an xaxis one, runs no git.
+    if (handle.kind !== "git") {
+      return yield* new GitManagerError({
+        operation,
+        cwd,
+        detail: `This is ${handle.kind === "xaxis" ? "an xaxis checkout" : `a ${handle.kind} repository`}, which has no Git workflow.`,
+      });
+    }
     return handle;
   });
 
@@ -223,10 +233,21 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
+    // Pult: another kind's checkout, an xaxis one, runs no git.
+    if (handle.kind !== "git") {
+      return yield* new GitCommandError({
+        operation,
+        command: "vcs-route",
+        cwd,
+        reason: "not_a_repository",
+        detail: `This is ${handle.kind === "xaxis" ? "an xaxis checkout" : `a ${handle.kind} repository`}, not a Git repository.`,
+      });
+    }
     return handle;
   });
 
-  const detectGitRepositoryForStatus = Effect.fn("GitWorkflowService.detectGitRepositoryForStatus")(
+  // Pult: the handle, which callers route by kind; git's routes take `kind === "git"` alone.
+  const detectRepositoryForStatus = Effect.fn("GitWorkflowService.detectRepositoryForStatus")(
     function* (operation: string, cwd: string) {
       const handle = yield* registry.detect({ cwd }).pipe(
         Effect.mapError(
@@ -239,10 +260,7 @@ export const make = Effect.gen(function* () {
             }),
         ),
       );
-      if (!handle) {
-        return false;
-      }
-      return true;
+      return handle;
     },
   );
 
@@ -261,10 +279,8 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    if (!handle) {
-      return false;
-    }
-    return true;
+    // Pult: an xaxis checkout is not a Git repository here.
+    return handle?.kind === "git";
   });
 
   const routeGitManager =
@@ -324,23 +340,38 @@ export const make = Effect.gen(function* () {
           );
     }),
     status: Effect.fn("GitWorkflowService.status")(function (input) {
-      return detectGitRepositoryForStatus("GitWorkflowService.status", input.cwd).pipe(
-        Effect.flatMap((isGitRepository) =>
-          isGitRepository ? gitManager.status(input) : Effect.succeed(nonRepositoryStatus()),
+      return detectRepositoryForStatus("GitWorkflowService.status", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          handle?.kind === "git"
+            ? gitManager.status(input)
+            : handle?.kind === "xaxis"
+              ? Effect.all(
+                  [
+                    xaxis.localStatus(handle.repository.rootPath),
+                    xaxis.remoteStatus(handle.repository.rootPath),
+                  ],
+                  { concurrency: "unbounded" },
+                ).pipe(Effect.map(([local, remote]) => ({ ...local, ...remote })))
+              : Effect.succeed(nonRepositoryStatus()),
         ),
       );
     }),
     localStatus: Effect.fn("GitWorkflowService.localStatus")(function (input) {
-      return detectGitRepositoryForStatus("GitWorkflowService.localStatus", input.cwd).pipe(
-        Effect.flatMap((isGitRepository) =>
-          isGitRepository
+      return detectRepositoryForStatus("GitWorkflowService.localStatus", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          handle?.kind === "git"
             ? gitManager.localStatus(input)
-            : Effect.succeed(nonRepositoryLocalStatus()),
+            : handle?.kind === "xaxis"
+              ? xaxis.localStatus(handle.repository.rootPath)
+              : Effect.succeed(nonRepositoryLocalStatus()),
         ),
       );
     }),
     currentBranch: Effect.fn("GitWorkflowService.currentBranch")(function* (cwd) {
-      if (!(yield* detectGitRepositoryForStatus("GitWorkflowService.currentBranch", cwd))) {
+      const handle = yield* detectRepositoryForStatus("GitWorkflowService.currentBranch", cwd);
+      // Pult: an xaxis checkout is on its own line of main, as its status names it.
+      if (handle?.kind === "xaxis") return "main";
+      if (handle?.kind !== "git") {
         return null;
       }
       const result = yield* git.execute({
@@ -366,9 +397,13 @@ export const make = Effect.gen(function* () {
       });
     }),
     remoteStatus: Effect.fn("GitWorkflowService.remoteStatus")(function (input, options) {
-      return detectGitRepositoryForStatus("GitWorkflowService.remoteStatus", input.cwd).pipe(
-        Effect.flatMap((isGitRepository) =>
-          isGitRepository ? gitManager.remoteStatus(input, options) : Effect.succeed(null),
+      return detectRepositoryForStatus("GitWorkflowService.remoteStatus", input.cwd).pipe(
+        Effect.flatMap((handle) =>
+          handle?.kind === "git"
+            ? gitManager.remoteStatus(input, options)
+            : handle?.kind === "xaxis"
+              ? xaxis.remoteStatus(handle.repository.rootPath)
+              : Effect.succeed(null),
         ),
       );
     }),
