@@ -1,7 +1,7 @@
 // A Star's schedule (xaxis `pult/issues/star-schedules.md`): `.pult/schedules/<name>.md`, a front
-// matter with a required IANA `timezone` and one rule over the message as its body. Read
-// strictly: a file that is anything else is no schedule, and says why. Its `to`, the channel a
-// run lands in, is any channel's slug, `user` where absent. Every due time is a function of the file alone.
+// matter with a required IANA `timezone` and one rule over the message as its body, read strictly.
+// Its `to` is any channel's slug, `user` where absent; a `run` command makes it a watcher
+// (`./command.ts`). Every due time is a function of the file alone.
 import { DateTime, Option } from "../host.ts";
 import { entry, frontMatter, SYSTEM_DIRECTORY } from "../stars/record.ts";
 import { isChannel, USER_CHANNEL, type Channel } from "../stars/channels.ts";
@@ -24,7 +24,15 @@ const INTERVALS: ReadonlyMap<string, number> = new Map([
   ["12h", 720],
 ]);
 
-const KEYS: ReadonlySet<string> = new Set(["timezone", "time", "days", "date", "every", "to"]);
+const KEYS: ReadonlySet<string> = new Set([
+  "timezone",
+  "time",
+  "days",
+  "date",
+  "every",
+  "to",
+  "run",
+]);
 
 interface ClockTime {
   readonly hour: number;
@@ -57,6 +65,8 @@ export interface Schedule {
   readonly to: Channel;
   /** The message, the body with its surrounding blank lines dropped. */
   readonly text: string;
+  /** A watcher's command line, run at each due time; its run is delivered only when it printed. */
+  readonly command: string | undefined;
 }
 
 export type Parsed =
@@ -120,7 +130,7 @@ export function parseSchedule(name: string, text: string): Parsed {
       return problem(`its front matter's line "${line}" is not \`key: value\``);
     if (!KEYS.has(parsed.key))
       return problem(
-        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date, every and to`,
+        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date, every, to and run`,
       );
     if (fields.has(parsed.key)) return problem(`\`${parsed.key}\` is given twice`);
     fields.set(parsed.key, parsed.value);
@@ -137,13 +147,17 @@ export function parseSchedule(name: string, text: string): Parsed {
       `\`to\` "${to}" is no channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters`,
     );
 
+  const command = fields.get("run");
+  if (command !== undefined && command.trim() === "")
+    return problem("`run` is empty; it is the command to run, best a script of this folder");
+
   const time = fields.get("time");
   const days = fields.get("days");
   const date = fields.get("date");
   const every = fields.get("every");
   const schedule = (rule: Rule): Parsed => ({
     ok: true,
-    schedule: { name, timezone, zone: zone.value, rule, to, text: message },
+    schedule: { name, timezone, zone: zone.value, rule, to, text: message, command },
   });
   if (time !== undefined && every !== undefined)
     return problem("it has both `time` and `every`; a schedule has one of them");

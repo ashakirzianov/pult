@@ -57,6 +57,22 @@ describe("parseSchedule", () => {
     assert.strictEqual(to(`timezone: UTC\nevery: 1h\nto: ${"a".repeat(51)}`), "a".repeat(51));
   });
 
+  it("reads `run` as a watcher's command, as written, and none where absent", () => {
+    const command = (matter: string) => {
+      const parsed = parseSchedule("mail", file(matter));
+      return parsed.ok ? parsed.schedule.command : parsed.problem;
+    };
+    assert.strictEqual(command("timezone: UTC\nevery: 15m"), undefined);
+    assert.strictEqual(
+      command("timezone: UTC\nevery: 15m\nrun: ./mail/watch.sh --new"),
+      "./mail/watch.sh --new",
+    );
+    assert.strictEqual(
+      command('timezone: UTC\ntime: 09:00\nrun: "echo \\"a: b\\""'),
+      'echo "a: b"',
+    );
+  });
+
   // Strict on purpose: a typo, or a key nobody implements, must not run as something else.
   const invalid: ReadonlyArray<readonly [name: string, text: string, problem: RegExp]> = [
     ["Standup", file("timezone: UTC\ntime: 09:00"), /lowercase letters, digits and hyphens/],
@@ -102,6 +118,9 @@ describe("parseSchedule", () => {
     ["standup", file(`timezone: UTC\ntime: 09:00\nto: ${"a".repeat(52)}`), /is no channel's/],
     ["standup", file("timezone: UTC\ntime: 09:00\nto:"), /`to` "" is no channel's/],
     ["standup", file("timezone: UTC\ntime: 09:00\nto: work\nto: user"), /`to` is given twice/],
+    ["standup", file("timezone: UTC\nevery: 15m\nrun:"), /`run` is empty/],
+    ["standup", file('timezone: UTC\nevery: 15m\nrun: "  "'), /`run` is empty/],
+    ["standup", file("timezone: UTC\nevery: 15m\nrun: a\nrun: b"), /`run` is given twice/],
   ];
   it.each(invalid)("finds %j %j no schedule", (name, text, expected) => {
     const parsed = parseSchedule(name, text);

@@ -3,9 +3,10 @@
  * (docs/internals/plugins.md, Bundled plugins). Its routes are the one
  * `host.serve` dispatch below; its tools register last.
  */
-import { Effect, HttpServerResponse, Layer, type PluginHost } from "./host.ts";
+import { Effect, HttpServerResponse, Layer, type PluginHost, ProcessRunner } from "./host.ts";
 import * as KeepAwake from "./keepAwake/keepAwake.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
+import { runCommand } from "./schedules/command.ts";
 import * as Schedules from "./schedules/schedules.ts";
 import * as Delivery from "./stars/deliver.ts";
 import * as ListTool from "./stars/listTool.ts";
@@ -34,7 +35,11 @@ const features: ReadonlyArray<string> = [
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
   const deliverTo = yield* Delivery.make;
   const stars = yield* Stars.make;
-  const schedules = yield* Schedules.make(stars, deliverTo(stars));
+  // The server's own runner, over the spawner of its context.
+  const runner = yield* ProcessRunner.ProcessRunner.pipe(Effect.provide(ProcessRunner.layer));
+  const schedules = yield* Schedules.make(stars, deliverTo(stars), (root, command) =>
+    runCommand(root, command).pipe(Effect.provideService(ProcessRunner.ProcessRunner, runner)),
+  );
   const keepAwake = yield* KeepAwake.make();
   const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const kept = yield* XaxisKept.make(stars.directory);

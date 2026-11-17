@@ -10,6 +10,7 @@ import { DateTime, Effect, FileSystem, Layer, Option, Path, ServerConfig } from 
 import type { Deliver, Delivered, Delivery } from "../stars/deliver.ts";
 import type { Star, StarsView } from "../stars/stars.ts";
 import { fakeServer } from "../stars/testing.ts";
+import type { CommandOutcome, RunCommand } from "./command.ts";
 import * as Schedules from "./schedules.ts";
 
 const STANDUP = `---
@@ -21,7 +22,8 @@ Time for the standup.
 
 /**
  * One Star over a fake server, and the schedules over a fake `deliver` that launches a message
- * the first time its key is seen and replays it after; `pass` runs the source as the tick would.
+ * the first time its key is seen and replays it after, and a fake `runCommand` that is what
+ * `outcomes` says for its command, silent where it says nothing; `pass` runs the source as the tick would.
  * The schedules see the file system as `fileSystem` makes it of the real one.
  */
 const harnessWith = (
@@ -61,9 +63,17 @@ const harnessWith = (
             : { outcome: "launched", threadId: ThreadId.make(`thread-${keys.size}`) },
         );
       });
+    const commands: Array<{ readonly root: string; readonly command: string }> = [];
+    const outcomes = new Map<string, CommandOutcome>();
+    const runCommand: RunCommand = (root, command) =>
+      Effect.sync(() => {
+        commands.push({ root, command });
+        return outcomes.get(command) ?? { kind: "silent" };
+      });
     const schedules = yield* Schedules.make(
       { directory: server.directory, list: Effect.succeed([star]) },
       deliver,
+      runCommand,
     ).pipe(
       Effect.provide(server.layer),
       Effect.provideService(FileSystem.FileSystem, fileSystem(fs)),
@@ -120,6 +130,8 @@ const harnessWith = (
       star,
       deliveries,
       behaviour,
+      commands,
+      outcomes,
       schedules,
       config,
       pass,
@@ -134,6 +146,15 @@ const harnessWith = (
   }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
 
 const harness = harnessWith();
+
+const WATCHER = `---
+timezone: UTC
+every: 15m
+to: mail
+run: ./watch.sh
+---
+New mail came in.
+`;
 
 describe("namesSchedules", () => {
   it("is a Star's folder, its .pult, its schedules and its record, and nothing else", () => {
@@ -375,7 +396,7 @@ describe("the pass", () => {
       assert.strictEqual(told?.to, "work");
       assert.strictEqual(
         told?.text,
-        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every and to. Fix the file or delete it; Pult tells you once per content.",
+        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every, to and run. Fix the file or delete it; Pult tells you once per content.",
       );
       assert.match(told?.key ?? "", /^schedule-problem:standup:[0-9a-f]{16}$/);
       const [standup] = yield* h.view;
@@ -518,15 +539,17 @@ describe("the pass", () => {
       yield* h.fs.writeFileString(off, "");
       yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
       yield* h.write("typo", STANDUP.replace("time:", "tme:"), "2026-11-10T08:00:00Z");
+      yield* h.write("mail", WATCHER, "2026-11-10T08:00:00Z");
       yield* h.clock("2026-11-10T09:00:01Z");
       yield* h.pass;
       assert.isFalse(yield* h.schedules.firing);
       assert.strictEqual(h.deliveries.length, 0);
+      assert.deepStrictEqual(h.commands, []);
       assert.deepStrictEqual(yield* h.records("standup"), []);
       // The page still sees them.
       assert.deepStrictEqual(
         (yield* h.view).map((each) => each.name),
-        ["standup", "typo"],
+        ["mail", "standup", "typo"],
       );
 
       // Looked for at each read: removed, the run fires late with no restart.
@@ -541,6 +564,116 @@ describe("the pass", () => {
           "Pult, about schedule typo",
         ],
       );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "delivers a watcher's printed run, its message then the output, once, and records it",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.outcomes.set("./watch.sh", { kind: "printed", output: "From: a@example.com\n" });
+        yield* h.write("mail", WATCHER, "2026-11-10T08:00:00Z");
+        yield* h.clock("2026-11-10T08:15:30Z");
+        yield* h.pass;
+        assert.deepStrictEqual(h.commands, [{ root: h.star.root, command: "./watch.sh" }]);
+        assert.deepStrictEqual(h.deliveries, [
+          {
+            star: h.star,
+            text: "New mail came in.\n\nFrom: a@example.com\n",
+            from: "schedule mail's command, ran 2026-11-10 08:15 UTC",
+            key: "schedule:mail:2026-11-10T08:15:00.000Z",
+            to: "mail",
+            sender: "plugin",
+          },
+        ]);
+        // Read back on the next tick, and not run again until the next due time.
+        yield* h.clock("2026-11-10T08:15:35Z");
+        yield* h.pass;
+        yield* h.clock("2026-11-10T08:29:00Z");
+        yield* h.pass;
+        assert.strictEqual(h.commands.length, 1);
+        assert.strictEqual(h.deliveries.length, 1);
+        const [mail] = yield* h.view;
+        assert.deepInclude(mail, {
+          rule: "every 15m, runs ./watch.sh",
+          last: {
+            due: "2026-11-10T08:15:00.000Z",
+            fired: "2026-11-10T08:15:30.000Z",
+            result: "launched",
+            error: null,
+            thread: "thread-1",
+          },
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("delivers and records nothing for a silent run, and runs it again only when due", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      yield* h.write("mail", WATCHER, "2026-11-10T08:00:00Z");
+      yield* h.clock("2026-11-10T08:15:01Z");
+      yield* h.pass;
+      yield* h.clock("2026-11-10T08:15:06Z");
+      yield* h.pass;
+      // The ten-minute read finds no record, and still does not run it again.
+      yield* h.clock("2026-11-10T08:25:06Z");
+      yield* h.pass;
+      assert.strictEqual(h.commands.length, 1);
+      yield* h.clock("2026-11-10T08:30:01Z");
+      yield* h.pass;
+      assert.strictEqual(h.commands.length, 2);
+      assert.deepStrictEqual(h.deliveries, []);
+      assert.deepStrictEqual(yield* h.records("mail"), []);
+      const [mail] = yield* h.view;
+      assert.strictEqual(mail?.last, null);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("records a failed run and tells work once, until a clean run, then again", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      const failed: CommandOutcome = { kind: "failed", error: "exited 2\nno such mailbox" };
+      h.outcomes.set("./watch.sh", failed);
+      yield* h.write("mail", WATCHER, "2026-11-10T08:00:00Z");
+      for (const at of ["08:15:01", "08:30:01", "08:45:01", "09:00:01", "09:15:01"]) {
+        // Clean at 08:45 only.
+        h.outcomes.set("./watch.sh", at === "08:45:01" ? { kind: "silent" } : failed);
+        yield* h.clock(`2026-11-10T${at}Z`);
+        yield* h.pass;
+      }
+      assert.strictEqual(h.commands.length, 5);
+      const told = h.deliveries.map((each) => [each.key, each.to, each.from]);
+      assert.deepStrictEqual(told, [
+        [
+          "schedule-command-failed:mail:2026-11-10T08:15:00.000Z",
+          "work",
+          "Pult, about schedule mail",
+        ],
+        [
+          "schedule-command-failed:mail:2026-11-10T09:00:00.000Z",
+          "work",
+          "Pult, about schedule mail",
+        ],
+      ]);
+      assert.strictEqual(
+        h.deliveries[0]?.text,
+        "`.pult/schedules/mail.md`'s command failed: exited 2\nno such mailbox. Pult tells you again only after it has run cleanly.",
+      );
+      assert.deepStrictEqual(yield* h.records("mail"), [
+        "2026-11-10T08-15Z.yaml",
+        "2026-11-10T08-30Z.yaml",
+        "2026-11-10T09-00Z.yaml",
+        "2026-11-10T09-15Z.yaml",
+      ]);
+      const [mail] = yield* h.view;
+      assert.deepStrictEqual(mail?.last, {
+        due: "2026-11-10T09:15:00.000Z",
+        fired: "2026-11-10T09:15:01.000Z",
+        result: "failed",
+        error: "exited 2\nno such mailbox",
+        thread: null,
+      });
     }).pipe(Effect.scoped),
   );
 

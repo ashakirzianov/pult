@@ -1,7 +1,7 @@
-// The Stars' schedules (xaxis `pult/issues/star-schedules.md`), parsed and kept in memory with the
-// next due time; read again when the watch names a schedule, when a run comes due, and every ten
-// minutes as the watch's backstop. The due check is a comparison on the server's tick; each due
-// run is one delivery as the plugin, then its record in `.pult/runs/`.
+// The Stars' schedules (xaxis `pult/issues/star-schedules.md`), kept in memory with the next due
+// time and read again when the watch names one, a run comes due, or ten minutes passed. Each due
+// run is one delivery as the plugin, then its record in `.pult/runs/`; a watcher's (`run:`) runs
+// its command first, and a silent command leaves no record, only memory.
 import {
   Cause,
   DateTime,
@@ -17,6 +17,7 @@ import {
   WorkspaceEntries,
 } from "../host.ts";
 import type { Deliver } from "../stars/deliver.ts";
+import type { CommandOutcome, RunCommand } from "./command.ts";
 import type { Star, Stars, StarsView } from "../stars/stars.ts";
 import {
   isRunFileName,
@@ -34,6 +35,7 @@ import {
   type Parsed,
   parseSchedule,
   ruleInWords,
+  type Schedule,
   SCHEDULES_DIRECTORY,
   scheduleName,
   wallClock,
@@ -125,6 +127,7 @@ const passedProblem = (file: ScheduleFile): string | undefined => {
 export const make = Effect.fn("Schedules.make")(function* (
   stars: Pick<Stars, "directory" | "list">,
   deliver: Deliver,
+  runCommand: RunCommand,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -149,6 +152,10 @@ export const make = Effect.fn("Schedules.make")(function* (
   /** The runs fired this run of the server whose record failed to write: not fired again until a restart. */
   const unrecorded = new Set<string>();
   const runKey = (star: Star, name: string, due: number) => `${star.id}:${name}:${iso(due)}`;
+  /** A watcher's last due run this run of the server, by `<star>:<name>`: a silent run leaves no record. */
+  const ran = new Map<string, number>();
+  /** The watchers whose last run failed, by `<star>:<name>`: told once per streak. */
+  const failing = new Set<string>();
 
   const firing = Effect.map(fs.exists(offFile), (off) => !off).pipe(
     Effect.catchCause((cause) =>
@@ -281,32 +288,37 @@ export const make = Effect.fn("Schedules.make")(function* (
    * One delivery of the run due at `due`, then its record; a failed delivery is recorded and not
    * retried, and a record that fails to write keeps the run from firing again until a restart.
    */
-  const fire = Effect.fn("Schedules.fire")(function* (star: Star, file: ScheduleFile, due: number) {
-    if (!file.parsed.ok) return;
-    const schedule = file.parsed.schedule;
-    const now = DateTime.toEpochMillis(yield* DateTime.now);
-    const late = now - due > LATE_MS ? `, delivered ${lateness(now - due)} late` : "";
-    const outcome = yield* deliver({
-      star,
-      text: schedule.text,
-      from: `schedule ${schedule.name}, due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`,
-      key: `schedule:${schedule.name}:${iso(due)}`,
-      to: schedule.to,
-      sender: "plugin",
-    }).pipe(
-      Effect.map((delivered) => ({
-        result: delivered.outcome,
-        error: null,
-        thread: delivered.threadId,
-      })),
-      Effect.catchCauseIf(notInterrupted, (cause) =>
-        Effect.succeed({
-          result: "failed" as const,
-          error: messageOf(Cause.squash(cause)),
-          thread: null,
-        }),
-      ),
-    );
+  const fire = Effect.fn("Schedules.fire")(function* (
+    star: Star,
+    schedule: Schedule,
+    due: number,
+    /** The message and its sender's line, or why the run failed before it had one. */
+    message: { readonly text: string; readonly from: string } | { readonly failed: string },
+  ) {
+    const outcome =
+      "failed" in message
+        ? { result: "failed" as const, error: message.failed, thread: null }
+        : yield* deliver({
+            star,
+            text: message.text,
+            from: message.from,
+            key: `schedule:${schedule.name}:${iso(due)}`,
+            to: schedule.to,
+            sender: "plugin",
+          }).pipe(
+            Effect.map((delivered) => ({
+              result: delivered.outcome,
+              error: null,
+              thread: delivered.threadId,
+            })),
+            Effect.catchCauseIf(notInterrupted, (cause) =>
+              Effect.succeed({
+                result: "failed" as const,
+                error: messageOf(Cause.squash(cause)),
+                thread: null,
+              }),
+            ),
+          );
     const record: RunRecord = {
       schedule: schedule.name,
       due: iso(due),
@@ -340,6 +352,70 @@ export const make = Effect.fn("Schedules.make")(function* (
       });
   });
 
+  /** A plain schedule's due run: its message, saying how late where it is. */
+  const fireMessage = Effect.fn("Schedules.fireMessage")(function* (
+    star: Star,
+    schedule: Schedule,
+    due: number,
+  ) {
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const late = now - due > LATE_MS ? `, delivered ${lateness(now - due)} late` : "";
+    yield* fire(star, schedule, due, {
+      text: schedule.text,
+      from: `schedule ${schedule.name}, due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`,
+    });
+  });
+
+  /**
+   * A watcher's due run: its command, then its message followed by what the command printed, or
+   * its failure, told to the Star once per streak of failures. A silent run is remembered alone.
+   */
+  const watch = Effect.fn("Schedules.watch")(function* (
+    star: Star,
+    schedule: Schedule,
+    command: string,
+    due: number,
+  ) {
+    const key = `${star.id}:${schedule.name}`;
+    ran.set(key, due);
+    const started = DateTime.toEpochMillis(yield* DateTime.now);
+    const outcome: CommandOutcome = yield* runCommand(star.root, command);
+    if (outcome.kind !== "failed") failing.delete(key);
+    switch (outcome.kind) {
+      case "silent":
+        return false;
+      case "printed":
+        yield* fire(star, schedule, due, {
+          text: `${schedule.text}\n\n${outcome.output}`,
+          from: `schedule ${schedule.name}'s command, ran ${wallClock(schedule.zone, started)} ${schedule.timezone}`,
+        });
+        return true;
+      case "failed":
+        yield* fire(star, schedule, due, { failed: outcome.error });
+        if (!failing.has(key)) {
+          failing.add(key);
+          yield* deliver({
+            star,
+            text: `\`${SCHEDULES_DIRECTORY}/${schedule.name}.md\`'s command failed: ${outcome.error}. Pult tells you again only after it has run cleanly.`,
+            from: `Pult, about schedule ${schedule.name}`,
+            key: `schedule-command-failed:${schedule.name}:${iso(due)}`,
+            // Pult's own notice, as a file that is no schedule's.
+            to: "work",
+            sender: "plugin",
+          }).pipe(
+            Effect.catchCauseIf(notInterrupted, (cause) =>
+              Effect.logWarning("Could not tell a Star its schedule's command failed.", {
+                starId: star.id,
+                schedule: schedule.name,
+                cause,
+              }),
+            ),
+          );
+        }
+        return true;
+    }
+  });
+
   /** Tells the Star once per content why a file of its schedules will not run. */
   const tell = Effect.fn("Schedules.tell")(function* (star: Star, file: ScheduleFile, why: string) {
     const hash = yield* digest.digestHex(Digest.sha256, new TextEncoder().encode(file.text));
@@ -365,9 +441,13 @@ export const make = Effect.fn("Schedules.make")(function* (
     );
   });
 
-  /** Fires each latest due run with no record that came due since its file changed, and tells each problem. */
+  /**
+   * Fires each latest due run with no record that came due since its file changed, and tells each
+   * problem; then runs the due watchers' commands at once, the pass waiting for them.
+   */
   const fireDue = Effect.fn("Schedules.fireDue")(function* (now: number) {
     let fired = false;
+    const watchers: Array<{ star: Star; schedule: Schedule; command: string; due: number }> = [];
     for (const { star, files } of known)
       for (const file of files)
         yield* Effect.gen(function* () {
@@ -378,8 +458,14 @@ export const make = Effect.fn("Schedules.make")(function* (
           const due = latestDue(file.parsed.schedule, now);
           if (due === undefined || due < file.floor || file.runs.has(runFileName(due))) return;
           if (unrecorded.has(runKey(star, file.name, due))) return;
+          const schedule = file.parsed.schedule;
+          if (schedule.command !== undefined) {
+            if (ran.get(`${star.id}:${file.name}`) !== due)
+              watchers.push({ star, schedule, command: schedule.command, due });
+            return;
+          }
           fired = true;
-          yield* fire(star, file, due);
+          yield* fireMessage(star, schedule, due);
         }).pipe(
           Effect.catchCauseIf(notInterrupted, (cause) =>
             Effect.logWarning("Could not run a Star's schedule.", {
@@ -389,7 +475,24 @@ export const make = Effect.fn("Schedules.make")(function* (
             }),
           ),
         );
-    return fired;
+    const watched = yield* Effect.forEach(
+      watchers,
+      ({ star, schedule, command, due }) =>
+        watch(star, schedule, command, due).pipe(
+          Effect.catchCauseIf(notInterrupted, (cause) =>
+            Effect.as(
+              Effect.logWarning("Could not run a Star's schedule.", {
+                starId: star.id,
+                schedule: schedule.name,
+                cause,
+              }),
+              false,
+            ),
+          ),
+        ),
+      { concurrency: "unbounded" },
+    );
+    return fired || watched.includes(true);
   });
 
   const earliestAfter = (now: number) => {
@@ -447,7 +550,10 @@ export const make = Effect.fn("Schedules.make")(function* (
       return {
         name: file.name,
         path: file.path,
-        rule: ruleInWords(schedule.rule),
+        rule:
+          schedule.command === undefined
+            ? ruleInWords(schedule.rule)
+            : `${ruleInWords(schedule.rule)}, runs ${schedule.command}`,
         timezone: schedule.timezone,
         next: passed !== undefined || next === undefined ? null : iso(next),
         spent:
