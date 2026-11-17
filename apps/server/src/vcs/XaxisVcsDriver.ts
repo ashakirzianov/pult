@@ -785,21 +785,13 @@ const make = Effect.gen(function* () {
               Effect.map((answer) => answer.changesets),
               Effect.mapError(refused),
             );
-      let walked: ReadonlyArray<XaxisCli.XaxisChangeset>;
-      if (named.size === 1 && named.has("head")) {
-        walked = yield* page([], skip, want);
-      } else if (named.size === 1 && named.has("tip")) {
-        walked = yield* page(["--from", tip.tip], skip, want);
-      } else if (named.size === 2 && named.has("head") && named.has("tip")) {
-        // The incoming line, the tip down to the base, then the checkout's own log.
-        const incoming = yield* page(["--from", tip.tip], skip, Math.min(want, tip.behind - skip));
-        const own = yield* page([], Math.max(0, skip - tip.behind), want - incoming.length);
-        walked = [...incoming, ...own];
-      } else if (named.size === 1) {
-        const [hash] = named;
+      const hashes = [...named].filter((ref) => ref !== "head" && ref !== "tip");
+      if (named.size === 1 && hashes.length === 1) {
+        // A hash alone: below the checkout's head, or anywhere on main's line.
+        const [hash] = hashes;
         const own = yield* page([], 0, OWN_LOG_SEARCH);
         const at = own.findIndex((changeset) => changeset.hash === hash);
-        walked =
+        const walked =
           at >= 0
             ? yield* page([], at + skip, want)
             : yield* page(["--from", hash!], skip, want).pipe(
@@ -816,8 +808,89 @@ const make = Effect.gen(function* () {
                     ),
                 }),
               );
+        return {
+          commits: walked.slice(0, limit).map((changeset) => commitOf(changeset, decorations)),
+          hasMore: walked.length > limit,
+        } satisfies ReviewLogResult;
+      }
+      // Several starts (the Graph's stale head and tip after a move), each placed on the
+      // incoming line (tip down to base) or the checkout's own log (stack, base, history):
+      // the walk is the incoming line from its highest start, then the own log from its.
+      const own = hashes.length > 0 ? yield* page([], 0, OWN_LOG_SEARCH) : [];
+      const incomingSearch =
+        hashes.length > 0
+          ? yield* page(["--from", tip.tip], 0, Math.min(tip.behind, OWN_LOG_SEARCH))
+          : [];
+      let ownFrom = named.has("head") ? 0 : Number.POSITIVE_INFINITY;
+      let incomingFrom = named.has("tip") && tip.behind > 0 ? 0 : Number.POSITIVE_INFINITY;
+      // With nothing incoming the tip is the base, which tops the own log below the stack.
+      if (named.has("tip") && tip.behind === 0) ownFrom = Math.min(ownFrom, read.stack.length);
+      const unplaced: string[] = [];
+      let belowSearch = false;
+      let incomingLine: ReadonlyArray<XaxisCli.XaxisChangeset> | undefined;
+      for (const hash of hashes) {
+        const inOwn = own.findIndex((changeset) => changeset.hash === hash);
+        const inIncoming = incomingSearch.findIndex((changeset) => changeset.hash === hash);
+        if (inOwn >= 0) ownFrom = Math.min(ownFrom, inOwn);
+        else if (inIncoming >= 0) incomingFrom = Math.min(incomingFrom, inIncoming);
+        else {
+          // Past both searches: on main's line (deep on the incoming line, or below the
+          // base), or a changeset of a stack a land rebased onto a moved main, which is nowhere.
+          const onMain = yield* log("XaxisVcsDriver.getLog.place", root, [
+            "--from",
+            hash,
+            "-n",
+            "1",
+          ]).pipe(
+            Effect.map((answer) => answer.changesets[0]?.hash === hash),
+            Effect.catchTags({ XaxisRefusal: () => Effect.succeed(false) }),
+            Effect.mapError(refused),
+          );
+          if (!onMain) {
+            unplaced.push(hash);
+            continue;
+          }
+          incomingLine ??=
+            tip.behind > OWN_LOG_SEARCH ? yield* page(["--from", tip.tip], 0, tip.behind) : [];
+          const deep = incomingLine.findIndex((changeset) => changeset.hash === hash);
+          if (deep >= 0) incomingFrom = Math.min(incomingFrom, deep);
+          // Below the base and past the own search, so below every start the search placed.
+          else belowSearch = true;
+        }
+      }
+      if (unplaced.length > 0) {
+        return yield* new GitCommandError({
+          operation: "XaxisVcsDriver.getLog",
+          command: "xaxis log",
+          cwd: root,
+          detail: `${unplaced.join(", ")} ${unplaced.length === 1 ? "is" : "are"} on neither this checkout's line nor main's.`,
+        });
+      }
+      if (
+        belowSearch &&
+        ownFrom === Number.POSITIVE_INFINITY &&
+        incomingFrom === Number.POSITIVE_INFINITY
+      ) {
+        todo("an xaxis history walked from several changesets all deep below the base");
+      }
+      let walked: ReadonlyArray<XaxisCli.XaxisChangeset>;
+      if (incomingFrom === Number.POSITIVE_INFINITY) {
+        walked = yield* page([], ownFrom + skip, want);
       } else {
-        todo("an xaxis history walked from several changesets");
+        // The incoming line runs into the base, so the own log goes on from it at the latest.
+        ownFrom = Math.min(ownFrom, read.stack.length);
+        const incomingLength = tip.behind - incomingFrom;
+        const incoming = yield* page(
+          ["--from", tip.tip],
+          incomingFrom + skip,
+          Math.min(want, incomingLength - skip),
+        );
+        const rest = yield* page(
+          [],
+          ownFrom + Math.max(0, skip - incomingLength),
+          want - incoming.length,
+        );
+        walked = [...incoming, ...rest];
       }
       return {
         commits: walked.slice(0, limit).map((changeset) => commitOf(changeset, decorations)),

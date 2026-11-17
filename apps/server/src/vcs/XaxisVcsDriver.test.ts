@@ -353,6 +353,22 @@ describe.skipIf(skipped)(suite, () => {
             shas: [first],
             hasMore: false,
           });
+          // Several hashes, each placed on the incoming line or the checkout's own.
+          assert.deepEqual(yield* page({ refs: [first, other1] }), {
+            shas: [other1, first],
+            hasMore: false,
+          });
+          assert.deepEqual(yield* page({ refs: [stacked, other1] }), {
+            shas: [other1, stacked, first],
+            hasMore: false,
+          });
+          assert.deepEqual(yield* page({ refs: [first, other1], skip: 1, limit: 1 }), {
+            shas: [first],
+            hasMore: false,
+          });
+          const nowhere = `sha256:${"0".repeat(64)}`;
+          const unplaced = yield* Effect.flip(page({ refs: [stacked, nowhere] }));
+          assert.include(unplaced.message, `${nowhere} is on neither`);
 
           const [tip, , head] = (yield* review.getLog({ cwd: a, refs: both, limit: 3 })).commits;
           assert.deepEqual(tip?.refs, [XAXIS_TIP_REF]);
@@ -427,6 +443,14 @@ describe.skipIf(skipped)(suite, () => {
         assert.equal((yield* workflow.remoteStatus({ cwd: a }))?.aheadCount, 2);
 
         // Commit & Land: the deletion committed, the stack of three rebased onto b's landings.
+        const review = yield* ReviewService.ReviewService;
+        const shas = (refs: ReadonlyArray<string>) =>
+          review
+            .getLog({ cwd: a, refs: [...refs] })
+            .pipe(Effect.map((result) => result.commits.map((commit) => commit.sha)));
+        const refsOf = () =>
+          review.getRefs({ cwd: a }).pipe(Effect.map((refs) => refs.refs.map((ref) => ref.sha)));
+        const overMoved = yield* refsOf();
         const both = yield* act({ action: "commit_push", commitMessage: "fourth" });
         assert.deepEqual(
           { commit: both.commit.status, push: both.push, steps: steps() },
@@ -451,7 +475,16 @@ describe.skipIf(skipped)(suite, () => {
         // Land alone, a commit made outside Pult; Commit & Land with nothing to commit lands too.
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\nfour\n");
         xaxis(a, "commit", "-m", "fifth");
+        const beforeLand = yield* refsOf();
         const land = yield* act({ action: "push" });
+        // The Graph's stale head and tip after a land: their history as it is now.
+        assert.deepEqual(yield* shas(beforeLand), yield* shas([XAXIS_HEAD_REF, XAXIS_TIP_REF]));
+        assert.equal((yield* shas(beforeLand))[1], beforeLand[1]);
+        // A land over a moved main rebased the stack, so its old head is nowhere.
+        assert.include(
+          (yield* Effect.flip(shas(overMoved))).message,
+          `${overMoved[0]} is on neither`,
+        );
         assert.deepEqual(
           [land.commit.status, land.push.status, steps()],
           [
