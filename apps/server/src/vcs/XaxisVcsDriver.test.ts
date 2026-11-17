@@ -14,6 +14,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type { GitActionProgressEvent, GitRunStackedActionInput } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as GitManager from "../git/GitManager.ts";
@@ -380,6 +381,170 @@ describe.skipIf(skipped)(suite, () => {
             ],
           });
         }),
+    );
+
+    it.effect("commits, lands, gets latest, and refuses what xaxis has not", () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const events: GitActionProgressEvent[] = [];
+        const act = (input: Omit<GitRunStackedActionInput, "actionId" | "cwd">) => {
+          events.length = 0;
+          return workflow.runStackedAction(
+            { actionId: "action", cwd: a, ...input },
+            {
+              progressReporter: { publish: (event) => Effect.sync(() => void events.push(event)) },
+            },
+          );
+        };
+        const steps = () =>
+          events.map((event) =>
+            event.kind === "phase_started"
+              ? `${event.kind}:${event.phase}`
+              : event.kind === "action_started"
+                ? `${event.kind}:${event.phases.join(",")}`
+                : event.kind,
+          );
+
+        const pr = yield* Effect.flip(act({ action: "commit_push_pr", commitMessage: "x" }));
+        assert.include(pr.message, "xaxis has no pull requests or branches");
+        const unnamed = yield* Effect.flip(act({ action: "commit" }));
+        assert.include(unnamed.message, "needs a message");
+
+        const committed = yield* act({
+          action: "commit",
+          commitMessage: "third",
+          filePaths: ["n.txt"],
+        });
+        const third = (yield* workflow.localStatus({ cwd: a })).headSha!;
+        assert.deepEqual(
+          { commit: committed.commit, push: committed.push, steps: steps() },
+          {
+            commit: { status: "created", commitSha: third, subject: "third" },
+            push: { status: "skipped_not_requested" },
+            steps: ["action_started:commit", "phase_started:commit", "action_finished"],
+          },
+        );
+        assert.equal((yield* workflow.remoteStatus({ cwd: a }))?.aheadCount, 2);
+
+        // Commit & Land: the deletion committed, the stack of three rebased onto b's landings.
+        const both = yield* act({ action: "commit_push", commitMessage: "fourth" });
+        assert.deepEqual(
+          { commit: both.commit.status, push: both.push, steps: steps() },
+          {
+            commit: "created",
+            push: { status: "pushed", branch: "main" },
+            steps: [
+              "action_started:commit,push",
+              "phase_started:commit",
+              "phase_started:push",
+              "action_finished",
+            ],
+          },
+        );
+        const landedAll = yield* workflow.localStatus({ cwd: a });
+        assert.deepEqual(
+          [landedAll.hasWorkingTreeChanges, landedAll.branchChanges],
+          [false, undefined],
+        );
+        assert.equal(NodeFS.readFileSync(NodePath.join(a, "o.txt"), "utf8"), "other again\n");
+
+        // Land alone, a commit made outside Pult; Commit & Land with nothing to commit lands too.
+        NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\nfour\n");
+        xaxis(a, "commit", "-m", "fifth");
+        const land = yield* act({ action: "push" });
+        assert.deepEqual(
+          [land.commit.status, land.push.status, steps()],
+          [
+            "skipped_not_requested",
+            "pushed",
+            ["action_started:push", "phase_started:push", "action_finished"],
+          ],
+        );
+        NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\nfour\nfive\n");
+        xaxis(a, "commit", "-m", "sixth");
+        const onlyLand = yield* act({ action: "commit_push", commitMessage: "unused" });
+        assert.deepEqual(
+          [onlyLand.commit.status, onlyLand.push.status],
+          ["skipped_no_changes", "pushed"],
+        );
+
+        // b is behind a's landings: Get latest is refused over an edit, in the CLI's words,
+        // then brings them, then is up to date.
+        NodeFS.writeFileSync(NodePath.join(b, "e.txt"), "edit\n");
+        const over = yield* Effect.flip(workflow.pullCurrentBranch(b));
+        assert.include(over.message, "A goto is refused over uncommitted edits");
+        NodeFS.rmSync(NodePath.join(b, "e.txt"));
+        assert.equal((yield* workflow.pullCurrentBranch(b)).status, "pulled");
+        assert.equal(NodeFS.readFileSync(NodePath.join(b, "n.txt"), "utf8"), "new\n");
+        assert.deepEqual(yield* workflow.pullCurrentBranch(b), {
+          status: "skipped_up_to_date",
+          refName: "main",
+          upstreamRef: null,
+        });
+      }),
+    );
+
+    it.effect("fails a land that conflicts, keeps mine, then commits and lands it", () =>
+      Effect.gen(function* () {
+        const workflow = yield* GitWorkflowService.GitWorkflowService;
+        const events: GitActionProgressEvent[] = [];
+        const act = (input: Omit<GitRunStackedActionInput, "actionId" | "cwd">) =>
+          workflow.runStackedAction(
+            { actionId: "action", cwd: a, ...input },
+            {
+              progressReporter: { publish: (event) => Effect.sync(() => void events.push(event)) },
+            },
+          );
+
+        NodeFS.writeFileSync(NodePath.join(b, "f.txt"), "from b\n");
+        xaxis(b, "commit", "-m", "b's f");
+        xaxis(b, "land");
+        NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "from a\n");
+        const failed = yield* Effect.flip(act({ action: "commit_push", commitMessage: "a's f" }));
+        const sentence =
+          "The land conflicted in 1 file: fix the markers or keep a side, then Commit & Land again.";
+        assert.include(failed.message, sentence);
+        assert.deepEqual(events.at(-1), {
+          actionId: "action",
+          cwd: a,
+          action: "commit_push",
+          kind: "action_failed",
+          phase: "push",
+          message: sentence,
+        });
+        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).xaxis, {
+          conflicts: [{ path: "f.txt", markers: true }],
+          interrupted: null,
+        });
+
+        yield* workflow.resolveConflict({ cwd: a, paths: ["f.txt"], side: "mine" });
+        assert.equal(NodeFS.readFileSync(NodePath.join(a, "f.txt"), "utf8"), "from a\n");
+        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).xaxis?.conflicts, [
+          { path: "f.txt", markers: false },
+        ]);
+
+        const through = yield* act({ action: "commit_push", commitMessage: "a's f, kept" });
+        assert.equal(through.push.status, "pushed");
+        const after = yield* workflow.localStatus({ cwd: a });
+        assert.deepEqual([after.hasWorkingTreeChanges, after.xaxis?.conflicts], [false, []]);
+
+        // Take latest leaves nothing to commit: Commit & Land clears the conflict, landing none.
+        xaxis(b, "goto");
+        NodeFS.writeFileSync(NodePath.join(b, "f.txt"), "from b again\n");
+        xaxis(b, "commit", "-m", "b's f again");
+        xaxis(b, "land");
+        NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "from a again\n");
+        yield* Effect.flip(act({ action: "commit_push", commitMessage: "a's f again" }));
+        yield* workflow.resolveConflict({ cwd: a, paths: ["f.txt"], side: "main" });
+        const cleared = yield* act({ action: "commit_push", commitMessage: "take latest" });
+        assert.deepEqual(
+          [cleared.commit.status, cleared.push.status],
+          ["skipped_no_changes", "skipped_up_to_date"],
+        );
+        const latest = yield* workflow.localStatus({ cwd: a });
+        assert.deepEqual([latest.hasWorkingTreeChanges, latest.xaxis?.conflicts], [false, []]);
+        assert.equal(NodeFS.readFileSync(NodePath.join(a, "f.txt"), "utf8"), "from b again\n");
+      }),
     );
   });
 });

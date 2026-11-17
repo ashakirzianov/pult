@@ -14,8 +14,14 @@ import * as Hex from "effect/encoding/Hex";
 
 import {
   GitCommandError,
+  GitManagerError,
   VcsRepositoryDetectionError,
   VcsUnsupportedOperationError,
+  type GitActionProgressEvent,
+  type GitActionProgressPhase,
+  type GitManagerServiceError,
+  type GitRunStackedActionInput,
+  type GitRunStackedActionResult,
   type ReviewDiffFileContentsInput,
   type ReviewDiffFileContentsResult,
   type ReviewDiffFileStat,
@@ -26,12 +32,15 @@ import {
   type ReviewLogInput,
   type ReviewLogResult,
   type ReviewRefsResult,
+  type VcsPullResult,
   type VcsRepositoryIdentity,
+  type VcsResolveConflictInput,
   type VcsStatusLocalResult,
   type VcsStatusRemoteResult,
   type VcsStatusXaxis,
 } from "@t3tools/contracts";
 
+import type * as GitManager from "../git/GitManager.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -312,6 +321,19 @@ export class XaxisVcsDriver extends Context.Service<
       input: ReviewLogInput,
     ) => Effect.Effect<ReviewLogResult, GitCommandError>;
     readonly getRefs: (root: string) => Effect.Effect<ReviewRefsResult, GitCommandError>;
+    /** `vcsPull`: Get latest, the checkout moved to main's tip. */
+    readonly getLatest: (root: string) => Effect.Effect<VcsPullResult, GitCommandError>;
+    /** `gitRunStackedAction`: `commit` commits, `push` lands, `commit_push` is Commit & Land. */
+    readonly runStackedAction: (
+      root: string,
+      input: GitRunStackedActionInput,
+      options?: GitManager.GitRunStackedActionOptions,
+    ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    /** `vcs.resolveConflict`: one side of conflicted paths, taken whole. */
+    readonly resolveConflict: (
+      root: string,
+      input: VcsResolveConflictInput,
+    ) => Effect.Effect<void, GitCommandError>;
   }
 >()("t3/vcs/XaxisVcsDriver") {}
 
@@ -818,6 +840,177 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const getLatest: XaxisVcsDriver["Service"]["getLatest"] = Effect.fn("XaxisVcsDriver.getLatest")(
+    function* (root) {
+      const before = yield* status("XaxisVcsDriver.getLatest.status", root);
+      yield* cli
+        .write({ operation: "XaxisVcsDriver.getLatest", cwd: root, args: ["goto"] })
+        .pipe(Effect.mapError(refused));
+      const after = yield* status("XaxisVcsDriver.getLatest.status", root);
+      return {
+        status:
+          after.base === before.base && after.head === before.head
+            ? "skipped_up_to_date"
+            : "pulled",
+        refName: "main",
+        upstreamRef: null,
+      } satisfies VcsPullResult;
+    },
+  );
+
+  const runStackedAction: XaxisVcsDriver["Service"]["runStackedAction"] = Effect.fn(
+    "XaxisVcsDriver.runStackedAction",
+  )(function* (root, input, options) {
+    const operation = "XaxisVcsDriver.runStackedAction";
+    const emit = (
+      event:
+        | { readonly kind: "action_started"; readonly phases: GitActionProgressPhase[] }
+        | {
+            readonly kind: "phase_started";
+            readonly phase: "commit" | "push";
+            readonly label: string;
+          }
+        | { readonly kind: "action_finished"; readonly result: GitRunStackedActionResult }
+        | {
+            readonly kind: "action_failed";
+            readonly phase: GitActionProgressPhase | null;
+            readonly message: string;
+          },
+    ) =>
+      options?.progressReporter?.publish({
+        actionId: options.actionId ?? input.actionId,
+        cwd: input.cwd,
+        action: input.action,
+        ...event,
+      } as GitActionProgressEvent) ?? Effect.void;
+    const refuse = (detail: string) => new GitManagerError({ operation, cwd: input.cwd, detail });
+
+    const wantsCommit = input.action === "commit" || input.action === "commit_push";
+    const wantsLand = input.action === "push" || input.action === "commit_push";
+    let phase: "commit" | "push" | null = null;
+
+    const steps = Effect.gen(function* () {
+      if (
+        input.action === "create_pr" ||
+        input.action === "commit_push_pr" ||
+        input.featureBranch === true
+      ) {
+        return yield* refuse("xaxis has no pull requests or branches.");
+      }
+      yield* emit({
+        kind: "action_started",
+        phases: [
+          ...(wantsCommit ? ["commit" as const] : []),
+          ...(wantsLand ? ["push" as const] : []),
+        ],
+      });
+      const read = yield* status(`${operation}.status`, root);
+      // During a conflict the merged paths are changes too, and a commit takes the sides
+      // resolved; one resolved wholly to main's side has none, and its commit clears it.
+      let commit: GitRunStackedActionResult["commit"] = { status: "skipped_not_requested" };
+      let cleared = false;
+      if (wantsCommit && read.changes.length === 0 && read.conflict === null) {
+        commit = { status: "skipped_no_changes" };
+      } else if (wantsCommit) {
+        const message = input.commitMessage?.trim() ?? "";
+        if (message === "") {
+          return yield* refuse("An xaxis commit needs a message; Pult writes none for xaxis.");
+        }
+        phase = "commit";
+        yield* emit({ kind: "phase_started", phase, label: "Committing…" });
+        yield* cli
+          .write({
+            operation: `${operation}.commit`,
+            cwd: root,
+            args: ["commit", `--message=${message}`, "--", ...(input.filePaths ?? [])],
+          })
+          .pipe(Effect.mapError(refused));
+        const committed = yield* status(`${operation}.status`, root);
+        cleared = committed.head === read.head;
+        commit = cleared
+          ? { status: "skipped_no_changes" }
+          : {
+              status: "created",
+              commitSha: committed.head,
+              subject: message.split("\n", 1)[0]!.trim(),
+            };
+      }
+      let push: GitRunStackedActionResult["push"] = { status: "skipped_not_requested" };
+      if (wantsLand && cleared) {
+        // The checkout is at main's tip, with nothing to land.
+        push = { status: "skipped_up_to_date" };
+      } else if (wantsLand) {
+        phase = "push";
+        yield* emit({ kind: "phase_started", phase, label: "Landing…" });
+        yield* cli.land({ operation: `${operation}.land`, cwd: root }).pipe(
+          Effect.catchTags({
+            XaxisLandConflicted: () =>
+              status(`${operation}.status`, root).pipe(
+                Effect.flatMap((conflicted) => {
+                  const count = conflicted.conflict?.paths.length ?? 0;
+                  return Effect.fail(
+                    refuse(
+                      `The land conflicted in ${count} ${count === 1 ? "file" : "files"}: fix the markers or keep a side, then Commit & Land again.`,
+                    ),
+                  );
+                }),
+              ),
+          }),
+          Effect.mapError((error) => (error._tag === "XaxisRefusal" ? refused(error) : error)),
+        );
+        push = { status: "pushed", branch: "main" };
+      }
+      const result: GitRunStackedActionResult = {
+        action: input.action,
+        branch: { status: "skipped_not_requested" },
+        commit,
+        push,
+        pr: { status: "skipped_not_requested" },
+        toast: {
+          title: cleared
+            ? "Conflict cleared: main's side kept"
+            : push.status === "pushed"
+              ? commit.status === "created"
+                ? "Committed and landed on main"
+                : "Landed on main"
+              : commit.status === "created"
+                ? `Committed ${shortHash(commit.commitSha!)}`
+                : "Nothing to commit",
+          ...(commit.subject === undefined ? {} : { description: commit.subject }),
+          cta:
+            commit.status === "created" && push.status !== "pushed"
+              ? { kind: "run_action", label: "Land", action: { kind: "push" } }
+              : { kind: "none" },
+        },
+      };
+      yield* emit({ kind: "action_finished", result });
+      return result;
+    });
+
+    return yield* steps.pipe(
+      Effect.tapError((error) =>
+        emit({
+          kind: "action_failed",
+          phase,
+          // The CLI's own message and hint, as a refusal carries them.
+          message: error.detail,
+        }),
+      ),
+    );
+  });
+
+  const resolveConflict: XaxisVcsDriver["Service"]["resolveConflict"] = Effect.fn(
+    "XaxisVcsDriver.resolveConflict",
+  )(function* (root, input) {
+    yield* cli
+      .write({
+        operation: "XaxisVcsDriver.resolveConflict",
+        cwd: root,
+        args: ["resolve", `--${input.side}`, "--", ...input.paths],
+      })
+      .pipe(Effect.mapError(refused));
+  });
+
   return XaxisVcsDriver.of({
     localStatus,
     remoteStatus,
@@ -825,6 +1018,9 @@ const make = Effect.gen(function* () {
     getDiffFileContents,
     getLog,
     getRefs,
+    getLatest,
+    runStackedAction,
+    resolveConflict,
   });
 });
 

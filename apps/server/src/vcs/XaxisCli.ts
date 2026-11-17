@@ -14,6 +14,8 @@ const XAXIS_JSON_FORMAT = 1;
 /** How long a read may take; a keychain prompt that blocks a headless spawn ends here. */
 const READ_TIMEOUT_MS = 30_000;
 const READ_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+/** The exit status of a land that conflicted. */
+const LAND_CONFLICT_EXIT = 2;
 
 const Hash = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/));
 
@@ -101,6 +103,12 @@ export class XaxisRefusal extends Schema.TaggedError<XaxisRefusal>()("XaxisRefus
   }
 }
 
+/** A land that conflicted (exit 2): nothing landed, and the checkout holds main with the changes merged. */
+export class XaxisLandConflicted extends Schema.TaggedError<XaxisLandConflicted>()(
+  "XaxisLandConflicted",
+  { operation: Schema.String, cwd: Schema.String },
+) {}
+
 export type XaxisCliError = XaxisRefusal | GitCommandError;
 
 /** The first `error: <message> (<code>)` line of a refusal, and what follows as its hint. */
@@ -132,6 +140,17 @@ export interface XaxisRunInput {
 export interface XaxisCli {
   /** One run's stdout; a refusal fails as `XaxisRefusal`. */
   readonly run: (input: XaxisRunInput) => Effect.Effect<VcsProcess.VcsProcessOutput, XaxisCliError>;
+  /**
+   * A write (`commit`, `goto`, `resolve`), never cut short, since a killed write is what
+   * leaves a checkout interrupted.
+   */
+  readonly write: (
+    input: XaxisRunInput,
+  ) => Effect.Effect<VcsProcess.VcsProcessOutput, XaxisCliError>;
+  /** `land`, a write as `write`'s are; a conflict fails as `XaxisLandConflicted`. */
+  readonly land: (
+    input: Omit<XaxisRunInput, "args">,
+  ) => Effect.Effect<VcsProcess.VcsProcessOutput, XaxisCliError | XaxisLandConflicted>;
   /** One run's stdout decoded as a JSON document of `schema`. */
   readonly json: <S extends Schema.ConstraintDecoder<unknown>>(
     input: XaxisRunInput,
@@ -165,21 +184,28 @@ export const make = (
         )
       : commandError(input, error.message, error);
 
-  const run: XaxisCli["run"] = Effect.fn("XaxisCli.run")(function* (input) {
+  const spawn = Effect.fn("XaxisCli.spawn")(function* (input: XaxisRunInput, timeoutMs: number) {
     const binary = yield* command;
-    const result = yield* vcsProcess
+    return yield* vcsProcess
       .run({
         operation: input.operation,
         command: binary,
         args: input.args,
         cwd: input.cwd,
         allowNonZeroExit: true,
-        timeoutMs: READ_TIMEOUT_MS,
+        timeoutMs,
         maxOutputBytes: READ_MAX_OUTPUT_BYTES,
         // Every command holds the checkout's lock and refuses `checkout-busy` while another does.
         concurrency: { key: `xaxis:${input.cwd}`, limit: 1 },
       })
       .pipe(Effect.mapError(fromProcessError(input, binary)));
+  });
+
+  /** Exit 0 as the run's output, 1 as the refusal it prints, any other as a command error. */
+  const settle = Effect.fn("XaxisCli.settle")(function* (
+    input: XaxisRunInput,
+    result: VcsProcess.VcsProcessOutput,
+  ) {
     if (result.exitCode === 0) return result;
     const refusal = result.exitCode === 1 ? parseRefusal(result.stderr) : null;
     if (refusal !== null) {
@@ -193,6 +219,23 @@ export const make = (
       input,
       `xaxis exited with ${result.exitCode}: ${result.stderr.trim().split("\n", 1)[0] ?? ""}`,
     );
+  });
+
+  const run: XaxisCli["run"] = Effect.fn("XaxisCli.run")(function* (input) {
+    return yield* settle(input, yield* spawn(input, READ_TIMEOUT_MS));
+  });
+
+  const write: XaxisCli["write"] = Effect.fn("XaxisCli.write")(function* (input) {
+    return yield* settle(input, yield* spawn(input, Number.POSITIVE_INFINITY));
+  });
+
+  const land: XaxisCli["land"] = Effect.fn("XaxisCli.land")(function* (input) {
+    const run = { ...input, args: ["land"] };
+    const result = yield* spawn(run, Number.POSITIVE_INFINITY);
+    if (result.exitCode === LAND_CONFLICT_EXIT) {
+      return yield* new XaxisLandConflicted({ operation: input.operation, cwd: input.cwd });
+    }
+    return yield* settle(run, result);
   });
 
   const version = (input: XaxisRunInput) =>
@@ -217,5 +260,5 @@ export const make = (
     );
   });
 
-  return { run, json };
+  return { run, write, land, json };
 };

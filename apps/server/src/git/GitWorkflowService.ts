@@ -22,6 +22,7 @@ import {
   type GitPullRequestRefInput,
   type VcsPullResult,
   type VcsRemoveWorktreeInput,
+  type VcsResolveConflictInput,
   type GitResolvePullRequestResult,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
@@ -64,6 +65,10 @@ export class GitWorkflowService extends Context.Service<
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
+    /** Pult: `vcs.resolveConflict`, an xaxis checkout's alone. */
+    readonly resolveConflict: (
+      input: VcsResolveConflictInput,
+    ) => Effect.Effect<void, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
       options?: GitManager.GitRunStackedActionOptions,
@@ -191,11 +196,12 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((cwd) => withWorkspaceLease(cwd, effect)),
     );
 
-  const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
+  // Pult: any kind's handle, which the xaxis routes take before git's checks.
+  const resolveForWorkflow = Effect.fn("GitWorkflowService.resolveForWorkflow")(function* (
     operation: string,
     cwd: string,
   ) {
-    const handle = yield* registry.resolve({ cwd }).pipe(
+    return yield* registry.resolve({ cwd }).pipe(
       Effect.mapError(
         (cause) =>
           new GitManagerError({
@@ -206,22 +212,31 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    // Pult: another kind's checkout, an xaxis one, runs no git.
-    if (handle.kind !== "git") {
-      return yield* new GitManagerError({
-        operation,
-        cwd,
-        detail: `This is ${handle.kind === "xaxis" ? "an xaxis checkout" : `a ${handle.kind} repository`}, which has no Git workflow.`,
-      });
-    }
-    return handle;
   });
 
-  const ensureGitCommand = Effect.fn("GitWorkflowService.ensureGitCommand")(function* (
+  const noGitWorkflow = (operation: string, cwd: string, kind: string) =>
+    new GitManagerError({
+      operation,
+      cwd,
+      detail: `This is ${kind === "xaxis" ? "an xaxis checkout" : `a ${kind} repository`}, which has no Git workflow.`,
+    });
+
+  const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
     operation: string,
     cwd: string,
   ) {
-    const handle = yield* registry.resolve({ cwd }).pipe(
+    const handle = yield* resolveForWorkflow(operation, cwd);
+    // Pult: another kind's checkout, an xaxis one, runs no git.
+    if (handle.kind !== "git") return yield* noGitWorkflow(operation, cwd, handle.kind);
+    return handle;
+  });
+
+  // Pult: any kind's handle, which the xaxis routes take before git's checks.
+  const resolveForCommand = Effect.fn("GitWorkflowService.resolveForCommand")(function* (
+    operation: string,
+    cwd: string,
+  ) {
+    return yield* registry.resolve({ cwd }).pipe(
       Effect.mapError(
         (cause) =>
           new GitCommandError({
@@ -233,16 +248,24 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
+  });
+
+  const notGit = (operation: string, cwd: string, kind: string) =>
+    new GitCommandError({
+      operation,
+      command: "vcs-route",
+      cwd,
+      reason: "not_a_repository",
+      detail: `This is ${kind === "xaxis" ? "an xaxis checkout" : `a ${kind} repository`}, not a Git repository.`,
+    });
+
+  const ensureGitCommand = Effect.fn("GitWorkflowService.ensureGitCommand")(function* (
+    operation: string,
+    cwd: string,
+  ) {
+    const handle = yield* resolveForCommand(operation, cwd);
     // Pult: another kind's checkout, an xaxis one, runs no git.
-    if (handle.kind !== "git") {
-      return yield* new GitCommandError({
-        operation,
-        command: "vcs-route",
-        cwd,
-        reason: "not_a_repository",
-        detail: `This is ${handle.kind === "xaxis" ? "an xaxis checkout" : `a ${handle.kind} repository`}, not a Git repository.`,
-      });
-    }
+    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
     return handle;
   });
 
@@ -410,19 +433,43 @@ export const make = Effect.gen(function* () {
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,
     invalidateStatus: gitManager.invalidateStatus,
-    pullCurrentBranch: Effect.fn("GitWorkflowService.pullCurrentBranch")(function (cwd) {
-      return ensureGitCommand("GitWorkflowService.pullCurrentBranch", cwd).pipe(
-        Effect.andThen(git.pullCurrentBranch(cwd)),
-      );
+    pullCurrentBranch: Effect.fn("GitWorkflowService.pullCurrentBranch")(function* (cwd) {
+      const operation = "GitWorkflowService.pullCurrentBranch";
+      const handle = yield* resolveForCommand(operation, cwd);
+      // Pult: an xaxis checkout's pull is Get latest.
+      if (handle.kind === "xaxis") return yield* xaxis.getLatest(handle.repository.rootPath);
+      if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
+      return yield* git.pullCurrentBranch(cwd);
     }),
-    runStackedAction: Effect.fn("GitWorkflowService.runStackedAction")(function (input, options) {
-      return ensureGit("GitWorkflowService.runStackedAction", input.cwd).pipe(
-        Effect.flatMap((handle) =>
-          withCheckoutLease(
-            handle.repository.rootPath,
-            gitManager.runStackedAction(input, options),
-          ),
-        ),
+    resolveConflict: Effect.fn("GitWorkflowService.resolveConflict")(function* (input) {
+      const operation = "GitWorkflowService.resolveConflict";
+      const handle = yield* resolveForCommand(operation, input.cwd);
+      if (handle.kind !== "xaxis") {
+        return yield* new GitCommandError({
+          operation,
+          command: "vcs-route",
+          cwd: input.cwd,
+          detail:
+            "Only an xaxis checkout's conflicts are resolved here; fix a Git conflict by hand.",
+        });
+      }
+      return yield* xaxis.resolveConflict(handle.repository.rootPath, input);
+    }),
+    runStackedAction: Effect.fn("GitWorkflowService.runStackedAction")(function* (input, options) {
+      const handle = yield* resolveForWorkflow("GitWorkflowService.runStackedAction", input.cwd);
+      // Pult: an xaxis checkout commits and lands (`pult/decisions`, `xaxis-verbs`).
+      if (handle.kind === "xaxis") {
+        return yield* withCheckoutLease(
+          handle.repository.rootPath,
+          xaxis.runStackedAction(handle.repository.rootPath, input, options),
+        );
+      }
+      if (handle.kind !== "git") {
+        return yield* noGitWorkflow("GitWorkflowService.runStackedAction", input.cwd, handle.kind);
+      }
+      return yield* withCheckoutLease(
+        handle.repository.rootPath,
+        gitManager.runStackedAction(input, options),
       );
     }),
     resolvePullRequest: routeGitManager(

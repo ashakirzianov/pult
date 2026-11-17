@@ -201,6 +201,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.vcsSwitchRef]: "vcs",
   [WS_METHODS.vcsInit]: "vcs",
   [WS_METHODS.vcsSetRemote]: "vcs",
+  [WS_METHODS.vcsResolveConflict]: "vcs",
   [WS_METHODS.reviewGetBranchCommits]: "review",
   [WS_METHODS.reviewGetLog]: "review",
   [WS_METHODS.reviewGetRefs]: "review",
