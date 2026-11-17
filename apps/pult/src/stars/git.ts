@@ -33,9 +33,12 @@ export function starGit(environmentId: string) {
     status: async (root: string): Promise<HomeStatus> => {
       const status = await changes.status(root);
       const rootPath = status.workingTree.rootPath;
+      // Which repository holds the folder decides whether it may be made one (`ownRepository`): never a guess.
+      if (status.isRepo && rootPath === undefined)
+        throw new Error(`the server could not tell which repository holds ${root}`);
       return {
         repositoryRoot:
-          status.isRepo && rootPath !== undefined ? withoutTrailingSlash(rootPath) : null,
+          !status.isRepo || rootPath === undefined ? null : withoutTrailingSlash(rootPath),
         branch: status.refName,
         head: status.headSha ?? null,
         hasUpstream: status.hasUpstream,

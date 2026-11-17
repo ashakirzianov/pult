@@ -289,6 +289,11 @@ async function openStarFolder(star: Star): Promise<void> {
   );
 }
 
+/** What the Star's commands do not do yet, loud where it is asked for: `grep 'todo('` lists it. */
+function todo(reason: string): never {
+  throw new Error(`Pult's Stars do not do this yet: ${reason}.`);
+}
+
 /**
  * The palette's Star commands: Pult: Create Star (`pult-shell.createStar
  * [environmentId]`, a new Star on any held environment whose Pult plugin
@@ -309,11 +314,6 @@ async function openStarFolder(star: Star): Promise<void> {
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
  */
-/** What the Star's commands do not do yet, loud where it is asked for: `grep 'todo('` lists it. */
-function todo(reason: string): never {
-  throw new Error(`Pult's Stars do not do this yet: ${reason}.`);
-}
-
 export function registerStarCommands(): void {
   const category = { value: "Pult", original: "Pult" };
   registerAction2(
