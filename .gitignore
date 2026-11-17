@@ -17,6 +17,9 @@ release/
 release-mock/
 .t3
 .pult
+# Kept out of the tree for xaxis: the reference repositories come from
+# `node scripts/sync-reference-repos.ts`.
+/.repos/
 .idea/
 apps/web/.playwright
 apps/web/playwright-report

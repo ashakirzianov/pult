@@ -208,7 +208,8 @@ export const resolveReferenceRepoRef = Effect.fn("resolveReferenceRepoRef")(func
 });
 
 /**
- * Shallow-clone the upstream ref into a temp dir and copy its files into `.repos/<id>`.
+ * Shallow-clone the upstream ref into a temp dir and copy its files into `.repos/<id>`, which
+ * is gitignored: the reference repositories are not in the tree.
  * Never fetch upstream into this repo: its tags and shallow boundaries break `git fetch`.
  */
 export const planReferenceRepoSync = Effect.fn("planReferenceRepoSync")(function* (
@@ -306,21 +307,7 @@ const applyReferenceRepoSync = Effect.fn("applyReferenceRepoSync")(function* (
     yield* fs.rename(checkout, target);
   }).pipe(mapFsError);
 
-  yield* runGit(plan, rootDir, ["add", "--all", "--", repo.prefix]);
-  const status = yield* runGit(plan, rootDir, ["status", "--porcelain", "--", repo.prefix]);
-  if (status.trim().length === 0) {
-    yield* Console.log(`${repo.id} is already at ${plan.ref}.`);
-    return;
-  }
-  yield* runGit(plan, rootDir, [
-    "commit",
-    "--quiet",
-    "--message",
-    `chore(repos): sync ${repo.id} to ${plan.ref}\n\nUpstream: ${repo.repository} ${commit}`,
-    "--",
-    repo.prefix,
-  ]);
-  yield* Console.log(`Committed ${repo.prefix} at ${plan.ref} (${commit.slice(0, 12)}).`);
+  yield* Console.log(`Synced ${repo.prefix} at ${plan.ref} (${commit.slice(0, 12)}).`);
 });
 
 export const syncReferenceRepos = Effect.fn("syncReferenceRepos")(function* (
@@ -361,7 +348,7 @@ export const syncReferenceReposCommand = Command.make(
       Flag.optional,
     ),
     dryRun: Flag.Boolean("dry-run").pipe(
-      Flag.withDescription("Print the planned syncs without cloning or committing."),
+      Flag.withDescription("Print the planned syncs without cloning."),
       Flag.withDefault(false),
     ),
   },
