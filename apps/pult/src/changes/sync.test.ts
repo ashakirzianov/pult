@@ -1,8 +1,11 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
+import { decodeKept } from "../stars/plugin.ts";
 import {
   afterStep,
+  KEPT_STUCK_MS,
+  keptStateLine,
   failedRead,
   hasSync,
   pullFailure,
@@ -229,5 +232,93 @@ NodeTest.describe("an xaxis checkout", () => {
       pullFailure(xaxisState(1, 2), "unlanded-changes: land them first"),
       "unlanded-changes: land them first",
     );
+  });
+});
+
+NodeTest.describe("the kept xaxis checkout", () => {
+  const NOW = Date.parse("2026-11-17T14:10:00Z");
+  /** The plugin's `xaxis/kept` answer for a checkout, as the route sends it, and the items it adds. */
+  const kept = (checkout: object, answer: object = {}) => {
+    const decoded = decodeKept({
+      folder: "/home/a/.pult/xaxis",
+      checkouts: [
+        {
+          dir: "/home/a/.pult/xaxis",
+          prefix: "/",
+          projectId: "p1",
+          last: null,
+          agentThreads: [],
+          ...checkout,
+        },
+      ],
+      refused: [],
+      ...answer,
+    });
+    return keptStateLine(decoded, decoded.checkouts[0], NOW).map((item) => [
+      item.title,
+      item.tooltip,
+      item.click,
+    ]);
+  };
+  const at = (ms: number) => new Date(NOW - ms).toISOString();
+
+  NodeTest.test("adds nothing while Get latest goes through or waits for the user", () => {
+    NodeAssert.deepEqual(kept({ last: { at: at(1000), outcome: "moved" } }), []);
+    NodeAssert.deepEqual(
+      kept({
+        last: {
+          at: at(1000),
+          outcome: "waiting",
+          code: "uncommitted-edits",
+          message: "Edits.",
+        },
+      }),
+      [],
+    );
+  });
+
+  NodeTest.test(
+    "says it cannot keep up after a failed Get latest, the CLI's words its tooltip",
+    () => {
+      NodeAssert.deepEqual(
+        kept({
+          last: {
+            at: at(1000),
+            outcome: "failed",
+            code: "signed-out",
+            message: "Not signed in. Run `xaxis login`.",
+          },
+        }),
+        [["$(warning) Can't keep up to date", "Not signed in. Run `xaxis login`.", null]],
+      );
+      // And when the CLI cannot list the checkouts at all.
+      const unlisted = decodeKept({
+        folder: "/f",
+        checkouts: [],
+        refused: [],
+        unlisted: "xaxis was not found",
+      });
+      NodeAssert.deepEqual(keptStateLine(unlisted, undefined, NOW), [
+        { title: "$(warning) Can't keep up to date", tooltip: "xaxis was not found", click: null },
+      ]);
+    },
+  );
+
+  NodeTest.test("calls a Get latest stuck once it has run five minutes", () => {
+    NodeAssert.deepEqual(kept({ running: { since: at(KEPT_STUCK_MS - 1000) } }), []);
+    const [[title]] = kept({ running: { since: at(KEPT_STUCK_MS) } }) as [[string]];
+    const time = new Date(NOW - KEPT_STUCK_MS).toTimeString().slice(0, 5);
+    NodeAssert.equal(title, `Get latest stuck since ${time}`);
+  });
+
+  NodeTest.test("names an agent working in it, a click away", () => {
+    NodeAssert.deepEqual(
+      kept({ agentThreads: ["t1", "t2"] }).map(([title, , click]) => [title, click]),
+      [["$(warning) An agent is working in this checkout", { openThread: "t1" }]],
+    );
+  });
+
+  NodeTest.test("fails loudly on an answer of another shape", () => {
+    NodeAssert.throws(() => kept({ last: { at: at(0), outcome: "gone" } }), /outcome/);
   });
 });

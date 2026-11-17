@@ -471,3 +471,70 @@ export const readKeepAwake = (credential: Credential) =>
 /** Turns keeping the Mac awake on or off; answered as `readKeepAwake`. */
 export const writeKeepAwake = (credential: Credential, on: boolean) =>
   ask(credential, "POST", "/keep-awake", keepAwakeAnswer, { on });
+
+/** The plugin's feature of keeping the xaxis checkout of `/` at main's tip (`pult/decisions`, `xaxis-kept-checkouts`): `GET xaxis/kept`, asked only where `about` lists it. */
+export const XAXIS_KEPT_FEATURE = "xaxis-kept";
+
+/** The kept checkout's latest Get latest, as the mover recorded it. */
+export interface KeptAttempt {
+  readonly at: string;
+  readonly outcome: "moved" | "up-to-date" | "waiting" | "failed";
+  readonly code: string | null;
+  /** The CLI's message and hint, for a refusal or a failure. */
+  readonly message: string | null;
+}
+
+/** A kept checkout as `xaxis/kept` answers it. */
+export interface KeptCheckout {
+  readonly dir: string;
+  readonly last: KeptAttempt | null;
+  /** The Get latest under way, since when; null while none runs. */
+  readonly running: { readonly since: string } | null;
+  /** Threads with a run in progress working inside the checkout. */
+  readonly agentThreads: ReadonlyArray<string>;
+}
+
+/** `GET xaxis/kept`'s answer: the kept folder, its checkouts, and why the CLI could not list them, null when it could. */
+export interface KeptAnswer {
+  readonly folder: string;
+  readonly checkouts: ReadonlyArray<KeptCheckout>;
+  readonly unlisted: string | null;
+}
+
+/** An optional field: absent reads as null, any other shape fails. */
+const optional =
+  <T>(each: Decode<T>): Decode<T | null> =>
+  (value, at) =>
+    value === undefined ? null : each(value, at);
+
+const outcome: Decode<KeptAttempt["outcome"]> = (value, at) =>
+  value === "moved" || value === "up-to-date" || value === "waiting" || value === "failed"
+    ? value
+    : fail(at, "moved, up-to-date, waiting or failed");
+
+const keptAnswer = struct<KeptAnswer>({
+  folder: string,
+  checkouts: arrayOf(
+    struct<KeptCheckout>({
+      dir: string,
+      last: nullable(
+        struct<KeptAttempt>({
+          at: string,
+          outcome,
+          code: optional(string),
+          message: optional(string),
+        }),
+      ),
+      running: optional(struct<{ readonly since: string }>({ since: string })),
+      agentThreads: arrayOf(string),
+    }),
+  ),
+  unlisted: optional(string),
+});
+
+/** `GET xaxis/kept`'s answer, decoded; a throw for any other shape. */
+export const decodeKept = (body: unknown): KeptAnswer => keptAnswer(body, "kept");
+
+/** The kept xaxis checkout and its mover's state. */
+export const readXaxisKept = (credential: Credential) =>
+  ask(credential, "GET", "/xaxis/kept", decodeKept);

@@ -103,6 +103,7 @@ import {
   type CommitProgress,
   commitProgress,
 } from "./commit.ts";
+import { keptAt, onDidChangeKept, rereadKept, startKept } from "./kept.ts";
 import { historyItem, type HistoryRefs, historyRefs, refsChange } from "./history.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 import { setRepository } from "./repositories.ts";
@@ -115,12 +116,14 @@ import {
   SYNC_INTERVAL_MS,
   syncAction,
   syncState,
+  keptStateLine,
   type SyncState,
   syncSteps,
   syncTitle,
   syncTooltip,
   XAXIS_PLACEHOLDER,
   type XaxisState,
+  type XaxisStateItem,
   xaxisStateLine,
 } from "./sync.ts";
 
@@ -875,8 +878,13 @@ class ChangesView {
     );
     // What changed while the page was away (a terminal, another editor, a commit) shows on its return.
     host.onDidChangeFocus((focused) => {
-      if (focused) view.refreshAll();
+      if (focused) {
+        view.refreshAll();
+        rereadKept();
+      }
     });
+    startKept();
+    onDidChangeKept(() => view.render());
     onDidSelectThread(() => view.select(selectionThread()));
     // The store may load after the selection, adds and drops checkouts, and a finished run changes the files.
     threadStore.subscribe(() => view.syncStore());
@@ -1127,7 +1135,7 @@ class ChangesView {
    * them: filtered, the thread's checkout alone, changes or none, its turn
    * instead while it has one; else every checkout with changes.
    */
-  private render(): void {
+  render(): void {
     const thread = this.filterThread();
     const narrowed = thread === undefined ? undefined : this.entryOf(thread);
     const turn = this.shownTurn();
@@ -1135,7 +1143,10 @@ class ChangesView {
     for (const entry of this.entries.values()) {
       const shows =
         thread === undefined
-          ? entry.shown !== undefined || hasSync(entry.sync)
+          ? entry.shown !== undefined ||
+            hasSync(entry.sync) ||
+            // A kept checkout's warning keeps it listed, as a conflict does.
+            this.keptLine(entry).length > 0
           : entry === narrowed;
       if (!shows) {
         entry.registered?.repository.dispose();
@@ -1282,27 +1293,49 @@ class ChangesView {
     const button = turnShown ? undefined : this.actionButton(entry, branch);
     if (JSON.stringify(button) !== JSON.stringify(provider.actionButton.get()))
       provider.actionButton.set(button, undefined);
+    const kept = this.keptLine(entry);
+    // A kept checkout's own items stand alone where its status never read as xaxis's (the CLI missing, say).
     const line =
-      entry.sync === undefined || xaxis === null
+      (entry.sync === undefined || xaxis === null) && kept.length === 0
         ? undefined
-        : xaxisStateLine(
-            entry.sync,
-            xaxis,
-            entry.shown?.kind === "working-tree" ? entry.shown.changes.length : 0,
-          ).map((item): Command => ({
-            id:
-              item.click === "open-conflict"
-                ? OPEN_CONFLICT_COMMAND
-                : item.click === "get-latest"
-                  ? PULL_COMMAND
-                  : // Nothing to do but show the checkout.
-                    "workbench.view.scm",
-            title: item.title,
-            tooltip: item.tooltip,
-            arguments: item.click === null ? [] : [entry.key],
-          }));
+        : [
+            ...(entry.sync === undefined || xaxis === null
+              ? []
+              : xaxisStateLine(
+                  entry.sync,
+                  xaxis,
+                  entry.shown?.kind === "working-tree" ? entry.shown.changes.length : 0,
+                )),
+            ...kept,
+          ].map((item): Command =>
+            typeof item.click === "object" && item.click !== null
+              ? {
+                  id: "pult-shell.selectThread",
+                  title: item.title,
+                  tooltip: item.tooltip,
+                  arguments: [entry.checkout.environmentId, item.click.openThread],
+                }
+              : {
+                  id:
+                    item.click === "open-conflict"
+                      ? OPEN_CONFLICT_COMMAND
+                      : item.click === "get-latest"
+                        ? PULL_COMMAND
+                        : // Nothing to do but show the checkout.
+                          "workbench.view.scm",
+                  title: item.title,
+                  tooltip: item.tooltip,
+                  arguments: item.click === null ? [] : [entry.key],
+                },
+          );
     if (JSON.stringify(line) !== JSON.stringify(provider.statusBarCommands.get()))
       provider.statusBarCommands.set(line, undefined);
+  }
+
+  /** What the state line adds for the checkout the environment's plugin keeps at main's tip (`kept.ts`); none for any other. */
+  private keptLine(entry: Entry): ReadonlyArray<XaxisStateItem> {
+    const kept = keptAt(entry.checkout.environmentId, entry.checkout.root);
+    return kept === undefined ? [] : keptStateLine(kept.answer, kept.checkout, Date.now());
   }
 
   /** The checkout's branch: its status's, else a worktree's own, else the filter's thread's on it, which a project's root does not record. */

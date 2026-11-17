@@ -2,6 +2,8 @@
 // apart from the workbench so `node --test src/changes/sync.test.ts` can run it.
 import type { VcsStatusResult, VcsStatusXaxis } from "@t3tools/contracts";
 
+import type { KeptAnswer, KeptCheckout } from "../stars/plugin.ts";
+
 /** A checkout's branch against its upstream, as the server's status last had it. */
 export interface SyncState {
   /** Null on a detached HEAD. */
@@ -157,7 +159,7 @@ function xaxisAction(uncommitted: boolean, state: SyncState, xaxis: XaxisState):
 export interface XaxisStateItem {
   readonly title: string;
   readonly tooltip: string;
-  readonly click: "open-conflict" | "get-latest" | null;
+  readonly click: "open-conflict" | "get-latest" | { readonly openThread: string } | null;
 }
 
 /**
@@ -223,6 +225,53 @@ export function xaxisStateLine(
         ? [{ title: "Could not reach xaxis", tooltip: "Main's tip could not be read", click: null }]
         : [];
   return [main, ...tip];
+}
+
+/** How long the kept checkout's Get latest runs before the state line calls it stuck. */
+export const KEPT_STUCK_MS = 5 * 60_000;
+
+/**
+ * What the state line adds for the checkout Pult keeps at main's tip, from
+ * the plugin's `xaxis/kept` (`pult/decisions`, `xaxis-kept-checkouts`): Can't
+ * keep up to date after a failed Get latest, or while the CLI cannot list the
+ * checkouts; Get latest stuck once one has run `KEPT_STUCK_MS`; and an agent
+ * working in it, which `xaxis-main-checkout` says should work in a copy.
+ */
+export function keptStateLine(
+  answer: Pick<KeptAnswer, "unlisted">,
+  kept: Pick<KeptCheckout, "last" | "running" | "agentThreads"> | undefined,
+  now: number,
+): ReadonlyArray<XaxisStateItem> {
+  const cannot = (tooltip: string): XaxisStateItem => ({
+    title: "$(warning) Can't keep up to date",
+    tooltip,
+    click: null,
+  });
+  if (answer.unlisted !== null) return [cannot(answer.unlisted)];
+  if (kept === undefined) return [];
+  const items: Array<XaxisStateItem> = [];
+  if (kept.last?.outcome === "failed")
+    items.push(cannot(kept.last.message ?? "Pult's Get latest of this checkout failed"));
+  const since = kept.running === null ? NaN : Date.parse(kept.running.since);
+  if (now - since >= KEPT_STUCK_MS) {
+    const time = new Date(since).toTimeString().slice(0, 5);
+    items.push({
+      title: `Get latest stuck since ${time}`,
+      tooltip: `Pult's Get latest of this checkout has not finished since ${time}`,
+      click: null,
+    });
+  }
+  const [thread] = kept.agentThreads;
+  if (thread !== undefined)
+    items.push({
+      title: "$(warning) An agent is working in this checkout",
+      tooltip:
+        kept.agentThreads.length === 1
+          ? "Pult keeps this checkout at main's tip while the agent works: open its thread"
+          : `${kept.agentThreads.length} agents work here while Pult keeps it at main's tip: open the first one's thread`,
+      click: { openThread: thread },
+    });
+  return items;
 }
 
 function files(count: number): string {
