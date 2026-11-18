@@ -23,7 +23,7 @@ function run(command: string, ...args: unknown[]): void {
 /**
  * The Explorer shelf: the Explorer workspace, files opened
  * under no thread, under its header with no count, open until closed, when
- * its icon goes to the tray (`TrayShelves.tsx`). A row per held environment, selecting the workspace with the Explorer tab at
+ * its icon goes to the header's tray (`TrayShelves.tsx`). A row per held environment, selecting the workspace with the Explorer tab at
  * its folder above its projects (`pult-shell.exploreEnvironment`), its open files under it,
  * each selecting the workspace at its tab and closing it with the Close its
  * hover shows (`closeExplorerFile`); files of no held environment
@@ -36,14 +36,7 @@ function run(command: string, ...args: unknown[]): void {
  * environment held, the header is that environment's row, its name and
  * icon, its files nested under it (`explorerEntries`).
  */
-export function ExplorerShelf({
-  environments,
-  lower,
-}: {
-  environments: ReadonlyArray<ShellEnvironment>;
-  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
-  lower: boolean;
-}) {
+export function ExplorerShelf({ environments }: { environments: ReadonlyArray<ShellEnvironment> }) {
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   useSyncExternalStore(exploredEnvironment.subscribe, exploredEnvironment.get);
   useSyncExternalStore(onDidSelectThread, explorerSelected);
@@ -60,11 +53,7 @@ export function ExplorerShelf({
     files,
   );
   return (
-    <li
-      ref={element}
-      className={`pult-shelf pult-shelf-explorer${lower ? " pult-shelf-lower" : ""}`}
-      data-shelf={"explorer"}
-    >
+    <li ref={element} className="pult-shelf pult-shelf-explorer" data-shelf={"explorer"}>
       <ShelfHeader
         shelf="explorer"
         label={only === undefined ? "Explorer" : only.name}

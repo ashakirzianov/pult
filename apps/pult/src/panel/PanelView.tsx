@@ -39,8 +39,8 @@ import { LimitsShelf } from "./LimitsShelf.tsx";
 import {
   draftCards as draftCardsOf,
   draftKey,
+  groupOf,
   keyOf,
-  lowerShelves,
   type PanelShelf,
   SETTLED_TAIL_INITIAL_COUNT,
   SETTLED_TAIL_PAGE_COUNT,
@@ -126,10 +126,11 @@ function subagentsByRoot(
 /**
  * The Pult tab's view, under the sidebar's title row: its shelves in the
  * order they were opened (`shelfOrder`, `shelves.tsx`), each left out while
- * it holds nothing and, closed, its icon in the tray (`TrayShelves.tsx`).
- * The top shelves (Stars, Explorer, Inbox), and every shelf before the
- * last of them, stick to the panel's top, and the rest to its bottom
- * (`lowerShelves`), the panel's notice, Not connected or No threads, between. The Stars' shelf holds the
+ * it holds nothing and, closed, its icon in its group's tray
+ * (`TrayShelves.tsx`). The top group (Stars, Explorer, Inbox) sticks to
+ * the panel's top, its tray in the Pult tab's header, and the bottom group
+ * (Working, Snoozed, Settled, Limits) to its bottom, its tray under the
+ * panel (`groupOf`), the panel's notice, Not connected or No threads, between. The Stars' shelf holds the
  * Stars' cards, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
  * Star's threads have no card of their own. The Explorer shelf is the
  * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
@@ -142,8 +143,9 @@ function subagentsByRoot(
  * is selected its root's card is the expanded one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
  * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A
- * shelf's header dragged moves it among the open shelves, or into the tray
- * to close it, and a tray icon dragged here opens its shelf where it drops.
+ * shelf's header dragged moves it among its group's open shelves, or into
+ * its group's tray to close it, and a tray icon dragged here opens its shelf
+ * where it drops within its group.
  */
 export function PanelView() {
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
@@ -223,27 +225,19 @@ export function PanelView() {
   const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   // The Stars' shelf is no shelf at all while Show Star is off.
   const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
-  const lower = new Set(lowerShelves(shown));
   const shelf = (name: PanelShelf): React.ReactNode => {
     switch (name) {
       case "stars":
         return (
-          <Shelf key={name} name={name} lower={lower.has(name)} empty={stars.length === 0}>
+          <Shelf key={name} name={name} empty={stars.length === 0}>
             {stars.map(starCard)}
           </Shelf>
         );
       case "explorer":
-        return (
-          <ExplorerShelf key={name} environments={state.environments} lower={lower.has(name)} />
-        );
+        return <ExplorerShelf key={name} environments={state.environments} />;
       case "inbox":
         return (
-          <Shelf
-            key={name}
-            name={name}
-            lower={lower.has(name)}
-            empty={listed.length === 0 && draftCards.length === 0}
-          >
+          <Shelf key={name} name={name} empty={listed.length === 0 && draftCards.length === 0}>
             {draftCards.map(draftCard)}
             {listed.map(card)}
           </Shelf>
@@ -252,13 +246,7 @@ export function PanelView() {
       case "snoozed": {
         const threads = name === "working" ? working : snoozed;
         return (
-          <Shelf
-            key={name}
-            name={name}
-            lower={lower.has(name)}
-            count={threads.length}
-            empty={threads.length === 0}
-          >
+          <Shelf key={name} name={name} count={threads.length} empty={threads.length === 0}>
             {threads.map(card)}
           </Shelf>
         );
@@ -268,7 +256,6 @@ export function PanelView() {
           <Shelf
             key={name}
             name={name}
-            lower={lower.has(name)}
             count={state.settled.count}
             empty={settled.length === 0 && state.settled.count === 0}
           >
@@ -281,7 +268,7 @@ export function PanelView() {
           </Shelf>
         );
       case "limits":
-        return <LimitsShelf key={name} now={now} lower={lower.has(name)} />;
+        return <LimitsShelf key={name} now={now} />;
     }
   };
   // What the panel says while it has no thread to show, under the shelves at its top.
@@ -302,13 +289,13 @@ export function PanelView() {
         No threads in {state.environments.map((environment) => environment.label).join(", ")}.
       </li>
     ) : null;
-  const top = shown.length - lower.size;
+  const top = shown.filter((name) => groupOf(name) === "top").length;
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards" {...shelfDropHandlers("open")}>
-        {/* One keyed list, so a shelf joining or leaving the top group keeps its state. */}
+        {/* One keyed list, the top group's shelves before the notice and the bottom group's after it. */}
         {[...shown.slice(0, top).map(shelf), notice, ...shown.slice(top).map(shelf)]}
-        <ShelfDropLine list="open" />
+        <ShelfDropLine place="open" />
       </ul>
     </div>
   );
@@ -319,20 +306,17 @@ export function PanelView() {
  * (`count`, none for Stars and Inbox, Settled's every settled thread, where it holds
  * more than it lists), Inbox's draft cards first among its
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
- * in the tray (`TrayShelves.tsx`), which is highlighted while the shelf
+ * in its group's tray (`TrayShelves.tsx`), which is highlighted while the shelf
  * holds the selected card. Where it is persists in localStorage
  * (`shelves.tsx`).
  */
 function Shelf({
   name,
-  lower,
   count,
   empty,
   children,
 }: {
   name: "stars" | "inbox" | "working" | "snoozed" | "settled";
-  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
-  lower: boolean;
   count?: number;
   empty: boolean;
   children: React.ReactNode;
@@ -344,7 +328,7 @@ function Shelf({
   return (
     <li
       ref={element}
-      className={`pult-shelf pult-shelf-${name}${lower ? " pult-shelf-lower" : ""}`}
+      className={`pult-shelf pult-shelf-${name}${groupOf(name) === "bottom" ? " pult-shelf-lower" : ""}`}
       data-shelf={name}
     >
       <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} />

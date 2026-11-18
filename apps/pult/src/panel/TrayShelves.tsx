@@ -10,7 +10,15 @@ import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
-import { draftCards, draftKey, keyOf, type PanelShelf, starKey } from "./order.ts";
+import {
+  draftCards,
+  draftKey,
+  groupOf,
+  keyOf,
+  type PanelShelf,
+  type ShelfGroup,
+  starKey,
+} from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
 import { setLimitsShowAll } from "../limits/shelf.ts";
 import {
@@ -36,7 +44,8 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * The closed shelves' icons from the tray's left end, in the order they
+ * A group's closed shelves' icons, the top group's in the Pult tab's header
+ * (`rows.tsx`), the bottom group's at the tray's left end, in the order they
  * were closed, the last closed rightmost (`shelfOrder`), the Stars' none
  * while Show Star is off; a click opens the shelf at the end of its group
  * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
@@ -48,15 +57,18 @@ const threadsSnapshot = () => threadStore.get();
  * open tab is while the shelf holds the selected card, the Stars' while a
  * Star is selected, the Explorer shelf's while the Explorer workspace is.
  * An icon dragged moves it in the run, or into the panel, opening its shelf
- * where it drops; while a shelf is dragged the run takes the tray's free
- * room, shown even with no icon, so a shelf's header dropped there closes it.
+ * where it drops within its group; while a shelf of the group is dragged the
+ * run takes its row's free room, shown even with no icon, so a shelf's header
+ * dropped there closes it. Empty and with no such drag, it draws nothing.
  */
-export function TrayShelves() {
+export function TrayShelves({ group }: { group: ShelfGroup }) {
   const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   // The Stars' shelf is no shelf at all while Show Star is off.
-  const closed = closedShelves.filter((shelf) => shelf !== "stars" || starsShown);
+  const closed = closedShelves.filter(
+    (shelf) => groupOf(shelf) === group && (shelf !== "stars" || starsShown),
+  );
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
@@ -64,7 +76,8 @@ export function TrayShelves() {
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
+  const dragged = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get)?.shelf;
+  const dragging = dragged !== undefined && groupOf(dragged) === group;
   // Empty, the run shows only while a shelf is dragged, a place to drop it.
   if (closed.length === 0 && !dragging) return null;
   // Read on the selection's change, which re-renders the tray.
@@ -146,9 +159,9 @@ export function TrayShelves() {
   return (
     <div
       className={`pult-panel-tabs pult-tray-shelves${dragging ? " pult-tray-shelves-dropping" : ""}`}
-      aria-label="Closed shelves"
+      aria-label={group === "top" ? "Closed top shelves" : "Closed shelves"}
       // Closing Limits by its drop drops its Show all, as its Close does.
-      {...shelfDropHandlers("closed", (shelf) => {
+      {...shelfDropHandlers(group, (shelf) => {
         if (shelf === "limits") setLimitsShowAll(false);
       })}
     >
@@ -174,7 +187,7 @@ export function TrayShelves() {
           </button>
         );
       })}
-      <ShelfDropLine list="closed" />
+      <ShelfDropLine place={group} />
     </div>
   );
 }

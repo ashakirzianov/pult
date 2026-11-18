@@ -72,8 +72,10 @@ function RowButton({ title, icon, command }: { title: string; icon: string; comm
 /**
  * The left panel's header: room for the desktop's traffic lights
  * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
- * Pult's logo and, rightmost, New Thread. In the desktop it drags the
- * window, its buttons excepted.
+ * Pult's logo, the top group's tray (its closed shelves' icons,
+ * `TrayShelves.tsx`, nothing while none is closed) and, rightmost, New
+ * Thread. In the desktop it drags the window, its buttons and the tray's
+ * drop room excepted.
  */
 function PanelHeader() {
   return (
@@ -85,6 +87,7 @@ function PanelHeader() {
         command="pult-shell.collapsePanel"
       />
       <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
+      <TrayShelves group="top" />
       <span className="pult-panel-row-spacer" />
       <RowButton title="New Thread" icon="add" command="pult-shell.newThread" />
     </>
@@ -119,15 +122,15 @@ function UpdateButton() {
 
 /**
  * The left panel's bottom row, the tray: every icon in it is something not
- * showing, which a click shows. The closed shelves' icons at its left end
- * (`TrayShelves.tsx`), then in Pult.app the update's button while there is
+ * showing, which a click shows. The bottom group's closed shelves' icons at
+ * its left end (`TrayShelves.tsx`), then in Pult.app the update's button while there is
  * one, in VS Code's mode the tabs beside the gear (`PanelTabs.tsx`), and
  * rightmost the gear, which opens the Pult settings page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
   return (
     <>
-      <TrayShelves />
+      <TrayShelves group="bottom" />
       <span className="pult-panel-row-spacer" />
       <UpdateButton />
       <PanelTabs store={store} />

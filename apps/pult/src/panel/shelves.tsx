@@ -10,12 +10,13 @@ import { type RefObject, useEffect, useSyncExternalStore } from "react";
 import {
   closeIn,
   DEFAULT_SHELF_ORDER,
-  lowerShelves,
+  groupOf,
   moveIn,
   openIn,
   PANEL_SHELVES,
   type PanelShelf,
   parseShelfOrder,
+  type ShelfGroup,
   type ShelfOrder,
 } from "./order.ts";
 
@@ -77,11 +78,11 @@ function update(next: ShelfOrder): void {
 
 /**
  * The Pult tab's shelves in their two lists, kept in localStorage: the open
- * ones in the panel's order, top to bottom, and the closed ones in the tray's
- * (`TrayShelves.tsx`), left to right, whose rows none of the jumps reach
- * (`jump.ts`). Opening a shelf puts it at the end of its group in the panel,
- * a top shelf's after the last top shelf (`openIn`), closing one puts it at
- * the tray's right end.
+ * ones in the panel's order, top to bottom, and the closed ones in the
+ * trays' (`TrayShelves.tsx`), left to right, each tray its group's, whose
+ * rows none of the jumps reach (`jump.ts`). Opening a shelf puts it at the
+ * end of its group in the panel (`openIn`), closing one puts it at its
+ * tray's right end.
  */
 export const shelfOrder = {
   get: () => order,
@@ -102,17 +103,22 @@ export function openShelf(shelf: PanelShelf): void {
   update(openIn(order, shelf));
 }
 
+/** Where a shelf can be dropped: the panel (`open`), or a group's tray. */
+export type ShelfPlace = "open" | ShelfGroup;
+
+const listOf = (place: ShelfPlace): keyof ShelfOrder => (place === "open" ? "open" : "closed");
+
 /**
- * A shelf being dragged, by its header in the panel or its icon in the tray,
- * and where a drop would put it: before `before` in `list`, at its end while
- * null, the drop line `at` that many pixels into the list's content along its
- * axis; no target while the pointer is over neither list or a drop there
- * would change nothing.
+ * A shelf being dragged, by its header in the panel or its icon in a tray,
+ * and where a drop would put it: before `before` in `place`'s list, at its
+ * end while null, the drop line `at` that many pixels into the place's
+ * content along its axis; no target while the pointer is over no place, over
+ * the other group's tray, or a drop there would change nothing.
  */
 export interface ShelfDrag {
   readonly shelf: PanelShelf;
   readonly target: {
-    readonly list: keyof ShelfOrder;
+    readonly place: ShelfPlace;
     readonly before: PanelShelf | null;
     readonly at: number;
   } | null;
@@ -126,7 +132,7 @@ function setDrag(next: ShelfDrag | null): void {
     (next !== null &&
       drag !== null &&
       next.shelf === drag.shelf &&
-      next.target?.list === drag.target?.list &&
+      next.target?.place === drag.target?.place &&
       next.target?.before === drag.target?.before &&
       next.target?.at === drag.target?.at);
   if (same) return;
@@ -151,23 +157,24 @@ export function shelfDragHandlers(shelf: PanelShelf) {
 }
 
 /**
- * The handlers of a list a shelf can be dropped in, the panel's shelves
- * (`open`, top to bottom) or the tray's icons (`closed`, left to right), on
- * the element whose children carrying `data-shelf` are the list's shown
- * shelves. A drop goes before the first shelf whose middle is past the
- * pointer, or at the end, and runs `onDrop` with the shelf when it moved.
+ * The handlers of a place a shelf can be dropped in, the panel's shelves
+ * (`open`, top to bottom) or a group's tray's icons (left to right), which
+ * takes only its group's shelves, on the element whose children carrying
+ * `data-shelf` are the place's shown shelves. A drop goes before the first
+ * shelf whose middle is past the pointer, or at the end, the panel's kept
+ * within the shelf's group (`moveIn`), and runs `onDrop` with the shelf when
+ * it moved.
  */
 export function shelfDropHandlers(
-  list: keyof ShelfOrder,
+  place: ShelfPlace,
   onDrop: (shelf: PanelShelf) => void = () => {},
 ) {
-  const vertical = list === "open";
   return {
     onDragOver(event: React.DragEvent<HTMLElement>) {
-      if (drag === null) return;
+      if (drag === null || (place !== "open" && groupOf(drag.shelf) !== place)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      setDrag({ shelf: drag.shelf, target: aim(event, list, vertical, drag.shelf) });
+      setDrag({ shelf: drag.shelf, target: aim(event, place, drag.shelf) });
     },
     onDragLeave(event: React.DragEvent<HTMLElement>) {
       if (drag === null || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -179,22 +186,22 @@ export function shelfDropHandlers(
       const { shelf, target } = drag;
       setDrag(null);
       if (target === null) return;
-      update(moveIn(order, shelf, target.list, target.before));
+      update(moveIn(order, shelf, listOf(target.place), target.before));
       onDrop(shelf);
     },
   };
 }
 
-/** Where a drop at the pointer puts `shelf` in `list`, null where it changes nothing. */
+/** Where a drop at the pointer puts `shelf` in `place`, null where it changes nothing. */
 function aim(
   event: React.DragEvent<HTMLElement>,
-  list: keyof ShelfOrder,
-  vertical: boolean,
+  place: ShelfPlace,
   shelf: PanelShelf,
 ): ShelfDrag["target"] {
+  const vertical = place === "open";
   const container = event.currentTarget;
   const box = container.getBoundingClientRect();
-  // Along the list's axis, in the container's content, its scroll included.
+  // Along the place's axis, in the container's content, its scroll included.
   const offset = (edge: number) =>
     vertical ? edge - box.top + container.scrollTop : edge - box.left + container.scrollLeft;
   const pointer = offset(vertical ? event.clientY : event.clientX);
@@ -207,24 +214,28 @@ function aim(
     },
   );
   const before = shown.find((each) => (each.start + each.end) / 2 > pointer)?.name ?? null;
-  if (moveIn(order, shelf, list, before) === order) return null;
-  const others = shown.filter((each) => each.name !== shelf);
-  const next = before === null ? others.length : others.findIndex((each) => each.name === before);
-  // In the panel a shelf joining the top group lands under the shelf before it, however far below the lower ones are.
-  const landsLow =
-    !vertical ||
-    lowerShelves(others.map((each) => each.name).toSpliced(next, 0, shelf)).includes(shelf);
-  const at = landsLow
-    ? (others[next]?.start ?? others.at(-1)?.end ?? 0)
-    : (others[next - 1]?.end ?? 0);
-  return { list, before, at };
+  const list = listOf(place);
+  const next = moveIn(order, shelf, list, before);
+  if (next === order) return null;
+  // The shown shelves around the one dropped, where the drop puts it.
+  const placed = next[list].filter(
+    (each) => each === shelf || shown.some((other) => other.name === each),
+  );
+  const index = placed.indexOf(shelf);
+  const edge = (name: PanelShelf | undefined) => shown.find((each) => each.name === name);
+  const prior = edge(placed[index - 1]);
+  const after = edge(placed[index + 1]);
+  // In the panel a top shelf lands under the shelf before it, however far below the bottom group is.
+  const at =
+    vertical && groupOf(shelf) === "top" ? (prior?.end ?? 0) : (after?.start ?? prior?.end ?? 0);
+  return { place, before, at };
 }
 
-/** The line where a shelf dragged over `list` would drop, in that list's element (`shelfDropHandlers`). */
-export function ShelfDropLine({ list }: { list: keyof ShelfOrder }) {
+/** The line where a shelf dragged over `place` would drop, in that place's element (`shelfDropHandlers`). */
+export function ShelfDropLine({ place }: { place: ShelfPlace }) {
   const target = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get)?.target;
-  if (target?.list !== list) return null;
-  return list === "open" ? (
+  if (target?.place !== place) return null;
+  return place === "open" ? (
     <li className="pult-shelf-drop-line" style={{ top: target.at }} aria-hidden />
   ) : (
     <span

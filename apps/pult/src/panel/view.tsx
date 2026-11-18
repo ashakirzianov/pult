@@ -48,10 +48,11 @@ const THREADS_ORDER = -1;
 /**
  * The left panel: the sidebar part, VS Code's own, between two rows of the
  * shell's (`rows.tsx`): the Pult tab's header, in that tab's title (the
- * desktop's traffic lights, Collapse Panel, Pult's logo and New Thread),
+ * desktop's traffic lights, Collapse Panel, Pult's logo, the top group's
+ * closed shelves' icons and New Thread),
  * every other tab's own title the panel's top row; and below, the tray, the
  * tabs switching the sidebar between view containers in place of VS Code's
- * activity bar (`PanelTabs.tsx`), the closed shelves' icons
+ * activity bar (`PanelTabs.tsx`), the bottom group's closed shelves' icons
  * (`TrayShelves.tsx`), and the gear, which opens the Pult settings page. The Pult tab is the shell's own
  * container, with one React view (the Explorer card and the thread cards)
  * and Pult's mark as its icon; the Explorer tab is VS Code's, rooted by

@@ -392,8 +392,8 @@
   margin-top: 0;
 }
 
-/* The first lower shelf shown, after the last top shelf (`lowerShelves`, src/panel/order.ts),
-   takes the room the top ones leave, as upstream's lower shelves sit at its sidebar's bottom; the rest
+/* The bottom group's first shelf shown (`groupOf`, src/panel/order.ts)
+   takes the room the top group leaves, as upstream's lower shelves sit at its sidebar's bottom; the rest
    follow it. An empty one is left out, so the next takes it. */
 .pult-panel-cards > .pult-shelf-lower:not(.pult-shelf-lower ~ *) {
   margin-top: auto;
@@ -1095,7 +1095,8 @@
   margin-right: 2px;
 }
 
-/* The closed shelves' icons (src/panel/TrayShelves.tsx), at the tray's left end; dimmed while the shelf holds nothing. */
+/* A group's closed shelves' icons (src/panel/TrayShelves.tsx), the top group's in the header after the logo,
+   the bottom group's at the tray's left end; dimmed while the shelf holds nothing. */
 
 .pult-tray-shelf-empty {
   opacity: 0.5;
@@ -1106,6 +1107,12 @@
   position: relative;
   align-self: stretch;
   align-items: center;
+}
+
+/* In the header, after the logo; its drop room no window drag, which would take the shelf's drag. */
+.pult-panel-header > .pult-tray-shelves {
+  margin-left: 6px;
+  -webkit-app-region: no-drag;
 }
 
 .pult-tray-shelves-dropping {

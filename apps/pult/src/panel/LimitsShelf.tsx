@@ -32,14 +32,7 @@ const refreshAction = toAction({
  * click. `now` is the panel's minute clock, which the pace moves with, but
  * on the weekend (`pult.limits.weekend`, `paceShare`).
  */
-export function LimitsShelf({
-  now,
-  lower,
-}: {
-  now: number;
-  /** Whether it is among the panel's lower shelves (`lowerShelves`). */
-  lower: boolean;
-}) {
+export function LimitsShelf({ now }: { now: number }) {
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
   const showAll = useSyncExternalStore(limitsShowAll.subscribe, limitsShowAll.get);
   const weekend = useSyncExternalStore(limitsWeekend.subscribe, limitsWeekend.get);
@@ -51,7 +44,7 @@ export function LimitsShelf({
   return (
     <li
       ref={element}
-      className={`pult-shelf pult-shelf-limits${lower ? " pult-shelf-lower" : ""}`}
+      className="pult-shelf pult-shelf-limits pult-shelf-lower"
       data-shelf={"limits"}
     >
       <ShelfHeader
