@@ -109,7 +109,7 @@ function openWindow(): void {
     minHeight: 480,
     show: false,
     title: app.name,
-    backgroundColor: "#1f1f1f",
+    backgroundColor: "#121314",
     // The page's chrome runs to the window's top edge: on macOS no title bar, the traffic lights in the
     // page's top row, at its start, placed again for the page's zoom once it loads (`titleBarLayout`).
     ...(process.platform === "darwin"

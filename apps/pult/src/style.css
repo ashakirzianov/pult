@@ -11,8 +11,8 @@ body,
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #1f1f1f;
-  color: #ccc;
+  background: #121314;
+  color: #bfbfbf;
 }
 
 /* The thread's tab (src/threads/pane.tsx) carries the view's header: its title set apart from file names. */

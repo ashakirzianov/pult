@@ -51,8 +51,8 @@ export interface StarMarks {
 /** The longest the page waits between looks at a finished Star's minute: a timer's clock stops while the machine sleeps. */
 const CLOCK_CHECK_MS = 60_000;
 
-/** Dark Modern's, the shell's default theme (`src/configuration.json`), until the theme service is up. */
-let marks: StarMarks = { looks: new Map(), scheme: "dark", error: "#f85149" };
+/** Dark 2026's, the shell's default theme (`src/configuration.json`), until the theme service is up. */
+let marks: StarMarks = { looks: new Map(), scheme: "dark", error: "#f48771" };
 const listeners = new Set<() => void>();
 let started = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
