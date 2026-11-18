@@ -11,6 +11,8 @@ import {
   type RuntimeMode,
   type OrchestrationV2ThreadShell,
   ThreadId,
+  DEFAULT_SERVER_SETTINGS,
+  type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -693,16 +695,53 @@ it.effect("deleting a project through MCP also discards its clone record", () =>
   }),
 );
 
-it.effect("an update the project refuses tells the agent why", () =>
+it.effect("an update the project refuses tells the agent why; scripts land where read", () =>
   Effect.gen(function* () {
     const harness = clientLaunchHarness({ runtimeModeCeiling: "full-access", launched: [] });
     const detail = "Project monograms must contain at most two characters.";
+    const keptModel = { instanceId: ProviderInstanceId.make("codex"), model: "gpt" };
+    const settingsPatches: Array<ServerSettingsPatch> = [];
     const dependencies = Layer.merge(
       harness.dependencies,
-      Layer.mock(Project.ProjectService)({
-        update: (input) =>
-          Effect.fail(new Project.ProjectInvalidError({ projectId: input.projectId, detail })),
-      }),
+      Layer.mergeAll(
+        Layer.mock(Project.ProjectService)({
+          update: (input) =>
+            input.projectIcon === undefined
+              ? Effect.succeed({
+                  id: input.projectId,
+                  title: "client-target",
+                  workspaceRoot: "/projects/client-target",
+                  repositoryIdentity: null,
+                  faviconPath: null,
+                  defaultModelSelection: null,
+                  defaultThreadEnvMode: null,
+                  autoPull: false,
+                  projectIcon: null,
+                  scripts: input.scripts ?? [],
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:00:00.000Z",
+                  deletedAt: null,
+                })
+              : Effect.fail(
+                  new Project.ProjectInvalidError({ projectId: input.projectId, detail }),
+                ),
+        }),
+        // Pult: folded settings, where `resolveProjectScripts` reads a project's scripts.
+        Layer.mock(ServerSettings.ServerSettingsService)({
+          getSettings: Effect.succeed({
+            ...DEFAULT_SERVER_SETTINGS,
+            projectSettingsFolded: true,
+            projectSettingsOverrides: {
+              [harness.projectId]: { defaultModelSelection: keptModel },
+            },
+          }),
+          updateSettings: (patch) =>
+            Effect.sync(() => {
+              settingsPatches.push(patch);
+              return DEFAULT_SERVER_SETTINGS;
+            }),
+        }),
+      ),
     );
     const toolkit = yield* ProjectToolkit.pipe(
       Effect.provide(
@@ -718,5 +757,27 @@ it.effect("an update the project refuses tells the agent why", () =>
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
     expect(refused.at(-1)?.result).toMatchObject({ code: "invalid_request", message: detail });
+
+    const setup = {
+      id: "setup-worktree",
+      name: "Setup Worktree",
+      command: "node scripts/setup-worktree.ts",
+      icon: "configure",
+      runOnWorktreeCreate: true,
+    } as const;
+    yield* toolkit
+      .handle("t3_project_update", { projectId: harness.projectId, scripts: [setup] })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+
+    expect(settingsPatches).toEqual([
+      {
+        projectSettingsOverrides: {
+          [harness.projectId]: {
+            defaultModelSelection: keptModel,
+            defaultProjectScripts: [setup],
+          },
+        },
+      },
+    ]);
   }),
 );

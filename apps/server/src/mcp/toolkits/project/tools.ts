@@ -95,6 +95,8 @@ const ProjectUpdateTool = Tool.make("t3_project_update", {
     projectId: ProjectId,
     ...ProjectUpdatePayload.fields,
   }),
+  // Pult: scripts are also written to folded settings, where they are read.
+  dependencies: [...shared.dependencies, ServerSettings.ServerSettingsService],
 }).annotate(Tool.Destructive, true);
 const ProjectDeleteTool = Tool.make("t3_project_delete", {
   ...shared,

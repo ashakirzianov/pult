@@ -294,6 +294,7 @@ const layerRecordingTools = (calls: Array<unknown>) => {
         McpToolAccessTestkit.liveThreadsLayer,
         Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({}),
         Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(ServerSettings.ServerSettingsService)({}), // Pult: t3_project_update's.
         NodeServices.layer,
         NodeCrypto.layer,
       ),

@@ -360,9 +360,27 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
   t3_project_update: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const projects = yield* Project.ProjectService;
-      return yield* projects
+      const updated = yield* projects
         .update({ ...input, commandId: yield* newCommandId() })
         .pipe(Effect.mapError(projectFailure));
+      // Pult: folded settings read a project's scripts from its override only
+      // (`resolveProjectScripts`), so write them there too, as the Actions editor does.
+      if (input.scripts !== undefined) {
+        const serverSettings = yield* ServerSettings.ServerSettingsService;
+        const settings = yield* serverSettings.getSettings.pipe(Effect.mapError(unavailable));
+        if (settings.projectSettingsFolded)
+          yield* serverSettings
+            .updateSettings({
+              projectSettingsOverrides: {
+                [input.projectId]: {
+                  ...settings.projectSettingsOverrides[input.projectId],
+                  defaultProjectScripts: input.scripts,
+                },
+              },
+            })
+            .pipe(Effect.mapError(unavailable));
+      }
+      return updated;
     }),
   ),
   t3_project_delete: McpToolAccess.writesEnvironment((input) =>
