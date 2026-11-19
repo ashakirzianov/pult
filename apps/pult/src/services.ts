@@ -71,12 +71,6 @@ export function workbenchServices(): IEditorOverrideServices {
     ...getStorageServiceOverride({
       fallbackOverride: {
         "workbench.activity.showAccounts": false,
-        // The left panel's tabs until the user pins otherwise: Search and Extensions stay
-        // registered, off the composite bar but while open (Cmd+Shift+F, Cmd+Shift+X).
-        "workbench.activity.pinnedViewlets2": JSON.stringify([
-          { id: "workbench.view.search", pinned: false, visible: false, order: 1 },
-          { id: "workbench.view.extensions", pinned: false, visible: false, order: 4 },
-        ]),
         // The tab a reload restores while none is stored, as none is while the registry's default, the
         // explorer, registered first, is open; a start that is no reload shows Pult's (`src/panel/view.tsx`).
         "workbench.sidebar.activeviewletid": "pult.panel",

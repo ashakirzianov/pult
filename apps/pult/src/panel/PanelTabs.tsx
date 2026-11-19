@@ -5,6 +5,7 @@ import {
   IPaneCompositePartService,
   IStorageService,
   IViewDescriptorService,
+  IViewsService,
 } from "@codingame/monaco-vscode-api";
 import { DisposableStore } from "@codingame/monaco-vscode-api/vscode/vs/base/common/lifecycle";
 import { FileAccess } from "@codingame/monaco-vscode-api/vscode/vs/base/common/network";
@@ -15,7 +16,7 @@ import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/wo
 import { NumberBadge } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/activity/common/activity";
 import { useSyncExternalStore } from "react";
 
-/** The stock activity bar's pins, which it keeps while shown; Search and Extensions are unpinned by default (`src/services.ts`). */
+/** The stock activity bar's pins, which it keeps while shown, the user's own: unset, every tab is pinned, Search and Extensions too, and the mode leaves them alone. */
 const PINNED_KEY = "workbench.activity.pinnedViewlets2";
 /** Source Control's tab, which opens on every checkout's changes, whatever filter the changes view had (`src/changes/`). */
 const SCM_CONTAINER = "workbench.view.scm";
@@ -31,7 +32,9 @@ interface PanelTab {
 
 /**
  * The sidebar's view containers as the left panel's tray lists them:
- * those with a view to show, the user's unpinned ones left out unless open,
+ * those the stock activity bar would show (a container that is not hidden when
+ * empty, Extensions among them, or one with a view to show), the user's
+ * unpinned ones left out unless open,
  * in their order, each with its title, icon, whether it is open and its
  * number badge (Source Control's count). Any container counts, an
  * extension's as much as VS Code's, as the stock activity bar would list it.
@@ -39,8 +42,9 @@ interface PanelTab {
  * open one or the badges.
  */
 export async function panelTabStore() {
-  const [views, panes, activities, storage, commands] = await Promise.all([
+  const [views, viewsService, panes, activities, storage, commands] = await Promise.all([
     getService(IViewDescriptorService),
+    getService(IViewsService),
     getService(IPaneCompositePartService),
     getService(IActivityService),
     getService(IStorageService),
@@ -71,8 +75,8 @@ export async function panelTabStore() {
         model: views.getViewContainerModel(container),
       }))
       .filter(
-        ({ container, model }) =>
-          model.activeViewDescriptors.length > 0 &&
+        ({ container }) =>
+          viewsService.isViewContainerActive(container.id) &&
           (stored.get(container.id)?.pinned !== false || container.id === active),
       )
       .sort((a, b) => order(a.container) - order(b.container) || a.index - b.index)

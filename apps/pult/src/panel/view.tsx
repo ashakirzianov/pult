@@ -40,8 +40,7 @@ import "./panel.css";
 /**
  * The tabs' order in the panel's tray, in VS Code's mode: Pult first, then the stock
  * explorer at its own 0. Projects (`pult/projects-tab`) goes after the
- * explorer, below Search's 1; Search and Extensions are unpinned by default
- * (`src/services.ts`).
+ * explorer, below Search's 1.
  */
 const THREADS_ORDER = -1;
 
