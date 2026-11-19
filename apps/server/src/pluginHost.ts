@@ -74,7 +74,9 @@ export * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts"
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 // The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
 export * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-// The Pult plugin's kept xaxis checkout: the interval it moves at, and the status it refreshes after.
+// The Pult plugin's kept xaxis checkout: the interval it moves at.
+export * as VcsAutomaticFetchInterval from "./vcs/VcsAutomaticFetchInterval.ts";
+// The Pult plugin's kept xaxis checkout: the status it refreshes after a move.
 export * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 // The Pult plugin's kept xaxis checkout: the CLI's registry, Get latest, and a refusal's code.
 export * as XaxisCli from "./vcs/XaxisCli.ts";

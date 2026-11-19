@@ -12,6 +12,6 @@
     "emitDeclarationOnly": true,
     "outDir": "../node_modules/.cache/view-types"
   },
-  "include": [".", "../../web/src"],
+  "include": [".", "../../web/src", "../../web/gt.config.json"],
   "exclude": ["../../web/src/**/*.test.ts", "../../web/src/**/*.test.tsx"]
 }

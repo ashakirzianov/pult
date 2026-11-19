@@ -41,6 +41,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { isRichTextBoldShortcut } from "~/keybindings";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
+import { I18nProvider } from "~/i18n/I18nProvider";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
@@ -547,7 +548,9 @@ function makeView(composerOnly: boolean) {
     navigable = router;
     root.render(
       <StrictMode>
-        <ViewProviders mount={mount} bar={bar} router={router} />
+        <I18nProvider>
+          <ViewProviders mount={mount} bar={bar} router={router} />
+        </I18nProvider>
       </StrictMode>,
     );
   };

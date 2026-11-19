@@ -7,6 +7,7 @@ import {
   Effect,
   McpInvocationContext,
   McpLinkOrigin,
+  McpSchema,
   McpThreadAccess,
   McpToolAccess,
   Schema,
@@ -36,7 +37,9 @@ const StarListTool = Tool.make("pult_star_list", {
 })
   .annotate(Tool.Title, "List the Stars")
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  // Thread-bound, so outside clients, which it refuses, are not offered it either.
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const StarListToolkit = Toolkit.make(StarListTool);
 

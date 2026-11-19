@@ -20,6 +20,8 @@ import * as TestClock from "effect/testing/TestClock";
 // The real runtime, loader, bundled list and routes, which the plugin itself never imports.
 import * as AnalyticsService from "../../../apps/server/src/telemetry/AnalyticsService.ts";
 import * as CheckpointStore from "../../../apps/server/src/checkpointing/CheckpointStore.ts";
+import * as DeviceService from "../../../apps/server/src/device/DeviceService.ts";
+import * as DocumentText from "../../../apps/server/src/provider/DocumentText.ts";
 import * as ManagedEndpoint from "../../../apps/server/src/cloud/ManagedEndpointRuntime.ts";
 import * as GitVcsDriver from "../../../apps/server/src/vcs/GitVcsDriver.ts";
 import * as GitWorkflow from "../../../apps/server/src/git/GitWorkflowService.ts";
@@ -51,8 +53,10 @@ import { bundledPlugins } from "../../../apps/server/src/plugins/bundled.ts";
 import * as PluginsHttp from "../../../apps/server/src/plugins/http.ts";
 import * as PluginLoader from "../../../apps/server/src/plugins/PluginLoader.ts";
 import {
+  Cause,
   Context,
   Effect,
+  Exit,
   FileSystem,
   HostProcess,
   HttpServerRequest,
@@ -115,6 +119,8 @@ it.effect("the plugin activates over the production orchestration services", () 
         Layer.mergeAll(
           Layer.mock(AnalyticsService.AnalyticsService)({}),
           Layer.mock(CheckpointStore.CheckpointStore)({}),
+          Layer.mock(DeviceService.DeviceService)({}),
+          Layer.mock(DocumentText.DocumentText)({}),
           Layer.mock(ManagedEndpoint.CloudManagedEndpointRuntime)({}),
           Layer.mock(GitVcsDriver.GitVcsDriver)({}),
           Layer.mock(GitWorkflow.GitWorkflowService)({}),
@@ -694,98 +700,104 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 
-it.effect("a Star asks to sleep with pult_star_sleep, and any other caller is refused", () =>
-  Effect.gen(function* () {
-    yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
-    const server = yield* fakeServer;
-    const context = yield* Layer.build(
-      PluginLoader.layer(bundledPlugins).pipe(
-        Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
-      ),
-    );
-    const mcp = Context.get(context, McpServer.McpServer);
-    expect(mcp.tools.map((each) => each.tool.name)).toContain("pult_star_sleep");
-    const call = (scope: McpInvocationContext.McpInvocationScope) =>
-      mcp.callTool({ name: "pult_star_sleep", arguments: {} }).pipe(
-        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-        Effect.provideService(McpSchema.McpServerClient, mcpClient),
-        Effect.map((result) => {
-          const text = result.content[0];
-          const body = text?.type === "text" ? JSON.parse(text.text) : undefined;
-          return result.isError === true ? { refused: body.code, why: body.message } : body;
-        }),
+it.effect(
+  "a Star asks to sleep with pult_star_sleep, and any other caller is refused or not offered it",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+      const server = yield* fakeServer;
+      const context = yield* Layer.build(
+        PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
+        ),
       );
+      const mcp = Context.get(context, McpServer.McpServer);
+      expect(mcp.tools.map((each) => each.tool.name)).toContain("pult_star_sleep");
+      const call = (scope: McpInvocationContext.McpInvocationScope) =>
+        mcp.callTool({ name: "pult_star_sleep", arguments: {} }).pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          Effect.map((result) => {
+            const text = result.content[0];
+            const body = text?.type === "text" ? JSON.parse(text.text) : undefined;
+            return result.isError === true ? { refused: body.code, why: body.message } : body;
+          }),
+        );
 
-    // Made through Stars of the test's own over the same fake server, as a page's POST /stars would.
-    const star = yield* (yield* Stars.make.pipe(Effect.provide(server.layer))).create({
-      ifNone: true,
-    });
-    const later = { promptCacheExpiresAt: at("2026-11-10T13:30:00.000Z") };
-    const own = server.threads.add(
-      star.projectId,
-      "star-thread",
-      { ...later, createdAt: at("2026-11-10T12:50:00.000Z"), activeRunId: RunId.make("star-run") },
-      // The fake's wait answers the run as it is: the turn has completed.
-      [run("star-run", "completed")],
-    );
-    const below = server.threads.add(star.projectId, "below", {
-      activeRunId: RunId.make("below-run"),
-      lineage: {
-        parentThreadId: own.shell.id,
-        relationshipToParent: "subagent",
-        rootThreadId: own.shell.id,
-      },
-    });
-    const repo = yield* server.projects.service.create({
-      projectId: ProjectId.make("p-repo"),
-      title: "Repo",
-      workspaceRoot: `${server.tmp}/repo`,
-      createWorkspaceRootIfMissing: true,
-    });
-    server.threads.add(repo.id, "worker", { activeRunId: RunId.make("worker-run") });
-    // A thread a link paired below full access launched into the Star's project.
-    const fenced = server.threads.add(star.projectId, "fenced", {
-      ...later,
-      createdAt: at("2026-11-10T12:55:00.000Z"),
-      activeRunId: RunId.make("fenced-run"),
-      linkOrigin: { sessionId: "link-1", label: "Laptop", access: "read-only" },
-    });
-    // A Star's conversation with no turn on, whose background subagent still holds the credential.
-    const idle = server.threads.add(star.projectId, "idle", {
-      ...later,
-      pendingBackgroundTasks: [
+      // Made through Stars of the test's own over the same fake server, as a page's POST /stars would.
+      const star = yield* (yield* Stars.make.pipe(Effect.provide(server.layer))).create({
+        ifNone: true,
+      });
+      const later = { promptCacheExpiresAt: at("2026-11-10T13:30:00.000Z") };
+      const own = server.threads.add(
+        star.projectId,
+        "star-thread",
         {
-          kind: "subagent",
-          taskId: "task-1",
-          providerInstanceId: ProviderInstanceId.make("codex"),
+          ...later,
+          createdAt: at("2026-11-10T12:50:00.000Z"),
+          activeRunId: RunId.make("star-run"),
         },
-      ],
-    });
+        // The fake's wait answers the run as it is: the turn has completed.
+        [run("star-run", "completed")],
+      );
+      const below = server.threads.add(star.projectId, "below", {
+        activeRunId: RunId.make("below-run"),
+        lineage: {
+          parentThreadId: own.shell.id,
+          relationshipToParent: "subagent",
+          rootThreadId: own.shell.id,
+        },
+      });
+      const repo = yield* server.projects.service.create({
+        projectId: ProjectId.make("p-repo"),
+        title: "Repo",
+        workspaceRoot: `${server.tmp}/repo`,
+        createWorkspaceRootIfMissing: true,
+      });
+      server.threads.add(repo.id, "worker", { activeRunId: RunId.make("worker-run") });
+      // A thread a link paired below full access launched into the Star's project.
+      const fenced = server.threads.add(star.projectId, "fenced", {
+        ...later,
+        createdAt: at("2026-11-10T12:55:00.000Z"),
+        activeRunId: RunId.make("fenced-run"),
+        linkOrigin: { sessionId: "link-1", label: "Laptop", access: "read-only" },
+      });
+      // A Star's conversation with no turn on, whose background subagent still holds the credential.
+      const idle = server.threads.add(star.projectId, "idle", {
+        ...later,
+        pendingBackgroundTasks: [
+          {
+            kind: "subagent",
+            taskId: "task-1",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+          },
+        ],
+      });
 
-    const noStar = {
-      refused: "invalid_request",
-      why: expect.stringContaining("this thread is none"),
-    };
-    expect(yield* call(scopeOf({ thread: "worker" }))).toMatchObject(noStar);
-    expect(yield* call(scopeOf({ thread: below.shell.id }))).toMatchObject(noStar);
-    expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toMatchObject(noStar);
-    expect(yield* call(scopeOf({ thread: idle.shell.id }))).toMatchObject({
-      refused: "invalid_request",
-      why: expect.stringContaining("no turn on"),
-    });
-    expect(yield* call(scopeOf({ client: "full-access" }))).toMatchObject({
-      refused: "thread_credential_required",
-    });
-    expect(server.threads.settles).toEqual([]);
+      const noStar = {
+        refused: "invalid_request",
+        why: expect.stringContaining("this thread is none"),
+      };
+      expect(yield* call(scopeOf({ thread: "worker" }))).toMatchObject(noStar);
+      expect(yield* call(scopeOf({ thread: below.shell.id }))).toMatchObject(noStar);
+      expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toMatchObject(noStar);
+      expect(yield* call(scopeOf({ thread: idle.shell.id }))).toMatchObject({
+        refused: "invalid_request",
+        why: expect.stringContaining("no turn on"),
+      });
+      // A thread-bound tool is not offered to an outside client at all.
+      const outside = yield* Effect.exit(call(scopeOf({ client: "full-access" })));
+      expect(Exit.isFailure(outside) && Cause.pretty(outside.cause)).toContain("not found");
+      expect(server.threads.settles).toEqual([]);
 
-    expect(yield* call(scopeOf({ thread: own.shell.id }))).toEqual({
-      star: { id: star.id, name: "Star" },
-      message: expect.stringContaining("falls asleep when this turn ends"),
-    });
-    // The request's fiber settles the conversation once the turn has ended.
-    yield* server.threads.settled(1);
-    expect(server.threads.settles).toEqual([own.shell.id]);
-  }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+      expect(yield* call(scopeOf({ thread: own.shell.id }))).toEqual({
+        star: { id: star.id, name: "Star" },
+        message: expect.stringContaining("falls asleep when this turn ends"),
+      });
+      // The request's fiber settles the conversation once the turn has ended.
+      yield* server.threads.settled(1);
+      expect(server.threads.settles).toEqual([own.shell.id]);
+    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect(
@@ -846,9 +858,9 @@ it.effect(
           { id: "vega-id", name: "Vega", description: "" },
         ],
       });
-      expect(yield* call(scopeOf({ client: "full-access" }))).toEqual({
-        refused: "thread_credential_required",
-      });
+      // A thread-bound tool is not offered to an outside client at all.
+      const outside = yield* Effect.exit(call(scopeOf({ client: "full-access" })));
+      expect(Exit.isFailure(outside) && Cause.pretty(outside.cause)).toContain("not found");
       expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toEqual({
         refused: "capability_denied",
       });

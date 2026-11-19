@@ -385,9 +385,9 @@ describe.skipIf(skipped)(suite, () => {
 
         // Commit & Land: the deletion committed, the stack of three rebased onto b's landings.
         const review = yield* ReviewService.ReviewService;
-        const shas = (refs: ReadonlyArray<string>) =>
+        const shas = ([first, ...rest]: ReadonlyArray<string>) =>
           review
-            .getLog({ cwd: a, refs: [...refs] })
+            .getLog({ cwd: a, refs: [first!, ...rest] })
             .pipe(Effect.map((result) => result.commits.map((commit) => commit.sha)));
         const refsOf = () =>
           review.getRefs({ cwd: a }).pipe(Effect.map((refs) => refs.refs.map((ref) => ref.sha)));

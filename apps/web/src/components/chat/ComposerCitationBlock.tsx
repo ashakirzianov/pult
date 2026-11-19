@@ -1,3 +1,4 @@
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
@@ -14,6 +15,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT, Var } from "gt-react";
 import {
   createContext,
   type ReactNode,
@@ -26,6 +28,7 @@ import {
 
 import { assistantCitationNavigation } from "~/lib/assistantCitationNavigation";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
+import { readThreadShell } from "~/state/entities";
 import { ComposerContextActionsContext } from "../composerContextPresentation";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -394,6 +397,7 @@ function CitationBlock({
   focusRequested: boolean;
   onFocusHandled: () => void;
 }) {
+  const gt = useGT();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [comment, setComment] = useState(savedComment);
   const [shownComment, setShownComment] = useState(savedComment);
@@ -529,9 +533,9 @@ function CitationBlock({
         ref={inputRef}
         data-citation-comment-input="true"
         data-citation-comment-trigger="true"
-        aria-label="Comment on the quoted text"
+        aria-label={gt("Comment on the quoted text")}
         aria-invalid={tooLong || undefined}
-        placeholder="Comment…"
+        placeholder={gt("Comment…")}
         rows={1}
         spellCheck
         className="field-sizing-content block w-full resize-none select-text bg-transparent p-0 text-inherit outline-none placeholder:text-muted-foreground/60"
@@ -552,7 +556,9 @@ function CitationBlock({
       />
       {tooLong ? (
         <span role="status" className="text-xs text-destructive">
-          Comments can contain up to {maxLength.toLocaleString()} characters.
+          <T>
+            Comments can contain up to <Var>{maxLength.toLocaleString()}</Var> characters.
+          </T>
         </span>
       ) : null}
     </span>
@@ -592,7 +598,10 @@ export function ComposerCitationBlock({
                 className={ASSISTANT_QUOTE_CLASS_NAME}
                 onClick={(event) => {
                   event.preventDefault();
-                  void navigate(assistantCitationNavigation(citation));
+                  const source = readThreadShell(
+                    scopeThreadRef(citation.environmentId, citation.threadId),
+                  );
+                  void navigate(assistantCitationNavigation(citation, source));
                 }}
               />
             }
@@ -601,7 +610,9 @@ export function ComposerCitationBlock({
           </TooltipTrigger>
           <TooltipPopup side="top">
             <span className="line-clamp-8 whitespace-pre-wrap">{citation.text}</span>
-            <span className="mt-1 block text-muted-foreground">Go to the quoted text</span>
+            <span className="mt-1 block text-muted-foreground">
+              <T>Go to the quoted text</T>
+            </span>
           </TooltipPopup>
         </Tooltip>
       }
@@ -696,7 +707,7 @@ export function ComposerReviewCommentBlock({
           <TooltipPopup side="top" variant="code">
             <span className="line-clamp-8 whitespace-pre-wrap">{quoted}</span>
             <span className="mt-1 block font-sans text-muted-foreground text-xs">
-              Open the file
+              <T>Open the file</T>
             </span>
           </TooltipPopup>
         </Tooltip>

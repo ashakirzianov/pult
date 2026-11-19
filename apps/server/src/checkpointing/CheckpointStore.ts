@@ -10,6 +10,8 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 export interface CaptureCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
+  /** The checkpoint this one follows, so a turn that switched branches starts where it landed. */
+  readonly previousCheckpointRef?: CheckpointRef;
 }
 
 export interface RestoreCheckpointInput {
@@ -86,10 +88,15 @@ export const make = Effect.gen(function* () {
   });
 
   // Pult: detected as any VCS, so an xaxis checkout inside a git repository keeps no checkpoints.
-  const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = (cwd) =>
-    vcsRegistry
-      .detect({ cwd, requestedKind: "auto" })
-      .pipe(Effect.map((repository) => repository?.kind === "git"));
+  // The registry reads an unreadable repository as none; ask Git again so that fails here.
+  const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = Effect.fn(
+    "CheckpointStore.isGitRepository",
+  )(function* (cwd) {
+    const repository = yield* vcsRegistry.detect({ cwd, requestedKind: "auto" });
+    if (repository !== null) return repository.kind === "git";
+    const git = yield* vcsRegistry.get("git");
+    return (yield* git.detectRepository(cwd)) !== null;
+  });
 
   const captureCheckpoint: CheckpointStore["Service"]["captureCheckpoint"] = Effect.fn(
     "captureCheckpoint",

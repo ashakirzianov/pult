@@ -11,6 +11,7 @@ import { usePreviewAvailable } from "~/browser/previewRuntime";
 import { PreviewPanelShell } from "~/components/preview/PreviewPanelShell";
 import { PreviewView } from "~/components/preview/PreviewView";
 import { usePreviewSession } from "~/components/preview/usePreviewSession";
+import { I18nProvider } from "~/i18n/I18nProvider";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useEnvironmentScope } from "~/state/session";
 import { threadViewHost } from "./host.ts";
@@ -81,16 +82,18 @@ export function mountPreview(
   const react = createRoot(root);
   react.render(
     <StrictMode>
-      <AppAtomRegistryProvider>
-        <Pane
-          environmentId={environmentId}
-          threadId={threadId}
-          presentation={() => presentation}
-          subscribe={subscribe}
-          onPlaceholderOpened={onPlaceholderOpened}
-          {...(options.onEndSession === undefined ? {} : { onEndSession: options.onEndSession })}
-        />
-      </AppAtomRegistryProvider>
+      <I18nProvider>
+        <AppAtomRegistryProvider>
+          <Pane
+            environmentId={environmentId}
+            threadId={threadId}
+            presentation={() => presentation}
+            subscribe={subscribe}
+            onPlaceholderOpened={onPlaceholderOpened}
+            {...(options.onEndSession === undefined ? {} : { onEndSession: options.onEndSession })}
+          />
+        </AppAtomRegistryProvider>
+      </I18nProvider>
     </StrictMode>,
   );
   return {
@@ -181,9 +184,11 @@ function SessionSync(props: { readonly environmentId: string; readonly threadId:
 export function syncPreviewSessions(environmentId: string, threadId: string): () => void {
   const root = createRoot(document.createElement("div"));
   root.render(
-    <AppAtomRegistryProvider>
-      <SessionSync environmentId={environmentId} threadId={threadId} />
-    </AppAtomRegistryProvider>,
+    <I18nProvider>
+      <AppAtomRegistryProvider>
+        <SessionSync environmentId={environmentId} threadId={threadId} />
+      </AppAtomRegistryProvider>
+    </I18nProvider>,
   );
   return () => queueMicrotask(() => root.unmount());
 }

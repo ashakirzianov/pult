@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 
 import { ElectronBrowserHost, startElectronBrowserHost } from "~/browser/ElectronBrowserHost";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
+import { I18nProvider } from "~/i18n/I18nProvider";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
 import type { ThreadViewHost } from "./host.ts";
@@ -36,9 +37,11 @@ export function startBrowserHost(keepRendering: ThreadViewHost["keepRendering"])
   document.body.append(element);
   createRoot(element).render(
     <StrictMode>
-      <AppAtomRegistryProvider>
-        <ElectronBrowserHost />
-      </AppAtomRegistryProvider>
+      <I18nProvider>
+        <AppAtomRegistryProvider>
+          <ElectronBrowserHost />
+        </AppAtomRegistryProvider>
+      </I18nProvider>
     </StrictMode>,
   );
   followCaptures(element, keepRendering);

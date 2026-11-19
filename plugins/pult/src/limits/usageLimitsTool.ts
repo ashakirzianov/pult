@@ -10,10 +10,10 @@ import {
 } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
-  collectLimitNotices,
   elapsedShare,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import { collectLimitNotices } from "@t3tools/shared/usageLimitsCopy";
 
 import {
   DateTime,

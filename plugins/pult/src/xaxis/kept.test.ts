@@ -35,6 +35,7 @@ import {
   type HttpServerRequest,
   Layer,
   McpServer,
+  VcsAutomaticFetchInterval,
   VcsStatusBroadcaster,
   XaxisVcsDriver,
 } from "../host.ts";
@@ -99,7 +100,7 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
               }),
           }),
           Layer.succeed(
-            VcsStatusBroadcaster.VcsAutomaticFetchInterval,
+            VcsAutomaticFetchInterval.VcsAutomaticFetchInterval,
             Effect.sync(() => interval.every),
           ),
         ).pipe(Layer.provideMerge(server.layer));

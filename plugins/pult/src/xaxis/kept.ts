@@ -14,6 +14,7 @@ import {
   Schema,
   SecureRandom,
   ThreadManagementService,
+  VcsAutomaticFetchInterval,
   VcsStatusBroadcaster,
   XaxisCli,
   XaxisVcsDriver,
@@ -118,7 +119,7 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
   const path = yield* Path.Path;
   const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
   const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
-  const interval = yield* VcsStatusBroadcaster.VcsAutomaticFetchInterval;
+  const interval = yield* VcsAutomaticFetchInterval.VcsAutomaticFetchInterval;
   const projects = yield* ProjectService.ProjectService;
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const scheduler = yield* Scheduler.Scheduler;

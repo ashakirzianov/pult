@@ -6,7 +6,6 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -54,13 +53,7 @@ const writeAppPackageJson = (baseDir: string, manifest: Record<string, string>) 
     );
   });
 
-const withTempDir = <A, E, R>(
-  run: (tempDir: string) => Effect.Effect<A, E, R>,
-): Effect.Effect<
-  A,
-  E | PlatformError.PlatformError,
-  FileSystem.FileSystem | Path.Path | Exclude<R, Scope.Scope>
-> =>
+const withTempDir = <A, E, R>(run: (tempDir: string) => Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const tempDir = yield* fileSystem.makeTempDirectoryScoped({
@@ -68,7 +61,7 @@ const withTempDir = <A, E, R>(
     });
     yield* writeAppPackageJson(tempDir, { version: "1.2.3" });
     return yield* run(tempDir);
-  }).pipe(Effect.scoped);
+  });
 
 const ensureWith = (input: {
   readonly baseDir: string;

@@ -75,8 +75,9 @@ function carry(drafts: typeof Drafts): void {
           ]
         : [],
     );
-    const holds = drafts.composerHoldsText(target);
-    const decision = carryInto(holds === null ? null : { holds }, ended);
+    // The store's mover moves into a composer holding nothing at all, a context alone included.
+    const held = drafts.composerHoldsText(target) !== null;
+    const decision = carryInto(held ? { holds: drafts.composerHasContent(target) } : null, ended);
     if (decision === undefined) continue;
     const from = {
       kind: "thread",
@@ -112,7 +113,7 @@ function carryOut(
   const keyOf = (environmentId: string, projectId: string) =>
     `${drafts.draftKey(environmentId, projectId)}|${target.environmentId}:${target.threadId}`;
   const decision = carryOutOf(
-    { holds: drafts.composerHoldsText(target) === true },
+    { holds: drafts.composerHasContent(target) },
     star.homes.map(({ environmentId, projectId }) => ({
       environmentId,
       projectId,

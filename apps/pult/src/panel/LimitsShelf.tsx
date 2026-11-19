@@ -1,5 +1,6 @@
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
-import { formatResetsIn, type LimitAccount } from "@t3tools/shared/usageLimits";
+import type { LimitAccount } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { useRef, useSyncExternalStore } from "react";
 
 import {

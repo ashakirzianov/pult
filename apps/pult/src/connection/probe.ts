@@ -4,10 +4,7 @@ import {
   type RemoteEnvironmentAuthError,
 } from "@t3tools/client-runtime/authorization";
 import {
-  BearerConnectionCredential,
   BearerConnectionProfile,
-  BearerConnectionRegistration,
-  BearerConnectionTarget,
   mapRemoteEnvironmentError,
   orchestrationProtocolCompatibilityError,
 } from "@t3tools/client-runtime/connection";
@@ -101,15 +98,8 @@ export const probe = Effect.fn("pult.probe")(function* (input: ProbeInput) {
     httpBaseUrl,
     wsBaseUrl,
   });
-  return new BearerConnectionRegistration({
-    target: new BearerConnectionTarget({
-      environmentId: profile.environmentId,
-      label: profile.label,
-      connectionId: profile.connectionId,
-    }),
-    profile,
-    credential: new BearerConnectionCredential({ token }),
-  });
+  // The bearer the ticket proved, which the page saves and registers its connection with.
+  return { profile, token };
 });
 
 function refusedToken(label: string) {
@@ -165,6 +155,8 @@ const explainFailure = Effect.fn("pult.probe.explainFailure")(function* (
     case "EnvironmentAuthInvalidError":
     case "EnvironmentScopeRequiredError":
     case "EnvironmentOperationForbiddenError":
+    // A T3 Connect device the host has yet to approve.
+    case "EnvironmentConnectApprovalPendingError":
       return yield* new ProbeError({
         kind: "auth",
         detail: mapRemoteEnvironmentError(error).detail,

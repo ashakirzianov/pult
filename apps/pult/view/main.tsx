@@ -14,6 +14,7 @@ import {
   setTheme,
 } from "~/hooks/useTheme";
 import { setServerRuntimeOffPrimary } from "~/browser/previewRuntime";
+import { startI18n } from "~/i18n/runtime";
 import { subscribeDraftThreadPromotion } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { environmentThreadShells } from "~/state/threads";
@@ -125,6 +126,8 @@ export interface ThreadViewMounts {
  */
 export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   setThreadViewHost(host);
+  // Upstream's strings read GT, which its app starts as it boots; the view's roots each carry its provider.
+  startI18n();
   routeRightPanel();
   startPreviews();
   // Drafts promote as their server threads arrive, as upstream's app starts it: a draft's route follows the redirect its finalization leaves, which is how a pane's draft becomes its thread.

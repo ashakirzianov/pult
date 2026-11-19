@@ -7,10 +7,10 @@ import {
 import { EnvironmentId, type ServerConfig, WS_METHODS } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
-  collectLimitNotices,
   type LimitAccount,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import { collectLimitNotices } from "@t3tools/shared/usageLimitsCopy";
 import * as Effect from "effect/Effect";
 
 import { connection, environmentName } from "../connection/index.ts";

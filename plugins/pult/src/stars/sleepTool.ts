@@ -12,6 +12,7 @@ import {
   DateTime,
   Effect,
   McpInvocationContext,
+  McpSchema,
   McpToolAccess,
   Schema,
   ThreadManagementService,
@@ -41,7 +42,9 @@ const StarSleepTool = Tool.make("pult_star_sleep", {
   ],
 })
   .annotate(Tool.Title, "Fall asleep at turn end")
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  // Thread-bound, so outside clients, which it refuses, are not offered it either.
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const StarSleepToolkit = Toolkit.make(StarSleepTool);
 

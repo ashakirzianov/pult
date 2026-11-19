@@ -335,7 +335,7 @@ class ShellConnection {
     options?: { readonly local?: boolean },
   ): Promise<EnvironmentId> {
     const probed = await this.runtime.runPromise(probe({ target, origin: window.location.origin }));
-    const saved = { profile: probed.profile, token: probed.credential.token };
+    const saved = { profile: probed.profile, token: probed.token };
     const environmentId = saved.profile.environmentId;
     if (options?.local === true && this.local !== environmentId) {
       // A previous local server still held, whose id the app's server no longer serves, is a bearer environment now.
