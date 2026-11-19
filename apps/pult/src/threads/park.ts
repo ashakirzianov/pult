@@ -24,6 +24,7 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import {
   type IKeybindingRule,
+  KeybindingsRegistry,
   KeybindingWeight,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
@@ -415,6 +416,17 @@ export function registerParkCommands(): void {
       weight: KeybindingWeight.WorkbenchContrib + 1,
     },
   );
+  // A Star's channel or child tab, the pane's tabs that close: the settle key does nothing there, Save As included.
+  KeybindingsRegistry.registerCommandAndKeybindingRule({
+    id: "pult-shell.swallowSettleKey",
+    primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyS,
+    when: ContextKeyExpr.and(
+      ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane"),
+      ContextKeyExpr.not("activeEditorCannotClose"),
+    ),
+    weight: KeybindingWeight.WorkbenchContrib + 1,
+    handler: () => {},
+  });
   command(CONTEXT_KEYS.unsettle, "pult-shell.unsettleThread", "Un-settle Thread", (target) =>
     unsettleThread(target),
   );
