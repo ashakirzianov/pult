@@ -1,4 +1,5 @@
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -871,7 +872,11 @@ export const make = Effect.gen(function* () {
     });
 
     loadApplication();
-    if (environment.isDevelopment && process.env.T3CODE_DESKTOP_DEVTOOLS !== "0") {
+    const devtools = yield* Config.String("T3CODE_DESKTOP_DEVTOOLS").pipe(
+      Config.withDefault(""),
+      Effect.orDie,
+    );
+    if (environment.isDevelopment && devtools !== "0") {
       window.webContents.openDevTools({ mode: "detach" });
     }
 

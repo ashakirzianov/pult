@@ -151,6 +151,7 @@ describe("DesktopTelemetryPublisher host samples", () => {
             Layer.succeed(DesktopShellEnvironment.DesktopShellEnvironment, {
               installIntoProcess: Effect.succeed(true),
               awaitDiscovery: Effect.succeed(true),
+              awaitUserShellDiscovery: Effect.succeed(true),
               updates: Stream.empty,
             }),
           ),
