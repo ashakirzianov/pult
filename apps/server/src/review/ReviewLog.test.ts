@@ -62,8 +62,7 @@ describe("ReviewLog", () => {
       const head = yield* git(cwd, ["rev-parse", "HEAD"]);
       const initial = yield* git(cwd, ["rev-parse", "v1^{commit}"]);
 
-      const first = yield* ReviewLog.getLog(driver, { cwd, limit: 2 });
-      assert.isTrue(first.hasMore);
+      const first = yield* ReviewLog.getLog(driver, { cwd, refs: ["HEAD"], limit: 2 });
       assert.deepEqual(
         first.commits.map((commit) => commit.subject),
         ["Merge branch 'side'", "side change"],
@@ -78,8 +77,7 @@ describe("ReviewLog", () => {
       assert.isFalse(Number.isNaN(Date.parse(merge.authoredAt)));
       assert.deepEqual(first.commits[1]!.refs, ["refs/heads/side"]);
 
-      const rest = yield* ReviewLog.getLog(driver, { cwd, skip: 2, limit: 10 });
-      assert.isFalse(rest.hasMore);
+      const rest = yield* ReviewLog.getLog(driver, { cwd, refs: ["HEAD"], skip: 2, limit: 10 });
       assert.deepEqual(
         rest.commits.map((commit) => commit.subject),
         ["main change", "initial commit"],
@@ -92,7 +90,7 @@ describe("ReviewLog", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect("walks the refs it is given, and nothing before the first commit", () =>
+  it.effect("walks the refs it is given, and lists no refs before the first commit", () =>
     Effect.gen(function* () {
       const driver = yield* GitVcsDriver.GitVcsDriver;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -115,10 +113,6 @@ describe("ReviewLog", () => {
 
       const empty = yield* fileSystem.makeTempDirectoryScoped({ prefix: "review-log-empty-" });
       yield* driver.initRepo({ cwd: empty });
-      assert.deepEqual(yield* ReviewLog.getLog(driver, { cwd: empty }), {
-        commits: [],
-        hasMore: false,
-      });
       assert.deepEqual(yield* ReviewLog.getRefs(driver, { cwd: empty }), {
         head: { ref: yield* git(empty, ["symbolic-ref", "HEAD"]), sha: null },
         refs: [],

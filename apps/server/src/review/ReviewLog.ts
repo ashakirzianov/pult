@@ -47,17 +47,6 @@ export const getLog = Effect.fn("ReviewLog.getLog")(function* (
   input: ReviewLogInput,
 ) {
   const limit = input.limit ?? DEFAULT_LIMIT;
-  const refs = input.refs !== undefined && input.refs.length > 0 ? input.refs : undefined;
-  if (refs === undefined) {
-    const head = yield* git.execute({
-      operation: "ReviewLog.getLog.head",
-      cwd: input.cwd,
-      args: ["rev-parse", "--verify", "--quiet", "HEAD"],
-      allowNonZeroExit: true,
-    });
-    // Before the first commit HEAD walks nothing, rather than failing.
-    if (head.exitCode !== 0) return { commits: [], hasMore: false } satisfies ReviewLogResult;
-  }
   const result = yield* git.execute({
     operation: "ReviewLog.getLog",
     cwd: input.cwd,
@@ -71,12 +60,12 @@ export const getLog = Effect.fn("ReviewLog.getLog")(function* (
       ...REF_NAMESPACES.map((namespace) => `--decorate-refs=${namespace}`),
       `--format=${LOG_FORMAT}`,
       `--skip=${input.skip ?? 0}`,
-      `--max-count=${limit + 1}`,
+      `--max-count=${limit}`,
       // Revisions on stdin, which git reads as revisions alone, and with no argv limit for every ref of a large repository.
       "--stdin",
       "--",
     ],
-    stdin: `${(refs ?? ["HEAD"]).join("\n")}\n`,
+    stdin: `${input.refs.join("\n")}\n`,
     maxOutputBytes: LOG_MAX_OUTPUT_BYTES,
   });
   const fields = result.stdout.split("\0");
@@ -85,7 +74,7 @@ export const getLog = Effect.fn("ReviewLog.getLog")(function* (
     return yield* logError(input.cwd, "Could not read the commit log.");
   const complete = Math.floor((fields.length - 1) / LOG_FIELDS);
   const commits: ReviewLogCommit[] = [];
-  for (let record = 0; record < complete && commits.length <= limit; record++) {
+  for (let record = 0; record < complete && commits.length < limit; record++) {
     const at = record * LOG_FIELDS;
     const [sha, parents, authorName, authorEmail, authoredAt, decorations, message] = fields
       .slice(at, at + LOG_FIELDS)
@@ -107,10 +96,7 @@ export const getLog = Effect.fn("ReviewLog.getLog")(function* (
   }
   if (result.stdoutTruncated && commits.length === 0)
     return yield* logError(input.cwd, "A commit's message exceeds the response limit.");
-  return {
-    commits: commits.slice(0, limit),
-    hasMore: result.stdoutTruncated || commits.length > limit,
-  } satisfies ReviewLogResult;
+  return { commits } satisfies ReviewLogResult;
 });
 
 export const getRefs = Effect.fn("ReviewLog.getRefs")(function* (

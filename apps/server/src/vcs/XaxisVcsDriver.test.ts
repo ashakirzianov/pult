@@ -293,44 +293,20 @@ describe.skipIf(skipped)(suite, () => {
         Effect.gen(function* () {
           const review = yield* ReviewService.ReviewService;
           const { first, stacked, other1, other2 } = hashes;
-          const page = (input: { refs?: string[]; skip?: number; limit?: number }) =>
-            review.getLog({ cwd: a, ...input }).pipe(
-              Effect.map((result) => ({
-                shas: result.commits.map((commit) => commit.sha),
-                hasMore: result.hasMore,
-              })),
-            );
-          const both = [XAXIS_HEAD_REF, XAXIS_TIP_REF];
-          assert.deepEqual(yield* page({ refs: both, limit: 3 }), {
-            shas: [other2, other1, stacked],
-            hasMore: true,
-          });
-          assert.deepEqual(yield* page({ refs: both, skip: 3, limit: 3 }), {
-            shas: [first],
-            hasMore: false,
-          });
-          assert.deepEqual(yield* page({}), { shas: [stacked, first], hasMore: false });
-          assert.deepEqual(yield* page({ refs: [XAXIS_TIP_REF] }), {
-            shas: [other2, other1, first],
-            hasMore: false,
-          });
-          assert.deepEqual(yield* page({ refs: [first], limit: 1 }), {
-            shas: [first],
-            hasMore: false,
-          });
+          const page = (input: { refs: [string, ...string[]]; skip?: number; limit?: number }) =>
+            review
+              .getLog({ cwd: a, ...input })
+              .pipe(Effect.map((result) => result.commits.map((commit) => commit.sha)));
+          const both: [string, string] = [XAXIS_HEAD_REF, XAXIS_TIP_REF];
+          assert.deepEqual(yield* page({ refs: both, limit: 3 }), [other2, other1, stacked]);
+          assert.deepEqual(yield* page({ refs: both, skip: 3, limit: 3 }), [first]);
+          assert.deepEqual(yield* page({ refs: ["HEAD"] }), [stacked, first]);
+          assert.deepEqual(yield* page({ refs: [XAXIS_TIP_REF] }), [other2, other1, first]);
+          assert.deepEqual(yield* page({ refs: [first], limit: 1 }), [first]);
           // Several hashes, each placed on the incoming line or the checkout's own.
-          assert.deepEqual(yield* page({ refs: [first, other1] }), {
-            shas: [other1, first],
-            hasMore: false,
-          });
-          assert.deepEqual(yield* page({ refs: [stacked, other1] }), {
-            shas: [other1, stacked, first],
-            hasMore: false,
-          });
-          assert.deepEqual(yield* page({ refs: [first, other1], skip: 1, limit: 1 }), {
-            shas: [first],
-            hasMore: false,
-          });
+          assert.deepEqual(yield* page({ refs: [first, other1] }), [other1, first]);
+          assert.deepEqual(yield* page({ refs: [stacked, other1] }), [other1, stacked, first]);
+          assert.deepEqual(yield* page({ refs: [first, other1], skip: 1, limit: 1 }), [first]);
           const nowhere = `sha256:${"0".repeat(64)}`;
           const unplaced = yield* Effect.flip(page({ refs: [stacked, nowhere] }));
           assert.include(unplaced.message, `${nowhere} is on neither`);

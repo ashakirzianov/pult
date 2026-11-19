@@ -276,7 +276,7 @@ describe("ReviewService history", () => {
       const errors = yield* Effect.gen(function* () {
         const review = yield* ReviewService.ReviewService;
         return [
-          yield* review.getLog({ cwd: outsideRoot }).pipe(Effect.flip),
+          yield* review.getLog({ cwd: outsideRoot, refs: ["HEAD"] }).pipe(Effect.flip),
           yield* review.getRefs({ cwd: outsideRoot }).pipe(Effect.flip),
         ];
       }).pipe(Effect.provide(layer({ workspaceRoot, baseDir, detectCalls })));

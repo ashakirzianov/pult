@@ -64,7 +64,7 @@ export function changesServer(environmentId: string) {
         ),
       );
     },
-    /** A page of the checkout's commits, from `refs` or HEAD. */
+    /** A page of the checkout's commits, from `refs`. */
     log: async (input: ReviewLogInput): Promise<ReviewLogResult> => {
       await whenReady(environmentId);
       return connection.run(environmentId, request(WS_METHODS.reviewGetLog, input));

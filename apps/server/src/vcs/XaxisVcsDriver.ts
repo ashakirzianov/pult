@@ -780,9 +780,8 @@ const make = Effect.gen(function* () {
       ] as const) {
         decorations.set(hash, [...(decorations.get(hash) ?? []), ref]);
       }
-      const refs = input.refs !== undefined && input.refs.length > 0 ? input.refs : ["HEAD"];
       const named = new Set(
-        refs.map((ref) =>
+        input.refs.map((ref) =>
           ref === "HEAD" || ref === XAXIS_HEAD_REF || ref === "main" || ref === read.head
             ? "head"
             : ref === XAXIS_TIP_REF || ref === "xaxis/main" || ref === tip.tip
@@ -790,8 +789,8 @@ const make = Effect.gen(function* () {
               : ref,
         ),
       );
-      // One page past `skip`, and one more to know whether the walk goes on.
-      const want = limit + 1;
+      // One page past `skip`.
+      const want = limit;
       const page = (args: ReadonlyArray<string>, from: number, count: number) =>
         count <= 0
           ? Effect.succeed([] as ReadonlyArray<XaxisCli.XaxisChangeset>)
@@ -829,8 +828,7 @@ const make = Effect.gen(function* () {
                 }),
               );
         return {
-          commits: walked.slice(0, limit).map((changeset) => commitOf(changeset, decorations)),
-          hasMore: walked.length > limit,
+          commits: walked.map((changeset) => commitOf(changeset, decorations)),
         } satisfies ReviewLogResult;
       }
       // Several starts (the Graph's stale head and tip after a move), each placed on the
@@ -913,8 +911,7 @@ const make = Effect.gen(function* () {
         walked = [...incoming, ...rest];
       }
       return {
-        commits: walked.slice(0, limit).map((changeset) => commitOf(changeset, decorations)),
-        hasMore: walked.length > limit,
+        commits: walked.map((changeset) => commitOf(changeset, decorations)),
       } satisfies ReviewLogResult;
     },
   );

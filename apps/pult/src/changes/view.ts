@@ -378,12 +378,12 @@ class CheckoutHistory implements ISCMHistoryProvider {
     void this.graph.ask(this);
     if (typeof options.limit === "object") todo("a history page that ends at a commit");
     if (options.filterText !== undefined) todo("a history filtered by text");
-    const refs = options.historyItemRefs ?? [];
+    const [first, ...rest] = options.historyItemRefs ?? [];
     // A checkout with no branch or commit yet has nothing to walk.
-    if (refs.length === 0) return [];
+    if (first === undefined) return [];
     const page = await this.server.log({
       cwd: this.checkout.root,
-      refs: [...refs],
+      refs: [first, ...rest],
       ...(options.skip === undefined ? {} : { skip: options.skip }),
       limit: Math.min(options.limit ?? HISTORY_PAGE, REVIEW_LOG_MAX_LIMIT),
     });

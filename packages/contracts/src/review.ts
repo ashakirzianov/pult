@@ -110,8 +110,8 @@ export const REVIEW_LOG_MAX_LIMIT = 500;
  */
 export const ReviewLogInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  /** What the walk starts from, refs or commit shas as `git log` takes them; HEAD when absent or empty. */
-  refs: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** What the walk starts from, refs or commit shas as `git log` takes them; at least one. */
+  refs: Schema.NonEmptyArray(TrimmedNonEmptyString),
   /** The page's cursor: how many commits of the walk come before it. */
   skip: Schema.optional(NonNegativeInt),
   /** Defaults to 50. */
@@ -137,8 +137,6 @@ export type ReviewLogCommit = typeof ReviewLogCommit.Type;
 
 export const ReviewLogResult = Schema.Struct({
   commits: Schema.Array(ReviewLogCommit),
-  /** Whether the walk goes on past this page. */
-  hasMore: Schema.Boolean,
 });
 export type ReviewLogResult = typeof ReviewLogResult.Type;
 
