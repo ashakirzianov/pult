@@ -143,6 +143,8 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   if (readAppearanceModePreference("system") !== "system") setAppearanceMode("system");
   // Upstream applies its theme as its module loads, which is before this, by the browser's scheme.
   refreshTheme();
+  // Upstream hears the system's scheme only while a component reads the theme, and a view no pane shows unmounts its own, so the page follows it itself.
+  host.onDidChangeColorScheme(() => refreshTheme());
   startBrowserHost(host.keepRendering);
   return {
     mount: mountThreadView,
