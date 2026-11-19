@@ -228,10 +228,15 @@ const instant = (iso: string | undefined) => {
   return parsed?._tag === "Some" ? DateTime.toEpochMillis(parsed.value) : undefined;
 };
 
-/** The sleep rule's reading of a conversation: every channel but `user` rotates on a full context. */
+/**
+ * The sleep rule's reading of a conversation: every channel but `user` rotates on a full context,
+ * and none sleeps while the shell's latest run, which a queued run does not conceal, is stopped by
+ * a usage limit; a deliberate settle or archive still ends it.
+ */
 const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
   wakefulness(records, thread.promptCacheExpiresAt, {
     rotatesWhenFull: channelOf(thread) !== USER_CHANNEL,
+    usageLimited: thread.status === "failed" && thread.lastErrorClass === "usage_limit",
   });
 
 const sleepsOf = (state: Wakefulness) =>
@@ -444,7 +449,8 @@ export const make = Effect.gen(function* () {
       ["runs", "providerTurns", "runtimeRequests", "subagents"],
     );
     const latest = records.runs.toSorted((left, right) => left.ordinal - right.ordinal).at(-1);
-    const state = wakefulnessOf(records, thread);
+    // Read after the records, so a run they show failed on a usage limit holds it.
+    const state = wakefulnessOf(records, (yield* threads.getThreadShell(thread.id)) ?? thread);
     const awake: SleepOutcome = { slept: false };
     if (state.kind === "held") return { slept: false, heldBy: state.by } satisfies SleepOutcome;
     if (requested === undefined) {
