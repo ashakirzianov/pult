@@ -282,6 +282,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
+  it.effect("resumes limited threads unless a saved false turns it off, and snoozes none", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const unsaved = yield* decodeServerSettingsJson("{}");
+      assert.isTrue(unsaved.autoResumeLimitedThreads);
+      assert.isFalse(unsaved.snoozeLimitedThreads);
+      yield* fs.writeFileString(config.settingsPath, `{ "autoResumeLimitedThreads": false }`);
+      assert.isFalse((yield* service.getSettings).autoResumeLimitedThreads);
+
+      yield* service.updateSettings({ autoResumeLimitedThreads: true });
+      const saved = () =>
+        Effect.map(fs.readFileString(config.settingsPath), (text) => JSON.parse(text));
+      assert.isUndefined((yield* saved()).autoResumeLimitedThreads);
+      yield* service.updateSettings({ autoResumeLimitedThreads: false });
+      assert.isFalse((yield* saved()).autoResumeLimitedThreads);
+      assert.isFalse((yield* service.getSettings).autoResumeLimitedThreads);
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
   it.effect("moves an idle compaction mode saved in the legacy switch to its own field", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;

@@ -41,6 +41,7 @@ import {
   type OrchestratorMcpThreadInterruptResult,
   type OrchestratorMcpThreadListInput,
   type OrchestratorMcpThreadListItem,
+  type OrchestratorMcpThreadUsageLimit,
   type OrchestratorMcpThreadListResult,
   type OrchestratorMcpThreadReadInput,
   type OrchestratorMcpThreadReadResult,
@@ -889,6 +890,36 @@ function threadBackgroundWork(
   };
 }
 
+/**
+ * The shell's latest run is the limited one even behind a queued run. A continuation is armed
+ * only for that run and reset, and is due at the later of the reset and a snooze.
+ */
+function threadUsageLimit(
+  shell: OrchestrationV2ThreadShell,
+): OrchestratorMcpThreadUsageLimit | null {
+  if (shell.status !== "failed" || shell.lastErrorClass !== "usage_limit") return null;
+  const resetAt = shell.usageLimitResetAt ?? null;
+  const recovery = shell.limitRecovery;
+  if (
+    resetAt === null ||
+    recovery?.autoResume !== true ||
+    recovery.runId !== shell.latestRunId ||
+    recovery.resetAt !== resetAt ||
+    shell.archivedAt !== null ||
+    shell.settledOverride === "settled"
+  ) {
+    return { resetAt, resumeAt: null };
+  }
+  const snoozedUntil = shell.snoozedUntil ?? null;
+  return {
+    resetAt,
+    resumeAt:
+      snoozedUntil !== null && DateTime.toEpochMillis(snoozedUntil) > Date.parse(resetAt)
+        ? DateTime.formatIso(snoozedUntil)
+        : resetAt,
+  };
+}
+
 function threadPullRequests(
   links: OrchestrationV2ThreadShell["pullRequests"],
   includeLinks = true,
@@ -971,6 +1002,7 @@ function listItemFromShell(
     ...threadSnooze(shell, nowMs),
     pinned: shell.pinnedAt != null,
     ...threadBackgroundWork(shell),
+    usageLimit: threadUsageLimit(shell),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
     ...(shell.delegatedFrom == null ? {} : { delegatedFrom: shell.delegatedFrom }),
@@ -1039,6 +1071,7 @@ function threadDetail(
     ...threadSnooze(shell, nowMs),
     pinned: shell.pinnedAt != null,
     ...threadBackgroundWork(shell),
+    usageLimit: threadUsageLimit(shell),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
     updatedAt: DateTime.formatIso(projection.thread.updatedAt),
   };

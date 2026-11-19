@@ -606,6 +606,55 @@ describe("a full context", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "holds a conversation stopped by a usage limit past its expiry and full context, until settled by hand",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        // No reset known for either: the hold does not wait on one.
+        const limited = { status: "failed", lastErrorClass: "usage_limit" } as const;
+        const work = conversation(
+          h,
+          star,
+          "work",
+          [channelTag("work")],
+          [run("work-run", "failed")],
+          turnUsing(250_000, 1_000_000),
+        );
+        work.shell = { ...work.shell, ...limited };
+        const user = h.threads.add(
+          star.projectId,
+          "user",
+          { ...limited, promptCacheExpiresAt: at("2026-11-10T12:00:00.000Z") },
+          [run("user-run", "failed")],
+        );
+
+        yield* h.runPass;
+        assert.deepStrictEqual(h.threads.settles, []);
+        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.channels, [
+          { slug: "user", threadId: user.shell.id, sleeps: { heldBy: "usage-limit" } },
+          { slug: "work", threadId: work.shell.id, sleeps: { heldBy: "usage-limit" } },
+        ]);
+        assert.deepStrictEqual(yield* h.stars.sleepByHand(star), {
+          slept: false,
+          heldBy: "usage-limit",
+        });
+        assert.deepStrictEqual(h.threads.settles, []);
+
+        user.shell = {
+          ...user.shell,
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T13:00:00.000Z"),
+        };
+        assert.deepStrictEqual(
+          (yield* h.stars.view).stars[0]?.channels.map((channel) => channel.slug),
+          ["work"],
+        );
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("waits for a run on or queued, and ends it on the look after the queue drains", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));

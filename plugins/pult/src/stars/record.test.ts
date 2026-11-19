@@ -126,6 +126,13 @@ describe("AGENTS.md", () => {
     );
   });
 
+  it("tells the Star a conversation stopped by a usage limit stays open and sends no notice", () => {
+    assert.include(
+      AGENTS_TEXT,
+      "A conversation stopped by a usage limit stays open until it resumes or is settled. The server can resume it at a known reset; its auto-resume setting and the thread's cancellation control this. `t3_thread_list` and `t3_thread_read` expose `usageLimit`, the known reset and the scheduled continuation. Pult sends no separate limit or resume notice.",
+    );
+  });
+
   it("tells the Star to tag the threads of its own work, and that an untagged one reaches the user", () => {
     assert.include(
       AGENTS_TEXT,

@@ -394,6 +394,17 @@ export const OrchestratorMcpThreadBackgroundTask = Schema.Struct({
   childThreadId: Schema.optional(ThreadId),
 });
 export type OrchestratorMcpThreadBackgroundTask = typeof OrchestratorMcpThreadBackgroundTask.Type;
+/** A thread blocked by a usage limit; resumeAt is when an armed continuation is due. */
+export const OrchestratorMcpThreadUsageLimit = Schema.Struct({
+  resetAt: Schema.NullOr(IsoDateTime),
+  resumeAt: Schema.NullOr(IsoDateTime),
+});
+export type OrchestratorMcpThreadUsageLimit = typeof OrchestratorMcpThreadUsageLimit.Type;
+
+/** Absent from a server that does not report it; null when the thread is not blocked. */
+const OrchestratorMcpThreadUsageLimitField = Schema.optional(
+  Schema.NullOr(OrchestratorMcpThreadUsageLimit),
+);
 
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
@@ -423,6 +434,7 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   blockedOnThreadWait: Schema.optional(Schema.Boolean),
   /** Absent from linked environments that predate it. */
   pendingBackgroundTasks: Schema.optional(Schema.Array(OrchestratorMcpThreadBackgroundTask)),
+  usageLimit: OrchestratorMcpThreadUsageLimitField,
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   /** The linked environment's thread that delegated this one; absent otherwise. */
@@ -500,6 +512,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   blockedOnThreadWait: Schema.optional(Schema.Boolean),
   /** Absent from linked environments that predate it. */
   pendingBackgroundTasks: Schema.optional(Schema.Array(OrchestratorMcpThreadBackgroundTask)),
+  usageLimit: OrchestratorMcpThreadUsageLimitField,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });

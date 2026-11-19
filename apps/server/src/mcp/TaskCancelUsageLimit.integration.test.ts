@@ -168,7 +168,8 @@ it.effect.each([
                 }),
             }),
             ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
-            ServerSettings.layerTest({ autoResumeLimitedThreads: true }),
+            // Armed by the default: the cancellation still wins over it.
+            ServerSettings.layerTest(),
           ),
         ),
       );

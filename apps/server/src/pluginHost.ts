@@ -87,7 +87,7 @@ export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";
 
 import packageJson from "../package.json" with { type: "json" };
 
-declare const __T3CODE_BUILD_COMMIT__: string | undefined;
+declare const __T3CODE_BUILD_COMMIT__: string | null | undefined;
 
 /**
  * The server build a plugin was built against. A plugin's build script writes

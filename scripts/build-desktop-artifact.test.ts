@@ -39,6 +39,7 @@ import {
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
   renderMacBaseEntitlements,
+  resolveGitCommitHash,
   renderMacPasskeyEntitlements,
   resolveMacFileExclusions,
   resolveMacWebAuthnEntitlements,
@@ -710,6 +711,43 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       },
     );
   });
+
+  // Pult: an xaxis checkout, even inside a git repository, bakes no commit and asks no git.
+  it.effect("bakes no git commit into a build from an xaxis checkout", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const outer = yield* fs.makeTempDirectoryScoped({ prefix: "t3-commit-hash-" });
+        yield* fs.makeDirectory(path.join(outer, ".git"));
+        const checkout = path.join(outer, "checkout");
+        yield* fs.makeDirectory(checkout);
+        yield* fs.writeFileString(
+          path.join(checkout, ".xaxis-checkout"),
+          "c078d1e2-6c3d-421c-b76d-a859c655780a\n",
+        );
+        const commands: string[] = [];
+        const spawner = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make((command) => {
+            commands.push((command as unknown as { readonly command: string }).command);
+            return Effect.succeed(mockProcess(0, "0123456789ab\n"));
+          }),
+        );
+
+        assert.equal(
+          yield* resolveGitCommitHash(checkout).pipe(Effect.provide(spawner)),
+          "unknown",
+        );
+        assert.deepStrictEqual(commands, []);
+        assert.equal(
+          yield* resolveGitCommitHash(outer).pipe(Effect.provide(spawner)),
+          "0123456789ab",
+        );
+        assert.deepStrictEqual(commands, ["git"]);
+      }),
+    ),
+  );
 
   it.effect("ships Cursor platform assets outside asar for spawning and native loading", () =>
     Effect.scoped(
