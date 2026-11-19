@@ -21,6 +21,7 @@ import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
   codexDefaultReasoningEffortOverride,
+  RATE_LIMITS_PROBE_TIMEOUT_MS,
 } from "../../provider/CodexProvider.ts";
 import {
   codexRateLimitsToUpdate,
@@ -92,6 +93,7 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Duration from "effect/Duration";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -1190,6 +1192,16 @@ function failureResetAt(
   return classifyCodexManagedError(failure.code)?.usageLimit
     ? null
     : codexUsageLimitResetAt(snapshot);
+}
+
+// The recovery worker refuses a reset no later than the failure.
+function usableResetAt(
+  resetAt: string | null | undefined,
+  failedAt: DateTime.Utc | null,
+): resetAt is string {
+  return (
+    resetAt != null && (failedAt === null || Date.parse(resetAt) > DateTime.toEpochMillis(failedAt))
+  );
 }
 
 interface ActiveCodexTurnContext {
@@ -4547,35 +4559,70 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           }).pipe(Effect.orDie),
         );
 
-        yield* client.handleServerNotification("account/rateLimits/updated", (payload) =>
-          Effect.gen(function* () {
-            const previous = yield* Ref.getAndUpdate(rateLimitSnapshot, (previous) =>
-              mergeCodexRateLimits(previous, payload.rateLimits),
+        // A notification and the read after a reset-less usage limit share this path.
+        const applyRateLimits = Effect.fnUntraced(function* (rateLimits: CodexRateLimitSnapshot) {
+          const previous = yield* Ref.getAndUpdate(rateLimitSnapshot, (previous) =>
+            mergeCodexRateLimits(previous, rateLimits),
+          );
+          const snapshot = yield* Ref.get(rateLimitSnapshot);
+          for (const item of (yield* Ref.get(limitedTurnItems)).values()) {
+            const resetAt = failureResetAt(item.failure, snapshot);
+            if (
+              usableResetAt(item.failure.resetAt, item.completedAt) ||
+              !usableResetAt(resetAt, item.completedAt)
+            )
+              continue;
+            const updated = {
+              ...item,
+              updatedAt: yield* DateTime.now,
+              failure: { ...item.failure, resetAt },
+            };
+            yield* Ref.update(limitedTurnItems, (current) =>
+              new Map(current).set(item.providerThreadId!, updated),
             );
-            const snapshot = yield* Ref.get(rateLimitSnapshot);
-            for (const item of (yield* Ref.get(limitedTurnItems)).values()) {
-              const resetAt = failureResetAt(item.failure, snapshot);
-              if (resetAt === null || item.failure.resetAt != null) continue;
-              const updated = {
-                ...item,
-                updatedAt: yield* DateTime.now,
-                failure: { ...item.failure, resetAt },
-              };
-              yield* Ref.update(limitedTurnItems, (current) =>
-                new Map(current).set(item.providerThreadId!, updated),
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CODEX_PROVIDER,
+              turnItem: updated,
+            });
+          }
+          const update = codexRateLimitsToUpdate(rateLimits, previous);
+          if (update && adapterOptions.onUsageLimits) {
+            const checkedAt = DateTime.formatIso(yield* DateTime.now);
+            yield* adapterOptions.onUsageLimits({ ...update, checkedAt });
+          }
+        });
+
+        // Notifications alone can leave a usage limit without its reset: Codex may send
+        // a below-100% main snapshot, then an empty model-specific one, then the failure.
+        // One read of the account's windows, never repeated, may still supply it.
+        const readResetAfterUsageLimit = Effect.fnUntraced(
+          function* (providerThreadId: ProviderThreadId) {
+            const response = yield* client
+              .request("account/rateLimits/read", null)
+              .pipe(Effect.timeoutOption(Duration.millis(RATE_LIMITS_PROBE_TIMEOUT_MS)));
+            if (Option.isNone(response)) {
+              return yield* Effect.logInfo(
+                "Codex usage-limit reset unknown: usage read timed out.",
               );
-              yield* emitProviderEvent({
-                type: "turn_item.updated",
-                driver: CODEX_PROVIDER,
-                turnItem: updated,
-              });
             }
-            const update = codexRateLimitsToUpdate(payload.rateLimits, previous);
-            if (update && adapterOptions.onUsageLimits) {
-              const checkedAt = DateTime.formatIso(yield* DateTime.now);
-              yield* adapterOptions.onUsageLimits({ ...update, checkedAt });
+            yield* applyRateLimits(
+              response.value.rateLimitsByLimitId?.codex ?? response.value.rateLimits,
+            );
+            const item = (yield* Ref.get(limitedTurnItems)).get(providerThreadId);
+            if (item !== undefined && !usableResetAt(item.failure.resetAt, item.completedAt)) {
+              yield* Effect.logInfo(
+                "Codex usage-limit reset unknown: usage read shows no exhausted main window with a later reset.",
+              );
             }
-          }).pipe(Effect.orDie),
+          },
+          Effect.catch((cause) =>
+            Effect.logInfo("Codex usage-limit reset unknown: usage read failed.", { cause }),
+          ),
+        );
+
+        yield* client.handleServerNotification("account/rateLimits/updated", (payload) =>
+          applyRateLimits(payload.rateLimits).pipe(Effect.orDie),
         );
 
         yield* client.handleServerNotification("thread/tokenUsage/updated", (payload) =>
@@ -5976,6 +6023,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             yield* Ref.update(limitedTurnItems, (items) =>
               new Map(items).set(context.providerThread.id, item),
             );
+            if (
+              !usableResetAt(current.failure.resetAt, item.completedAt) &&
+              !classifyCodexManagedError(current.failure.code)?.usageLimit
+            ) {
+              yield* readResetAfterUsageLimit(context.providerThread.id).pipe(Effect.forkIn(scope));
+            }
           }
         });
 

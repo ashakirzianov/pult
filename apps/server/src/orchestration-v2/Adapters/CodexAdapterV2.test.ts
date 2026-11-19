@@ -6112,6 +6112,151 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect.each([
+    {
+      name: "exhausted",
+      usedBefore: 98,
+      readUsedPercent: 100,
+      expectedResetAt: "2033-05-19T07:20:00.000Z",
+    },
+    { name: "inconclusive", usedBefore: 98, readUsedPercent: 98, expectedResetAt: null },
+    // A cached exhausted window whose reset has already passed is no reset at all.
+    {
+      name: "stale",
+      usedBefore: 100,
+      resetBefore: 1782600000,
+      readUsedPercent: 100,
+      expectedResetAt: "2033-05-19T07:20:00.000Z",
+    },
+  ] as const)("reads Codex usage once after a reset-less usage limit ($name)", (scenario) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = `native-limit-read-${scenario.name}`;
+        const nativeTurnId = `turn-limit-read-${scenario.name}`;
+        const mainWindow = (usedPercent: number, weeklyPercent: number, resetsAt = 2000100000) => ({
+          limitId: "codex",
+          primary: { usedPercent, resetsAt, windowDurationMins: 300 },
+          secondary: {
+            usedPercent: weeklyPercent,
+            resetsAt: 2000500000,
+            windowDurationMins: 10080,
+          },
+        });
+        const emptyPremium = { limitId: "premium", primary: null, secondary: null };
+        const transcript = makeCodexReplayTranscript({
+          scenario: `codex-limit-read-${scenario.name}`,
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Continue." }),
+            // Codex's own order: a main snapshot short of 100%, an empty
+            // model-specific one, then the failure.
+            ...[
+              mainWindow(
+                scenario.usedBefore,
+                93,
+                "resetBefore" in scenario ? scenario.resetBefore : undefined,
+              ),
+              emptyPremium,
+            ].map((rateLimits) => ({
+              type: "emit_inbound" as const,
+              label: "account/rateLimits/updated",
+              frame: { method: "account/rateLimits/updated", params: { rateLimits } },
+            })),
+            {
+              type: "emit_inbound",
+              label: "turn/completed",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: {
+                    ...makeCodexReplayTurn({ id: nativeTurnId, status: "failed" }),
+                    error: {
+                      message: "You've hit your usage limit.",
+                      codexErrorInfo: "usageLimitExceeded",
+                    },
+                  },
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              label: "account/rateLimits/read",
+              frame: { id: 4, method: "account/rateLimits/read", params: null },
+            },
+            {
+              type: "emit_inbound",
+              label: "account/rateLimits/read",
+              frame: {
+                id: 4,
+                result: {
+                  rateLimits: emptyPremium,
+                  rateLimitsByLimitId: {
+                    codex: mainWindow(scenario.readUsedPercent, 94),
+                    premium: emptyPremium,
+                  },
+                },
+              },
+            },
+          ],
+        });
+        yield* TestClock.setTime(1782622445000);
+        const readAnswered = yield* Deferred.make<void>();
+        const enriched = yield* Deferred.make<string>();
+        const harness = yield* makeCodexReplayHarness(
+          transcript,
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "error" &&
+            event.turnItem.failure.resetAt != null
+              ? Deferred.succeed(enriched, event.turnItem.failure.resetAt)
+              : Effect.void,
+          undefined,
+          undefined,
+          undefined,
+          // Only the read reports the weekly window at 94%.
+          (update) =>
+            update.windows.some((window) => window.usedPercent === 94)
+              ? Deferred.succeed(readAnswered, undefined)
+              : Effect.void,
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            text: "Continue.",
+            attemptId: RunAttemptId.make(`attempt-limit-read-${scenario.name}`),
+          }),
+        );
+        yield* harness.firstTerminal;
+        const terminal = harness.terminalEvents()[0];
+        assert.equal(terminal?.status, "failed");
+        if (terminal?.status !== "failed") return;
+        assert.equal(terminal.failure.class, "usage_limit");
+        assert.equal(
+          terminal.failure.resetAt,
+          "resetBefore" in scenario ? "2026-06-27T22:40:00.000Z" : null,
+        );
+        // The failure is published before the read; the shelf hears the read's windows.
+        yield* Deferred.await(readAnswered);
+        if (scenario.expectedResetAt === null) {
+          assert.isFalse(yield* Deferred.isDone(enriched));
+        } else {
+          assert.equal(yield* Deferred.await(enriched), scenario.expectedResetAt);
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    ),
+  );
+
   // regression: #17501 Codex 429 retry exhaustion classifies as a usage limit
   it.effect.each([
     {
