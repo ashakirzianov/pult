@@ -224,7 +224,7 @@ const CreateThreadsTool = Tool.make("create_threads", {
 
 const ThreadListTool = Tool.make("t3_thread_list", {
   description:
-    "List threads newest first, in one project or with `allProjects`. Page with `cursor`.",
+    "List threads newest first, in one project or with `allProjects`. Page with `cursor`. `usageLimit` gives a blocked thread's known reset and any armed continuation; null means not blocked, absent means this server does not report it.",
   parameters: OrchestratorMcpThreadListInput,
   success: OrchestratorMcpThreadListResult,
   failure: OrchestratorMcpFailure,
@@ -238,7 +238,7 @@ const ThreadListTool = Tool.make("t3_thread_list", {
 
 const ThreadReadTool = Tool.make("t3_thread_read", {
   description:
-    "Read any thread by id. `messages` (default): user and assistant messages and plans. `activity`: all timeline items. Keep reads small: low `limit` and `maxCharsPerItem`. Page with `afterPosition=nextPosition`. Cut-off text: `itemId` with `textOffset=nextTextOffset`. Reading a child's final result marks it delivered. In your reply, name it as its `link` verbatim.",
+    "Read any thread by id. `messages` (default): user and assistant messages and plans. `activity`: all timeline items. Keep reads small: low `limit` and `maxCharsPerItem`. Page with `afterPosition=nextPosition`. Cut-off text: `itemId` with `textOffset=nextTextOffset`. Reading a child's final result marks it delivered. In your reply, name it as its `link` verbatim. `usageLimit` gives a blocked thread's known reset and any armed continuation; null means not blocked, absent means this server does not report it.",
   parameters: OrchestratorMcpThreadReadInput,
   success: OrchestratorMcpThreadReadResult,
   failure: OrchestratorMcpFailure,

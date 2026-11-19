@@ -3537,10 +3537,40 @@ describe("OrchestratorMcpService thread list", () => {
     status: "completed" as const,
     snoozedUntil: snoozed ? DateTime.makeUnsafe("2099-01-01T00:00:00Z") : null,
   });
+  const limitedRunId = RunId.make("run:limited");
+  const resetAt = "2099-01-01T00:00:00.000Z";
+  const limited = (
+    id: string,
+    overrides: Partial<ReturnType<typeof liveThreadShell>>,
+  ): ReturnType<typeof liveThreadShell> => ({
+    ...shell(id, "project:c", false),
+    status: "failed",
+    latestRunId: limitedRunId,
+    lastErrorClass: "usage_limit",
+    usageLimitResetAt: resetAt,
+    ...overrides,
+  });
+  const armed = { runId: limitedRunId, resetAt, autoResume: true };
   const shells = [
     shell("thread:a-snoozed", "project:a", true),
     shell("thread:a-awake", "project:a", false),
     shell("thread:b-snoozed", "project:b", true),
+    limited("thread:c-armed-snoozed-later", {
+      limitRecovery: armed,
+      snoozedUntil: DateTime.makeUnsafe("2099-01-02T00:00:00Z"),
+    }),
+    limited("thread:c-armed", { limitRecovery: armed }),
+    limited("thread:c-cancelled", { limitRecovery: { ...armed, autoResume: false } }),
+    limited("thread:c-settled", {
+      limitRecovery: armed,
+      settledOverride: "settled",
+      settledAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
+    }),
+    limited("thread:c-unknown-reset", { usageLimitResetAt: null }),
+    limited("thread:c-other-failure", {
+      lastErrorClass: "provider_error",
+      usageLimitResetAt: null,
+    }),
   ];
   const service = layerOrchestratorService.pipe(
     Layer.provide(
@@ -3583,6 +3613,30 @@ describe("OrchestratorMcpService thread list", () => {
           ["thread:a-snoozed", "project:a"],
           ["thread:b-snoozed", "project:b"],
         ],
+      );
+    }).pipe(Effect.provide(service)),
+  );
+
+  it.effect("gives a usage-limited thread's known reset and armed continuation", () =>
+    Effect.gen(function* () {
+      const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const listed = yield* mcp.listThreads(client, {
+        projectId: ProjectId.make("project:a"),
+        allProjects: true,
+      });
+      assert.deepStrictEqual(
+        Object.fromEntries(listed.threads.map((thread) => [thread.threadId, thread.usageLimit])),
+        {
+          "thread:a-snoozed": null,
+          "thread:a-awake": null,
+          "thread:b-snoozed": null,
+          "thread:c-armed-snoozed-later": { resetAt, resumeAt: "2099-01-02T00:00:00.000Z" },
+          "thread:c-armed": { resetAt, resumeAt: resetAt },
+          "thread:c-cancelled": { resetAt, resumeAt: null },
+          "thread:c-settled": { resetAt, resumeAt: null },
+          "thread:c-unknown-reset": { resetAt: null, resumeAt: null },
+          "thread:c-other-failure": null,
+        },
       );
     }).pipe(Effect.provide(service)),
   );

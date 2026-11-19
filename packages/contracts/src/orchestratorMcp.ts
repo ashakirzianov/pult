@@ -360,6 +360,18 @@ export const OrchestratorMcpThreadPullRequest = Schema.Struct({
 });
 export type OrchestratorMcpThreadPullRequest = typeof OrchestratorMcpThreadPullRequest.Type;
 
+/** A thread blocked by a usage limit; resumeAt is when an armed continuation is due. */
+export const OrchestratorMcpThreadUsageLimit = Schema.Struct({
+  resetAt: Schema.NullOr(IsoDateTime),
+  resumeAt: Schema.NullOr(IsoDateTime),
+});
+export type OrchestratorMcpThreadUsageLimit = typeof OrchestratorMcpThreadUsageLimit.Type;
+
+/** Absent from a server that does not report it; null when the thread is not blocked. */
+const OrchestratorMcpThreadUsageLimitField = Schema.optional(
+  Schema.NullOr(OrchestratorMcpThreadUsageLimit),
+);
+
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
@@ -379,6 +391,7 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   settledAt: Schema.NullOr(IsoDateTime),
   snoozed: Schema.Boolean,
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  usageLimit: OrchestratorMcpThreadUsageLimitField,
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   itemCount: NonNegativeInt,
@@ -459,6 +472,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   settledAt: Schema.NullOr(IsoDateTime),
   snoozed: Schema.Boolean,
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  usageLimit: OrchestratorMcpThreadUsageLimitField,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
