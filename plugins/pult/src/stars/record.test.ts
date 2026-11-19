@@ -126,10 +126,14 @@ describe("AGENTS.md", () => {
     );
   });
 
-  it("tells the Star to tag every thread it launches with its id and a channel", () => {
+  it("tells the Star to tag the threads of its own work, and that an untagged one reaches the user", () => {
     assert.include(
       AGENTS_TEXT,
-      'Pass `tags: ["pult:child:star:<id>", "pult:channel:<channel>"]`, that same `id` and the channel its messages belong in, on every thread you launch with `t3_thread_launch`',
+      'Pass `tags: ["pult:child:star:<id>", "pult:channel:<channel>"]`, that same `id` and the channel its messages belong in, on every thread you launch for your own work with `t3_thread_launch`',
+    );
+    assert.include(
+      AGENTS_TEXT,
+      "A thread you launch without the `pult:child:star:<id>` tag lands in the user's Inbox as a conversation of the user's own: that is the other way to reach the user, for what the user will want to talk through with an agent, where an ask is for one thing you need from the user.",
     );
     assert.include(AGENTS_TEXT, "`t3_thread_update` sets it");
   });
