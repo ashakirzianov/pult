@@ -363,22 +363,31 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
       const updated = yield* projects
         .update({ ...input, commandId: yield* newCommandId() })
         .pipe(Effect.mapError(projectFailure));
-      // Pult: folded settings read a project's scripts from its override only
-      // (`resolveProjectScripts`), so write them there too, as the Actions editor does.
-      if (input.scripts !== undefined) {
+      // Pult: folded settings read a project's scripts, default model, env mode and auto-pull
+      // from its override only (`resolveProjectScripts`, `resolveProjectSettings`), so write
+      // them there too, as the page's editors do. A null, the row's "no project default", is
+      // the override's absent key.
+      const folded = {
+        defaultProjectScripts: input.scripts,
+        defaultModelSelection: input.defaultModelSelection,
+        defaultThreadEnvMode: input.defaultThreadEnvMode,
+        defaultAutoPull: input.autoPull,
+      };
+      if (Object.values(folded).some((value) => value !== undefined)) {
         const serverSettings = yield* ServerSettings.ServerSettingsService;
         const settings = yield* serverSettings.getSettings.pipe(Effect.mapError(unavailable));
-        if (settings.projectSettingsFolded)
+        if (settings.projectSettingsFolded) {
+          const override: Record<string, unknown> = {
+            ...settings.projectSettingsOverrides[input.projectId],
+          };
+          for (const [key, value] of Object.entries(folded)) {
+            if (value === null) delete override[key];
+            else if (value !== undefined) override[key] = value;
+          }
           yield* serverSettings
-            .updateSettings({
-              projectSettingsOverrides: {
-                [input.projectId]: {
-                  ...settings.projectSettingsOverrides[input.projectId],
-                  defaultProjectScripts: input.scripts,
-                },
-              },
-            })
+            .updateSettings({ projectSettingsOverrides: { [input.projectId]: override } })
             .pipe(Effect.mapError(unavailable));
+        }
       }
       return updated;
     }),

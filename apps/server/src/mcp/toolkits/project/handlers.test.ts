@@ -695,7 +695,7 @@ it.effect("deleting a project through MCP also discards its clone record", () =>
   }),
 );
 
-it.effect("an update the project refuses tells the agent why; scripts land where read", () =>
+it.effect("an update the project refuses tells the agent why; folded fields land where read", () =>
   Effect.gen(function* () {
     const harness = clientLaunchHarness({ runtimeModeCeiling: "full-access", launched: [] });
     const detail = "Project monograms must contain at most two characters.";
@@ -732,7 +732,11 @@ it.effect("an update the project refuses tells the agent why; scripts land where
             ...DEFAULT_SERVER_SETTINGS,
             projectSettingsFolded: true,
             projectSettingsOverrides: {
-              [harness.projectId]: { defaultModelSelection: keptModel },
+              [harness.projectId]: {
+                defaultModelSelection: keptModel,
+                defaultThreadEnvMode: "worktree",
+                enableAgentBrowserAccess: true,
+              },
             },
           }),
           updateSettings: (patch) =>
@@ -765,19 +769,27 @@ it.effect("an update the project refuses tells the agent why; scripts land where
       icon: "configure",
       runOnWorktreeCreate: true,
     } as const;
-    yield* toolkit
-      .handle("t3_project_update", { projectId: harness.projectId, scripts: [setup] })
-      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    const model = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+    for (const update of [
+      { scripts: [setup] },
+      { defaultModelSelection: model, autoPull: true },
+      { defaultModelSelection: null, defaultThreadEnvMode: null },
+      { defaultThreadEnvMode: "local" as const },
+    ])
+      yield* toolkit
+        .handle("t3_project_update", { projectId: harness.projectId, ...update })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
-    expect(settingsPatches).toEqual([
-      {
-        projectSettingsOverrides: {
-          [harness.projectId]: {
-            defaultModelSelection: keptModel,
-            defaultProjectScripts: [setup],
-          },
-        },
-      },
+    const kept = {
+      defaultModelSelection: keptModel,
+      defaultThreadEnvMode: "worktree",
+      enableAgentBrowserAccess: true,
+    };
+    expect(settingsPatches.map((patch) => patch.projectSettingsOverrides)).toEqual([
+      { [harness.projectId]: { ...kept, defaultProjectScripts: [setup] } },
+      { [harness.projectId]: { ...kept, defaultModelSelection: model, defaultAutoPull: true } },
+      { [harness.projectId]: { enableAgentBrowserAccess: true } },
+      { [harness.projectId]: { ...kept, defaultThreadEnvMode: "local" } },
     ]);
   }),
 );
