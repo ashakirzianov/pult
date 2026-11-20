@@ -9,6 +9,7 @@ import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
+import { openAsks } from "../stars/stars.ts";
 import {
   explorerSelected,
   onDidSelectThread,
@@ -22,6 +23,7 @@ import {
   showExplorerFile,
 } from "../threads/selection.ts";
 import { isSubagent, scopedKey, threadStore } from "../threads/store.ts";
+import { revealAsk } from "./asks.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
 import { exploredEnvironment } from "./explorer.ts";
 import {
@@ -76,8 +78,10 @@ export function showingSettled(count: number): void {
 function currentTargets(): JumpTarget<URI>[] {
   const { environments, threads } = threadStore.get();
   const environmentIds = environments.map((environment) => environment.id);
+  const stars = starEnabled.get() ? starStore.get() : [];
   return jumpTargets({
-    stars: starEnabled.get() ? starStore.get().map((star) => star.id) : [],
+    stars: stars.map((star) => star.id),
+    asks: openAsks(stars).map(({ star, ask }) => ({ starId: star.id, name: ask.name })),
     environmentIds,
     files: openExplorerFiles.get().files,
     drafts: draftCards(
@@ -192,6 +196,9 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
       return showExplorerFile(target.file);
     case "draft":
       return selectDraft(target.draft.environmentId, target.draft.projectId);
+    case "ask":
+      revealAsk(target.ask);
+      return selectStar(target.ask.starId);
     case "thread":
       return selectThread(target.thread.environmentId, target.thread.id);
   }
@@ -199,7 +206,7 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
 
 /**
  * Cmd+1 to Cmd+9 (Ctrl off the Mac), upstream's thread jumps: the left
- * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft or a thread,
+ * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft, an ask (its row expanded, its Star selected) or a thread,
  * whether or not the panel shows (`followJumpKeys`). Each is a command too,
  * `pult-shell.jump.1` to `.9`, for another binding; not in the palette,
  * where Pult: Open Thread… is. Registered before the workbench starts.

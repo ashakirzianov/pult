@@ -15,7 +15,7 @@ import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
 import { keyOf, starKey } from "./order.ts";
 import { type Activity, age, Elapsed, Status, Subagents } from "./PanelView.tsx";
-import { StarAsks, StarAsksBadge } from "./StarAsks.tsx";
+import { StarAsksBadge } from "./StarAsks.tsx";
 import { StarSchedules } from "./StarSchedules.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -77,12 +77,13 @@ function StarMark({ look, color }: { look: StarLook; color: string }) {
 /**
  * A Star's card, the panel's first row, under no header (`star-card`): two
  * rows beside its mark (`StarMark`, its look by `look.ts` in `src/stars/`),
- * its name ("Star" while it has none) with its asks' count
- * (`StarAsks.tsx`) and its environment's chip while the page holds several,
+ * its name ("Star" while it has none) with its asks' count, a click on
+ * which reveals its first ask in Inbox (`StarAsks.tsx`), and its
+ * environment's chip while the page holds several,
  * over its state, Asleep with how long (dimmed), Awake,
  * or Working with its elapsed time. A click selects the Star
  * (`pult-shell.selectStar`), a right-click opens its menu. Selected, it
- * expands with its asks, then `user`'s children and a collapsible
+ * expands with `user`'s children and a collapsible
  * Channels holding a row per channel but `user` (`StarChannels`), then its current conversation's subagents, as a
  * thread's card does with its own, then its schedules (`StarSchedules.tsx`), each list
  * a section of the details of its own.
@@ -110,7 +111,7 @@ export function StarCard({
   const select = () => run("pult-shell.selectStar", star.id);
   const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
   const home = drawnHome(star);
-  const hasLists = (home?.asks.length ?? 0) > 0 || (home?.schedules.length ?? 0) > 0;
+  const hasSchedules = (home?.schedules.length ?? 0) > 0;
   return (
     <li className={`pult-card pult-card-star${selected ? " pult-card-selected" : ""}`}>
       <div
@@ -144,9 +145,11 @@ export function StarCard({
         <JumpHint rowKey={starKey(star.id)} />
       </div>
       {selected &&
-      (subagents.length > 0 || rows.children.length > 0 || rows.channels.length > 0 || hasLists) ? (
+      (subagents.length > 0 ||
+        rows.children.length > 0 ||
+        rows.channels.length > 0 ||
+        hasSchedules) ? (
         <div className="pult-card-details">
-          <StarAsks star={star} />
           <StarChannels starId={star.id} rows={rows} activities={activities} now={now} />
           {subagents.length > 0 ? (
             <Subagents

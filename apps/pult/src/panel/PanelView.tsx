@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { cardRows, type Star } from "../stars/stars.ts";
+import { cardRows, openAsks, type Star } from "../stars/stars.ts";
 import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
 import {
   settleThread,
@@ -37,6 +37,7 @@ import { selectionSnapshot, showingSettled } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { LimitsShelf } from "./LimitsShelf.tsx";
 import {
+  askKey,
   draftCards as draftCardsOf,
   draftKey,
   groupOf,
@@ -55,6 +56,7 @@ import {
   shelfOrder,
   useReveal,
 } from "./shelves.tsx";
+import { AskRow } from "./StarAsks.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -136,7 +138,8 @@ function subagentsByRoot(
  * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
  * are cards, in the store's order, which is upstream's: pinned and active
  * under Inbox, whose first cards are the projects' drafts of new threads
- * that hold something (`drafts.ts`), newest first, and the selected draft;
+ * that hold something (`drafts.ts`), newest first, and the selected draft,
+ * then the Stars' asks (`StarAsks.tsx`), while Show Star is on;
  * then the Working, Snoozed and Settled shelves. While the page holds
  * several environments, each card names its own. The selected card expands
  * with its details and its subagents; a subagent has no card, so while one
@@ -222,6 +225,8 @@ export function PanelView() {
       now={now}
     />
   );
+  // Inbox's ask rows, the Stars' open asks, none while Show Star is off.
+  const asks = starsShown ? openAsks(stars) : [];
   const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   // The Stars' shelf is no shelf at all while Show Star is off.
   const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
@@ -237,8 +242,21 @@ export function PanelView() {
         return <ExplorerShelf key={name} environments={state.environments} />;
       case "inbox":
         return (
-          <Shelf key={name} name={name} empty={listed.length === 0 && draftCards.length === 0}>
+          <Shelf
+            key={name}
+            name={name}
+            empty={listed.length === 0 && draftCards.length === 0 && asks.length === 0}
+          >
             {draftCards.map(draftCard)}
+            {asks.map(({ star, home, ask }) => (
+              <AskRow
+                key={askKey({ starId: star.id, name: ask.name })}
+                star={star}
+                home={home}
+                ask={ask}
+                environment={chip(home.environmentId)}
+              />
+            ))}
             {listed.map(card)}
           </Shelf>
         );

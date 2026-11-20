@@ -155,6 +155,27 @@ export function drawnHome(star: Pick<Star<StarThread>, "homes" | "current">): St
   );
 }
 
+/** An open ask as the page draws it: its Star, the home it is drawn from (`drawnHome`) and the ask as that home's plugin serves it. */
+export interface OpenAsk<S> {
+  readonly star: S;
+  readonly home: StarHome;
+  readonly ask: RouteAsk;
+}
+
+/**
+ * The Stars' open asks, in the Stars' order, each Star's those of the home
+ * it is drawn from, by name as its plugin serves them: Inbox's ask rows, and
+ * what the cards' badges and the Stars tray's count.
+ */
+export function openAsks<S extends Pick<Star<StarThread>, "homes" | "current">>(
+  stars: ReadonlyArray<S>,
+): OpenAsk<S>[] {
+  return stars.flatMap((star) => {
+    const home = drawnHome(star);
+    return home === undefined ? [] : home.asks.map((ask) => ({ star, home, ask }));
+  });
+}
+
 /**
  * The Stars of the environments' answers, in the order of their first home:
  * one id on several environments is one Star with a home on each. Name and

@@ -18,7 +18,10 @@ import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/c
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { StarThreadInput } from "../threads/pane.tsx";
+import type { ComposerTarget } from "../../view/drafts.ts";
+import { citedPath } from "../composer/citedPath.ts";
+import { revealAsk } from "../panel/asks.ts";
+import { StarInput, StarThreadInput } from "../threads/pane.tsx";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures } from "./about.ts";
@@ -30,11 +33,20 @@ import {
   sleepStar,
   starById,
   starStore,
+  starTarget,
 } from "./model.ts";
-import { channelRows, drawnHome, rotatedChannelTab, type Star, starName } from "./stars.ts";
+import type { RouteAsk } from "./plugin.ts";
+import {
+  channelRows,
+  drawnHome,
+  rotatedChannelTab,
+  type Star,
+  type StarHome,
+  starName,
+} from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
-/** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule and Open Star Ask are offered then. */
+/** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule, Open Star Ask, Open Star Ask Source and Reply to Star Ask are offered then. */
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 /** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
@@ -124,24 +136,23 @@ async function openStarSchedule(
 }
 
 /**
- * An ask of the Star's (xaxis `pult/issues/star-asks.md`), from the home it
- * is drawn from, as its card lists them: `name`'s, or one picked by its
- * title among them; the Star selected, the ask's file a pinned tab among
- * its tabs and the composer strip shown, so the Star's composer is under
- * the ask, where the user answers.
+ * An ask of the Star's (xaxis `pult/issues/star-asks-list.md`), from the
+ * home it is drawn from, as Inbox lists them: `name`'s, or one picked by
+ * its title among them; told by a notification when there is none.
  */
-async function openStarAsk(
+async function pickAsk(
   quickInput: IQuickInputService,
   star: Star,
   name: unknown,
-): Promise<void> {
+  placeHolder: string,
+): Promise<{ home: StarHome; ask: RouteAsk } | undefined> {
   const notifications = await getService(INotificationService);
   const home = drawnHome(star);
   if (home === undefined || connection.environment(home.environmentId) === undefined)
-    return notifications.info("Pult is not connected to your Star's environment.");
+    return void notifications.info("Pult is not connected to your Star's environment.");
   const asks = home.asks;
   if (typeof name !== "string" && asks.length === 0)
-    return notifications.info(`${starName(star)} asks nothing of you.`);
+    return void notifications.info(`${starName(star)} asks nothing of you.`);
   const ask =
     typeof name === "string"
       ? asks.find((each) => each.name === name)
@@ -150,13 +161,32 @@ async function openStarAsk(
         : (
             await quickInput.pick(
               asks.map((each) => ({ ask: each, label: each.title, description: each.name })),
-              { placeHolder: "Open an ask of the Star's" },
+              { placeHolder },
             )
           )?.ask;
   if (ask === undefined) {
     if (typeof name === "string") notifications.info(`${starName(star)} has no ask ${name}.`);
-    return;
+    return undefined;
   }
+  return { home, ask };
+}
+
+/** An ask's row in Inbox expanded and brought into view, Inbox opened if closed, and the Star selected (`src/panel/asks.ts`). */
+async function openStarAsk(quickInput: IQuickInputService, star: Star, name: unknown) {
+  const picked = await pickAsk(quickInput, star, name, "Open an ask of the Star's");
+  if (picked === undefined) return;
+  revealAsk({ starId: star.id, name: picked.ask.name });
+  await (await getService(ICommandService)).executeCommand("pult-shell.selectStar", star.id);
+}
+
+/**
+ * An ask's file as a pinned tab among the Star's, the Star selected, and the
+ * composer strip shown, so the Star's composer is under it: the row's Open
+ * Source, the way to edit or read the file itself.
+ */
+async function openStarAskSource(quickInput: IQuickInputService, star: Star, name: unknown) {
+  const picked = await pickAsk(quickInput, star, name, "Open an ask's file");
+  if (picked === undefined) return;
   const commands = await getService(ICommandService);
   await commands.executeCommand("pult-shell.selectStar", star.id);
   // A switch cancelled over a modified file leaves the selection as it was, so the ask is not opened among its tabs.
@@ -164,10 +194,78 @@ async function openStarAsk(
   await (
     await getService(IEditorService)
   ).openEditor({
-    resource: pultResource(home.environmentId, toUriPath(ask.path)),
+    resource: pultResource(picked.home.environmentId, toUriPath(picked.ask.path)),
     options: { pinned: true },
   });
   await commands.executeCommand("pult-shell.showComposer");
+}
+
+/** How long Reply waits for a sleeping Star's draft to reach the composer store once its tab shows it. */
+const COMPOSER_WAIT_MS = 5_000;
+
+/**
+ * Reply: the Star selected, its tab shown, and the ask cited at the end of
+ * its `user` composer's message, its current conversation's or, asleep, its
+ * draft's, as Cite cites a file's lines (`view/citations.ts`): the ask's
+ * whole text under its path relative to the Star's folder, whatever the
+ * composer holds kept before it. Nothing is sent, and the ask stays until
+ * the Star deletes it. A switch cancelled, or a composer not there in time,
+ * says why Reply could not prepare it.
+ */
+async function replyToStarAsk(quickInput: IQuickInputService, star: Star, name: unknown) {
+  const picked = await pickAsk(quickInput, star, name, "Reply to an ask of the Star's");
+  if (picked === undefined) return;
+  const { home, ask } = picked;
+  const notifications = await getService(INotificationService);
+  await (await getService(ICommandService)).executeCommand("pult-shell.selectStar", star.id);
+  if (selectedStar() !== star.id)
+    return notifications.info(`Reply could not prepare ${ask.title}: the Star is not selected.`);
+  await (
+    await getService(IEditorService)
+  ).openEditor((await getService(IInstantiationService)).createInstance(StarInput, star.id), {
+    pinned: true,
+  });
+  const target = starTarget(star);
+  const [drafts, citations] = await Promise.all([
+    import("../../view/drafts.ts"),
+    import("../../view/citations.ts"),
+  ]);
+  const ready =
+    target !== undefined &&
+    connection.environment(target.environmentId) !== undefined &&
+    (await composerReady(drafts, target));
+  const cited =
+    ready &&
+    citations.citeFileLines(target, {
+      path: citedPath(
+        { environmentId: home.environmentId, root: home.root },
+        { environmentId: home.environmentId, hostPath: ask.path },
+      ),
+      startLine: 1,
+      endLine: Math.max(1, ask.text.split("\n").length),
+      contents: ask.text,
+    });
+  if (!cited)
+    notifications.info(`Reply could not prepare ${ask.title}: the Star's composer is not ready.`);
+}
+
+/** Whether the composer store holds the target's composer, waiting a moment for a draft its tab is mounting. */
+function composerReady(
+  drafts: typeof import("../../view/drafts.ts"),
+  target: ComposerTarget,
+): Promise<boolean> {
+  if (drafts.composerKey(target) !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const finish = (ready: boolean) => {
+      clearTimeout(timer);
+      stop();
+      resolve(ready);
+    };
+    const timer = setTimeout(() => finish(false), COMPOSER_WAIT_MS);
+    const stop = drafts.onDidChangeComposers(() => {
+      if (drafts.composerKey(target) !== null) finish(true);
+    });
+  });
 }
 
 /**
@@ -303,8 +401,11 @@ function todo(reason: string): never {
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
- * Open Star Ask… (`pult-shell.openStarAsk [starId] [name]`, the card's ask
- * rows), Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
+ * Open Star Ask… (`pult-shell.openStarAsk [starId] [name]`, the card's badge
+ * and an ask's notification: its row in Inbox expanded), Open Star Ask
+ * Source… (`pult-shell.openStarAskSource [starId] [name]`, the row's Open
+ * Source), Reply to Star Ask… (`pult-shell.replyToStarAsk [starId] [name]`,
+ * the row's Reply), Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
  * the card's channel rows), Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
  * [starId]`, the Star's current conversation in `user` put to sleep, offered only
@@ -444,6 +545,44 @@ export function registerStarCommands(): void {
         const quickInput = accessor.get(IQuickInputService);
         const star = await pickStar(quickInput, starId, "Open a Star's ask");
         if (star !== undefined) await openStarAsk(quickInput, star, name);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.openStarAskSource",
+          title: { value: "Open Star Ask Source…", original: "Open Star Ask Source…" },
+          category,
+          f1: true,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown, name?: unknown): Promise<void> {
+        const quickInput = accessor.get(IQuickInputService);
+        const star = await pickStar(quickInput, starId, "Open a Star's ask's file");
+        if (star !== undefined) await openStarAskSource(quickInput, star, name);
+      }
+    },
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: "pult-shell.replyToStarAsk",
+          title: { value: "Reply to Star Ask…", original: "Reply to Star Ask…" },
+          category,
+          f1: true,
+          precondition: HasStarContext,
+        });
+      }
+
+      async run(accessor: ServicesAccessor, starId?: unknown, name?: unknown): Promise<void> {
+        const quickInput = accessor.get(IQuickInputService);
+        const star = await pickStar(quickInput, starId, "Reply to a Star's ask");
+        if (star !== undefined) await replyToStarAsk(quickInput, star, name);
       }
     },
   );

@@ -332,9 +332,10 @@
   flex: 0 1 auto;
 }
 
-/* The asks' count after the name (src/panel/StarAsks.tsx): the tray badges' colours, inline, never dimmed. */
+/* The asks' count after the name (src/panel/StarAsks.tsx): the tray badges' colours, inline, never dimmed; a click reveals the first ask in Inbox. */
 .pult-star-asks-badge {
   flex: none;
+  cursor: pointer;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -631,15 +632,57 @@
   font-size: 11px;
 }
 
-/* A selected Star's asks (src/panel/StarAsks.tsx): the subagents' header and rows. */
-.pult-card-asks {
-  margin: 0 0 8px;
+/* An ask's row in Inbox, expanded (src/panel/StarAsks.tsx): its whole text, wrapped, then Reply and Open Source. */
+.pult-ask-text {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--vscode-foreground);
 }
 
-.pult-card-asks .pult-shelf-header {
-  height: 22px;
-  padding: 0 4px;
+.pult-ask-text > div > :first-child {
+  margin-top: 0;
+}
+
+.pult-ask-text p,
+.pult-ask-text ul,
+.pult-ask-text ol,
+.pult-ask-text pre {
+  margin: 0 0 6px;
+}
+
+.pult-ask-text ul,
+.pult-ask-text ol {
+  padding-left: 18px;
+}
+
+.pult-ask-text pre {
+  overflow-x: auto;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background);
+}
+
+.pult-ask-text code {
+  font-family: var(--vscode-editor-font-family);
   font-size: 11px;
+}
+
+.pult-ask-text a {
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+
+.pult-ask-empty {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pult-ask-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 /* A selected Star's schedules (src/panel/StarSchedules.tsx): the subagents' header and rows, a row two lines. */

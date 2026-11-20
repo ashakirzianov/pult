@@ -8,6 +8,7 @@ import {
   DEFAULT_SHELF_ORDER,
   draftCards,
   explorerEntries,
+  inboxRows,
   jumpTargets,
   moveIn,
   openIn,
@@ -42,6 +43,7 @@ function panel(
     environmentIds: ["env"],
     files: [],
     drafts: [],
+    asks: [],
     threads: [],
     selection: undefined,
     open: PANEL_SHELVES,
@@ -55,13 +57,18 @@ const keys = (targets: ReadonlyArray<{ readonly key: string }>) =>
 
 NodeTest.describe("jumpTargets", () => {
   NodeTest.test(
-    "reaches the Explorer's files, then the drafts, then the threads shelf by shelf, as the panel lists them",
+    "reaches the Explorer's files, then the drafts, the asks, then the threads shelf by shelf, as the panel lists them",
     () => {
       const targets = jumpTargets(
         panel({
           environmentIds: ["env", "other"],
           files: [file("other", "/b.ts"), file("env", "/a.ts")],
           drafts: [draft("project")],
+          asks: [
+            { starId: "beta", name: "review.md" },
+            { starId: "beta", name: "spend.md" },
+            { starId: "gamma", name: "access.md" },
+          ],
           threads: [
             thread("settled", "settled"),
             thread("pinned", "pinned"),
@@ -76,6 +83,9 @@ NodeTest.describe("jumpTargets", () => {
         "pult://env/a.ts",
         "pult://other/b.ts",
         "draft:env/project",
+        "ask:beta/review.md",
+        "ask:beta/spend.md",
+        "ask:gamma/access.md",
         "env/pinned",
         "env/active",
         "env/working",
@@ -107,7 +117,16 @@ NodeTest.describe("jumpTargets", () => {
     const files = [file("env", "/a.ts")];
     NodeAssert.deepEqual(
       keys(
-        jumpTargets(panel({ stars: ["one"], files, threads, open: [], selection: "env/active" })),
+        jumpTargets(
+          panel({
+            stars: ["one"],
+            files,
+            asks: [{ starId: "one", name: "ask.md" }],
+            threads,
+            open: [],
+            selection: "env/active",
+          }),
+        ),
       ),
       [],
     );
@@ -148,6 +167,27 @@ NodeTest.describe("jumpTargets", () => {
       }),
     );
     NodeAssert.deepEqual(keys(targets), ["pult://gone/a.ts"]);
+  });
+});
+
+NodeTest.describe("inboxRows", () => {
+  NodeTest.test("counts Inbox's asks among its rows, which its tray icon shows", () => {
+    const rows = (asks: ReadonlyArray<{ starId: string; name: string }>) =>
+      inboxRows({
+        drafts: [draft("project")],
+        asks,
+        threads: [thread("active", "active"), thread("working", "working")],
+        environmentIds: ["env"],
+      }).length;
+    NodeAssert.equal(rows([]), 2);
+    NodeAssert.equal(
+      rows([
+        { starId: "beta", name: "a.md" },
+        { starId: "beta", name: "b.md" },
+        { starId: "gamma", name: "c.md" },
+      ]),
+      5,
+    );
   });
 });
 

@@ -5,6 +5,7 @@ import { limitsStore } from "../limits/model.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
+import { openAsks } from "../stars/stars.ts";
 import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
@@ -14,6 +15,7 @@ import {
   draftCards,
   draftKey,
   groupOf,
+  inboxRows,
   keyOf,
   type PanelShelf,
   type ShelfGroup,
@@ -50,8 +52,8 @@ const threadsSnapshot = () => threadStore.get();
  * while Show Star is off; a click opens the shelf at the end of its group
  * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
- * a badge in the accent colour, as Source Control's tab does, but Stars,
- * which has none yet, Settled, whose count is in its tooltip, and Limits,
+ * a badge in the accent colour, as Source Control's tab does, Inbox's its
+ * rows, the Stars' asks among them, but Stars, whose asks Inbox counts, Settled, whose count is in its tooltip, and Limits,
  * whose badge is the count of warning windows, none while nothing warns;
  * dimmed with no badge while the shelf holds nothing; highlighted as the
  * open tab is while the shelf holds the selected card, the Stars' while a
@@ -95,7 +97,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
     const { label } = SHELF_ICONS[shelf];
     switch (shelf) {
       case "stars":
-        // No count until the Stars have asks.
+        // No count: the asks are counted in Inbox.
         return {
           badge: undefined,
           empty: stars.length === 0,
@@ -115,9 +117,17 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
           title: label,
         };
       case "inbox": {
-        // Its cards: the drafts', then the pinned and active threads'.
+        // Its rows: the drafts', the asks' while Show Star is on, then the pinned and active threads'.
         const threads = [...on("pinned"), ...on("active")];
-        const count = drafts.length + threads.length;
+        const asks = starsShown
+          ? openAsks(stars).map(({ star, ask }) => ({ starId: star.id, name: ask.name }))
+          : [];
+        const count = inboxRows({
+          drafts,
+          asks,
+          threads: state.threads,
+          environmentIds: state.environments.map((environment) => environment.id),
+        }).length;
         return {
           badge: count > 0 ? count : undefined,
           empty: count === 0,
