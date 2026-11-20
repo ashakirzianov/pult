@@ -24,7 +24,7 @@ export interface XaxisTestServer {
   readonly address: string;
   /** The root key's token, which `XAXIS_TOKEN` holds while the server runs. */
   readonly token: string;
-  /** A real temp folder, removed by `stop`; `XAXIS_CONFIG_DIR` is its `config`. */
+  /** A real temp folder, removed by `stop`; `XAXIS_CONFIG_DIR` is its `config`, `XAXIS_CACHE_DIR` its `cache`. */
   readonly scratch: string;
   /** The CLI's stdout, run in `cwd`; a non-zero exit throws. */
   readonly xaxis: (cwd: string, ...args: string[]) => string;
@@ -38,7 +38,11 @@ export const committed = (output: string) => /as (sha256:[0-9a-f]{64})/.exec(out
 export const landed = (output: string) => /main is at (sha256:[0-9a-f]{64})/.exec(output)![1]!;
 
 export async function startXaxisTestServer(): Promise<XaxisTestServer> {
-  const saved = { token: process.env.XAXIS_TOKEN, config: process.env.XAXIS_CONFIG_DIR };
+  const saved = {
+    token: process.env.XAXIS_TOKEN,
+    config: process.env.XAXIS_CONFIG_DIR,
+    cache: process.env.XAXIS_CACHE_DIR,
+  };
   const scratch = NodeFS.realpathSync(
     NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-xaxis-")),
   );
@@ -62,6 +66,7 @@ export async function startXaxisTestServer(): Promise<XaxisTestServer> {
   // The CLI runs on the server's environment as it is: these are what it reads.
   process.env.XAXIS_TOKEN = token;
   process.env.XAXIS_CONFIG_DIR = NodePath.join(scratch, "config");
+  process.env.XAXIS_CACHE_DIR = NodePath.join(scratch, "cache");
   const xaxis = (cwd: string, ...args: string[]) =>
     NodeChildProcess.execFileSync(XAXIS!, args, {
       cwd,
@@ -72,8 +77,10 @@ export async function startXaxisTestServer(): Promise<XaxisTestServer> {
     child.kill();
     process.env.XAXIS_TOKEN = saved.token;
     process.env.XAXIS_CONFIG_DIR = saved.config;
+    process.env.XAXIS_CACHE_DIR = saved.cache;
     if (saved.token === undefined) delete process.env.XAXIS_TOKEN;
     if (saved.config === undefined) delete process.env.XAXIS_CONFIG_DIR;
+    if (saved.cache === undefined) delete process.env.XAXIS_CACHE_DIR;
     NodeFS.rmSync(scratch, { recursive: true, force: true });
   };
   return { address, token, scratch, xaxis, stop };
