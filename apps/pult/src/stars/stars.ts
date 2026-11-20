@@ -164,8 +164,8 @@ export interface OpenAsk<S> {
 
 /**
  * The Stars' open asks, in the Stars' order, each Star's those of the home
- * it is drawn from, by name as its plugin serves them: Inbox's ask rows, and
- * what the cards' badges and the Stars tray's count.
+ * it is drawn from, by name as its plugin serves them: Inbox's ask rows,
+ * which its tray icon counts among its rows.
  */
 export function openAsks<S extends Pick<Star<StarThread>, "homes" | "current">>(
   stars: ReadonlyArray<S>,

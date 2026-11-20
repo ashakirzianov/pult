@@ -1,4 +1,4 @@
-// Which of Inbox's ask rows is expanded (`AskRows.tsx`): page UI state,
+// Which of Inbox's ask rows is expanded (`StarAsks.tsx`): page UI state,
 // one ask at a time, kept nowhere, no working set or conversation of its own.
 import { starStore } from "../stars/model.ts";
 import { openAsks } from "../stars/stars.ts";

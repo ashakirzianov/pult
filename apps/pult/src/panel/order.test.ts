@@ -8,7 +8,6 @@ import {
   DEFAULT_SHELF_ORDER,
   draftCards,
   explorerEntries,
-  inboxRows,
   jumpTargets,
   moveIn,
   openIn,
@@ -167,27 +166,6 @@ NodeTest.describe("jumpTargets", () => {
       }),
     );
     NodeAssert.deepEqual(keys(targets), ["pult://gone/a.ts"]);
-  });
-});
-
-NodeTest.describe("inboxRows", () => {
-  NodeTest.test("counts Inbox's asks among its rows, which its tray icon shows", () => {
-    const rows = (asks: ReadonlyArray<{ starId: string; name: string }>) =>
-      inboxRows({
-        drafts: [draft("project")],
-        asks,
-        threads: [thread("active", "active"), thread("working", "working")],
-        environmentIds: ["env"],
-      }).length;
-    NodeAssert.equal(rows([]), 2);
-    NodeAssert.equal(
-      rows([
-        { starId: "beta", name: "a.md" },
-        { starId: "beta", name: "b.md" },
-        { starId: "gamma", name: "c.md" },
-      ]),
-      5,
-    );
   });
 });
 

@@ -255,6 +255,7 @@ export function PanelView() {
                 home={home}
                 ask={ask}
                 environment={chip(home.environmentId)}
+                selected={selection === starKey(star.id)}
               />
             ))}
             {listed.map(card)}

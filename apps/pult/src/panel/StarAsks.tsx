@@ -10,6 +10,7 @@ import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
 import type { RouteAsk } from "../stars/plugin.ts";
 import { drawnHome, type Star, type StarHome, starName } from "../stars/stars.ts";
+import { selectedStar } from "../threads/selection.ts";
 import { askExpansion, closeAsk, toggleAsk } from "./asks.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
@@ -68,8 +69,9 @@ async function showAskMenu(star: Star, ask: RouteAsk, anchor: { x: number; y: nu
 /**
  * An ask's row in Inbox (xaxis `pult/issues/star-asks-list.md`), in a
  * card's look: "<Star> · Ask" with its environment's chip while there are
- * several, over its title. A click selects the Star and expands the row, one
- * at a time, or closes it again (`asks.ts`); expanded, the ask's whole
+ * several, over its title, highlighted while expanded and its Star selected.
+ * A click selects the Star and expands the row, one at a time, a cancelled
+ * switch expanding nothing, or closes it again (`asks.ts`); expanded, the ask's whole
  * Markdown (`AskText`), "No text available" for an empty one, then Reply,
  * which cites it into the Star's composer (`pult-shell.replyToStarAsk`), and
  * Open Source, its file as a tab (`pult-shell.openStarAskSource`); Escape
@@ -81,11 +83,14 @@ export function AskRow({
   home,
   ask,
   environment,
+  selected,
 }: {
   star: Star;
   home: StarHome;
   ask: RouteAsk;
   environment: string | undefined;
+  /** Whether the Star is the selection. */
+  selected: boolean;
 }) {
   const key = askKey({ starId: star.id, name: ask.name });
   const { key: expandedKey, revealed } = useSyncExternalStore(
@@ -101,13 +106,18 @@ export function AskRow({
       element.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
   }, [expanded, revealed]);
   const open = () => {
-    if (!expanded) run("pult-shell.selectStar", star.id);
-    toggleAsk({ starId: star.id, name: ask.name });
+    if (expanded) return closeAsk();
+    void getService(ICommandService)
+      .then((commands) => commands.executeCommand("pult-shell.selectStar", star.id))
+      // A switch cancelled over a modified file leaves the selection as it was, and the row closed.
+      .then(() => {
+        if (selectedStar() === star.id) toggleAsk({ starId: star.id, name: ask.name });
+      });
   };
   return (
     <li
       ref={element}
-      className={`pult-card pult-card-ask${expanded ? " pult-card-selected" : ""}`}
+      className={`pult-card pult-card-ask${expanded && selected ? " pult-card-selected" : ""}`}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || !expanded) return;
         event.stopPropagation();

@@ -52,8 +52,9 @@ const threadsSnapshot = () => threadStore.get();
  * while Show Star is off; a click opens the shelf at the end of its group
  * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
- * a badge in the accent colour, as Source Control's tab does, Inbox's its
- * rows, the Stars' asks among them, but Stars, whose asks Inbox counts, Settled, whose count is in its tooltip, and Limits,
+ * a badge in the accent colour, as Source Control's tab does (Inbox's
+ * counting its rows, the Stars' asks among them), but Stars, whose asks
+ * Inbox counts, Settled, whose count is in its tooltip, and Limits,
  * whose badge is the count of warning windows, none while nothing warns;
  * dimmed with no badge while the shelf holds nothing; highlighted as the
  * open tab is while the shelf holds the selected card, the Stars' while a

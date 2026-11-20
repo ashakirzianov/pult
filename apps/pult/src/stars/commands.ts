@@ -44,6 +44,7 @@ import {
   type StarHome,
   starName,
 } from "./stars.ts";
+import { starEnabled } from "./settings.ts";
 import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule, Open Star Ask, Open Star Ask Source and Reply to Star Ask are offered then. */
@@ -171,8 +172,13 @@ async function pickAsk(
   return { home, ask };
 }
 
-/** An ask's row in Inbox expanded and brought into view, Inbox opened if closed, and the Star selected (`src/panel/asks.ts`). */
+/**
+ * An ask's row in Inbox expanded and brought into view, Inbox opened if
+ * closed, and the Star selected (`src/panel/asks.ts`); while Show Star is
+ * off, which draws no ask row, its file, as Open Source opens it.
+ */
 async function openStarAsk(quickInput: IQuickInputService, star: Star, name: unknown) {
+  if (!starEnabled.get()) return openStarAskSource(quickInput, star, name);
   const picked = await pickAsk(quickInput, star, name, "Open an ask of the Star's");
   if (picked === undefined) return;
   revealAsk({ starId: star.id, name: picked.ask.name });
