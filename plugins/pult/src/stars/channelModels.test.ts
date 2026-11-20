@@ -193,7 +193,6 @@ describe("a channel's model", () => {
           failing: { provider: "codex-failing", model: "gpt-6.2-sol" },
           offForProject: { provider: "codex-off", model: "gpt-6.2-sol" },
           emptyCatalog: { provider: "codex-empty", model: "gpt-6.2-sol" },
-          narrowModes: { provider: "codex-narrow", model: "gpt-6.2-sol" },
           unknownModel: { provider: "codex", model: "gpt-9" },
           unknownEffort: { provider: "codex", model: "gpt-6.2-sol", effort: "max" },
           effortNotMapped: { provider: "cursor", model: "composer", effort: "high" },
@@ -225,11 +224,6 @@ describe("a channel's model", () => {
           );
           assert.match(toHistory.broken!.problems[0]!, /^`default/u, kind);
         }
-        // A provider offering only the wake's runtime mode serves it.
-        assert.strictEqual(
-          (yield* resolveWith({ default: bad.narrowModes }, "work", "approval-required")).from,
-          "default",
-        );
         // What it names and what this environment accepts.
         const told = yield* resolveWith(
           {
@@ -243,6 +237,27 @@ describe("a channel's model", () => {
           '`channels.b.model` "gpt-9" is not offered by "codex" here; it offers "gpt-6.2-sol"',
           '`channels.c.effort` "max" is not offered for "gpt-6.2-sol" here; it offers "low", "medium", "xhigh"',
         ]);
+      }),
+  );
+
+  it.effect(
+    "falls back from a provider lacking the wake's runtime mode, on the wake's own way alone",
+    () =>
+      Effect.gen(function* () {
+        const narrow = { provider: "codex-narrow", model: "gpt-6.2-sol" };
+        const file = { default: FABLE, channels: { unit: narrow } };
+        const toDefault = yield* resolveWith(file, "unit");
+        assert.strictEqual(toDefault.from, "default");
+        assert.deepStrictEqual(toDefault.broken?.problems, [
+          '`channels.unit.provider` "codex-narrow" does not offer runtime mode "full-access", which the Star wakes "unit" at; it offers "approval-required"',
+        ]);
+        // Another channel may wake at another mode, so its wake tells nothing of this entry.
+        assert.strictEqual((yield* resolveWith(file, "captures")).broken, null);
+        assert.strictEqual((yield* resolveWith(file, "unit", "approval-required")).from, "channel");
+        // A default the wake cannot take is today's.
+        const toHistory = yield* resolveWith({ default: narrow, channels: { unit: SOL } }, "work");
+        assert.strictEqual(toHistory.from, "history");
+        assert.match(toHistory.broken!.problems[0]!, /^`default\.provider`/u);
       }),
   );
 

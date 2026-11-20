@@ -554,6 +554,8 @@ describe("deliver", () => {
           [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
         );
         assert.include(h.threads.messages[1]?.text, "it is not JSON");
+        // The notice is Pult's, under no ceiling of the thread whose wake found the file broken.
+        assert.strictEqual(h.threads.messages[1]?.limit, undefined);
         // A file that cannot be read is no choice either, and tells nothing.
         yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
         yield* h.fs.makeDirectory(h.path.join(h.star.root, CHANNEL_MODELS_FILE));

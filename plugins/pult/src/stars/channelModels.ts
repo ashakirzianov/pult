@@ -101,7 +101,6 @@ const serve = (
   choice: Choice,
   providers: ReadonlyArray<ServerProvider>,
   enabledForProject: ReadonlySet<string>,
-  runtimeMode: RuntimeMode,
 ): ModelSelection | string => {
   const provider = providers.find((candidate) => candidate.instanceId === choice.provider);
   if (provider === undefined || !serves(provider, enabledForProject)) {
@@ -110,10 +109,7 @@ const serve = (
       .map((candidate) => candidate.instanceId);
     return `\`${field}.provider\` "${choice.provider}" is ${provider === undefined ? "not a provider" : "not served"} here; this environment serves ${served.length === 0 ? "none" : quoted(served)}`;
   }
-  // As the server's runtime policy reads it: no list offers every mode.
-  const modes = provider.supportedRuntimeModes;
-  if (modes !== undefined && modes.length > 0 && !modes.includes(runtimeMode))
-    return `\`${field}.provider\` "${provider.instanceId}" does not offer runtime mode "${runtimeMode}", which the Star wakes at; it offers ${quoted(modes)}`;
+
   // Only an advertised model, unlike `t3_thread_launch`, which takes any slug from a provider listing none.
   const model =
     provider.models.find((candidate) => candidate.slug === choice.model) ??
@@ -176,9 +172,7 @@ const resolve = (
   const servedAt = (field: string, value: unknown): ModelSelection | null => {
     const choice = readChoice(field, value);
     const selection =
-      typeof choice === "string"
-        ? choice
-        : serve(field, choice, providers, enabledForProject, runtimeMode);
+      typeof choice === "string" ? choice : serve(field, choice, providers, enabledForProject);
     if (typeof selection !== "string") return selection;
     problems.push(selection);
     return null;
@@ -200,9 +194,24 @@ const resolve = (
       const selection = servedAt(`channels.${slug}`, value);
       if (slug === channel) entry = selection;
     }
+  // The wake's runtime mode, unlike the rest, is checked only on its own way: another channel may wake at another.
+  const atMode = (field: string, selection: ModelSelection | null) => {
+    // As the server's runtime policy reads it: no list offers every mode.
+    const modes = providers.find(
+      (candidate) => candidate.instanceId === selection?.instanceId,
+    )?.supportedRuntimeModes;
+    if (selection === null || modes === undefined || modes.length === 0) return selection;
+    if (modes.includes(runtimeMode)) return selection;
+    problems.push(
+      `\`${field}.provider\` "${selection.instanceId}" does not offer runtime mode "${runtimeMode}", which the Star wakes "${channel}" at; it offers ${quoted(modes)}`,
+    );
+    return null;
+  };
   // An unlisted channel takes the default, and so does one whose entry cannot be served.
-  if (entry !== null) return { selection: entry, from: "channel", problems };
-  if (fallback !== null) return { selection: fallback, from: "default", problems };
+  if (atMode(`channels.${channel}`, entry) !== null)
+    return { selection: entry, from: "channel", problems };
+  if (atMode("default", fallback) !== null)
+    return { selection: fallback, from: "default", problems };
   return { selection: null, from: "history", problems };
 };
 

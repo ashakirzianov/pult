@@ -89,16 +89,16 @@ export const make = Effect.gen(function* () {
   /** The notices of broken files sent since the server started, `<star>:<key>`; the key keeps them once across restarts. */
   const told = new Set<string>();
 
-  /** Tells the Star's `work` once per content what is wrong with its file; a notice that fails is logged, never told. */
+  /** Tells the Star's `work` once per content what is wrong with its file; a notice that fails is logged, and told again at a later wake. */
   const tell = Effect.fn("Stars.tellChannelModels")(function* (
     deliver: Deliver,
     star: Star,
     broken: BrokenFile,
   ) {
     const key = `channel-models:${broken.hash.slice(0, 16)}`;
-    // Taken before the notice, whose own wake of `work` reads the same file.
-    if (told.has(`${star.id}:${key}`)) return;
-    told.add(`${star.id}:${key}`);
+    const id = `${star.id}:${key}`;
+    if (told.has(id)) return;
+    told.add(id);
     yield* deliver({
       star,
       text: `\`${CHANNEL_MODELS_FILE}\` cannot be served as written on this environment: ${broken.problems.join("; ")}. A choice this environment cannot serve falls back to \`default\`, then to conversation history, so the wakes go ahead. Fix the file; Pult tells you once per content.`,
@@ -108,6 +108,9 @@ export const make = Effect.gen(function* () {
       to: "work",
       sender: "plugin",
     }).pipe(
+      // Pult's own, under no ceiling of the sender whose wake found the file broken.
+      Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
+      Effect.onError(() => Effect.sync(() => told.delete(id))),
       Effect.catchCauseIf(notInterrupted, (cause) =>
         Effect.logWarning("Could not tell a Star its channel models are broken.", {
           starId: star.id,
@@ -118,14 +121,14 @@ export const make = Effect.gen(function* () {
   });
 
   return (stars: Stars): Deliver => {
-    const deliver: Deliver = Effect.fn("Stars.deliver")(function* ({
-      star,
-      text,
-      from,
-      to,
-      key,
-      sender,
-    }: Delivery) {
+    /** A delivery, telling what its wake found wrong with the Star's file unless it is that notice itself. */
+    const deliver: (
+      delivery: Delivery,
+      telling: boolean,
+    ) => Effect.Effect<Delivered, OrchestratorMcpFailure> = Effect.fn("Stars.deliver")(function* (
+      { star, text, from, to, key, sender }: Delivery,
+      telling: boolean,
+    ) {
       if (!isChannel(to)) return yield* Effect.die(new Error(`"${to}" is no channel's slug.`));
       yield* startup.awaitCommandReady.pipe(Effect.mapError(failed));
       const limit = sender === "plugin" ? undefined : yield* DispatchModeLimit.DispatchModeLimit;
@@ -251,9 +254,10 @@ export const make = Effect.gen(function* () {
       const delivered = yield* stars
         .withConversation(star, to, deliverNow)
         .pipe(Effect.catchTag("StarsError", (error) => Effect.fail(failed(error))));
-      if (found.broken !== null) yield* tell(deliver, star, found.broken);
+      if (telling && found.broken !== null)
+        yield* tell((notice) => deliver(notice, false), star, found.broken);
       return delivered;
     });
-    return deliver;
+    return (delivery) => deliver(delivery, true);
   };
 });
