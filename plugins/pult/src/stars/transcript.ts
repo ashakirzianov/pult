@@ -42,6 +42,16 @@ export function transcriptStart(name: string): string | undefined {
 /** Whether a file of a transcripts' folder is a transcript, by its name. */
 export const isTranscriptName = (name: string) => transcriptStart(name) !== undefined;
 
+/** `YYYY-MM-DDTHH-MM-SSZ-`, the start a transcript's name has before its thread's segment. */
+const START_LENGTH = 21;
+
+/**
+ * Whether a transcript's file name may be the thread's: its thread's segment after its start, as
+ * `transcriptName` writes it. A segment is lossy, so only the file's front matter tells it is.
+ */
+export const mayNameThread = (name: string, threadId: string) =>
+  isTranscriptName(name) && name.slice(START_LENGTH) === `${segment(threadId)}.md`;
+
 export type TranscriptInput = Pick<
   OrchestrationV2ThreadProjection,
   "thread" | "messages" | "nodes" | "visibleTurnItems"

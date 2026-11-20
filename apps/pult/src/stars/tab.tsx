@@ -6,7 +6,7 @@ import { connection } from "../connection/index.ts";
 import { BarTip } from "../threads/barEntries.tsx";
 import { draftCreates, type PaneTarget, ThreadContent } from "../threads/pane.tsx";
 import { threadStore } from "../threads/store.ts";
-import { citesEarlierConversation } from "./citation.ts";
+import { keptCitation } from "./citation.ts";
 import { starById, starStore, type StarTarget, starTarget } from "./model.ts";
 import { starName } from "./stars.ts";
 import "./stars.css";
@@ -75,8 +75,8 @@ export function StarContent({ starId }: { starId: string }) {
   const [options] = useState(() => ({
     ...starComposerOptions(starId),
     // Its earlier conversations have no route: a citation of one stays in the tab.
-    consumesCitation: (citation: { environmentId: string; threadId: string }) =>
-      citesEarlierConversation(starId, citation),
+    consumesCitation: async (citation: { environmentId: string; threadId: string }) =>
+      (await keptCitation(starId, citation)) !== undefined,
     timelineHeader: {
       element: document.createElement("div"),
       content: (

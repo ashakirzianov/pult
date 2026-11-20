@@ -11,6 +11,9 @@ const decodeFields = Schema.decodeUnknownEffect(
   Schema.Struct({ name: Schema.optional(Schema.String), tint: Schema.optional(Schema.String) }),
 );
 
+/** The reserved name of `GET stars/<id>/conversations/<name>` that looks a transcript up by its thread. */
+const BY_THREAD = "by-thread";
+
 const json = (body: unknown, status = 200) => HttpServerResponse.jsonUnsafe(body, { status });
 const notFound = json({ error: "No Star has this id on this server." }, 404);
 
@@ -90,7 +93,17 @@ export const starsRoute = (
       Effect.gen(function* () {
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;
-        const transcript = yield* stars.transcript(star, name);
+        // `by-thread` is no transcript's name: the lookup of the one whose conversation the thread was, with its name.
+        const threadId =
+          name === BY_THREAD
+            ? new URL(request.url, "http://plugin").searchParams.get("threadId")
+            : undefined;
+        if (threadId === null)
+          return json({ error: "A lookup by thread names it: ?threadId=<id>." }, 400);
+        const transcript =
+          threadId === undefined
+            ? yield* stars.transcript(star, name)
+            : yield* stars.transcriptOfThread(star, threadId);
         return transcript === undefined
           ? json({ error: "The Star has no such transcript on this server." }, 404)
           : json(transcript);

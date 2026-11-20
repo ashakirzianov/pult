@@ -384,10 +384,61 @@ it.effect("the server activates the plugin, which lists stars in about and serve
         ],
       },
     });
+    // A file written before headings named their message reads by name as well, its reply named by none.
+    const legacy = "2026-11-09T12-00-00Z-thread-0.md";
+    yield* fs.writeFileString(
+      `${star.root}/.pult/channels/user/conversations/env-1/${legacy}`,
+      '---\nthread: "thread-0"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 0\n---\n\n### Star · 2026-11-09T12:00:05Z\n\nOld\n',
+    );
+    expect(
+      (yield* send("GET", `/stars/${star.id}/conversations/${legacy}`, "reader")).body,
+    ).toMatchObject({ entries: [{ kind: "star", at: "2026-11-09T12:00:05Z", text: "Old" }] });
+    expect(
+      (yield* send("GET", `/stars/${star.id}/conversations/${legacy}`, "reader")).body.entries[0],
+    ).not.toHaveProperty("messageId");
     expect((yield* send("GET", `/stars/${star.id}/conversations/notes.md`, "reader")).status).toBe(
       404,
     );
     expect((yield* send("GET", `/stars/nobody/conversations/${name}`, "reader")).status).toBe(404);
+
+    // By its thread: the file whose front matter names it, unopened before, with its name; a
+    // name's lossy segment alone, another channel's file or none is a 404, two files a 500.
+    const folder = `${star.root}/.pult/channels/user/conversations/env-1`;
+    const write = (file: string, thread: string) =>
+      fs.writeFileString(
+        file,
+        `---\nthread: ${JSON.stringify(thread)}\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 0\n---\n`,
+      );
+    const byThread = (thread: string) =>
+      send(
+        "GET",
+        `/stars/${star.id}/conversations/by-thread?threadId=${encodeURIComponent(thread)}`,
+        "reader",
+      );
+    yield* write(`${folder}/2026-11-11T09-00-00Z-thread_2.md`, "thread:2");
+    expect(yield* byThread("thread:2")).toMatchObject({
+      status: 200,
+      body: { name: "2026-11-11T09-00-00Z-thread_2.md", threadId: "thread:2", entries: [] },
+    });
+    expect((yield* byThread("thread-1")).body).toMatchObject({
+      name,
+      entries: [{ text: "Hello" }, { text: "Hi", messageId: "m-1" }],
+    });
+    expect((yield* byThread("thread_2")).status).toBe(404);
+    yield* fs.makeDirectory(`${star.root}/.pult/channels/work/conversations/env-1`, {
+      recursive: true,
+    });
+    yield* write(
+      `${star.root}/.pult/channels/work/conversations/env-1/2026-11-11T10-00-00Z-thread-3.md`,
+      "thread-3",
+    );
+    expect((yield* byThread("thread-3")).status).toBe(404);
+    expect((yield* byThread("thread-4")).status).toBe(404);
+    expect((yield* send("GET", `/stars/${star.id}/conversations/by-thread`, "reader")).status).toBe(
+      400,
+    );
+    yield* write(`${folder}/2026-11-12T09-00-00Z-thread_2.md`, "thread:2");
+    expect((yield* byThread("thread:2")).status).toBe(500);
     expect((yield* send("POST", "/stars/upkeep", "writer")).body.stars).toHaveLength(1);
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );

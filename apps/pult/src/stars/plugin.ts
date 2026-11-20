@@ -391,6 +391,16 @@ const transcript = struct<Transcript>({
   ),
 });
 
+/** A transcript as the lookup by its thread serves it, with its name among the Star's `conversations`. */
+export interface NamedTranscript extends Transcript {
+  readonly name: string;
+}
+
+const namedTranscript: Decode<NamedTranscript> = (value, at) => ({
+  ...transcript(value, at),
+  name: string(isFields(value) ? value.name : undefined, `${at}.name`),
+});
+
 /** `GET /stars`'s answer, decoded; a throw for any other shape. */
 export const decodeStars = (body: unknown): StarsAnswer => starsAnswer(body, "stars");
 /** A Star as the write routes answer it, decoded; a throw for any other shape. */
@@ -470,6 +480,15 @@ export const readStarTranscript = (credential: Credential, id: string, name: str
     "GET",
     `${starPath(id)}/conversations/${encodeURIComponent(name)}`,
     decodeTranscript,
+  );
+
+/** The transcript whose conversation was the thread `threadId`, with its name; a throw where the Star has none, as from an older plugin. */
+export const readStarTranscriptOfThread = (credential: Credential, id: string, threadId: string) =>
+  ask(
+    credential,
+    "GET",
+    `${starPath(id)}/conversations/by-thread?threadId=${encodeURIComponent(threadId)}`,
+    (body) => namedTranscript(body, "transcript"),
   );
 
 const keepAwakeAnswer = (body: unknown): boolean =>

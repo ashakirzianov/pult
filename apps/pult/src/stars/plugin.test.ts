@@ -13,6 +13,7 @@ import {
   readAbout,
   readStars,
   readStarTranscript,
+  readStarTranscriptOfThread,
   rewritesUserTranscripts,
   sleepStarOn,
 } from "./plugin.ts";
@@ -428,6 +429,30 @@ NodeTest.describe("the Stars' routes", () => {
       "http://127.0.0.1:3773/api/plugins/pult/stars/s1/conversations/2026-11-01T10-00-00Z-t0.md",
     );
     NodeAssert.ok(read.result instanceof PluginAnswerError);
+    const found = {
+      name: "2026-11-01T10-00-00Z-t_0.md",
+      threadId: "t:0",
+      started: "a",
+      ended: "b",
+      environment: "Mac",
+      title: "t",
+      partial: false,
+      entries: [{ kind: "star", at: "a", text: "hi", messageId: "m1" }],
+    };
+    const looked = await askOver(
+      () => json(found),
+      () => readStarTranscriptOfThread(credential, "s1", "t:0"),
+    );
+    NodeAssert.equal(
+      looked.asked[0]?.url,
+      "http://127.0.0.1:3773/api/plugins/pult/stars/s1/conversations/by-thread?threadId=t%3A0",
+    );
+    NodeAssert.deepEqual(looked.result, found);
+    const unnamed = await askOver(
+      () => json({ ...found, name: undefined }),
+      () => readStarTranscriptOfThread(credential, "s1", "t:0"),
+    );
+    NodeAssert.ok(unnamed.result instanceof PluginAnswerError);
   });
 
   NodeTest.test("asks a Star to sleep, reading the hold that refused it", async () => {

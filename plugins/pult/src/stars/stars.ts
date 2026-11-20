@@ -51,9 +51,11 @@ import { asleepBy, type SleepInput, type Wakefulness, wakefulness } from "./slee
 import {
   formatTranscript,
   isTranscriptName,
+  mayNameThread,
   parseTranscript,
   transcriptHead,
   transcriptName,
+  type Transcript,
   transcriptsFolder,
 } from "./transcript.ts";
 
@@ -173,6 +175,11 @@ export interface Stars {
     star: Star,
     name: string,
   ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
+  /** The transcript of `user`'s whose front matter names the thread, with its name; a defect where two do. */
+  readonly transcriptOfThread: (
+    star: Star,
+    threadId: string,
+  ) => Effect.Effect<(Transcript & { readonly name: string }) | undefined, StarsError>;
   /** A Star in a fresh folder named after `name` (`starFolder`), fixed from then on; with `ifNone`, the one there while the server has any, whatever the name. */
   readonly create: (options: {
     readonly ifNone: boolean;
@@ -721,6 +728,34 @@ export const make = Effect.gen(function* () {
       ),
   );
 
+  const transcriptOfThread = Effect.fn("Stars.transcriptOfThread")(
+    function* (star: Star, threadId: string) {
+      const folder = path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL));
+      const found: Array<Transcript & { readonly name: string }> = [];
+      // Only listed names are read: the thread's id never becomes a path.
+      for (const name of (yield* transcriptNames(star)).filter((each) =>
+        mayNameThread(each, threadId),
+      )) {
+        const text = yield* readOptional(path.join(folder, name));
+        const transcript = text === undefined ? undefined : parseTranscript(text);
+        if (transcript?.threadId === threadId) found.push({ ...transcript, name });
+      }
+      if (found.length > 1)
+        // The writer names one file per thread: two are a bug, loud in the server's log.
+        return yield* Effect.die(
+          new Error(
+            `Two transcripts name the thread ${threadId}: ${found.map((each) => each.name).join(", ")}`,
+          ),
+        );
+      return found[0];
+    },
+    (effect, star) =>
+      Effect.mapError(
+        effect,
+        (cause) => new StarsError({ operation: "read", starId: star.id, cause }),
+      ),
+  );
+
   /** The first folder of the directory with nothing at it: `base`, then `base-2` and on. */
   const freshRoot = Effect.fn("Stars.freshRoot")(function* (base: string) {
     for (let index = 1; ; index += 1) {
@@ -819,6 +854,7 @@ export const make = Effect.gen(function* () {
     sleepByHand,
     view,
     transcript,
+    transcriptOfThread,
     create,
     upkeep,
     setRecord,

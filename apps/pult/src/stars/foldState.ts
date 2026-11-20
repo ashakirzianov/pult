@@ -1,5 +1,5 @@
 import { connection } from "../connection/index.ts";
-import { readStarTranscript, type Transcript } from "./plugin.ts";
+import { readStarTranscript, readStarTranscriptOfThread, type Transcript } from "./plugin.ts";
 
 /** A transcript as the fold has it: being read, read, or not. */
 export type TranscriptReading =
@@ -67,21 +67,54 @@ const keyOf = (environmentId: string, starId: string, name: string) =>
 export const transcriptReading = (environmentId: string, starId: string, name: string) =>
   readings.get(keyOf(environmentId, starId, name));
 
-/** Whether the fold has read a transcript of the Star on `environmentId` whose conversation was the thread `threadId`. */
-export function holdsTranscriptOf(
+/** A transcript of the Star the fold has read, and its name. */
+export interface NamedReading {
+  readonly name: string;
+  readonly transcript: Transcript;
+}
+
+/** The transcript the fold has read of the Star on `environmentId` whose conversation was the thread `threadId`. */
+export function heldTranscriptOf(
   environmentId: string,
   starId: string,
   threadId: string,
-): boolean {
-  return [...readings].some(([key, reading]) => {
-    const [environment, star] = JSON.parse(key) as [string, string, string];
-    return (
+): NamedReading | undefined {
+  for (const [key, reading] of readings) {
+    const [environment, star, name] = JSON.parse(key) as [string, string, string];
+    if (
       environment === environmentId &&
       star === starId &&
       reading.status === "ready" &&
       reading.transcript.threadId === threadId
-    );
-  });
+    )
+      return { name, transcript: reading.transcript };
+  }
+  return undefined;
+}
+
+/**
+ * The transcript of the Star on `environmentId` whose conversation was the thread `threadId`:
+ * the one the fold has read, else the plugin's lookup by thread, kept as the fold's reading of
+ * its name; undefined where the Star has none, its plugin is older than the lookup, or the
+ * lookup fails.
+ */
+export async function lookUpTranscriptOf(
+  environmentId: string,
+  starId: string,
+  threadId: string,
+): Promise<NamedReading | undefined> {
+  const held = heldTranscriptOf(environmentId, starId, threadId);
+  if (held !== undefined) return held;
+  const credential = connection.credential(environmentId);
+  if (credential === undefined) return undefined;
+  try {
+    const { name, ...transcript } = await readStarTranscriptOfThread(credential, starId, threadId);
+    readings.set(keyOf(environmentId, starId, name), { status: "ready", transcript });
+    changed();
+    return { name, transcript };
+  } catch {
+    return undefined;
+  }
 }
 
 async function read(
