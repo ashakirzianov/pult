@@ -17,7 +17,7 @@ export type Resolution =
   | { readonly kind: "open"; readonly path: string }
   /** Several files end with the key: the user picks, the thread's project's checkouts first. */
   | { readonly kind: "pick"; readonly key: string; readonly candidates: ReadonlyArray<Candidate> }
-  /** An absolute path under no checkout of the environment, which its server would not read. */
+  /** An absolute path under no checkout of the environment, which its server would not read, nor names a file in its kept xaxis checkout. */
   | { readonly kind: "outside" }
   /** No file ends with the key; `error` when every search failed, the first one's message. */
   | { readonly kind: "missing"; readonly key: string; readonly error: string | undefined };
@@ -31,6 +31,8 @@ export interface ResolveInput {
   readonly projectId: string;
   /** Every checkout of the thread's environment (`checkoutsOf`). */
   readonly checkouts: ReadonlyArray<Checkout>;
+  /** The environment's kept xaxis checkout of `/` as a host path (`src/changes/kept.ts`); null when it keeps none. */
+  readonly xaxisRoot: string | null;
   /** Whether a `pult:` URI path is there; a failure counts as not. */
   readonly exists: (path: string) => Promise<boolean>;
   /** The server's index of a checkout searched for the key (`projects.searchEntries`): entries' paths relative to its root. */
@@ -44,7 +46,9 @@ const ABSOLUTE = /^(\/|[A-Za-z]:[\\/])/;
  * checkout when it is there; else the files whose path ends with it, whole
  * segments, in the thread's checkout through the server's index, and only
  * with none there in the environment's other checkouts, one opening, several
- * a pick; an absolute path under no checkout is refused before any of it.
+ * a pick; an absolute path under no checkout is refused before any of it,
+ * unless it names a file of the kept xaxis checkout read from the xaxis root
+ * (`/owner/track/x.md`), which opens.
  */
 export async function resolveThreadPath(input: ResolveInput): Promise<Resolution> {
   const own = input.checkoutRoot === null ? undefined : toUriPath(input.checkoutRoot);
@@ -57,7 +61,15 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
   if (ABSOLUTE.test(input.path)) {
     literal = toUriPath(input.path);
     const located = locate(roots, literal);
-    if (located === undefined) return { kind: "outside" };
+    if (located === undefined) {
+      const xaxis =
+        input.xaxisRoot === null
+          ? undefined
+          : joinPath(toUriPath(input.xaxisRoot), literal.slice(1));
+      return xaxis !== undefined && (await input.exists(xaxis))
+        ? { kind: "open", path: xaxis }
+        : { kind: "outside" };
+    }
     key = located.relativePath;
   } else {
     key = input.path.replace(/^(\.\/)+/, "");

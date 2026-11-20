@@ -20,13 +20,18 @@ const axis = checkout("/repos/axis", "axis");
 const checkouts = [pult, star, axis, pultFix];
 
 /** An environment whose files are `files`, by `pult:` path; each checkout's index lists those under it. */
-function environment(files: ReadonlyArray<string>, failing: ReadonlyArray<string> = []) {
+function environment(
+  files: ReadonlyArray<string>,
+  failing: ReadonlyArray<string> = [],
+  xaxisRoot: string | null = null,
+) {
   const searched: Array<string> = [];
   const input = (path: string, checkoutRoot: string | null = "/repos/pult"): ResolveInput => ({
     path,
     checkoutRoot,
     projectId: "pult",
     checkouts,
+    xaxisRoot,
     exists: async (candidate) => files.includes(candidate),
     search: async ({ root }, key) => {
       searched.push(root);
@@ -69,14 +74,28 @@ NodeTest.describe("resolveThreadPath", () => {
     },
   );
 
-  NodeTest.test("refuses an absolute path under no checkout of the environment", async () => {
-    const { input, searched } = environment(["/etc/hosts"]);
-    NodeAssert.deepEqual(await resolveThreadPath(input("/etc/hosts")), { kind: "outside" });
-    NodeAssert.deepEqual(await resolveThreadPath(input("/repos/pult-starboard/a.ts")), {
-      kind: "outside",
-    });
-    NodeAssert.deepEqual(searched, []);
-  });
+  NodeTest.test(
+    "refuses an absolute path under no checkout of the environment, unless it names a file of the kept xaxis checkout",
+    async () => {
+      const { input, searched } = environment(
+        ["/etc/hosts", "/pult/xaxis/owner/track/x.md"],
+        [],
+        "/pult/xaxis/",
+      );
+      NodeAssert.deepEqual(await resolveThreadPath(input("/etc/hosts")), { kind: "outside" });
+      NodeAssert.deepEqual(await resolveThreadPath(input("/repos/pult-starboard/a.ts")), {
+        kind: "outside",
+      });
+      NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/x.md")), {
+        kind: "open",
+        path: "/pult/xaxis/owner/track/x.md",
+      });
+      NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/y.md")), {
+        kind: "outside",
+      });
+      NodeAssert.deepEqual(searched, []);
+    },
+  );
 
   NodeTest.test(
     "the thread's checkout wins outright: one match opens, several pick among themselves",

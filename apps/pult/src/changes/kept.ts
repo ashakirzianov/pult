@@ -209,6 +209,11 @@ export function keptAt(
     : undefined;
 }
 
+/** The folder of the environment's kept checkout, the checkout of `/`, as its plugin last answered; null while it keeps none. */
+export function keptRoot(environmentId: string): string | null {
+  return readings.get(environmentId)?.answer?.checkouts[0]?.dir ?? null;
+}
+
 /** Calls `listener` whenever an answer changes. */
 export function onDidChangeKept(listener: () => void): () => void {
   listeners.add(listener);

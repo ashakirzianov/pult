@@ -9,6 +9,7 @@ import type { IQuickPickItem } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { checkoutName, checkoutsOf } from "../changes/checkouts.ts";
+import { keptRoot } from "../changes/kept.ts";
 import { baseName, namesEnvironment, parentOf, toHostPath } from "../files/paths.ts";
 import { type Candidate, resolveThreadPath } from "../files/resolve.ts";
 import { environmentServer } from "../files/server.ts";
@@ -26,7 +27,9 @@ const ENTRY_LIMIT = 50;
  * at `line` when given. Resolved by `resolveThreadPath` (`src/files/resolve.ts`):
  * the literal path when the checkout has it, else the files of the thread's
  * checkout whose path ends with it, else of the environment's other
- * checkouts, through the server's index, a quick pick among several. The tab
+ * checkouts, through the server's index, a quick pick among several; an
+ * absolute path under no checkout, from the xaxis root in the environment's
+ * kept xaxis checkout. The tab
  * goes beside the thread's, in the active group, as a preview that a second
  * file replaces; the page's `pult:` provider serves it (`src/files/`). No
  * match, or an absolute path under no checkout, is a notice rather than an
@@ -63,6 +66,7 @@ export async function openThreadFile(
       },
       isHiddenProject,
     ),
+    xaxisRoot: keptRoot(environmentId),
     exists: (candidate) => files.exists(pultResource(environmentId, candidate)).catch(() => false),
     search: async (checkout, key) => {
       const { entries } = await environmentServer(environmentId).searchEntries({
