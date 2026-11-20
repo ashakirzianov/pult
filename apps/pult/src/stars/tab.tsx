@@ -1,4 +1,5 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
+import type { AssistantCitation } from "@t3tools/contracts";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
@@ -7,6 +8,7 @@ import { BarTip } from "../threads/barEntries.tsx";
 import { draftCreates, type PaneTarget, ThreadContent } from "../threads/pane.tsx";
 import { threadStore } from "../threads/store.ts";
 import { keptCitation } from "./citation.ts";
+import { revealInFold } from "./foldState.ts";
 import { starById, starStore, type StarTarget, starTarget } from "./model.ts";
 import { starName } from "./stars.ts";
 import "./stars.css";
@@ -74,9 +76,15 @@ export function StarContent({ starId }: { starId: string }) {
   const target = star === undefined ? undefined : starTarget(star);
   const [options] = useState(() => ({
     ...starComposerOptions(starId),
-    // Its earlier conversations have no route: a citation of one stays in the tab.
-    consumesCitation: async (citation: { environmentId: string; threadId: string }) =>
-      (await keptCitation(starId, citation)) !== undefined,
+    // Its earlier conversations have no route: a citation of one stays in the tab, its passage brought into view in the fold.
+    consumesCitation: async (citation: AssistantCitation) => {
+      const kept = await keptCitation(starId, citation);
+      if (kept === undefined) return undefined;
+      return (signal: AbortSignal) =>
+        kept === "unshown"
+          ? Promise.resolve("unshown" as const)
+          : revealInFold(starId, kept, citation, signal);
+    },
     timelineHeader: {
       element: document.createElement("div"),
       content: (

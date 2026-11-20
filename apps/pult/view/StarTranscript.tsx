@@ -18,6 +18,14 @@ export interface TranscriptEntry {
   readonly kind: "user" | "star" | "tool";
   readonly at: string;
   readonly text: string;
+  /** A Star reply's message; null for any other entry and for a reply whose transcript names none. */
+  readonly messageId: string | null;
+}
+
+/** The reply a cited passage is being brought into view in (`src/stars/fold.tsx`), and where its body goes. */
+export interface RevealTarget {
+  readonly messageId: string;
+  readonly body: (element: HTMLElement | null) => void;
 }
 
 /** Where the transcript's links resolve: the Star's folder on its environment. */
@@ -30,10 +38,12 @@ function Entry({
   entry,
   next,
   place,
+  target,
 }: {
   entry: TranscriptEntry;
   next: TranscriptEntry | undefined;
   place: Place;
+  target: RevealTarget | undefined;
 }) {
   const environmentId = EnvironmentId.make(place.environmentId);
   if (entry.kind === "user") {
@@ -65,12 +75,23 @@ function Entry({
     return (
       <div className={cn("relative min-w-0 px-1 py-0.5", space)} title={entry.at}>
         <MessageAuthorHeading>Star</MessageAuthorHeading>
-        <ChatMarkdown
-          text={entry.text}
-          cwd={place.cwd}
-          environmentId={environmentId}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-        />
+        {/* The body alone, the heading apart, is where a cited passage resolves; focusable, as a live source is. */}
+        <div
+          ref={
+            entry.messageId !== null && entry.messageId === target?.messageId
+              ? target.body
+              : undefined
+          }
+          tabIndex={-1}
+          className="outline-none"
+        >
+          <ChatMarkdown
+            text={entry.text}
+            cwd={place.cwd}
+            environmentId={environmentId}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+          />
+        </div>
       </div>
     );
   }
@@ -88,16 +109,26 @@ function Entry({
   );
 }
 
-/** A transcript's entries in order. */
+/** A transcript's entries in order, the reply `target` names handing it its body. */
 export function TranscriptEntries({
   entries,
   environmentId,
   cwd,
-}: { entries: ReadonlyArray<TranscriptEntry> } & Place) {
+  target,
+}: {
+  entries: ReadonlyArray<TranscriptEntry>;
+  target?: RevealTarget | undefined;
+} & Place) {
   const place = { environmentId, cwd };
   return entries.map((entry, index) => (
-    // oxlint-disable-next-line react/no-array-index-key -- a transcript is fixed text, never reordered, and two entries may share a time.
-    <Entry key={`${entry.at}-${index}`} entry={entry} next={entries[index + 1]} place={place} />
+    <Entry
+      // oxlint-disable-next-line react/no-array-index-key -- a transcript is fixed text, never reordered, and two entries may share a time.
+      key={`${entry.at}-${index}`}
+      entry={entry}
+      next={entries[index + 1]}
+      place={place}
+      target={target}
+    />
   ));
 }
 

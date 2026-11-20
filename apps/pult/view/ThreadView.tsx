@@ -44,6 +44,7 @@ import { isRichTextBoldShortcut } from "~/keybindings";
 import { assistantCitationFromLocation } from "~/lib/assistantCitationNavigation";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import { I18nProvider } from "~/i18n/I18nProvider";
+import type { RevealOutcome } from "./passageReveal.ts";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
@@ -461,12 +462,15 @@ export interface MountOptions {
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
   /**
-   * Whether the mount keeps a citation the view would go to (a Star's earlier conversation, which
-   * no route of the view shows): asked before the router commits the citation's location, and
-   * while it answers, the view stays where it is; kept, the view stays put and tells the reader
-   * once per activation.
+   * How the mount shows a citation the view would go to, where it keeps one (a Star's earlier
+   * conversation, which no route of the view shows); undefined lets the router go. Asked before
+   * the router commits the citation's location, the view staying where it is while it answers
+   * and, kept, throughout. Its show runs until it ends or the signal aborts, on a newer citation
+   * kept or the mount leaving; unshown, the view tells the reader once per activation.
    */
-  readonly consumesCitation?: (citation: AssistantCitation) => Promise<boolean>;
+  readonly consumesCitation?: (
+    citation: AssistantCitation,
+  ) => Promise<((signal: AbortSignal) => Promise<RevealOutcome>) | undefined>;
 }
 
 /** What a mount adds to its view, as the view's providers take it. */
@@ -544,12 +548,17 @@ function makeView(composerOnly: boolean) {
     if (concealed) revealing = setTimeout(() => conceal(false), REVEAL_AFTER_MS);
   };
   const root = createRoot(main);
+  /** The reader's input that takes the view over from a citation being asked about. */
+  const TAKE_OVER = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+  const LISTENING = { capture: true, passive: true } as const;
   let navigable: AnyRouter | undefined;
   let unblock: (() => void) | undefined;
   /** The latest navigation the router asked about, so a citation's answer arriving after another moves nothing. */
   let asking: object | undefined;
-  /** The activation last told it stays put, so a repeated push or replace of it tells nothing more. */
-  let told: string | undefined;
+  /** The activation last kept, so a repeated push or replace of it shows nothing more. */
+  let kept: string | undefined;
+  /** The kept citation being shown, given up for the next one or as the mount leaves. */
+  let showing: AbortController | undefined;
   const keepCitation = async ({
     nextLocation,
   }: {
@@ -561,15 +570,30 @@ function makeView(composerOnly: boolean) {
     const consumes = mount.consumesCitation();
     const citation = consumes && assistantCitationFromLocation(nextLocation.href);
     if (!consumes || !citation) return false;
-    const kept = await consumes(citation);
+    const activation = nextLocation.state.assistantCitationActivation ?? nextLocation.href;
+    if (kept === activation) return true;
+    // A citation gives up the one being shown at once, and the reader taking the view over while
+    // it is asked about gives it up too, so a late answer moves nothing.
+    showing?.abort();
+    const shows = new AbortController();
+    showing = shows;
+    const takeOver = () => shows.abort();
+    for (const event of TAKE_OVER) main.addEventListener(event, takeOver, LISTENING);
+    let show: Awaited<ReturnType<typeof consumes>>;
+    try {
+      show = await consumes(citation);
+    } finally {
+      for (const event of TAKE_OVER) main.removeEventListener(event, takeOver, LISTENING);
+    }
     // A newer citation, or another mount, took over meanwhile: this one goes nowhere.
     if (asking !== asked || mount.consumesCitation() !== consumes) return true;
-    if (!kept) return false;
-    const activation = nextLocation.state.assistantCitationActivation ?? nextLocation.href;
-    if (told !== activation) {
-      told = activation;
-      toastManager.add({ type: "info", title: "This earlier passage can't be shown yet" });
-    }
+    if (show === undefined) return false;
+    if (shows.signal.aborted) return true;
+    kept = activation;
+    void show(shows.signal).then((outcome) => {
+      if (outcome === "unshown" && !shows.signal.aborted)
+        toastManager.add({ type: "info", title: "This earlier passage can't be shown" });
+    });
     return true;
   };
   /** The router asks the mount about a citation only while the mount would keep one. */
@@ -631,8 +655,9 @@ function makeView(composerOnly: boolean) {
     leave() {
       main.remove();
       if (!main.contains(bar)) bar.remove();
-      // A citation still being asked about goes nowhere once its mount is gone.
+      // A citation still being asked about goes nowhere once its mount is gone, nor one being shown.
       asking = {};
+      showing?.abort();
       resting = setTimeout(() => {
         conceal(false);
         mount.show(NOTHING, () => {}, {});

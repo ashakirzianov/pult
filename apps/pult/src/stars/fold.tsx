@@ -1,13 +1,20 @@
 // Loaded with the thread view, from the Star's tab (`tab.tsx`), and rendered
 // inside the view's own tree (`MountOptions.timelineHeader`), since the
 // transcripts render with upstream's markdown.
-import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ConversationDivider, TranscriptEntries } from "../../view/StarTranscript.tsx";
+import { revealPassage } from "../../view/passageReveal.ts";
+import {
+  ConversationDivider,
+  type RevealTarget,
+  TranscriptEntries,
+} from "../../view/StarTranscript.tsx";
 import { threadStore } from "../threads/store.ts";
 import {
   foldStore,
   foldView,
+  keepFoldPlace,
+  pendingReveal,
   readTranscript,
   setFoldOpen,
   showOlder,
@@ -72,8 +79,7 @@ function listHeaderOf(element: HTMLElement): HTMLElement | null {
  * among them. The fold placed into a timeline, as the view mounts or its
  * list mounts its header again, moves nothing.
  */
-function useAnchoredHeight() {
-  const [element, setElement] = useState<HTMLElement | null>(null);
+function useAnchoredHeight(element: HTMLElement | null) {
   useLayoutEffect(() => {
     if (element === null) return;
     // Undefined while the fold is in no timeline.
@@ -110,7 +116,6 @@ function useAnchoredHeight() {
       document.removeEventListener("scroll", onScroll, { capture: true });
     };
   }, [element]);
-  return setElement;
 }
 
 function Conversation({
@@ -118,11 +123,13 @@ function Conversation({
   home,
   name,
   environmentName,
+  target,
 }: {
   starId: string;
   home: StarHome;
   name: string;
   environmentName: string | undefined;
+  target: RevealTarget | undefined;
 }) {
   const reading = transcriptReading(home.environmentId, starId, name);
   if (reading === undefined || reading.status === "loading")
@@ -146,6 +153,7 @@ function Conversation({
         entries={transcript.entries}
         environmentId={home.environmentId}
         cwd={home.root}
+        target={target}
       />
       <ConversationDivider
         label={`Fell asleep ${clock(transcript.ended)}`.trim()}
@@ -170,7 +178,8 @@ function Conversation({
 export default function StarFold({ starId }: { starId: string }) {
   const star = useSyncExternalStore(starStore.subscribe, () => starById(starId));
   useSyncExternalStore(foldStore.subscribe, foldStore.version);
-  const anchor = useAnchoredHeight();
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  useAnchoredHeight(element);
   const home = star === undefined ? undefined : drawnHome(star);
   // Named while the page holds several environments.
   const environmentName = useSyncExternalStore(subscribeToThreads, () =>
@@ -184,9 +193,69 @@ export default function StarFold({ starId }: { starId: string }) {
     if (home !== undefined)
       for (const name of shown) readTranscript(home.environmentId, starId, name);
   });
+  useEffect(() => {
+    if (element === null) return;
+    // Where the reader is, back once the fold has shrunk back and its anchoring has moved the
+    // scroller, unless the reader takes it over meanwhile.
+    keepFoldPlace(starId, () => {
+      const scroller = scrollerOf(element);
+      if (scroller === null) return () => {};
+      const top = scroller.scrollTop;
+      return () => {
+        let taken = false;
+        const takeOver = () => void (taken = true);
+        const events = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+        for (const event of events) scroller.addEventListener(event, takeOver, { passive: true });
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            for (const event of events) scroller.removeEventListener(event, takeOver);
+            if (!taken) scroller.scrollTop = top;
+          }),
+        );
+      };
+    });
+    return () => keepFoldPlace(starId, undefined);
+  }, [element, starId]);
+  const reveal = pendingReveal(starId);
+  const body = useRef<HTMLElement | null>(null);
+  const target: RevealTarget | undefined =
+    reveal === undefined
+      ? undefined
+      : { messageId: reveal.messageId, body: (each) => void (body.current = each) };
+  useEffect(() => {
+    if (reveal === undefined || element === null) return;
+    const scroller = scrollerOf(element);
+    if (scroller === null) return reveal.finish("unshown");
+    // The fold leaving the timeline stops this run alone: the view's mount gives the reveal up as it leaves, and a fold mounted again takes it on.
+    const gone = new AbortController();
+    void revealPassage({
+      fold: element,
+      scroller,
+      body: () => body.current,
+      // Every conversation shown read, or failed, so nothing above the passage grows any more.
+      ready: () => {
+        const now = starById(starId);
+        const home = now === undefined ? undefined : drawnHome(now);
+        const { open, shown } = foldView(starId);
+        return (
+          home !== undefined &&
+          open &&
+          home.conversations.slice(-shown).every((name) => {
+            const reading = transcriptReading(home.environmentId, starId, name);
+            return reading !== undefined && reading.status !== "loading";
+          })
+        );
+      },
+      citation: reveal.citation,
+      signal: AbortSignal.any([reveal.signal, gone.signal]),
+    }).then((outcome) => {
+      if (!gone.signal.aborted) reveal.finish(outcome);
+    });
+    return () => gone.abort();
+  }, [reveal, element, starId]);
   if (home === undefined || names.length === 0) return null;
   return (
-    <div ref={anchor} className="pult-star-fold" data-open={view.open || undefined}>
+    <div ref={setElement} className="pult-star-fold" data-open={view.open || undefined}>
       <button
         type="button"
         className="pult-star-fold-toggle"
@@ -212,6 +281,7 @@ export default function StarFold({ starId }: { starId: string }) {
           home={home}
           name={name}
           environmentName={environmentName}
+          target={reveal?.name === name ? target : undefined}
         />
       ))}
     </div>
