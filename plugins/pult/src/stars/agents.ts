@@ -7,7 +7,7 @@ import { ASKS_DIRECTORY } from "./asks.ts";
 import { CHANNELS_DIRECTORY, INSTRUCTIONS_FILE, RECORD_FILE, SYSTEM_DIRECTORY } from "./record.ts";
 
 /** The version of `AGENTS_TEXT`, its first line: raised with every change of the text. */
-export const AGENTS_VERSION = 16;
+export const AGENTS_VERSION = 17;
 
 export const AGENTS_TEXT = `<!-- pult-agents-md: ${AGENTS_VERSION} -->
 # Star
@@ -26,7 +26,7 @@ You can also end a conversation yourself. Where you have Pult's \`pult_star_slee
 
 A conversation stopped by a usage limit stays open until it resumes or is settled. The server can resume it at a known reset; its auto-resume setting and the thread's cancellation control this. \`t3_thread_list\` and \`t3_thread_read\` expose \`usageLimit\`, the known reset and the scheduled continuation. Pult sends no separate limit or resume notice.
 
-Pult manages this file and \`${SYSTEM_DIRECTORY}/\`, apart from what is called yours above, and rewrites this file as Pult changes, so anything you write here will be lost. Everything else in this folder is yours. This folder is a git repository of its own: Pult commits what it holds each time all your conversations have ended, and you may commit in it yourself. Your own instructions go in \`${INSTRUCTIONS_FILE}\`, which you manage on your own and which is loaded below. If you don't see the contents of \`${INSTRUCTIONS_FILE}\` or \`${RECORD_FILE}\` below, read them before your first reply.
+Pult manages this file and \`${SYSTEM_DIRECTORY}/\`, apart from what is called yours above, and rewrites this file as Pult changes, so anything you write here will be lost. Everything else in this folder is yours: arrange it and change your own instructions as you see fit, without asking the user first. This folder is a git repository of its own: Pult commits what it holds each time all your conversations have ended, and you may commit in it yourself. Your own instructions go in \`${INSTRUCTIONS_FILE}\`, which you manage on your own and which is loaded below. If you don't see the contents of \`${INSTRUCTIONS_FILE}\` or \`${RECORD_FILE}\` below, read them before your first reply.
 
 @${RECORD_FILE}
 @${INSTRUCTIONS_FILE}

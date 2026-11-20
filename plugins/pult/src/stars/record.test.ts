@@ -133,6 +133,13 @@ describe("AGENTS.md", () => {
     );
   });
 
+  it("tells the Star it changes its own folder and instructions without asking the user", () => {
+    assert.include(
+      AGENTS_TEXT,
+      "Everything else in this folder is yours: arrange it and change your own instructions as you see fit, without asking the user first.",
+    );
+  });
+
   it("tells the Star to tag the threads of its own work, and that an untagged one reaches the user", () => {
     assert.include(
       AGENTS_TEXT,
