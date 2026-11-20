@@ -2006,6 +2006,7 @@ it.effect.each(["failed", "interrupted"] as const)(
         creationSource: "web",
       });
       assert.equal(sentAfter.delivery, "queued");
+      assert.equal(sentAfter.heldReason, "held: the thread's worktree was never created");
       yield* threads.dispatch({
         type: "message.dispatch",
         commandId: CommandId.make(`command:launch:late-queued-follow-up-${ending}:wake`),

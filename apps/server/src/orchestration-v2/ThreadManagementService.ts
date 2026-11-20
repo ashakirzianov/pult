@@ -72,6 +72,7 @@ import { cancelledBeforeStart } from "./RestartBackgroundNote.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
+import { latestExecutedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 
@@ -164,6 +165,9 @@ export interface ThreadManagementSendInput {
   readonly creationSource: OrchestrationV2CreationSource;
 }
 
+/** Pult: a send's `heldReason` when its thread's worktree was never created. */
+export const WORKTREE_MISSING_HELD_REASON = "held: the thread's worktree was never created";
+
 export interface ThreadManagementSendResult {
   readonly dispatch: Orchestrator.OrchestratorV2DispatchResult;
   readonly projection: Pick<
@@ -174,6 +178,8 @@ export interface ThreadManagementSendResult {
   readonly run: OrchestrationV2Run;
   readonly turnItem: Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }> | null;
   readonly delivery: "started" | "queued" | "steered" | "restarted";
+  /** Pult: why a queued message is held, present only when the thread's worktree was never created. */
+  readonly heldReason?: typeof WORKTREE_MISSING_HELD_REASON;
 }
 
 export interface ThreadManagementWaitInput {
@@ -988,7 +994,23 @@ const make = Effect.gen(function* () {
           : mode === "restart"
             ? "restarted"
             : "steered";
-    return { dispatch: dispatched, projection, message, run, turnItem, delivery };
+    // Pult: names the hold Orchestrator's `worktreeMissingRun` makes, so a sender can tell it from a queue.
+    const setupRun = latestExecutedRun(projection.runs);
+    const worktreeMissing =
+      run.status === "queued" &&
+      run.queueHeld === true &&
+      projection.thread.worktreePath === null &&
+      (setupRun?.status === "failed" || setupRun?.status === "interrupted") &&
+      setupRun.workspacePreparation?.type === "worktree";
+    return {
+      dispatch: dispatched,
+      projection,
+      message,
+      run,
+      turnItem,
+      delivery,
+      ...(worktreeMissing ? { heldReason: WORKTREE_MISSING_HELD_REASON } : {}),
+    };
   });
 
   const waitForThread: ThreadManagementServiceShape["waitForThread"] = Effect.fn(
