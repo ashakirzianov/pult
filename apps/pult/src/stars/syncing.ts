@@ -1,7 +1,14 @@
 import { getService, INotificationService } from "@codingame/monaco-vscode-api";
 import * as Operations from "@t3tools/client-runtime/operations";
 import { request } from "@t3tools/client-runtime/rpc";
-import { MessageId, ORCHESTRATION_V2_WS_METHODS, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  MessageId,
+  ModelSelection,
+  ORCHESTRATION_V2_WS_METHODS,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 import { connection } from "../connection/index.ts";
 import { isStarDraft, projectDrafts } from "../panel/drafts.ts";
@@ -19,6 +26,7 @@ import {
   starsRead,
   starsReadOn,
   starStore,
+  starWakeModel,
   type WrittenChannelTranscripts,
 } from "./model.ts";
 import { readStarTranscript } from "./plugin.ts";
@@ -41,6 +49,8 @@ import {
 
 /** What of a Star's record the page changes: Name and Tint. */
 type RecordFields = { readonly name?: string; readonly tint?: string };
+
+const decodeModel = Schema.decodeUnknownSync(ModelSelection);
 
 /** How long a pull before a sleeping Star wakes stands before another occasion pulls again. */
 const WAKE_PULL_INTERVAL_MS = 60_000;
@@ -492,9 +502,11 @@ class StarSync {
   /**
    * Hands a divergence of the Star's repository on a home to the Star, as
    * the first message of a conversation it wakes in, on that home's
-   * project, `user`'s, with the model and modes of `user`'s latest
-   * conversation (`handoffModel`); once, its thread's id deterministic from
-   * the repository and both sides (`handoffThreadId`), looked up on the
+   * project, `user`'s, with the modes of `user`'s latest conversation
+   * (`handoffModel`) and the Star's model choice for `user` at them, which
+   * its plugin resolves as the handoff wakes, else that conversation's;
+   * once, its thread's id deterministic from the repository and both sides
+   * (`handoffThreadId`), looked up on the
    * server, so no page, and no reload, hands the same divergence over
    * again. While a channel of the Star's is open there, or it is being
    * written to, or about to be (a pull before its wake), it gets it when it
@@ -550,7 +562,9 @@ class StarSync {
         threadId: ThreadId.make(model.id),
       }),
     );
-    const { modelSelection, runtimeMode, interactionMode } = projection.thread;
+    const { runtimeMode, interactionMode } = projection.thread;
+    const chosen = await starWakeModel(starId, environmentId, runtimeMode);
+    const modelSelection = chosen === null ? projection.thread.modelSelection : decodeModel(chosen);
     const text = handoffMessage({
       environmentName: environmentName(environmentId),
       repository: root,

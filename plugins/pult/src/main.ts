@@ -28,6 +28,7 @@ const features: ReadonlyArray<string> = [
   "star-sleep-request",
   "star-sleep",
   "star-asks",
+  "star-channel-models",
   "usage-limits",
   "xaxis-kept",
 ];
@@ -35,16 +36,17 @@ const features: ReadonlyArray<string> = [
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
   const deliverTo = yield* Delivery.make;
   const stars = yield* Stars.make;
+  const delivering = deliverTo(stars);
   // The server's own runner, over the spawner of its context.
   const runner = yield* ProcessRunner.ProcessRunner.pipe(Effect.provide(ProcessRunner.layer));
-  const schedules = yield* Schedules.make(stars, deliverTo(stars), (root, command) =>
+  const schedules = yield* Schedules.make(stars, delivering.deliver, (root, command) =>
     runCommand(root, command).pipe(Effect.provideService(ProcessRunner.ProcessRunner, runner)),
   );
   const keepAwake = yield* KeepAwake.make();
   const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const kept = yield* XaxisKept.make(stars.directory);
   const tools = Layer.mergeAll(
-    yield* MessageTool.make(stars, deliverTo(stars)),
+    yield* MessageTool.make(stars, delivering.deliver),
     yield* ListTool.make(stars),
     yield* SleepTool.make(stars),
     yield* UsageLimitsTool.make(),
@@ -64,7 +66,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
         ),
       );
     return (
-      starsRoute(stars, schedules, request, path) ??
+      starsRoute(stars, schedules, delivering.pageWakeModel, request, path) ??
       keepAwake.route(request, path) ??
       Effect.succeed(HttpServerResponse.empty({ status: 404 }))
     );

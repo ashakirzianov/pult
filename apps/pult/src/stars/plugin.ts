@@ -14,6 +14,9 @@ export const SCHEDULES_FEATURE = "star-schedules";
 /** The plugin's feature of putting a Star to sleep by hand, Refresh Context: `POST stars/<id>/sleep`, offered only where `about` lists it. */
 export const SLEEP_FEATURE = "star-sleep";
 
+/** The plugin's feature of a Star's model per channel (`.pult/channel-models.json`): `POST stars/<id>/model`, asked only where `about` lists it. */
+export const CHANNEL_MODELS_FEATURE = "star-channel-models";
+
 /** The plugin's feature of keeping its Mac awake while agents work, a switch read and set through `keep-awake`; listed on darwin alone. */
 export const KEEP_AWAKE_FEATURE = "keep-awake";
 
@@ -472,6 +475,20 @@ const sleepAnswer = (body: unknown): SleepAnswer => {
 /** Puts the Star's current conversation in `user` to sleep now, unless something holds it; a Star asleep already is refused. */
 export const sleepStarOn = (credential: Credential, id: string) =>
   ask(credential, "POST", `${starPath(id)}/sleep`, sleepAnswer, {});
+
+const wakeModel = (body: unknown): RouteModel | null =>
+  isFields(body) && body.model !== undefined
+    ? model(body.model, "wake.model")
+    : fail("wake", "{ model }");
+
+/**
+ * The model the page wakes the Star's `user` at itself (its draft, a sync's
+ * handoff), at `runtimeMode`: the Star's choice, its options kept for the
+ * caller to decode, or null for the page's own; the plugin tells the Star's
+ * `work` of a file it cannot serve.
+ */
+export const readWakeModel = (credential: Credential, id: string, runtimeMode: string) =>
+  ask(credential, "POST", `${starPath(id)}/model`, wakeModel, { runtimeMode });
 
 /** One transcript of the Star on this environment, parsed. */
 export const readStarTranscript = (credential: Credential, id: string, name: string) =>

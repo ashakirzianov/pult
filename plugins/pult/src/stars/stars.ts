@@ -14,11 +14,13 @@ import {
 
 import {
   DateTime,
+  Digest,
   Effect,
   FileSystem,
   HostProcess,
   Path,
   ProjectService,
+  ProviderRegistry,
   Scheduler,
   Schema,
   Semaphore,
@@ -29,6 +31,7 @@ import {
 } from "../host.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { type Ask, askName, ASKS_DIRECTORY, askTitle } from "./asks.ts";
+import { wakeChannelModel } from "./channelModels.ts";
 import { type Channel, taggedChannel, USER_CHANNEL } from "./channels.ts";
 import {
   AGENTS_FILE,
@@ -111,7 +114,7 @@ export interface StarsView {
       /** Every open channel, `user` among them, by slug; `asleepSince`, `model` and `conversations` are `user`'s. */
       readonly channels: ReadonlyArray<ChannelView>;
       readonly asleepSince: string;
-      /** The model a wake into `user` takes, the `newest` of `withConversation`'s; null before the Star's first conversation. */
+      /** The model a wake into `user` takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
       readonly model: ModelSelection | null;
       readonly conversations: ReadonlyArray<string>;
       /** By name. */
@@ -259,6 +262,13 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const scheduler = yield* Scheduler.Scheduler;
+  const resolving = yield* Effect.context<
+    | FileSystem.FileSystem
+    | Path.Path
+    | Digest.Digest
+    | ProviderRegistry.ProviderRegistry
+    | ThreadManagementService.ThreadManagementService
+  >();
 
   const directory = yield* starsDirectory(config, yield* HostProcess.HomeDirectory, path);
   const environmentId = yield* environment.getEnvironmentId;
@@ -696,12 +706,19 @@ export const make = Effect.gen(function* () {
         );
         const last = (yield* settledConversations(star, 1, { channel: USER_CHANNEL }))[0];
         const { newest } = yield* conversationsOf(star, USER_CHANNEL);
+        // What the page's draft shows and wakes at; the page tells `work` of a broken file as it sends.
+        const chosen =
+          newest === null
+            ? null
+            : yield* wakeChannelModel(star, USER_CHANNEL, newest.runtimeMode).pipe(
+                Effect.provide(resolving),
+              );
         return {
           ...star,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
           channels,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
-          model: newest?.modelSelection ?? null,
+          model: chosen?.selection ?? newest?.modelSelection ?? null,
           conversations: yield* transcriptNames(star),
           asks: yield* asksOf(star),
         };

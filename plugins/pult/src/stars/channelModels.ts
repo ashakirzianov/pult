@@ -262,3 +262,21 @@ export const channelModel = Effect.fn("Stars.channelModel")(function* (
         };
   return { selection, from, broken } satisfies ChannelModel;
 });
+
+/** `channelModel` for a wake, which the file never stops: one that cannot be read is logged, and is no choice, null. */
+export const wakeChannelModel = (
+  star: { readonly id: string; readonly root: string; readonly projectId: ProjectId },
+  channel: Channel,
+  runtimeMode: RuntimeMode,
+) =>
+  channelModel(star, channel, runtimeMode).pipe(
+    Effect.catchTag("PlatformError", (cause) =>
+      Effect.as(
+        Effect.logWarning("Could not read a Star's channel models; it wakes as before.", {
+          starId: star.id,
+          cause,
+        }),
+        null,
+      ),
+    ),
+  );

@@ -15,13 +15,16 @@ import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
 import { refreshTranscripts } from "./foldState.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
+  CHANNEL_MODELS_FEATURE,
   channelTranscriptStars,
   createStarOn,
   type Credential,
   PluginAnswerError,
   writeStarRecord,
   readStars,
+  readWakeModel,
   rewritesUserTranscripts,
+  type RouteModel,
   SLEEP_FEATURE,
   sleepStarOn,
   STARS_FEATURE,
@@ -557,6 +560,29 @@ class StarsModel {
   }
 
   /**
+   * The model the page wakes the Star's `user` at itself on the environment,
+   * at `runtimeMode`, through its plugin (`POST /stars/<id>/model`), which
+   * tells the Star's `work` of a file it cannot serve: the Star's choice, or
+   * null for the page's own, which is also what a plugin without the feature
+   * and a failure, logged, answer.
+   */
+  async wakeModel(
+    starId: string,
+    environmentId: string,
+    runtimeMode: string,
+  ): Promise<RouteModel | null> {
+    if (pluginFeatures(environmentId)?.has(CHANNEL_MODELS_FEATURE) !== true) return null;
+    try {
+      return await readWakeModel(this.credential(environmentId), starId, runtimeMode);
+    } catch (error) {
+      console.warn(
+        `[pult-shell] the Star's model choice could not be read; it wakes at its own: ${errorMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Writes Name or Tint into the Star's record on the environment, through
    * its plugin (`POST /stars/<id>`), which retitles its project too; a
    * failure notifies. Whether it took. `syncing.ts` (`setStarRecord`) runs
@@ -606,6 +632,9 @@ export function starById(starId: string): Star | undefined {
 /** Asks for a new Star named `name` on the environment. */
 export const createStar = (environmentId: string, name: string) =>
   model.create(environmentId, { ifNone: false, name });
+/** The model the page wakes the Star's `user` at itself, telling its `work` of a broken file; null for the page's own (`StarsModel.wakeModel`). */
+export const starWakeModel = (starId: string, environmentId: string, runtimeMode: string) =>
+  model.wakeModel(starId, environmentId, runtimeMode);
 /** Asks the environment's plugin for its Stars again: after a sync occasion, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);

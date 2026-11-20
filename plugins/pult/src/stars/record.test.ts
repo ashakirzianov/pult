@@ -152,6 +152,13 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "`t3_thread_update` sets it");
   });
 
+  it("calls .pult/channel-models.json the Star's, and tells its fallback", () => {
+    assert.include(
+      AGENTS_TEXT,
+      "- `.pult/channel-models.json` is yours. Set `default` to an object with `provider`, `model` and optional `effort`. Under `channels`, an exact channel slug can name its own object of the same shape. Use the IDs and effort values offered on the environment where you wake. Omit effort for the model's default. Pult reads the choice when a fresh conversation starts. Without the file, Pult uses conversation history. A choice this environment cannot serve falls back to `default`, then to conversation history, and Pult tells you in `work`.\n",
+    );
+  });
+
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);

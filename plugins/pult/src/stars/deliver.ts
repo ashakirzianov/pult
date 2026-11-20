@@ -1,9 +1,10 @@
 // The one door for every message Pult sends a Star (xaxis `pult/issues/message-star.md`): under the
 // Star's lock it is queued into its channel's current conversation, else the channel wakes fresh, tagged,
 // at the modes of its newest conversation (else `user`'s, else the Star's newest) and the model the Star
-// chose for it (`pult/issues/star-channel-model.md`), else that conversation's.
+// chose for it (`pult/issues/star-channel-model.md`), else that conversation's; the page's wakes ask it too.
 import {
   type ModelSelection,
+  type RuntimeMode,
   CommandId,
   MessageId,
   OrchestratorMcpFailure,
@@ -24,8 +25,8 @@ import {
   ThreadLaunchService,
   ThreadManagementService,
 } from "../host.ts";
-import { type BrokenFile, CHANNEL_MODELS_FILE, channelModel } from "./channelModels.ts";
-import { type Channel, channelTag, isChannel } from "./channels.ts";
+import { type BrokenFile, CHANNEL_MODELS_FILE, wakeChannelModel } from "./channelModels.ts";
+import { type Channel, channelTag, isChannel, USER_CHANNEL } from "./channels.ts";
 import { starName } from "./record.ts";
 import type { Conversations, Star, Stars } from "./stars.ts";
 
@@ -55,6 +56,21 @@ export interface Delivered {
 }
 
 export type Deliver = (delivery: Delivery) => Effect.Effect<Delivered, OrchestratorMcpFailure>;
+
+/**
+ * The model a fresh conversation of `user` the page wakes itself (its sleeping draft, a sync's handoff)
+ * starts at `runtimeMode`: the Star's choice, else null for the page's own; telling the Star's `work`
+ * what is wrong with its file as a wake by message does.
+ */
+export type PageWakeModel = (
+  star: Star,
+  runtimeMode: RuntimeMode,
+) => Effect.Effect<ModelSelection | null>;
+
+export interface Delivering {
+  readonly deliver: Deliver;
+  readonly pageWakeModel: PageWakeModel;
+}
 
 /** As the web composer seeds a launch's title before the server regenerates it. */
 const titleSeed = (text: string) => {
@@ -120,7 +136,11 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  return (stars: Stars): Deliver => {
+  /** The Star's choice for a fresh conversation of `to` at `runtimeMode`, a file that cannot be read none. */
+  const chosenFor = (star: Star, to: Channel, runtimeMode: RuntimeMode) =>
+    wakeChannelModel(star, to, runtimeMode).pipe(Effect.provide(resolving));
+
+  return (stars: Stars): Delivering => {
     /** A delivery, telling what its wake found wrong with the Star's file unless it is that notice itself. */
     const deliver: (
       delivery: Delivery,
@@ -160,18 +180,7 @@ export const make = Effect.gen(function* () {
 
       /** The model a fresh conversation of `to` starts at: the Star's choice, else `newest`'s; a file that cannot be read is no choice. */
       const chosen = Effect.fn("Stars.chosenModel")(function* (newest: OrchestrationV2ThreadShell) {
-        const model = yield* channelModel(star, to, newest.runtimeMode).pipe(
-          Effect.provide(resolving),
-          Effect.catchTag("PlatformError", (cause) =>
-            Effect.as(
-              Effect.logWarning("Could not read a Star's channel models; it wakes as before.", {
-                starId: star.id,
-                cause,
-              }),
-              null,
-            ),
-          ),
-        );
+        const model = yield* chosenFor(star, to, newest.runtimeMode);
         found.broken = model?.broken ?? null;
         return model?.selection ?? newest.modelSelection;
       });
@@ -258,6 +267,15 @@ export const make = Effect.gen(function* () {
         yield* tell((notice) => deliver(notice, false), star, found.broken);
       return delivered;
     });
-    return (delivery) => deliver(delivery, true);
+    const pageWakeModel: PageWakeModel = Effect.fn("Stars.pageWakeModel")(
+      function* (star, runtimeMode) {
+        const model = yield* chosenFor(star, USER_CHANNEL, runtimeMode);
+        // `tell` logs whatever fails but an interruption, so a failure here is no notice's.
+        if (model?.broken != null)
+          yield* tell((notice) => deliver(notice, false), star, model.broken).pipe(Effect.orDie);
+        return model?.selection ?? null;
+      },
+    );
+    return { deliver: (delivery) => deliver(delivery, true), pageWakeModel };
   };
 });

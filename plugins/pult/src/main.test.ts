@@ -219,6 +219,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep-request",
           "star-sleep",
           "star-asks",
+          "star-channel-models",
           "usage-limits",
           "xaxis-kept",
           "keep-awake",
@@ -359,6 +360,16 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "reader", {})).status).toBe(403);
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", {})).status).toBe(409);
     expect((yield* send("POST", "/stars/nobody/sleep", "writer", {})).status).toBe(404);
+
+    // The model the page wakes `user` at itself: the Star's choice at the page's mode, none without a file.
+    const wake = { runtimeMode: "full-access" };
+    expect((yield* send("POST", `/stars/${star.id}/model`, "reader", wake)).status).toBe(403);
+    expect((yield* send("POST", `/stars/${star.id}/model`, "writer", {})).status).toBe(400);
+    expect((yield* send("POST", "/stars/nobody/model", "writer", wake)).status).toBe(404);
+    expect(yield* send("POST", `/stars/${star.id}/model`, "writer", wake)).toEqual({
+      status: 200,
+      body: { model: null },
+    });
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";

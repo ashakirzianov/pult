@@ -81,7 +81,9 @@ const harness = Effect.gen(function* () {
   yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
   const server = yield* fakeServer;
   const stars = yield* Stars.make.pipe(Effect.provide(server.layer));
-  const deliver = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(stars);
+  const { deliver, pageWakeModel } = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(
+    stars,
+  );
   const star = yield* stars.create({ ifNone: true });
   server.limits.providers = PROVIDERS;
   const fs = yield* FileSystem.FileSystem;
@@ -141,7 +143,20 @@ const harness = Effect.gen(function* () {
       key,
       sender: { thread: worker },
     }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit));
-  return { ...server, star, deliver, ended, open, fromPlugin, fromThread, choose, fs, path };
+  return {
+    ...server,
+    stars,
+    star,
+    deliver,
+    pageWakeModel,
+    ended,
+    open,
+    fromPlugin,
+    fromThread,
+    choose,
+    fs,
+    path,
+  };
 }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
 
 const failureCode = <A>(exit: Exit.Exit<A, { readonly code: string }>) =>
@@ -562,6 +577,39 @@ describe("deliver", () => {
         yield* h.fromPlugin("k2", "Hello", "unit-2");
         assert.deepStrictEqual(h.launches.launches[1]?.modelSelection, last.shell.modelSelection);
         assert.strictEqual(h.threads.messages.length, 3);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "shows the page the choice for user and wakes its own launch at it, telling work once with the wakes by message",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const last = h.ended();
+        const shown = Effect.map(h.stars.view, (view) => view.stars[0]?.model);
+        // No file: the page keeps its own, the newest conversation's.
+        assert.deepStrictEqual(yield* shown, last.shell.modelSelection);
+        assert.strictEqual(yield* h.pageWakeModel(h.star, "auto"), null);
+        yield* h.choose({ default: FABLE, channels: { user: SOL } });
+        assert.deepStrictEqual(yield* shown, selected(SOL));
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto"), selected(SOL));
+        // At a mode its provider does not offer, the entry falls to the default, and the page's send tells work.
+        yield* h.choose({
+          default: FABLE,
+          channels: { user: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
+        });
+        assert.deepStrictEqual(yield* shown, selected(FABLE));
+        assert.strictEqual(h.launches.launches.length, 0, "showing the choice tells nothing");
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto"), selected(FABLE));
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => each.tags),
+          [["pult:channel:work"]],
+        );
+        assert.include(h.threads.messages[0]?.text, '"codex-narrow" does not offer runtime mode');
+        // The same content is told once, whichever wake finds it next.
+        yield* h.pageWakeModel(h.star, "auto");
+        yield* h.fromPlugin("k1", "Hello", "unit-2");
+        assert.strictEqual(h.threads.messages.length, 2);
       }).pipe(Effect.scoped),
   );
 

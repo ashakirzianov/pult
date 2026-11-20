@@ -14,6 +14,7 @@ import {
   readStars,
   readStarTranscript,
   readStarTranscriptOfThread,
+  readWakeModel,
   rewritesUserTranscripts,
   sleepStarOn,
 } from "./plugin.ts";
@@ -476,6 +477,42 @@ NodeTest.describe("the Stars' routes", () => {
     );
     NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
   });
+
+  NodeTest.test(
+    "asks the model a page's own wake of `user` takes at its mode, the options kept",
+    async () => {
+      const chosen = {
+        instanceId: "codex",
+        model: "gpt-6.2-sol",
+        options: [{ id: "reasoningEffort", value: "low" }],
+      };
+      const asked = await askOver(
+        () => json({ model: chosen }),
+        () => readWakeModel(credential, "s1", "full-access"),
+      );
+      NodeAssert.deepEqual(
+        asked.asked.map((each) => [each.method, each.url, each.body]),
+        [
+          [
+            "POST",
+            "http://127.0.0.1:3773/api/plugins/pult/stars/s1/model",
+            { runtimeMode: "full-access" },
+          ],
+        ],
+      );
+      NodeAssert.deepEqual(asked.result, chosen);
+      const none = await askOver(
+        () => json({ model: null }),
+        () => readWakeModel(credential, "s1", "auto"),
+      );
+      NodeAssert.equal(none.result, null);
+      const misshapen = await askOver(
+        () => json({}),
+        () => readWakeModel(credential, "s1", "auto"),
+      );
+      NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
+    },
+  );
 
   NodeTest.test("tells the plugin's refusal, and an answer that is no JSON", async () => {
     const refused = await askOver(

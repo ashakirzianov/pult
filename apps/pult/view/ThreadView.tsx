@@ -106,6 +106,7 @@ function makeMount() {
   let onPromoted = (_environmentId: string, _threadId: string) => {};
   let additions = NO_ADDITIONS;
   let consumesCitation: MountOptions["consumesCitation"];
+  let draftSent: MountOptions["draftSent"];
   let headingSince: number | undefined;
   let again = 0;
   const listeners = new Set<() => void>();
@@ -132,6 +133,7 @@ function makeMount() {
       target = next;
       onPromoted = promoted;
       consumesCitation = options.consumesCitation;
+      draftSent = options.draftSent;
       const draftHero = options.draftHero ?? true;
       const placeholder = options.placeholder ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
@@ -172,6 +174,7 @@ function makeMount() {
       closeThreadPanel(environmentId, threadId);
       changed();
       onPromoted(environmentId, threadId);
+      draftSent?.(environmentId, threadId);
     },
   };
 }
@@ -461,6 +464,8 @@ export interface MountOptions {
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
+  /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
+  readonly draftSent?: (environmentId: string, threadId: string) => void;
   /**
    * How the mount shows a citation the view would go to, where it keeps one (a Star's earlier
    * conversation, which no route of the view shows); undefined lets the router go. Asked before

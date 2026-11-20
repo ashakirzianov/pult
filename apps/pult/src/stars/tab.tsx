@@ -1,5 +1,6 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
-import type { AssistantCitation } from "@t3tools/contracts";
+import { request } from "@t3tools/client-runtime/rpc";
+import { type AssistantCitation, ORCHESTRATION_V2_WS_METHODS, ThreadId } from "@t3tools/contracts";
 import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
@@ -9,7 +10,7 @@ import { draftCreates, type PaneTarget, ThreadContent } from "../threads/pane.ts
 import { threadStore } from "../threads/store.ts";
 import { keptCitation } from "./citation.ts";
 import { revealInFold } from "./foldState.ts";
-import { starById, starStore, type StarTarget, starTarget } from "./model.ts";
+import { starById, starStore, type StarTarget, starTarget, starWakeModel } from "./model.ts";
 import { starName } from "./stars.ts";
 import "./stars.css";
 
@@ -25,13 +26,35 @@ const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined)
   JSON.stringify(left) === JSON.stringify(right);
 
 /**
+ * After the Star's draft woke it in a fresh conversation of `user`: its
+ * plugin tells the Star's `work` of a model choice it cannot serve, as a
+ * wake by message does, at the mode the draft woke it at. The draft took
+ * the model it shows, the choice the plugin resolved for it, unless one was
+ * picked in it; the answer is not used.
+ */
+async function afterDraftWake(starId: string, environmentId: string, threadId: string) {
+  try {
+    const projection = await connection.run(
+      environmentId,
+      request(ORCHESTRATION_V2_WS_METHODS.getThreadProjection, {
+        threadId: ThreadId.make(threadId),
+      }),
+    );
+    await starWakeModel(starId, environmentId, projection.thread.runtimeMode);
+  } catch (error) {
+    console.warn("[pult-shell] the Star's woken conversation could not be read", error);
+  }
+}
+
+/**
  * How the Star's composer reads, in its tab and in the composer strip under
  * its files: asleep, its draft rests where a thread's composer sits, under
  * the fold, without upstream's hero, which asks what to build in a project
  * and offers to start without one; awake or asleep, it addresses the Star,
  * "Message Star", or its name once it has one; and its draft takes the
- * model its last conversation had, of the home it wakes in, as a wake by
- * message does, rather than the one last picked in any thread.
+ * model a wake by message into `user` takes on the home it wakes in, the
+ * Star's choice else its last conversation's, rather than the one last
+ * picked in any thread; its send tells the plugin (`afterDraftWake`).
  */
 export function starComposerOptions(starId: string) {
   return {
@@ -53,6 +76,8 @@ export function starComposerOptions(starId: string) {
       },
       subscribe: starStore.subscribe,
     },
+    draftSent: (environmentId: string, threadId: string) =>
+      void afterDraftWake(starId, environmentId, threadId),
   };
 }
 
