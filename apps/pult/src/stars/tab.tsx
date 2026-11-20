@@ -57,27 +57,30 @@ async function afterDraftWake(starId: string, environmentId: string, threadId: s
  * picked in any thread; its send tells the plugin (`afterDraftWake`).
  */
 export function starComposerOptions(starId: string) {
+  const draftModel = {
+    get: () => {
+      const star = starById(starId);
+      const target = star === undefined ? undefined : starTarget(star);
+      return target?.kind !== "draft"
+        ? null
+        : (star?.homes.find(
+            (home) =>
+              home.environmentId === target.environmentId && home.projectId === target.projectId,
+          )?.model ?? null);
+    },
+    subscribe: starStore.subscribe,
+  };
   return {
     draftHero: false,
     placeholder: {
       get: () => `Message ${starName(starById(starId) ?? { name: "" })}`,
       subscribe: starStore.subscribe,
     },
-    draftModel: {
-      get: () => {
-        const star = starById(starId);
-        const target = star === undefined ? undefined : starTarget(star);
-        return target?.kind !== "draft"
-          ? null
-          : (star?.homes.find(
-              (home) =>
-                home.environmentId === target.environmentId && home.projectId === target.projectId,
-            )?.model ?? null);
-      },
-      subscribe: starStore.subscribe,
+    draftModel,
+    // A draft that shows no model is the Star's first conversation on its home, which tells nothing.
+    draftSent: (environmentId: string, threadId: string) => {
+      if (draftModel.get() !== null) void afterDraftWake(starId, environmentId, threadId);
     },
-    draftSent: (environmentId: string, threadId: string) =>
-      void afterDraftWake(starId, environmentId, threadId),
   };
 }
 

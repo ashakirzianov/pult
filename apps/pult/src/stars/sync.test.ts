@@ -2,11 +2,14 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
+import { MessageId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+
 import { starsOf } from "./stars.ts";
 import {
   handoffMessage,
   handoffModel,
   handoffThreadId,
+  handoffTurn,
   handsOffNow,
   homeSleeps,
   type HomeStatus,
@@ -164,6 +167,53 @@ NodeTest.describe("the handoff", () => {
     NodeAssert.notEqual(await handoffThreadId({ ...home, behind: 2 }), id);
     NodeAssert.notEqual(await handoffThreadId({ ...home, environmentId: "other" }), id);
   });
+
+  NodeTest.test(
+    "creates its thread and its first turn at the Star's choice, else at the conversation's",
+    () => {
+      const conversation = {
+        modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      } as const;
+      const chosen = {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-6.2-sol",
+        options: [{ id: "reasoningEffort", value: "low" }],
+      };
+      const turn = (choice: typeof chosen | null) =>
+        handoffTurn({
+          threadId: ThreadId.make("handoff"),
+          projectId: ProjectId.make("star"),
+          messageId: MessageId.make("m"),
+          text: "Reconcile.",
+          createdAt: "2026-11-20T12:00:00.000Z",
+          chosen: choice,
+          conversation,
+        });
+      const at = (each: ReturnType<typeof turn>) => [
+        each.threadId,
+        each.modelSelection,
+        each.bootstrap.createThread.modelSelection,
+        each.runtimeMode,
+        each.bootstrap.createThread.runtimeMode,
+      ];
+      NodeAssert.deepEqual(at(turn(chosen)), [
+        "handoff",
+        chosen,
+        chosen,
+        "full-access",
+        "full-access",
+      ]);
+      NodeAssert.deepEqual(at(turn(null)), [
+        "handoff",
+        conversation.modelSelection,
+        conversation.modelSelection,
+        "full-access",
+        "full-access",
+      ]);
+    },
+  );
 
   NodeTest.test("wakes `user` at `user`'s newest model, else at any channel's newest", () => {
     const conversation = (id: string, environmentId: string, channel?: string) => ({

@@ -3,6 +3,15 @@
 // it: which origins the page takes, where it reads the repository's, which
 // folder it refuses, what each occasion runs, the commits' messages, and the
 // handoff that gives a Star a divergence to reconcile (`syncing.ts` runs it).
+import type {
+  MessageId,
+  ModelSelection,
+  ProjectId,
+  ProviderInteractionMode,
+  RuntimeMode,
+  ThreadId,
+} from "@t3tools/contracts";
+
 import { USER_CHANNEL } from "./plugin.ts";
 import { channelOf } from "./stars.ts";
 
@@ -262,7 +271,54 @@ export function handoffModel<
 }
 
 /** The title of the conversation a handoff wakes, which the server keeps until the Star's first reply retitles it. */
-export const HANDOFF_TITLE = "Reconcile your repository";
+const HANDOFF_TITLE = "Reconcile your repository";
+
+/**
+ * The handoff's first turn, which creates its thread: at the modes of the
+ * conversation `handoffModel` picked, and at the Star's model choice for
+ * `user` its plugin resolved at them as the handoff wakes, else at that
+ * conversation's model, the thread and its first turn alike.
+ */
+export function handoffTurn(input: {
+  readonly threadId: ThreadId;
+  readonly projectId: ProjectId;
+  readonly messageId: MessageId;
+  readonly text: string;
+  readonly createdAt: string;
+  readonly chosen: ModelSelection | null;
+  readonly conversation: {
+    readonly modelSelection: ModelSelection;
+    readonly runtimeMode: RuntimeMode;
+    readonly interactionMode: ProviderInteractionMode;
+  };
+}) {
+  const { runtimeMode, interactionMode } = input.conversation;
+  const modelSelection = input.chosen ?? input.conversation.modelSelection;
+  return {
+    threadId: input.threadId,
+    message: {
+      messageId: input.messageId,
+      role: "user" as const,
+      text: input.text,
+      attachments: [],
+    },
+    runtimeMode,
+    interactionMode,
+    modelSelection,
+    bootstrap: {
+      createThread: {
+        projectId: input.projectId,
+        title: HANDOFF_TITLE,
+        modelSelection,
+        runtimeMode,
+        interactionMode,
+        branch: null,
+        worktreePath: null,
+        createdAt: input.createdAt,
+      },
+    },
+  };
+}
 
 /**
  * The handoff's thread id, deterministic from the repository, the commit its

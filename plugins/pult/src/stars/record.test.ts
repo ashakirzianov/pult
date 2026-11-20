@@ -163,6 +163,8 @@ describe("AGENTS.md", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION - 1} -->\n`), true);
+    // Version 17 is the last without the channel models.
+    assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 17 -->\n"), true);
     assert.strictEqual(agentsOutdated(AGENTS_TEXT), false);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);
   });

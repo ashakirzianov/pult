@@ -33,10 +33,10 @@ import { readStarTranscript } from "./plugin.ts";
 import { conversationsOf, type Star, type StarHome, starName } from "./stars.ts";
 import {
   commitMessages,
-  HANDOFF_TITLE,
   handoffMessage,
   handoffModel,
   handoffThreadId,
+  handoffTurn,
   handsOffNow,
   homeSleeps,
   type HomeStatus,
@@ -562,9 +562,7 @@ class StarSync {
         threadId: ThreadId.make(model.id),
       }),
     );
-    const { runtimeMode, interactionMode } = projection.thread;
-    const chosen = await starWakeModel(starId, environmentId, runtimeMode);
-    const modelSelection = chosen === null ? projection.thread.modelSelection : decodeModel(chosen);
+    const chosen = await starWakeModel(starId, environmentId, projection.thread.runtimeMode);
     const text = handoffMessage({
       environmentName: environmentName(environmentId),
       repository: root,
@@ -573,30 +571,17 @@ class StarSync {
     });
     await runOperation(
       environmentId,
-      Operations.startThreadTurn({
-        threadId: ThreadId.make(threadId),
-        message: {
+      Operations.startThreadTurn(
+        handoffTurn({
+          threadId: ThreadId.make(threadId),
+          projectId: ProjectId.make(home.projectId),
           messageId: MessageId.make(globalThis.crypto.randomUUID()),
-          role: "user",
           text,
-          attachments: [],
-        },
-        runtimeMode,
-        interactionMode,
-        modelSelection,
-        bootstrap: {
-          createThread: {
-            projectId: ProjectId.make(home.projectId),
-            title: HANDOFF_TITLE,
-            modelSelection,
-            runtimeMode,
-            interactionMode,
-            branch: null,
-            worktreePath: null,
-            createdAt: new Date().toISOString(),
-          },
-        },
-      }),
+          createdAt: new Date().toISOString(),
+          chosen: chosen === null ? null : decodeModel(chosen),
+          conversation: projection.thread,
+        }),
+      ),
     );
     this.change(key, { note: `${what}; your Star has it to reconcile.`, failure: null });
     await notify("info", `${what}: Pult woke your Star to reconcile it.`);
