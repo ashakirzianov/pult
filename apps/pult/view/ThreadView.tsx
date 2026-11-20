@@ -15,6 +15,7 @@ import {
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { deriveProviderSubagentStatus } from "@t3tools/client-runtime/state/thread-execution";
 import {
+  type AssistantCitation,
   EnvironmentId,
   isOrchestrationV2WorkActive,
   ModelSelection,
@@ -40,6 +41,7 @@ import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { isRichTextBoldShortcut } from "~/keybindings";
+import { assistantCitationFromLocation } from "~/lib/assistantCitationNavigation";
 import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
 import { I18nProvider } from "~/i18n/I18nProvider";
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
@@ -102,6 +104,7 @@ function makeMount() {
   let target = NOTHING;
   let onPromoted = (_environmentId: string, _threadId: string) => {};
   let additions = NO_ADDITIONS;
+  let consumesCitation: MountOptions["consumesCitation"];
   let headingSince: number | undefined;
   let again = 0;
   const listeners = new Set<() => void>();
@@ -111,6 +114,7 @@ function makeMount() {
   return {
     target: () => target,
     additions: () => additions,
+    consumesCitation: () => consumesCitation,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
@@ -126,6 +130,7 @@ function makeMount() {
     ) {
       target = next;
       onPromoted = promoted;
+      consumesCitation = options.consumesCitation;
       const draftHero = options.draftHero ?? true;
       const placeholder = options.placeholder ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
@@ -455,6 +460,13 @@ export interface MountOptions {
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
+  /**
+   * Whether the mount keeps a citation the view would go to (a Star's earlier conversation, which
+   * no route of the view shows): asked before the router commits the citation's location, and
+   * while it answers, the view stays where it is; kept, the view stays put and tells the reader
+   * once per activation.
+   */
+  readonly consumesCitation?: (citation: AssistantCitation) => Promise<boolean>;
 }
 
 /** What a mount adds to its view, as the view's providers take it. */
@@ -533,6 +545,43 @@ function makeView(composerOnly: boolean) {
   };
   const root = createRoot(main);
   let navigable: AnyRouter | undefined;
+  let unblock: (() => void) | undefined;
+  /** The latest navigation the router asked about, so a citation's answer arriving after another moves nothing. */
+  let asking: object | undefined;
+  /** The activation last told it stays put, so a repeated push or replace of it tells nothing more. */
+  let told: string | undefined;
+  const keepCitation = async ({
+    nextLocation,
+  }: {
+    nextLocation: { href: string; state: { assistantCitationActivation?: string } };
+  }) => {
+    // Any navigation supersedes a citation still being asked about.
+    const asked = {};
+    asking = asked;
+    const consumes = mount.consumesCitation();
+    const citation = consumes && assistantCitationFromLocation(nextLocation.href);
+    if (!consumes || !citation) return false;
+    const kept = await consumes(citation);
+    // A newer citation, or another mount, took over meanwhile: this one goes nowhere.
+    if (asking !== asked || mount.consumesCitation() !== consumes) return true;
+    if (!kept) return false;
+    const activation = nextLocation.state.assistantCitationActivation ?? nextLocation.href;
+    if (told !== activation) {
+      told = activation;
+      toastManager.add({ type: "info", title: "This earlier passage can't be shown yet" });
+    }
+    return true;
+  };
+  /** The router asks the mount about a citation only while the mount would keep one. */
+  const blockCitations = () => {
+    const wanted = navigable !== undefined && mount.consumesCitation() !== undefined;
+    if (wanted && unblock === undefined)
+      unblock = navigable?.history.block({ blockerFn: keepCitation, enableBeforeUnload: false });
+    if (!wanted && unblock !== undefined) {
+      unblock();
+      unblock = undefined;
+    }
+  };
   let resting: ReturnType<typeof setTimeout> | undefined;
   /** To the mount's target: the router starts there, and goes there from then on. */
   const go = () => {
@@ -576,15 +625,19 @@ function makeView(composerOnly: boolean) {
       if (!main.contains(bar)) element.append(bar);
       if (stays) mount.remount();
       else go();
+      blockCitations();
     },
     /** Out of its element, to rest unless another mount takes it first. */
     leave() {
       main.remove();
       if (!main.contains(bar)) bar.remove();
+      // A citation still being asked about goes nowhere once its mount is gone.
+      asking = {};
       resting = setTimeout(() => {
         conceal(false);
         mount.show(NOTHING, () => {}, {});
         go();
+        blockCitations();
       }, REST_AFTER_MS);
     },
     follow(environmentId: string, threadId: string) {

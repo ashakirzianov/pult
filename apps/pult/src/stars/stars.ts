@@ -155,6 +155,27 @@ export function drawnHome(star: Pick<Star<StarThread>, "homes" | "current">): St
   );
 }
 
+/**
+ * Whether a thread is one of the Star's earlier conversations with the user on the home it is
+ * drawn from, the fold's: a settled root thread of that home's project in `user`.
+ */
+export function isEarlierConversation(
+  star: Pick<Star<StarThread>, "homes" | "current">,
+  thread: Pick<StarThread, "environmentId" | "projectId" | "parentId" | "settled"> & {
+    readonly tags: ReadonlyArray<string>;
+  },
+): boolean {
+  const home = drawnHome(star);
+  return (
+    home !== undefined &&
+    thread.environmentId === home.environmentId &&
+    thread.projectId === home.projectId &&
+    thread.parentId === null &&
+    thread.settled &&
+    channelOf(thread) === USER_CHANNEL
+  );
+}
+
 /** An open ask as the page draws it: its Star, the home it is drawn from (`drawnHome`) and the ask as that home's plugin serves it. */
 export interface OpenAsk<S> {
   readonly star: S;

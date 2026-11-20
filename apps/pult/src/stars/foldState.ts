@@ -67,6 +67,23 @@ const keyOf = (environmentId: string, starId: string, name: string) =>
 export const transcriptReading = (environmentId: string, starId: string, name: string) =>
   readings.get(keyOf(environmentId, starId, name));
 
+/** Whether the fold has read a transcript of the Star on `environmentId` whose conversation was the thread `threadId`. */
+export function holdsTranscriptOf(
+  environmentId: string,
+  starId: string,
+  threadId: string,
+): boolean {
+  return [...readings].some(([key, reading]) => {
+    const [environment, star] = JSON.parse(key) as [string, string, string];
+    return (
+      environment === environmentId &&
+      star === starId &&
+      reading.status === "ready" &&
+      reading.transcript.threadId === threadId
+    );
+  });
+}
+
 async function read(
   environmentId: string,
   starId: string,

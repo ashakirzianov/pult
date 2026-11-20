@@ -12,6 +12,7 @@ import {
   drawnHome,
   type EnvironmentReading,
   findStarOfThread,
+  isEarlierConversation,
   newTranscripts,
   rotatedChannelTab,
   starsOf,
@@ -498,6 +499,25 @@ NodeTest.describe("a Star's places", () => {
     );
     NodeAssert.equal(star && wakeHome(star, () => false), undefined);
   });
+
+  NodeTest.test(
+    "has earlier conversations with the user only on the home it is drawn from, settled roots of its project",
+    () => {
+      const earlier = (overrides: Parameters<typeof thread>[3], environmentId = "b") =>
+        star !== undefined &&
+        isEarlierConversation(
+          star,
+          thread(environmentId, "t", CREATED, { settled: true, ...overrides }),
+        );
+      NodeAssert.equal(earlier({}), true);
+      NodeAssert.equal(earlier({}, "a"), false);
+      NodeAssert.equal(earlier({ settled: false }), false);
+      NodeAssert.equal(earlier({ parentId: "t0" }), false);
+      NodeAssert.equal(earlier({ projectId: "other" }), false);
+      NodeAssert.equal(earlier({ tags: ["pult:channel:work"] }), false);
+      NodeAssert.equal(earlier({ tags: ["pult:channel:user"] }), true);
+    },
+  );
 
   NodeTest.test("owns the root threads of its homes' projects, not their subagents", () => {
     NodeAssert.equal(
