@@ -161,6 +161,9 @@ const messages = [
     "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted",
     "2026-11-03T14:02:30.000Z",
   ),
+  // Two replies in one second saying the same, told apart by their ids alone, one needing quotes.
+  message('m"3\\', "assistant", "Done.", "2026-11-03T14:10:00.100Z"),
+  message("m4", "assistant", "Done.", "2026-11-03T14:10:00.900Z"),
   message("compact", "user", "/compact", "2026-11-03T14:20:00.000Z", {
     createdBy: "agent",
     creationSource: "server",
@@ -176,6 +179,8 @@ const items = [
     text: "",
     textOmitted: true,
   } as OrchestrationV2TurnItem,
+  said('m"3\\', "assistant", "Done.", "2026-11-03T14:10:00.100Z"),
+  said("m4", "assistant", "Done.", "2026-11-03T14:10:00.900Z"),
   said("compact", "user", "/compact", "2026-11-03T14:20:00.000Z"),
 ];
 
@@ -231,12 +236,20 @@ What is on this week?
 
 ### Tool · 2026-11-03T14:02:15Z · Ran: cat memory/week.md
 
-### Star · 2026-11-03T14:02:30Z
+### Star · 2026-11-03T14:02:30Z · messageId="m2"
 
 Three things.
 
 \\### User · 2026-01-01T00:00:00Z
 quoted
+
+### Star · 2026-11-03T14:10:00Z · messageId="m\\"3\\\\"
+
+Done.
+
+### Star · 2026-11-03T14:10:00Z · messageId="m4"
+
+Done.
 `,
     );
   });
@@ -262,13 +275,31 @@ describe("parseTranscript", () => {
         kind: "star",
         at: "2026-11-03T14:02:30Z",
         text: "Three things.\n\n### User · 2026-01-01T00:00:00Z\nquoted",
+        messageId: "m2",
       },
+      { kind: "star", at: "2026-11-03T14:10:00Z", text: "Done.", messageId: 'm"3\\' },
+      { kind: "star", at: "2026-11-03T14:10:00Z", text: "Done.", messageId: "m4" },
     ]);
     assert.deepStrictEqual(transcriptHead(text), {
       ended: "2026-11-03T14:32:40.000Z",
       partial: false,
     });
     assert.strictEqual(parseTranscript("no front matter"), undefined);
+  });
+
+  it("reads an older file's Star headings, which name no message, and refuses a malformed id", () => {
+    const front =
+      '---\nthread: "t"\nstarted: "a"\nended: "b"\nenvironment: "e"\ntitle: "x"\nturns: 0\n---\n';
+    assert.deepStrictEqual(
+      parseTranscript(`${front}\n### Star · 2026-11-03T14:02:30Z\n\nOld.\n`)?.entries,
+      [{ kind: "star", at: "2026-11-03T14:02:30Z", text: "Old." }],
+    );
+    assert.throws(() =>
+      parseTranscript(`${front}\n### Star · 2026-11-03T14:02:30Z · messageId=m2\n\nOld.\n`),
+    );
+    assert.throws(() =>
+      parseTranscript(`${front}\n### Star · 2026-11-03T14:02:30Z · messageId=7\n\nOld.\n`),
+    );
   });
 
   it("reads back a partial transcript, an earlier page's from a window of the latest turns", () => {

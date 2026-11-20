@@ -308,21 +308,42 @@ NodeTest.describe("decodeTranscript", () => {
     entries: [
       { kind: "user", at: "2026-11-01T10:00:00.000Z", text: "hi" },
       { kind: "tool", at: "2026-11-01T10:00:01.000Z", text: "Read a.md" },
-      { kind: "star", at: "2026-11-01T10:00:02.000Z", text: "hello" },
+      { kind: "star", at: "2026-11-01T10:00:02.000Z", text: "hello", messageId: "m1" },
+      { kind: "star", at: "2026-11-01T10:00:03.000Z", text: "older" },
     ],
   };
 
-  NodeTest.test("reads a transcript's entries", () => {
-    NodeAssert.deepEqual(decodeTranscript(transcript), transcript);
-  });
+  NodeTest.test(
+    "reads a transcript's entries, a reply's message id null where it names none",
+    () => {
+      NodeAssert.deepStrictEqual(decodeTranscript(transcript), {
+        ...transcript,
+        entries: transcript.entries.map((entry) => ({ messageId: null, ...entry })),
+      });
+    },
+  );
 
-  NodeTest.test("fails loudly on an entry of another kind, or a missing field", () => {
-    NodeAssert.throws(
-      () => decodeTranscript({ ...transcript, entries: [{ kind: "system", at: "", text: "" }] }),
-      PluginAnswerError,
-    );
-    NodeAssert.throws(() => decodeTranscript({ ...transcript, partial: "no" }), PluginAnswerError);
-  });
+  NodeTest.test(
+    "fails loudly on an entry of another kind, a missing field or a message id of another shape",
+    () => {
+      NodeAssert.throws(
+        () => decodeTranscript({ ...transcript, entries: [{ kind: "system", at: "", text: "" }] }),
+        PluginAnswerError,
+      );
+      NodeAssert.throws(
+        () => decodeTranscript({ ...transcript, partial: "no" }),
+        PluginAnswerError,
+      );
+      NodeAssert.throws(
+        () =>
+          decodeTranscript({
+            ...transcript,
+            entries: [{ ...transcript.entries[2], messageId: 7 }],
+          }),
+        PluginAnswerError,
+      );
+    },
+  );
 });
 
 NodeTest.describe("the Stars' routes", () => {

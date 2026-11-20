@@ -221,6 +221,8 @@ export interface TranscriptEntry {
   readonly kind: "user" | "star" | "tool";
   readonly at: string;
   readonly text: string;
+  /** A Star reply's message; null for any other entry, and for a reply written before transcripts named it or served by an older plugin. */
+  readonly messageId: string | null;
 }
 
 /** A transcript as `GET /stars/<id>/conversations/<name>` serves it, parsed. */
@@ -262,6 +264,12 @@ const nullable =
   <T>(each: Decode<T>): Decode<T | null> =>
   (value, at) =>
     value === null ? null : each(value, at);
+
+/** An optional field: absent reads as null, any other shape fails. */
+const optional =
+  <T>(each: Decode<T>): Decode<T | null> =>
+  (value, at) =>
+    value === undefined ? null : each(value, at);
 
 const arrayOf =
   <T>(each: Decode<T>): Decode<ReadonlyArray<T>> =>
@@ -373,7 +381,14 @@ const transcript = struct<Transcript>({
   environment: string,
   title: string,
   partial: boolean,
-  entries: arrayOf(struct<TranscriptEntry>({ kind: entryKind, at: string, text: string })),
+  entries: arrayOf(
+    struct<TranscriptEntry>({
+      kind: entryKind,
+      at: string,
+      text: string,
+      messageId: optional(string),
+    }),
+  ),
 });
 
 /** `GET /stars`'s answer, decoded; a throw for any other shape. */
@@ -496,12 +511,6 @@ export interface KeptAnswer {
   readonly checkouts: ReadonlyArray<KeptCheckout>;
   readonly unlisted: string | null;
 }
-
-/** An optional field: absent reads as null, any other shape fails. */
-const optional =
-  <T>(each: Decode<T>): Decode<T | null> =>
-  (value, at) =>
-    value === undefined ? null : each(value, at);
 
 const outcome: Decode<KeptAttempt["outcome"]> = (value, at) =>
   value === "moved" || value === "up-to-date" || value === "waiting" || value === "failed"

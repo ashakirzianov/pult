@@ -1,7 +1,7 @@
-// A Star's conversation as a transcript (`star-conversations`), the page's format byte for byte:
-// front matter (thread, started, ended, environment, title, turns), then `### User · <time>`,
-// `### Star · <time>` and `### Tool · <time> · <line>` sections. An earlier page wrote
-// `partial: true` over a window of the latest turns; the plugin writes only whole ones.
+// A Star's conversation as a transcript (`star-conversations`): front matter (thread, started,
+// ended, environment, title, turns), then `### User · <time>`, `### Star · <time> · messageId="<id>"`
+// (a JSON string; an older file's names none) and `### Tool · <time> · <line>` sections. An
+// earlier page wrote `partial: true` over the latest turns; the plugin writes only whole ones.
 import {
   idleCompactionOf,
   type OrchestrationV2ThreadProjection,
@@ -56,6 +56,23 @@ const second = (time: DateTime.Utc) => iso(time).replace(/\.\d+Z$/, "Z");
 const MARKER = /^(\\*)(### (?:User|Star|Tool) · )/gm;
 const ESCAPED_MARKER = /^\\(\\*### (?:User|Star|Tool) · )/gm;
 const HEADING = /^### (User|Star|Tool) · (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)(?: · (.*))?$/;
+/** What a Star heading's detail starts with when it names its message, the id after it as a JSON string. */
+const MESSAGE_ID = "messageId=";
+
+/** A Star heading's message id; undefined for an older heading that names none, a throw for a marked one that is no JSON string. */
+function messageIdOf(detail: string): string | undefined {
+  if (!detail.startsWith(MESSAGE_ID)) return undefined;
+  const raw = detail.slice(MESSAGE_ID.length);
+  let id: unknown;
+  try {
+    id = JSON.parse(raw);
+  } catch {
+    id = undefined;
+  }
+  if (typeof id !== "string")
+    throw new Error(`A Star heading's messageId is no JSON string: ${raw}`);
+  return id;
+}
 
 const oneLine = (text: string, limit = 160) => {
   const line = text.replace(/\s+/g, " ").trim();
@@ -131,10 +148,11 @@ export function formatTranscript(
       const text = (item.textOmitted === true ? message?.text : item.text)?.trim() ?? "";
       if (text === "") continue;
       if (item.type === "user_message") turns += 1;
-      const role = item.type === "user_message" ? "User" : "Star";
-      sections.push(
-        `### ${role} · ${second(message?.createdAt ?? time)}\n\n${text.replace(MARKER, "\\$1$2")}\n`,
-      );
+      const heading =
+        item.type === "user_message"
+          ? `User · ${second(message?.createdAt ?? time)}`
+          : `Star · ${second(message?.createdAt ?? time)} · ${MESSAGE_ID}${JSON.stringify(item.messageId)}`;
+      sections.push(`### ${heading}\n\n${text.replace(MARKER, "\\$1$2")}\n`);
       continue;
     }
     const line = toolLine(item);
@@ -153,8 +171,14 @@ export function formatTranscript(
 
 /** One entry of a transcript as the fold shows it. */
 export type TranscriptEntry =
-  | { readonly kind: "user" | "star"; readonly at: string; readonly text: string }
-  | { readonly kind: "tool"; readonly at: string; readonly text: string };
+  | { readonly kind: "user" | "tool"; readonly at: string; readonly text: string }
+  | {
+      readonly kind: "star";
+      readonly at: string;
+      readonly text: string;
+      /** The reply's message, absent from a file written before headings named it. */
+      readonly messageId?: string;
+    };
 
 export interface Transcript {
   readonly threadId: string;
@@ -183,14 +207,16 @@ export function parseTranscript(text: string): Transcript | undefined {
   if (matter === undefined) return undefined;
   const { fields, body } = matter;
   const entries: TranscriptEntry[] = [];
-  let open: { kind: "user" | "star"; at: string; lines: string[] } | undefined;
+  let open:
+    | { kind: "user" | "star"; at: string; messageId: string | undefined; lines: string[] }
+    | undefined;
   const close = () => {
     if (open === undefined) return;
-    entries.push({
-      kind: open.kind,
-      at: open.at,
-      text: open.lines.join("\n").trim().replace(ESCAPED_MARKER, "$1"),
-    });
+    const { kind, at, messageId } = open;
+    const text = open.lines.join("\n").trim().replace(ESCAPED_MARKER, "$1");
+    entries.push(
+      messageId === undefined ? { kind, at, text } : { kind: "star", at, text, messageId },
+    );
     open = undefined;
   };
   for (const line of body.split(/\r?\n/)) {
@@ -202,7 +228,8 @@ export function parseTranscript(text: string): Transcript | undefined {
     close();
     const [, role, at = "", detail = ""] = heading;
     if (role === "Tool") entries.push({ kind: "tool", at, text: detail });
-    else open = { kind: role === "User" ? "user" : "star", at, lines: [] };
+    else if (role === "User") open = { kind: "user", at, messageId: undefined, lines: [] };
+    else open = { kind: "star", at, messageId: messageIdOf(detail), lines: [] };
   }
   close();
   return {

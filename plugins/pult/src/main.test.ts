@@ -367,7 +367,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     });
     yield* fs.writeFileString(
       file,
-      '---\nthread: "thread-1"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 1\n---\n\n### User · 2026-11-10T12:00:00Z\n\nHello\n',
+      '---\nthread: "thread-1"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 1\n---\n\n### User · 2026-11-10T12:00:00Z\n\nHello\n\n### Star · 2026-11-10T12:00:05Z · messageId="m-1"\n\nHi\n',
     );
     expect(yield* send("GET", `/stars/${star.id}/conversations/${name}`, "reader")).toEqual({
       status: 200,
@@ -378,7 +378,10 @@ it.effect("the server activates the plugin, which lists stars in about and serve
         environment: "MacBook",
         title: "t",
         partial: false,
-        entries: [{ kind: "user", at: "2026-11-10T12:00:00Z", text: "Hello" }],
+        entries: [
+          { kind: "user", at: "2026-11-10T12:00:00Z", text: "Hello" },
+          { kind: "star", at: "2026-11-10T12:00:05Z", text: "Hi", messageId: "m-1" },
+        ],
       },
     });
     expect((yield* send("GET", `/stars/${star.id}/conversations/notes.md`, "reader")).status).toBe(
