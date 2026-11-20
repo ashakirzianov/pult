@@ -1,10 +1,17 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { type OrchestrationV2ThreadShell, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  type OrchestrationV2ThreadShell,
+  type ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
-import { DateTime, DispatchModeLimit, Effect, Exit, Layer } from "../host.ts";
+import { DateTime, DispatchModeLimit, Effect, Exit, FileSystem, Layer, Path } from "../host.ts";
+import { CHANNEL_MODELS_FILE } from "./channelModels.ts";
 import { type Channel, channelTag } from "./channels.ts";
 import * as Delivery from "./deliver.ts";
 import * as Stars from "./stars.ts";
@@ -15,6 +22,60 @@ const fullAccess = { runtimeMode: "full-access", interactionMode: "default" } as
 const work = { tags: [channelTag("work")] } satisfies Partial<OrchestrationV2ThreadShell>;
 const model = (name: string) => ({ instanceId: ProviderInstanceId.make("codex"), model: name });
 
+/** A provider the server serves, its models taking `option` as effort among `low` and `high`. */
+const provider = (
+  instanceId: string,
+  option: string,
+  slugs: ReadonlyArray<string>,
+  supportedRuntimeModes?: ServerProvider["supportedRuntimeModes"],
+): ServerProvider => ({
+  instanceId: ProviderInstanceId.make(instanceId),
+  driver: instanceId as ProviderDriverKind,
+  enabled: true,
+  installed: true,
+  version: "test",
+  status: "ready",
+  auth: { status: "authenticated" },
+  checkedAt: "2026-11-10T12:00:00.000Z",
+  models: slugs.map((slug) => ({
+    slug,
+    name: slug,
+    isCustom: false,
+    capabilities: {
+      optionDescriptors: [
+        {
+          id: option,
+          label: "Effort",
+          type: "select" as const,
+          options: ["low", "high"].map((id) => ({ id, label: id })),
+        },
+      ],
+    },
+  })),
+  ...(supportedRuntimeModes === undefined ? {} : { supportedRuntimeModes }),
+  slashCommands: [],
+  skills: [],
+});
+const PROVIDERS = [
+  provider("claudeAgent", "effort", ["claude-fable-5-2", "claude-opus-5-5"]),
+  provider("codex", "reasoningEffort", ["gpt-6.2-sol"]),
+  // Offers only the narrowest runtime mode, so no wake at `auto`.
+  {
+    ...provider("codex", "reasoningEffort", ["gpt-6.2-sol"], ["approval-required"]),
+    instanceId: ProviderInstanceId.make("codex-narrow"),
+  },
+];
+const FABLE = { provider: "claudeAgent", model: "claude-fable-5-2", effort: "high" };
+const SOL = { provider: "codex", model: "gpt-6.2-sol", effort: "low" };
+/** The selection a choice of the file launches at. */
+const selected = (choice: { provider: string; model: string; effort: string }) => ({
+  instanceId: ProviderInstanceId.make(choice.provider),
+  model: choice.model,
+  options: [
+    { id: choice.provider === "codex" ? "reasoningEffort" : "effort", value: choice.effort },
+  ],
+});
+
 /** One Star over a fake server, and `deliver` as the plugin builds it. */
 const harness = Effect.gen(function* () {
   yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -22,6 +83,21 @@ const harness = Effect.gen(function* () {
   const stars = yield* Stars.make.pipe(Effect.provide(server.layer));
   const deliver = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(stars);
   const star = yield* stars.create({ ifNone: true });
+  server.limits.providers = PROVIDERS;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  /** Writes the Star's channel models, JSON or text as given. */
+  const choose = (file: string | object) =>
+    Effect.flatMap(
+      fs.makeDirectory(path.dirname(path.join(star.root, CHANNEL_MODELS_FILE)), {
+        recursive: true,
+      }),
+      () =>
+        fs.writeFileString(
+          path.join(star.root, CHANNEL_MODELS_FILE),
+          typeof file === "string" ? file : JSON.stringify(file),
+        ),
+    );
   /** A conversation that ended an hour ago; `user`'s unless `shell` tags it. */
   const ended = (id = "ended", shell: Partial<OrchestrationV2ThreadShell> = {}) =>
     server.threads.add(star.projectId, id, {
@@ -65,7 +141,7 @@ const harness = Effect.gen(function* () {
       key,
       sender: { thread: worker },
     }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit));
-  return { ...server, star, deliver, ended, open, fromPlugin, fromThread };
+  return { ...server, star, deliver, ended, open, fromPlugin, fromThread, choose, fs, path };
 }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer)));
 
 const failureCode = <A>(exit: Exit.Exit<A, { readonly code: string }>) =>
@@ -359,6 +435,132 @@ describe("deliver", () => {
       assert.strictEqual(h.threads.messages.length, 2);
       assert.strictEqual(h.launches.launches.length, 3);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "wakes a fresh conversation at the Star's choice for its channel, an edit taking effect at the next wake",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.ended();
+        yield* h.choose({ default: FABLE, channels: { captures: SOL } });
+        yield* h.fromPlugin("k1", "File these.", "captures");
+        // The launch carries the selection with its first message, the modes still the newest's.
+        const [launch] = h.launches.launches;
+        assert.deepStrictEqual(
+          {
+            modelSelection: launch?.modelSelection,
+            runtimeMode: launch?.runtimeMode,
+            initialMessage: launch?.initialMessage?.text,
+          },
+          {
+            modelSelection: selected(SOL),
+            runtimeMode: "auto",
+            initialMessage: '[From schedule "standup", to your channel captures]\n\nFile these.',
+          },
+        );
+        // An unlisted channel takes the default.
+        yield* h.fromPlugin("k2", "Hello", "unit-2");
+        assert.deepStrictEqual(h.launches.launches[1]?.modelSelection, selected(FABLE));
+        // An edit while the conversation is open changes nothing in it.
+        const opus = { provider: "claudeAgent", model: "claude-opus-5-5", effort: "low" };
+        yield* h.choose({ default: FABLE, channels: { captures: opus } });
+        assert.strictEqual((yield* h.fromPlugin("k3", "More.", "captures")).outcome, "queued");
+        assert.strictEqual(h.launches.launches.length, 2);
+        // Asleep, the channel wakes at the edited choice.
+        const captures = h.threads.byId(ThreadId.make("launched-1"))!;
+        captures.shell = {
+          ...captures.shell,
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T13:00:00.000Z"),
+        };
+        yield* h.fromPlugin("k4", "Again.", "captures");
+        assert.deepStrictEqual(h.launches.launches[2]?.modelSelection, selected(opus));
+        // Nothing was wrong, so nothing was told.
+        assert.isFalse(h.launches.launches.some((each) => each.tags?.includes(channelTag("work"))));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("resumes a wake cut short at the model it recorded, across an edit", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended();
+      yield* h.choose({ default: SOL });
+      h.launches.state.cutNext = true;
+      assert.strictEqual(
+        failureCode(yield* Effect.exit(h.fromPlugin("wake"))),
+        "orchestration_error",
+      );
+      yield* h.choose({ default: FABLE });
+      assert.strictEqual((yield* h.fromPlugin("wake")).outcome, "launched");
+      assert.deepStrictEqual(
+        h.launches.launches.map((each) => each.modelSelection),
+        [selected(SOL), selected(SOL)],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "wakes on the fallback where the choice cannot be served, telling work once per content",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const last = h.ended();
+        // A provider that does not offer the wake's mode, `auto`, cannot serve it.
+        yield* h.choose({
+          default: FABLE,
+          channels: { captures: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
+        });
+        yield* h.fromPlugin("k1", "File these.", "captures");
+        yield* h.fromPlugin("k2", "Hello", "unit-2");
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => [each.tags, each.modelSelection]),
+          [
+            [["pult:channel:captures"], selected(FABLE)],
+            // The notice wakes work, after the lock, on the default too; the second wake tells nothing.
+            [["pult:channel:work"], selected(FABLE)],
+            [["pult:channel:unit-2"], selected(FABLE)],
+          ],
+        );
+        // Three messages: the two wakes' and the one notice.
+        assert.strictEqual(h.threads.messages.length, 3);
+        const notice = h.threads.messages[1];
+        assert.strictEqual(notice?.threadId, ThreadId.make("launched-2"));
+        assert.include(
+          notice?.text,
+          '`channels.captures.provider` "codex-narrow" does not offer runtime mode "auto"',
+        );
+        // Without the file, the channel wakes as before.
+        yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        yield* h.fromPlugin("k3", "Hello", "unit-3");
+        assert.deepStrictEqual(h.launches.launches[3]?.modelSelection, last.shell.modelSelection);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "wakes work at history where the file does not parse, the notice queued into that conversation",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const last = h.ended();
+        yield* h.choose('{"default": ');
+        yield* h.fromThread("k1", fullAccess);
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => each.modelSelection),
+          [last.shell.modelSelection],
+        );
+        assert.deepStrictEqual(
+          h.threads.messages.map((each) => each.threadId),
+          [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
+        );
+        assert.include(h.threads.messages[1]?.text, "it is not JSON");
+        // A file that cannot be read is no choice either, and tells nothing.
+        yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        yield* h.fs.makeDirectory(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        yield* h.fromPlugin("k2", "Hello", "unit-2");
+        assert.deepStrictEqual(h.launches.launches[1]?.modelSelection, last.shell.modelSelection);
+        assert.strictEqual(h.threads.messages.length, 3);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("holds a thread to modes no broader than its own, on either path", () =>

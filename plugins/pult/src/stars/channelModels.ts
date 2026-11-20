@@ -1,12 +1,13 @@
 // A Star's model per channel (xaxis `pult/issues/star-channel-model.md`): `.pult/channel-models.json`
 // names a `default` and exact channels' `{provider, model, effort?}`. A choice this environment
-// cannot serve falls back, entry to `default` to the newest conversation's; what was wrong comes
-// back with the content's hash, for one notice per content.
+// cannot serve, its provider lacking the wake's runtime mode included, falls back, entry to `default`
+// to the newest conversation's; what was wrong comes back with the content's hash, told once per content.
 import {
   isProviderAvailable,
   type ModelSelection,
   type ProjectId,
   type ProviderDriverKind,
+  type RuntimeMode,
   type ServerProvider,
 } from "@t3tools/contracts";
 
@@ -100,6 +101,7 @@ const serve = (
   choice: Choice,
   providers: ReadonlyArray<ServerProvider>,
   enabledForProject: ReadonlySet<string>,
+  runtimeMode: RuntimeMode,
 ): ModelSelection | string => {
   const provider = providers.find((candidate) => candidate.instanceId === choice.provider);
   if (provider === undefined || !serves(provider, enabledForProject)) {
@@ -108,6 +110,10 @@ const serve = (
       .map((candidate) => candidate.instanceId);
     return `\`${field}.provider\` "${choice.provider}" is ${provider === undefined ? "not a provider" : "not served"} here; this environment serves ${served.length === 0 ? "none" : quoted(served)}`;
   }
+  // As the server's runtime policy reads it: no list offers every mode.
+  const modes = provider.supportedRuntimeModes;
+  if (modes !== undefined && modes.length > 0 && !modes.includes(runtimeMode))
+    return `\`${field}.provider\` "${provider.instanceId}" does not offer runtime mode "${runtimeMode}", which the Star wakes at; it offers ${quoted(modes)}`;
   // Only an advertised model, unlike `t3_thread_launch`, which takes any slug from a provider listing none.
   const model =
     provider.models.find((candidate) => candidate.slug === choice.model) ??
@@ -145,6 +151,7 @@ const resolve = (
   channel: Channel,
   providers: ReadonlyArray<ServerProvider>,
   enabledForProject: ReadonlySet<string>,
+  runtimeMode: RuntimeMode,
 ): {
   readonly selection: ModelSelection | null;
   readonly from: ChannelModel["from"];
@@ -169,7 +176,9 @@ const resolve = (
   const servedAt = (field: string, value: unknown): ModelSelection | null => {
     const choice = readChoice(field, value);
     const selection =
-      typeof choice === "string" ? choice : serve(field, choice, providers, enabledForProject);
+      typeof choice === "string"
+        ? choice
+        : serve(field, choice, providers, enabledForProject, runtimeMode);
     if (typeof selection !== "string") return selection;
     problems.push(selection);
     return null;
@@ -198,14 +207,14 @@ const resolve = (
 };
 
 /**
- * The model a fresh conversation of `channel` starts with, from the Star's folder at `root`,
- * resolved against the providers this environment serves the Star's project: the channel's entry,
- * else the file's `default`, else null for today's, the newest conversation's. A missing file is
- * no problem; a file that cannot be read otherwise fails, for the wake to fall back on.
+ * The model a fresh conversation of `channel` starts with at `runtimeMode`, from the Star's folder:
+ * the channel's entry, else the file's `default`, else null for the newest conversation's. A missing
+ * file is no problem; one that cannot be read otherwise fails, for the wake to fall back on.
  */
 export const channelModel = Effect.fn("Stars.channelModel")(function* (
   star: { readonly root: string; readonly projectId: ProjectId },
   channel: Channel,
+  runtimeMode: RuntimeMode,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -225,7 +234,13 @@ export const channelModel = Effect.fn("Stars.channelModel")(function* (
       })
     )
       enabledForProject.add(provider.instanceId);
-  const { selection, from, problems } = resolve(text, channel, providers, enabledForProject);
+  const { selection, from, problems } = resolve(
+    text,
+    channel,
+    providers,
+    enabledForProject,
+    runtimeMode,
+  );
   const broken =
     problems.length === 0
       ? null

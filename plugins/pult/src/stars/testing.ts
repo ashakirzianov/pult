@@ -175,6 +175,8 @@ function fakeThreads() {
   });
   const service = {
     hasReceipt: (commandId: CommandId) => Effect.sync(() => receipts.has(commandId)),
+    // Every provider is on for every project.
+    isProviderInstanceEnabledForProject: () => Effect.succeed(true),
     sendToThread: Effect.fn("FakeThreads.sendToThread")(function* (input: {
       commandId: CommandId;
       threadId: ThreadId;

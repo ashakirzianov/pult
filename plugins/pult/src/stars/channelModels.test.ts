@@ -5,6 +5,7 @@ import {
   ProjectId,
   type ProviderDriverKind,
   type ProviderInstanceId,
+  type RuntimeMode,
   type ServerProvider,
 } from "@t3tools/contracts";
 
@@ -59,7 +60,7 @@ const SOL_MODEL = effortModel("gpt-6.2-sol", "reasoningEffort", ["low", "medium"
 /**
  * Claude and Codex as the server offers them, a Cursor that takes no effort here, and Codex
  * instances that offer the model yet cannot serve it: disabled, failing its check, off for the
- * Star's project, and one listing no models.
+ * Star's project, one listing no models, and one offering only the narrowest runtime mode.
  */
 const PROVIDERS: ReadonlyArray<ServerProvider> = [
   provider("claudeAgent", "claudeAgent", [
@@ -74,6 +75,10 @@ const PROVIDERS: ReadonlyArray<ServerProvider> = [
   provider("codex-failing", "codex", [SOL_MODEL], "error"),
   provider("codex-off", "codex", [SOL_MODEL]),
   provider("codex-empty", "codex", []),
+  {
+    ...provider("codex-narrow", "codex", [SOL_MODEL]),
+    supportedRuntimeModes: ["approval-required"],
+  },
 ];
 
 /** The instances settings turn off for the Star's project. */
@@ -82,8 +87,12 @@ const OFF_FOR_PROJECT: ReadonlySet<string> = new Set(["codex-off"]);
 const FABLE = { provider: "claudeAgent", model: "claude-fable-5-2", effort: "high" };
 const SOL = { provider: "codex", model: "gpt-6.2-sol", effort: "low" };
 
-/** The channel's model from a Star folder holding `file` (none where undefined). */
-const resolveWith = (file: string | object | undefined, channel: string) =>
+/** The channel's model from a Star folder holding `file` (none where undefined), for a wake at `runtimeMode`. */
+const resolveWith = (
+  file: string | object | undefined,
+  channel: string,
+  runtimeMode: RuntimeMode = "full-access",
+) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -95,7 +104,11 @@ const resolveWith = (file: string | object | undefined, channel: string) =>
         typeof file === "string" ? file : JSON.stringify(file),
       );
     }
-    return yield* channelModel({ root, projectId: ProjectId.make("project-1") }, channel);
+    return yield* channelModel(
+      { root, projectId: ProjectId.make("project-1") },
+      channel,
+      runtimeMode,
+    );
   }).pipe(
     Effect.scoped,
     Effect.provide(
@@ -180,6 +193,7 @@ describe("a channel's model", () => {
           failing: { provider: "codex-failing", model: "gpt-6.2-sol" },
           offForProject: { provider: "codex-off", model: "gpt-6.2-sol" },
           emptyCatalog: { provider: "codex-empty", model: "gpt-6.2-sol" },
+          narrowModes: { provider: "codex-narrow", model: "gpt-6.2-sol" },
           unknownModel: { provider: "codex", model: "gpt-9" },
           unknownEffort: { provider: "codex", model: "gpt-6.2-sol", effort: "max" },
           effortNotMapped: { provider: "cursor", model: "composer", effort: "high" },
@@ -211,6 +225,11 @@ describe("a channel's model", () => {
           );
           assert.match(toHistory.broken!.problems[0]!, /^`default/u, kind);
         }
+        // A provider offering only the wake's runtime mode serves it.
+        assert.strictEqual(
+          (yield* resolveWith({ default: bad.narrowModes }, "work", "approval-required")).from,
+          "default",
+        );
         // What it names and what this environment accepts.
         const told = yield* resolveWith(
           {
@@ -220,7 +239,7 @@ describe("a channel's model", () => {
           "work",
         );
         assert.deepStrictEqual(told.broken?.problems, [
-          '`channels.a.provider` "gemini" is not a provider here; this environment serves "claudeAgent", "codex", "cursor", "codex-empty"',
+          '`channels.a.provider` "gemini" is not a provider here; this environment serves "claudeAgent", "codex", "cursor", "codex-empty", "codex-narrow"',
           '`channels.b.model` "gpt-9" is not offered by "codex" here; it offers "gpt-6.2-sol"',
           '`channels.c.effort` "max" is not offered for "gpt-6.2-sol" here; it offers "low", "medium", "xhigh"',
         ]);
