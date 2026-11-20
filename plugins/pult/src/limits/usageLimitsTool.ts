@@ -20,6 +20,7 @@ import {
   Effect,
   Fiber,
   McpToolAccess,
+  Option,
   ProviderRegistry,
   Schema,
   ServerEnvironment,
@@ -29,9 +30,18 @@ import {
   UsageLimitSources,
 } from "../host.ts";
 
-/** The Limits shelf's thresholds (`apps/pult/src/limits/limits.ts`), here over the linear pace. */
+/** The Limits shelf's thresholds (`apps/pult/src/limits/limits.ts`). */
 const WARNING_USED_PERCENT = 95;
 const PACE_TOLERANCE_PERCENT = 5;
+
+/**
+ * The shelf's default weekend, Saturday and Sunday (`weekDay` numbers, Sunday 0): the convention
+ * paces on Monday to Friday (`axis/decisions.md`, `models-and-pacing`), and the shelf's setting is the page's.
+ */
+const WEEKEND: ReadonlySet<number> = new Set([6, 0]);
+
+const MINUTE = 60_000;
+const DAY_MINUTES = 24 * 60;
 
 /** Upstream's provider status interval and Claude's probe cache: both the staleness line and the floor between refreshes. */
 const REFRESH_AFTER_MS = 5 * 60_000;
@@ -40,7 +50,7 @@ const REFRESH_WAIT = "30 seconds";
 
 const UsageLimitsTool = Tool.make("pult_usage_limits", {
   description:
-    "The usage limits this server holds for its provider accounts and its usage hubs, and nothing of other environments: per account, its `checkedAt` (when its limits were read) and each window with its length, the share used, its reset, `evenPercent` (the share of the window's time gone, by the calendar, so spending at that pace uses the window up exactly at its reset; null without a reset time or a length) and `warning` (over 95% used, or more than 5 points past `evenPercent`), and `notices`, upstream's for this server. A read first refreshes the limits when any is older than five minutes, at most once per five minutes, waiting up to 30 seconds. An account whose limits could not be read, or report none, is not listed, and a notice says why; one with no subscription limits (an API key) is left out with no notice; a hub whose read failed lists none of its accounts, only its notice. A provider whose read fails after a good one keeps its last good windows with their `checkedAt`, so an account whose `checkedAt` is more than fifteen minutes before `now` has no current numbers.",
+    "The usage limits this server holds for its provider accounts and its usage hubs, and nothing of other environments: per account, its `checkedAt` (when its limits were read) and each window with its length, the share used, its reset, `evenPercent` (the share of the window's time gone, where for a window of a day or longer only its time Monday to Friday counts, in this server's time zone, unless it has none, so spending at that pace uses the window up by its reset; null without a reset time or a length) and `warning` (over 95% used, or more than 5 points past `evenPercent`), and `notices`, upstream's for this server. A read first refreshes the limits when any is older than five minutes, at most once per five minutes, waiting up to 30 seconds. An account whose limits could not be read, or report none, is not listed, and a notice says why; one with no subscription limits (an API key) is left out with no notice; a hub whose read failed lists none of its accounts, only its notice. A provider whose read fails after a good one keeps its last good windows with their `checkedAt`, so an account whose `checkedAt` is more than fifteen minutes before `now` has no current numbers.",
   parameters: Tool.EmptyParams,
   success: Schema.Struct({
     now: IsoDateTime,
@@ -128,6 +138,11 @@ export const make = Effect.fn("PultTools.makeUsageLimits")(function* () {
     ]);
     const now = yield* DateTime.now;
     const millis = DateTime.toEpochMillis(now);
+    // The server's own zone; a test provides one.
+    const zone = Option.getOrElse(
+      yield* Effect.serviceOption(DateTime.CurrentTimeZone),
+      DateTime.zoneMakeLocal,
+    );
     return {
       now: DateTime.formatIso(now),
       accounts: collectLimitAccounts(presentations).map((account) => ({
@@ -138,7 +153,7 @@ export const make = Effect.fn("PultTools.makeUsageLimits")(function* () {
         hub: account.sourceLabel,
         checkedAt: account.limits.checkedAt,
         windows: account.limits.windows.map((window) => {
-          const share = elapsedShare(window, millis);
+          const share = paceShare(window, millis, zone);
           const evenPercent = share === null ? null : Math.round(share * 1000) / 10;
           return {
             id: window.id,
@@ -163,3 +178,41 @@ export const make = Effect.fn("PultTools.makeUsageLimits")(function* () {
     McpToolAccess.toLayer(UsageLimitsToolkit, { pult_usage_limits: McpToolAccess.reads(read) }),
   );
 });
+
+/**
+ * The shelf's `paceShare` (`apps/pult/src/limits/limits.ts`) over its default weekend, at the
+ * `zone`'s midnights: for a window of a day or longer, the share of its time outside the weekend
+ * gone; a shorter window, or one with no time outside the weekend, by the calendar
+ * (`elapsedShare`). Null with no reset clock.
+ */
+function paceShare(
+  window: ServerProviderUsageWindow,
+  now: number,
+  zone: DateTime.TimeZone,
+): number | null {
+  const share = elapsedShare(window, now);
+  const { resetsAt, windowDurationMins: minutes } = window;
+  // A share means both are there.
+  if (share === null || resetsAt === undefined || minutes === undefined) return share;
+  if (minutes < DAY_MINUTES) return share;
+  const end = Date.parse(resetsAt);
+  const start = end - minutes * MINUTE;
+  const working = workingMillis(start, end, zone);
+  if (working === 0) return share;
+  return workingMillis(start, Math.max(start, Math.min(now, end)), zone) / working;
+}
+
+/** The time from `from` to `to` on days outside the weekend, day by day at the `zone`'s midnights. */
+function workingMillis(from: number, to: number, zone: DateTime.TimeZone): number {
+  let total = 0;
+  for (let at = from; at < to;) {
+    const day = DateTime.makeZonedUnsafe(at, { timeZone: zone });
+    const until = Math.min(
+      to,
+      DateTime.toEpochMillis(DateTime.add(DateTime.startOf(day, "day"), { days: 1 })),
+    );
+    if (!WEEKEND.has(DateTime.toParts(day).weekDay)) total += until - at;
+    at = until;
+  }
+  return total;
+}

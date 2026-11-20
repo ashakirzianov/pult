@@ -55,6 +55,7 @@ import * as PluginLoader from "../../../apps/server/src/plugins/PluginLoader.ts"
 import {
   Cause,
   Context,
+  DateTime,
   Effect,
   Exit,
   FileSystem,
@@ -921,7 +922,7 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
 
-it.effect("pult_usage_limits refreshes stale limits, then paces each window by the calendar", () =>
+it.effect("pult_usage_limits refreshes stale limits, then paces each window on working days", () =>
   Effect.gen(function* () {
     yield* TestClock.setTime(Date.parse("2026-11-16T12:44:00.000Z"));
     const server = yield* fakeServer;
@@ -1038,6 +1039,11 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window by t
           scopeOf({ client: "read-only" }),
         ),
         Effect.provideService(McpSchema.McpServerClient, mcpClient),
+        // The pace counts working days at the server's midnights: Buenos Aires', UTC-3 with no DST.
+        Effect.provideService(
+          DateTime.CurrentTimeZone,
+          DateTime.zoneMakeNamedUnsafe("America/Argentina/Buenos_Aires"),
+        ),
       );
       const text = result.content[0];
       expect(result.isError).not.toBe(true);
@@ -1088,7 +1094,8 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window by t
               lengthMins: 10080,
               usedPercent: 0,
               resetsAt: "2026-11-20T13:00:00.000Z",
-              evenPercent: 42.9,
+              // Monday 10:00 in Buenos Aires: 24 of the window's 120 working hours gone, not 3 of 7 days.
+              evenPercent: 20,
               warning: false,
             },
           ],
@@ -1118,7 +1125,7 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window by t
               lengthMins: 10080,
               usedPercent: 30,
               resetsAt: "2026-11-18T13:00:00.000Z",
-              evenPercent: 71.4,
+              evenPercent: 60,
               warning: false,
             },
           ],
@@ -1138,8 +1145,9 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window by t
               lengthMins: 10080,
               usedPercent: 50,
               resetsAt: "2026-11-19T13:00:00.000Z",
-              evenPercent: 57.1,
-              warning: false,
+              // Two of five working days gone: ten points past, though the calendar's 57.1 is not.
+              evenPercent: 40,
+              warning: true,
             },
           ],
         },
@@ -1162,5 +1170,32 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window by t
     yield* TestClock.adjust("4 minutes");
     expect(checkedAt(yield* read)).toEqual(stale);
     expect(server.limits.refreshed).toHaveLength(4);
+    // Friday 14:40 in Buenos Aires, in a week that reset Tuesday 02:00 UTC: 87h40m of its 120 working
+    // hours gone, so 61% spent is on pace, where the calendar's 52.2 would warn.
+    yield* TestClock.setTime(Date.parse("2026-11-20T17:40:00.000Z"));
+    server.limits.providers = server.limits.providers.map((provider) =>
+      provider.instanceId === "claude"
+        ? {
+            ...provider,
+            usageLimits: {
+              checkedAt: "2026-11-20T17:39:00.000Z",
+              windows: [
+                {
+                  id: "seven_day",
+                  kind: "weekly",
+                  label: "Weekly",
+                  usedPercent: 61,
+                  resetsAt: "2026-11-24T02:00:00.000Z",
+                  windowDurationMins: 10080,
+                },
+              ],
+            },
+          }
+        : provider,
+    );
+    const friday = yield* read;
+    expect(friday.accounts[0].windows).toEqual([
+      expect.objectContaining({ id: "seven_day", evenPercent: 73.1, warning: false }),
+    ]);
   }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
 );
