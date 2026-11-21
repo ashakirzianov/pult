@@ -32,13 +32,22 @@ import { desktopHost } from "../desktop/host.ts";
 const unsupported = (detail: string) =>
   Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail }));
 
-/** Events of `target` as a stream of `value`, for the runtime's network and wakeup sources. */
-function domEvents<A>(target: EventTarget, events: ReadonlyArray<[string, A]>) {
+/**
+ * Events of `target` as a stream of `value`, for the runtime's network and wakeup sources, each
+ * kept only if `when` holds as it fires.
+ */
+function domEvents<A>(
+  target: EventTarget,
+  events: ReadonlyArray<[string, A]>,
+  when: () => boolean = () => true,
+) {
   return Stream.callback<A>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() =>
         events.map(([type, value]) => {
-          const listener = () => Queue.offerUnsafe(queue, value);
+          const listener = () => {
+            if (when()) Queue.offerUnsafe(queue, value);
+          };
           target.addEventListener(type, listener);
           return () => target.removeEventListener(type, listener);
         }),
@@ -49,6 +58,20 @@ function domEvents<A>(target: EventTarget, events: ReadonlyArray<[string, A]>) {
 }
 
 const networkStatus = (): NetworkStatus => (navigator.onLine ? "online" : "offline");
+
+/**
+ * Upstream web's mapping (`apps/web/src/connection/platform.ts`): the page turning visible is
+ * `application-active`, which reconnects and resubscribes; a window focus is only
+ * `application-focused`, which the supervisor never sees, so a switch back to the window sends
+ * no probe and no resubscription.
+ */
+function wakeupEvents() {
+  const visible = () => document.visibilityState === "visible";
+  return Stream.merge(
+    domEvents(document, [["visibilitychange", "application-active" as const]], visible),
+    domEvents(window, [["focus", "application-focused" as const]], visible),
+  );
+}
 
 /**
  * In memory: the page holds the environments `connection.ts` registers, and keeps no offline
@@ -147,7 +170,7 @@ const layerCapabilities = Layer.mergeAll(
 /**
  * What the client runtime asks of the page: fetch, the browser's
  * WebSocket, one per environment, which the runtime dials anew on each reconnect, the browser's
- * network events, the page coming back to the foreground as the wakeup, and
+ * network events, the page turning visible as the wakeup, and
  * the environments the shell connects as its platform registrations, the way
  * a desktop-local backend is registered, the app's own server in Pult.app as
  * the primary. T3 Connect (an empty relay URL disables the relay client) and
@@ -168,7 +191,7 @@ export function platformLayer(
             ["offline", "offline"],
           ]),
         }),
-        Wakeups.layer({ changes: domEvents(window, [["focus", "application-active" as const]]) }),
+        Wakeups.layer({ changes: wakeupEvents() }),
         layerStores,
         layerCapabilities,
         Layer.succeed(PlatformConnectionSource.PlatformConnectionSource, { registrations }),
