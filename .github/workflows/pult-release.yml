@@ -123,8 +123,10 @@ jobs:
       # Upstream's checkout, without actions/checkout: its credential cleanup
       # fails on the orphaned gitlinks in the vendored .repos tree.
       - name: Checkout
+        id: checkout
         shell: bash
         env:
+          RUNNER_KIND: ${{ runner.environment }}
           REF: ${{ steps.resolve.outputs.ref }}
           TAG: ${{ steps.resolve.outputs.tag }}
           PUBLISH: ${{ steps.resolve.outputs.publish }}
@@ -135,7 +137,19 @@ jobs:
           [[ "$PWD" == "$GITHUB_WORKSPACE" ]] || { echo "::error::Not in the workspace: $PWD." >&2; exit 1; }
           find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           # setup-ci-deps restores and saves the pnpm store where pnpm keeps it, on the own runner the user's own.
-          echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_KIND" == self-hosted ]]; then
+            # The own runner keeps the store and pnpm's metadata between jobs in its tool cache (<runner>/_work/_tool),
+            # outside RUNNER_TEMP, which it empties, and the workspace; once kept, no job downloads or saves the cache.
+            [[ -n "${RUNNER_TOOL_CACHE:-}" ]] || { echo "::error::The runner names no RUNNER_TOOL_CACHE to keep the pnpm store in." >&2; exit 1; }
+            kept="$RUNNER_TOOL_CACHE/pult-pnpm"
+            echo "kept-dir=$kept" >> "$GITHUB_OUTPUT"
+            # Kept once an install into it has finished, so a canceled first restore downloads the cache again.
+            if [[ -f "$kept/installed" ]]; then echo "kept-store=true" >> "$GITHUB_OUTPUT"; fi
+            echo "pnpm_config_store_dir=$kept/store" >> "$GITHUB_ENV"
+            echo "pnpm_config_cache_dir=$kept/metadata" >> "$GITHUB_ENV"
+          else
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store" >> "$GITHUB_ENV"
+          fi
           git init -q .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
           if [[ "$PUBLISH" == true ]]; then
@@ -153,7 +167,27 @@ jobs:
           git log -1 --format='Building %H (%s)'
 
       - name: Setup dependencies
+        if: steps.checkout.outputs.kept-store != 'true'
         uses: ./.github/actions/setup-ci-deps
+
+      # A store the own runner kept has the cache's packages already, and pnpm fetches only what the lockfile added.
+      - name: Setup Vite+
+        if: steps.checkout.outputs.kept-store == 'true'
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install: "false"
+
+      - name: Install dependencies into the kept store
+        if: steps.checkout.outputs.kept-store == 'true'
+        shell: bash
+        run: vp install
+
+      - name: Mark the pnpm store kept
+        if: steps.checkout.outputs.kept-dir != ''
+        shell: bash
+        env:
+          KEPT: ${{ steps.checkout.outputs.kept-dir }}
+        run: touch "$KEPT/installed"
 
       # A signed build puts the signing identity in a keychain of electron-builder's own on the user's
       # search list, and its bundled root certificates in another it never takes off; on Pult's own
