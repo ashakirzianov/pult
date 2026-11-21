@@ -2,15 +2,21 @@
 // holds an unsent message, for the left panel's cards and the Stars' carry of
 // unsent text: the composer store's, which the panel reaches through this
 // module alone, so it need not load the whole view.
-import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  parseScopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 import {
   composerDraftHasUserContent,
   type DraftId,
+  type DraftSessionState,
   useComposerDraftStore,
 } from "~/composerDraftStore";
+import { newDraftId, newThreadId } from "~/lib/utils";
 
 const DRAFT_KEY_PREFIX = "pult-shell.draft:";
 
@@ -18,13 +24,62 @@ const DRAFT_KEY_PREFIX = "pult-shell.draft:";
  * A project's draft is the composer store's, minted by upstream's new-thread
  * handler and remembered here per project, in the page's localStorage beside
  * the store's own, so a reload or a later New Thread takes up the same draft.
+ * A tagged draft, whose thread is created with its tags (a Star channel's,
+ * `pult:channel:<slug>`), is another draft of the project, one per tags,
+ * minted here (`startTaggedDraft`) under its key as its logical project, so
+ * upstream's handler never takes it for the project's.
  */
-export const draftKey = (environmentId: string, projectId: string) =>
-  `${DRAFT_KEY_PREFIX}${environmentId}/${projectId}`;
+export const draftKey = (environmentId: string, projectId: string, tags?: ReadonlyArray<string>) =>
+  `${DRAFT_KEY_PREFIX}${environmentId}/${projectId}${tags === undefined ? "" : `#${JSON.stringify(tags)}`}`;
+
+/** Whether the draft is the one the target names: a tagged one by its key, the project's by its project and no tags. */
+export function isDraftOf(
+  target: {
+    readonly environmentId: string;
+    readonly projectId: string;
+    readonly tags?: ReadonlyArray<string>;
+  },
+  session: DraftSessionState,
+): boolean {
+  const key = draftKey(target.environmentId, target.projectId, target.tags);
+  return target.tags === undefined
+    ? !isTaggedDraft(session) &&
+        session.projectId === target.projectId &&
+        session.environmentId === target.environmentId
+    : session.logicalProjectKey === key;
+}
+
+/** Whether the draft is a tagged one, minted by `startTaggedDraft`. */
+export const isTaggedDraft = (session: DraftSessionState) =>
+  session.logicalProjectKey.startsWith(DRAFT_KEY_PREFIX);
+
+/** Mints the project's draft created with `tags`, remembered under its key; the composer store sets its model and modes as for any draft. */
+export function startTaggedDraft(
+  environmentId: string,
+  projectId: string,
+  tags: ReadonlyArray<string>,
+): DraftId {
+  const key = draftKey(environmentId, projectId, tags);
+  const draftId = newDraftId();
+  useComposerDraftStore
+    .getState()
+    .setLogicalProjectDraftThreadId(
+      key,
+      scopeProjectRef(EnvironmentId.make(environmentId), ProjectId.make(projectId)),
+      draftId,
+      { threadId: newThreadId() },
+    );
+  localStorage.setItem(key, draftId);
+  return draftId;
+}
 
 /** The project's remembered draft while the composer store still holds it, unsent: a sent one is its thread's, as upstream's new-thread handler reads it. */
-export function heldDraft(environmentId: string, projectId: string): DraftId | null {
-  const draftId = localStorage.getItem(draftKey(environmentId, projectId)) as DraftId | null;
+export function heldDraft(
+  environmentId: string,
+  projectId: string,
+  tags?: ReadonlyArray<string>,
+): DraftId | null {
+  const draftId = localStorage.getItem(draftKey(environmentId, projectId, tags)) as DraftId | null;
   const session =
     draftId === null ? null : useComposerDraftStore.getState().getDraftSession(draftId);
   return session !== null && session.projectId === projectId && session.promotedTo == null
@@ -34,12 +89,16 @@ export function heldDraft(environmentId: string, projectId: string): DraftId | n
 
 /** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
 export function isPromotion(
-  draft: { readonly environmentId: string; readonly projectId: string },
+  draft: {
+    readonly environmentId: string;
+    readonly projectId: string;
+    readonly tags?: ReadonlyArray<string>;
+  },
   environmentId: string,
   threadId: string,
 ): boolean {
   const draftId = localStorage.getItem(
-    draftKey(draft.environmentId, draft.projectId),
+    draftKey(draft.environmentId, draft.projectId, draft.tags),
   ) as DraftId | null;
   if (draftId === null) return false;
   const store = useComposerDraftStore.getState();
@@ -73,7 +132,8 @@ function readDrafts(): ReadonlyArray<ProjectDraft> {
   const drafts: ProjectDraft[] = [];
   for (let index = 0; index < localStorage.length; index++) {
     const key = localStorage.key(index);
-    if (key === null || !key.startsWith(DRAFT_KEY_PREFIX)) continue;
+    // A tagged draft (`#` after its project) is no project's card.
+    if (key === null || !key.startsWith(DRAFT_KEY_PREFIX) || key.includes("#")) continue;
     const [environmentId, projectId] = key.slice(DRAFT_KEY_PREFIX.length).split("/");
     if (environmentId === undefined || projectId === undefined) continue;
     const draftId = heldDraft(environmentId, projectId);
@@ -167,16 +227,21 @@ export const projectDrafts = {
   },
 };
 
-/** A composer the shell shows: a thread's, or a project's draft's. */
+/** A composer the shell shows: a thread's, or a project's draft's, its own or a tagged one (`draftKey`). */
 export type ComposerTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+  | {
+      readonly kind: "draft";
+      readonly environmentId: string;
+      readonly projectId: string;
+      readonly tags?: ReadonlyArray<string>;
+    };
 
 /** The composer store's key for a thread's composer, or a project's draft's while the store holds it. */
 export function composerKey(target: ComposerTarget) {
   return target.kind === "thread"
     ? scopeThreadRef(EnvironmentId.make(target.environmentId), ThreadId.make(target.threadId))
-    : heldDraft(target.environmentId, target.projectId);
+    : heldDraft(target.environmentId, target.projectId, target.tags);
 }
 
 /** Whether the composer of a thread or of a project's draft holds anything the user wrote or attached, for the status strip's composer entry. */

@@ -34,7 +34,11 @@ import {
 } from "~/components/chat/ComposerFooterControls";
 import { ConfirmDialogHost } from "~/components/ConfirmDialogHost";
 import { CustomSnoozeDialogHost } from "~/components/CustomSnoozeDialog";
-import { ShellComposerOptions, type ShellValue } from "~/components/chat/ShellComposerOptions";
+import {
+  ShellComposerOptions,
+  type ShellReply,
+  type ShellValue,
+} from "~/components/chat/ShellComposerOptions";
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
@@ -50,15 +54,31 @@ import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
-import { draftKey, heldDraft, isPromotion } from "./drafts.ts";
+import {
+  draftKey,
+  heldDraft,
+  isDraftOf,
+  isPromotion,
+  isTaggedDraft,
+  startTaggedDraft,
+} from "./drafts.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
 
-/** What a pane shows, in its environment: a thread, or a project's draft until the server creates its thread. */
+/**
+ * What a pane shows, in its environment: a thread, or a project's draft until
+ * the server creates its thread; with `tags`, the project's draft whose
+ * thread is created with them, apart from its own (`draftKey`).
+ */
 type ViewTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+  | {
+      readonly kind: "draft";
+      readonly environmentId: string;
+      readonly projectId: string;
+      readonly tags?: ReadonlyArray<string>;
+    };
 
 /** What a view shows: its mount's target, or nothing while no element mounts it. */
 type Shown = ViewTarget | { readonly kind: "none" };
@@ -72,7 +92,7 @@ function targetPath(target: Shown): string {
   if (target.kind === "thread") {
     return `/${encodeURIComponent(target.environmentId)}/${encodeURIComponent(target.threadId)}`;
   }
-  const draftId = heldDraft(target.environmentId, target.projectId);
+  const draftId = heldDraft(target.environmentId, target.projectId, target.tags);
   return draftId === null ? "/" : `/draft/${encodeURIComponent(draftId)}`;
 }
 
@@ -87,8 +107,8 @@ function isShown(shown: Shown, target: ViewTarget): boolean {
   if (shown.kind === "draft")
     return (
       target.kind === "draft" &&
-      shown.environmentId === target.environmentId &&
-      shown.projectId === target.projectId
+      draftKey(shown.environmentId, shown.projectId, shown.tags) ===
+        draftKey(target.environmentId, target.projectId, target.tags)
     );
   return false;
 }
@@ -136,17 +156,21 @@ function makeMount() {
       draftSent = options.draftSent;
       const draftHero = options.draftHero ?? true;
       const placeholder = options.placeholder ?? null;
+      const creationTags = next.kind === "draft" ? (next.tags ?? null) : null;
+      const reply = options.reply ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
       if (
         additions.header !== options.timelineHeader ||
         additions.draftModel !== options.draftModel ||
         additions.composer.draftHero !== draftHero ||
-        additions.composer.placeholder !== placeholder
+        additions.composer.placeholder !== placeholder ||
+        JSON.stringify(additions.composer.creationTags) !== JSON.stringify(creationTags) ||
+        additions.composer.reply !== reply
       )
         additions = {
           header: options.timelineHeader,
           draftModel: options.draftModel,
-          composer: { draftHero, placeholder },
+          composer: { draftHero, placeholder, creationTags, reply },
         };
       if (next.kind === "thread") closeThreadPanel(next.environmentId, next.threadId);
       changed();
@@ -169,7 +193,7 @@ function makeMount() {
     /** The draft became `threadId` on `environmentId`'s server: the view is that thread's from now on. */
     promote(environmentId: string, threadId: string) {
       if (target.kind !== "draft") return;
-      localStorage.removeItem(draftKey(target.environmentId, target.projectId));
+      localStorage.removeItem(draftKey(target.environmentId, target.projectId, target.tags));
       target = { kind: "thread", environmentId, threadId };
       closeThreadPanel(environmentId, threadId);
       changed();
@@ -223,16 +247,21 @@ function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) 
       // The pane's own draft, though its composer may have moved it to another environment's project.
       const own =
         target.kind === "draft" &&
-        (localStorage.getItem(draftKey(target.environmentId, target.projectId)) === shown.draftId ||
-          (session.projectId === target.projectId &&
-            session.environmentId === target.environmentId));
+        (localStorage.getItem(draftKey(target.environmentId, target.projectId, target.tags)) ===
+          shown.draftId ||
+          isDraftOf(target, session));
       if (own) {
-        localStorage.setItem(draftKey(target.environmentId, target.projectId), shown.draftId);
+        localStorage.setItem(
+          draftKey(target.environmentId, target.projectId, target.tags),
+          shown.draftId,
+        );
         // The draft's details panel stays closed too, keyed by the thread id the draft holds.
         closeThreadPanel(session.environmentId, session.threadId);
         return arrive();
       }
       if (mount.heading()) return goHome();
+      if (isTaggedDraft(session))
+        throw new Error("todo: a tagged draft reached other than by its own mount.");
       localStorage.setItem(draftKey(session.environmentId, session.projectId), shown.draftId);
       threadViewHost().openDraft(session.environmentId, session.projectId);
     }
@@ -393,27 +422,35 @@ function Notice({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** A draft without a draft yet starts one in its project, the way upstream's New Thread does. */
+/** A draft without a draft yet starts one in its project, the way upstream's New Thread does; a tagged one is minted by the shell (`startTaggedDraft`). */
 function DraftStart({
   environmentId,
   projectId,
+  tags,
 }: {
   readonly environmentId: string;
   readonly projectId: string;
+  readonly tags: ReadonlyArray<string> | undefined;
 }) {
   const project = useProjects().find(
     (candidate) => candidate.id === projectId && candidate.environmentId === environmentId,
   );
   const handleNewThread = useNewThreadHandler();
+  const router = useRouter();
   const started = useRef(false);
   useEffect(() => {
     if (project === undefined || started.current) return;
     started.current = true;
+    if (tags !== undefined) {
+      const draftId = startTaggedDraft(environmentId, projectId, tags);
+      void router.navigate({ to: "/draft/$draftId", params: { draftId }, replace: true });
+      return;
+    }
     void handleNewThread(
       scopeProjectRef(EnvironmentId.make(environmentId), ProjectId.make(projectId)),
       { replace: true },
     );
-  }, [environmentId, handleNewThread, project, projectId]);
+  }, [environmentId, handleNewThread, project, projectId, router, tags]);
   return <Notice>{project === undefined ? "Loading the project…" : "Starting a thread…"}</Notice>;
 }
 
@@ -424,9 +461,10 @@ function makeLanding(mount: Mount) {
     return target.kind === "draft" ? (
       // Keyed: a view going from one project's draft to another's starts the other's.
       <DraftStart
-        key={draftKey(target.environmentId, target.projectId)}
+        key={draftKey(target.environmentId, target.projectId, target.tags)}
         environmentId={target.environmentId}
         projectId={target.projectId}
+        tags={target.tags}
       />
     ) : (
       <Notice>This thread is not available. It may have been deleted.</Notice>
@@ -464,6 +502,8 @@ export interface MountOptions {
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
+  /** The reply the mount's sends are, its prefix opening each and its `sent` told of each (an answer to a Star's ask). */
+  readonly reply?: ShellReply;
   /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
   readonly draftSent?: (environmentId: string, threadId: string) => void;
   /**
@@ -482,16 +522,13 @@ export interface MountOptions {
 interface Additions {
   readonly header: MountOptions["timelineHeader"];
   readonly draftModel: MountOptions["draftModel"];
-  readonly composer: {
-    readonly draftHero: boolean;
-    readonly placeholder: ShellValue<string> | null;
-  };
+  readonly composer: ShellComposerOptions;
 }
 
 const NO_ADDITIONS: Additions = {
   header: undefined,
   draftModel: undefined,
-  composer: { draftHero: true, placeholder: null },
+  composer: { draftHero: true, placeholder: null, creationTags: null, reply: null },
 };
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
