@@ -8,7 +8,7 @@ import type { PageSecret } from "../secrets/secrets.ts";
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { cardRows, type Star } from "../stars/stars.ts";
+import type { Star } from "../stars/stars.ts";
 import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
 import {
   settleThread,
@@ -94,7 +94,7 @@ export type Activity = "working" | "waiting" | null;
  * background work, or while it does nothing itself but a subagent below it
  * works; Working while it works.
  */
-function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Activity> {
+export function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Activity> {
   const byKey = new Map(threads.map((thread) => [keyOf(thread), thread]));
   const parentOf = (thread: ShellThread | undefined) =>
     thread?.parentId == null ? null : scopedKey(thread.environmentId, thread.parentId);
@@ -125,7 +125,7 @@ function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Acti
 }
 
 /** Each thread's subagents, nested ones too, by the key of the thread at the top of their lineage: active first, then newest first. */
-function subagentsByRoot(
+export function subagentsByRoot(
   threads: ReadonlyArray<ShellThread>,
   activities: Map<string, Activity>,
 ): Map<string, ShellThread[]> {
@@ -162,8 +162,9 @@ function subagentsByRoot(
  * posted asks (`AskCard.tsx`), a Star's while Show Star is on, the rows
  * Inbox's order lists (`inboxRows`);
  * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
- * several environments, each card names its own. The selected card expands
- * with its details and its subagents; a subagent has no card, so while one
+ * several environments, each card names its own. The selected thread's card
+ * expands with its details and its subagents (a Star's details are the
+ * Details column's, `src/details/`); a subagent has no card, so while one
  * is selected its root's card is the expanded one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
  * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A
@@ -218,14 +219,10 @@ export function PanelView() {
         key={starKey(star.id)}
         star={star}
         environment={chip(star.current?.environmentId ?? star.homes[0]?.environmentId ?? "")}
-        rows={cardRows(star, state.threads)}
-        subagents={conversation === undefined ? [] : (subagents.get(conversation) ?? [])}
-        activities={activities}
         selected={
           selection === starKey(star.id) ||
           (conversation !== undefined && selectedCard === conversation)
         }
-        selection={selection}
         now={now}
       />
     );

@@ -7,6 +7,7 @@
   "workbench.editor.useModal": "off",
   "workbench.tips.enabled": false,
   "workbench.activityBar.location": "hidden",
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
   "workbench.statusBar.visible": false,
   "workbench.layoutControl.enabled": false,
   "window.commandCenter": false,

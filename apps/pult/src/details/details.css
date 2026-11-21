@@ -1,0 +1,117 @@
+/* The right panel, the Details column (src/details): the secondary side bar, its title row the
+   part's 35px title, standing in it while the Details container is open, as the left panel's
+   header does in the sidebar's (src/panel/panel.css). The rows below are the left panel's own. */
+.part.auxiliarybar:not(.pult-header-in-title) > .composite.title > .pult-details-header {
+  display: none;
+}
+
+.part.auxiliarybar.pult-header-in-title > .composite.title {
+  padding: 0;
+}
+
+.part.auxiliarybar.pult-header-in-title > .composite.title > .title-label {
+  display: none;
+}
+
+/* The selection's mark or icon and its name, then the toggle, its glyph where the closed
+   toggle's sits (`.pult-details-show`), so it never moves. */
+.pult-details-header {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 35px;
+  padding: 0 calc(var(--pult-panel-inset) - 5px) 0 var(--pult-panel-inset);
+}
+
+/* In the desktop the row drags the window, as a title bar does, its button excepted; VS Code
+   mode keeps its right-click menu, which a drag region would take. */
+.monaco-workbench:not(.pult-mode-vscode) .pult-details-header {
+  -webkit-app-region: drag;
+}
+
+.pult-details-title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pult-details-title .pult-star-mark {
+  width: 18px;
+  height: 18px;
+}
+
+.pult-details-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.pult-details-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Show Details, while the column is closed, at the window's top-right where the title row's
+   toggle sits, over the room the top-right editor group's tabs row leaves it (src/style.css). */
+.pult-details-show {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding-right: calc(var(--pult-panel-inset) - 5px);
+  color: var(--vscode-foreground);
+}
+
+.monaco-workbench:not(.noauxiliarybar) > .pult-details-show {
+  display: none;
+}
+
+.pult-details {
+  overflow-y: auto;
+  padding: 0 10px 10px;
+}
+
+.pult-details-empty {
+  margin: 8px 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+/* A Star's state in words with its time, over the environment it is drawn on. */
+.pult-details-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 4px 8px;
+  font-size: 12px;
+}
+
+.pult-details-environment {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+/* A Star's asks: the subagents' header and rows. */
+.pult-details-asks {
+  margin: 0 0 8px;
+}
+
+.pult-details-asks .pult-shelf-header {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+}

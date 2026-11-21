@@ -19,7 +19,7 @@ function useFiring(environmentId: string | undefined): boolean | undefined {
 }
 
 /**
- * A selected Star's schedules on its card (xaxis
+ * A selected Star's schedules in the Details column (xaxis
  * `pult/tasks/star-schedules.task`), those of the home it is drawn from, as
  * that home's plugin serves them on its `stars` route: under a collapsible
  * "Schedules" with their count, in the warning colour while any failed or
