@@ -58,14 +58,23 @@ function rowView(className: string): IView {
 const run = (command: string) => () =>
   void getService(ICommandService).then((commands) => commands.executeCommand(command));
 
-function RowButton({ title, icon, command }: { title: string; icon: string; command: string }) {
+/** A row's icon button, running `command`, or with `menu` showing it under the button. */
+function RowButton({
+  title,
+  icon,
+  ...does
+}: { title: string; icon: string } & (
+  | { command: string }
+  | { menu: (anchor: HTMLElement) => Promise<void> }
+)) {
   return (
     <button
       type="button"
       className="pult-panel-row-button"
       title={title}
       aria-label={title}
-      onClick={run(command)}
+      aria-haspopup={"menu" in does ? "menu" : undefined}
+      onClick={"menu" in does ? (event) => void does.menu(event.currentTarget) : run(does.command)}
     >
       <i className={`codicon codicon-${icon}`} aria-hidden />
     </button>
@@ -77,7 +86,7 @@ function RowButton({ title, icon, command }: { title: string; icon: string; comm
  * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
  * Pult's logo, the top group's tray (its closed shelves' icons,
  * `TrayShelves.tsx`, nothing while none is closed) and, rightmost, New
- * (`NewButton`). In the desktop it drags the window, its buttons and the
+ * (`showNewMenu`). In the desktop it drags the window, its buttons and the
  * tray's drop room excepted.
  */
 function PanelHeader() {
@@ -92,45 +101,31 @@ function PanelHeader() {
       <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
       <TrayShelves group="top" />
       <span className="pult-panel-row-spacer" />
-      <NewButton />
+      <RowButton title="New" icon="add" menu={showNewMenu} />
     </>
   );
 }
 
-/** The header's plus: a menu under it of New Thread and New Star, the palette's New Thread and Create Star, the latter while the palette offers it. */
-function NewButton() {
-  const show = async (anchor: HTMLElement) => {
-    const [menus, commands, contextKeys] = await Promise.all([
-      getService(IContextMenuService),
-      getService(ICommandService),
-      getService(IContextKeyService),
-    ]);
-    const entry = (id: string, label: string, enabled = true) =>
-      toAction({ id, label, enabled, run: () => commands.executeCommand(id) });
-    menus.showContextMenu({
-      getAnchor: () => anchor,
-      getActions: () => [
-        entry("pult-shell.newThread", "New Thread"),
-        entry(
-          "pult-shell.createStar",
-          "New Star",
-          contextKeys.getContextKeyValue("pult.canCreateStar") === true,
-        ),
-      ],
-    });
-  };
-  return (
-    <button
-      type="button"
-      className="pult-panel-row-button"
-      title="New"
-      aria-label="New"
-      aria-haspopup="menu"
-      onClick={(event) => void show(event.currentTarget)}
-    >
-      <i className="codicon codicon-add" aria-hidden />
-    </button>
-  );
+/** The header's New menu under `anchor`: New Thread and New Star, the palette's New Thread and Create Star, the latter while the palette offers it. */
+async function showNewMenu(anchor: HTMLElement): Promise<void> {
+  const [menus, commands, contextKeys] = await Promise.all([
+    getService(IContextMenuService),
+    getService(ICommandService),
+    getService(IContextKeyService),
+  ]);
+  const entry = (id: string, label: string, enabled = true) =>
+    toAction({ id, label, enabled, run: () => commands.executeCommand(id) });
+  menus.showContextMenu({
+    getAnchor: () => anchor,
+    getActions: () => [
+      entry("pult-shell.newThread", "New Thread"),
+      entry(
+        "pult-shell.createStar",
+        "New Star",
+        contextKeys.getContextKeyValue("pult.canCreateStar") === true,
+      ),
+    ],
+  });
 }
 
 /** The tray's update button in Pult.app (`updateOffer`), an icon its tooltip names: Download for an update found, a spinner while it downloads, then Restart to Update. */

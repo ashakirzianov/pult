@@ -48,7 +48,7 @@ const THREADS_ORDER = -1;
  * The left panel: the sidebar part, VS Code's own, between two rows of the
  * shell's (`rows.tsx`): the Pult tab's header, in that tab's title (the
  * desktop's traffic lights, Collapse Panel, Pult's logo, the top group's
- * closed shelves' icons and New Thread),
+ * closed shelves' icons and the New menu),
  * every other tab's own title the panel's top row; and below, the tray, the
  * tabs switching the sidebar between view containers in place of VS Code's
  * activity bar (`PanelTabs.tsx`), the bottom group's closed shelves' icons
