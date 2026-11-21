@@ -7,7 +7,7 @@ import { carryInto, carryOutOf } from "./carry.ts";
 import { starStore, type StarTarget, starTarget } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { USER_CHANNEL } from "./plugin.ts";
-import { channelOf, conversationsOf, type Star } from "./stars.ts";
+import { channelOf, conversationsOf, type Star, type StarHome } from "./stars.ts";
 
 /** The composer store's module, once loaded. */
 let drafts: typeof Drafts | undefined;
@@ -51,19 +51,17 @@ function carry(drafts: typeof Drafts): void {
   if (!starSettingKnown() || !starEnabled.get()) return;
   const threads = threadStore.get().threads;
   for (const star of starStore.get()) {
-    // Each other open channel's conversation takes what its tagged drafts hold (`src/asks/reply.ts`).
-    for (const channel of star.channels)
-      if (channel.slug !== USER_CHANNEL)
-        carryOut(
-          drafts,
-          star,
-          {
-            kind: "thread",
-            environmentId: channel.thread.environmentId,
-            threadId: channel.thread.id,
-          },
-          [`pult:channel:${channel.slug}`],
-        );
+    // Each other channel open on a home takes what that home's draft tagged with it holds (`src/asks/reply.ts`).
+    for (const home of star.homes)
+      for (const channel of home.channels)
+        if (channel.slug !== USER_CHANNEL)
+          carryOut(
+            drafts,
+            star,
+            { kind: "thread", environmentId: home.environmentId, threadId: channel.threadId },
+            [`pult:channel:${channel.slug}`],
+            [home],
+          );
     const target = starTarget(star);
     if (target?.kind === "thread") {
       carryOut(drafts, star, target);
@@ -124,13 +122,14 @@ function carryOut(
   star: Star,
   target: Extract<StarTarget, { kind: "thread" }>,
   tags?: ReadonlyArray<string>,
+  homes: ReadonlyArray<Pick<StarHome, "environmentId" | "projectId">> = star.homes,
 ): void {
   // Keyed by the draft and the conversation, so what stuck or was told in one wake holds no later one.
   const keyOf = (environmentId: string, projectId: string) =>
     `${drafts.draftKey(environmentId, projectId, tags)}|${target.environmentId}:${target.threadId}`;
   const decision = carryOutOf(
     { holds: drafts.composerHasContent(target) },
-    star.homes.map(({ environmentId, projectId }) => ({
+    homes.map(({ environmentId, projectId }) => ({
       environmentId,
       projectId,
       holds:

@@ -80,8 +80,8 @@ export type Ask = typeof Ask.Type;
 
 /**
  * The line a reply opens with, written here and served with the ask. A Star's names its posting
- * channel, as the settle notice does (a bracket line without one reads as `user`): pending
- * Anton's ruling, so the other way is this one line.
+ * channel, as the settle notice does: a bracket line without one reads as `user` to the woken
+ * channel (Anton's ruling, 2026-11-21).
  */
 const replyPrefix = (ask: Pick<Ask, "id" | "title" | "poster">) =>
   `[In reply to your ask ${ask.id} "${ask.title}"${"star" in ask.poster ? `, to your channel ${ask.poster.channel}` : ""}]`;

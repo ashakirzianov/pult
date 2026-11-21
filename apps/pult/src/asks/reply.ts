@@ -34,10 +34,16 @@ import { actOnPageAsk, askById, askStore } from "./model.ts";
 /** The runtime mode a channel's draft asks its model at before it is sent, upstream's default. */
 const DRAFT_RUNTIME_MODE = "full-access";
 
-/** The ask being replied to: its file, a `pult:` resource, while its row last opened it. */
+/** The ask being replied to: its file, a `pult:` resource, while its row last opened it, and how many times rows were opened, which a new composer is mounted for. */
 let replying:
-  | { readonly environmentId: string; readonly id: string; readonly resource: string }
+  | {
+      readonly environmentId: string;
+      readonly id: string;
+      readonly resource: string;
+      readonly opened: number;
+    }
   | undefined;
+let opened = 0;
 const onDidChangeReplying = new Emitter<void>();
 export const onDidChangeReply = onDidChangeReplying.event;
 
@@ -50,28 +56,19 @@ export interface ReplyComposer {
 
 /** Each reply's options, kept so a mount sees the same ones for the same ask and target. */
 const kept = new Map<string, MountOptions>();
-/** Each sleeping channel's model, as its home's plugin chose it, by Star, environment and channel; null until read, or for the page's own. */
-const channelModels = new Map<string, { value: RouteModel | null; listeners: Set<() => void> }>();
-
-/** The model a channel's draft wakes it at, read once from its home's plugin (`POST stars/<id>/model`). */
+/** The model a sleeping channel's draft wakes it at, read from its home's plugin (`POST stars/<id>/model`) each time its ask is opened; null until read, and for the page's own. */
 function channelModel(starId: string, environmentId: string, channel: string) {
-  const key = JSON.stringify([starId, environmentId, channel]);
-  let entry = channelModels.get(key);
-  if (entry === undefined) {
-    const created = { value: null as RouteModel | null, listeners: new Set<() => void>() };
-    entry = created;
-    channelModels.set(key, created);
-    void starWakeModel(starId, environmentId, DRAFT_RUNTIME_MODE, channel).then((model) => {
-      created.value = model;
-      for (const listener of created.listeners) listener();
-    });
-  }
-  const found = entry;
+  let value: RouteModel | null = null;
+  const listeners = new Set<() => void>();
+  void starWakeModel(starId, environmentId, DRAFT_RUNTIME_MODE, channel).then((model) => {
+    value = model;
+    for (const listener of listeners) listener();
+  });
   return {
-    get: () => found.value,
+    get: () => value,
     subscribe: (listener: () => void) => {
-      found.listeners.add(listener);
-      return () => found.listeners.delete(listener);
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
   };
 }
@@ -90,13 +87,20 @@ const posterOf = (ask: PageAsk) =>
         ?.title,
   );
 
-/** The reply's send told to the plugin, which moves the ask to Working; the strip goes back to the selection's composer. */
-function replied(ask: PageAsk): void {
-  if (replying?.environmentId === ask.environmentId && replying.id === ask.id) {
-    replying = undefined;
-    onDidChangeReplying.fire();
-  }
-  void actOnPageAsk(ask, { kind: "replied" });
+/**
+ * The reply's send told to the plugin, which moves the ask to Working; the
+ * strip keeps the poster's composer, so what follows goes where the reply
+ * went. Nothing is told for a send that landed on another environment (a
+ * draft moved there by hand), nor for an ask posted again since its row was
+ * opened, whose new posting the reply never saw.
+ */
+async function replied(ask: PageAsk, environmentId: string): Promise<void> {
+  if (environmentId !== ask.environmentId)
+    return void (await getService(INotificationService)).warn(
+      `The reply to “${ask.title}” went to another environment than the one that asked, so the ask stays in Inbox.`,
+    );
+  if (askById(ask.environmentId, ask.id)?.posted !== ask.posted) return;
+  await actOnPageAsk(ask, { kind: "replied" });
 }
 
 /**
@@ -117,12 +121,11 @@ function replyTarget(ask: PageAsk) {
   const star = starById(starId);
   const home = star?.homes.find((each) => each.environmentId === environmentId);
   if (star === undefined || home === undefined) return undefined;
-  const open = star.channels.find(
-    (each) => each.slug === channel && each.thread.environmentId === environmentId,
-  );
+  // The home's own reading, which knows the channel open there whatever another home has open.
+  const open = home.channels.find((each) => each.slug === channel);
   if (open !== undefined)
     return {
-      target: { kind: "thread", environmentId, threadId: open.thread.id } satisfies ViewTarget,
+      target: { kind: "thread", environmentId, threadId: open.threadId } satisfies ViewTarget,
       options: {},
     };
   const user = channel === USER_CHANNEL;
@@ -169,13 +172,19 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
   if (!selected) return null;
   const found = replyTarget(ask);
   if (found === undefined) return null;
-  const key = JSON.stringify([ask.environmentId, ask.id, ask.prefix, found.target]);
+  const key = JSON.stringify([
+    replying.opened,
+    ask.environmentId,
+    ask.id,
+    ask.prefix,
+    found.target,
+  ]);
   let options = kept.get(key);
   if (options === undefined) {
     options = {
       ...found.options,
       placeholder: { get: () => `Reply to ${posterOf(ask)}`, subscribe: starStore.subscribe },
-      reply: { prefix: ask.prefix, sent: () => replied(ask) },
+      reply: { prefix: ask.prefix, sent: (sentOn) => void replied(ask, sentOn) },
     };
     kept.clear();
     kept.set(key, options);
@@ -234,7 +243,13 @@ async function openAsk(environmentId: unknown, id: unknown): Promise<void> {
     if (selectedStar() !== ask.poster.star) return;
   }
   const resource = pultResource(ask.environmentId, toUriPath(ask.file));
-  replying = { environmentId: ask.environmentId, id: ask.id, resource: resource.toString() };
+  // A composer of its own each time it is opened, at the channel's model as the Star chooses it now.
+  replying = {
+    environmentId: ask.environmentId,
+    id: ask.id,
+    resource: resource.toString(),
+    opened: ++opened,
+  };
   onDidChangeReplying.fire();
   await (await getService(IEditorService)).openEditor({ resource });
   await commands.executeCommand("pult-shell.showComposer");

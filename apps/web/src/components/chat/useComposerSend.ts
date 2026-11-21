@@ -842,6 +842,8 @@ export function useComposerSend(input: ComposerSendInput) {
         composerEnvironmentContexts.length,
     });
     const feedbackCommand =
+      // Pult: a reply is never a command.
+      reply === null &&
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
       composerFiles.length === 0 &&
@@ -909,7 +911,8 @@ export function useComposerSend(input: ComposerSendInput) {
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
       composerEnvironmentContexts.length === 0 &&
-      replyTo === null;
+      replyTo === null &&
+      reply === null; // Pult: a reply is never a command.
     if (freshSessionAvailable && composerHoldsOnlyText && isClearComposerCommand(trimmed)) {
       armFreshSession(routeThreadKey);
       promptRef.current = "";

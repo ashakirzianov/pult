@@ -61,14 +61,13 @@ export function startTaggedDraft(
 ): DraftId {
   const key = draftKey(environmentId, projectId, tags);
   const draftId = newDraftId();
-  useComposerDraftStore
-    .getState()
-    .setLogicalProjectDraftThreadId(
-      key,
-      scopeProjectRef(EnvironmentId.make(environmentId), ProjectId.make(projectId)),
-      draftId,
-      { threadId: newThreadId() },
-    );
+  useComposerDraftStore.getState().setLogicalProjectDraftThreadId(
+    key,
+    scopeProjectRef(EnvironmentId.make(environmentId), ProjectId.make(projectId)),
+    draftId,
+    // Its thread is the channel's on this environment: load balancing never moves it.
+    { threadId: newThreadId(), environmentSelection: "manual" },
+  );
   localStorage.setItem(key, draftId);
   return draftId;
 }
