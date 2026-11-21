@@ -632,59 +632,6 @@
   font-size: 11px;
 }
 
-/* An ask's row in Inbox, expanded (src/panel/StarAsks.tsx): its whole text, wrapped, then Reply and Open Source. */
-.pult-ask-text {
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  color: var(--vscode-foreground);
-}
-
-.pult-ask-text > div > :first-child {
-  margin-top: 0;
-}
-
-.pult-ask-text p,
-.pult-ask-text ul,
-.pult-ask-text ol,
-.pult-ask-text pre {
-  margin: 0 0 6px;
-}
-
-.pult-ask-text ul,
-.pult-ask-text ol {
-  padding-left: 18px;
-}
-
-.pult-ask-text pre {
-  overflow-x: auto;
-  padding: 4px 6px;
-  border-radius: 4px;
-  background: var(--vscode-textCodeBlock-background);
-}
-
-.pult-ask-text code {
-  font-family: var(--vscode-editor-font-family);
-  font-size: 11px;
-}
-
-.pult-ask-text a {
-  color: var(--vscode-textLink-foreground);
-  cursor: pointer;
-}
-
-.pult-ask-empty {
-  margin: 0 0 6px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.pult-ask-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
 /* A selected Star's schedules (src/panel/StarSchedules.tsx): the subagents' header and rows, a row two lines. */
 .pult-card-schedules {
   margin: 0 0 8px;

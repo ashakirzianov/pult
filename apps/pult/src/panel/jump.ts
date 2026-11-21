@@ -1,4 +1,4 @@
-import { getService, ILifecycleService } from "@codingame/monaco-vscode-api";
+import { getService, ICommandService, ILifecycleService } from "@codingame/monaco-vscode-api";
 import { isMacintosh } from "@codingame/monaco-vscode-api/vscode/vs/base/common/platform";
 import type { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import {
@@ -23,7 +23,6 @@ import {
   showExplorerFile,
 } from "../threads/selection.ts";
 import { isSubagent, scopedKey, threadStore } from "../threads/store.ts";
-import { revealAsk } from "./asks.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
 import { exploredEnvironment } from "./explorer.ts";
 import {
@@ -197,8 +196,9 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
     case "draft":
       return selectDraft(target.draft.environmentId, target.draft.projectId);
     case "ask":
-      revealAsk(target.ask);
-      return selectStar(target.ask.starId);
+      return getService(ICommandService).then((commands) =>
+        commands.executeCommand<void>("pult-shell.openStarAsk", target.ask.starId, target.ask.name),
+      );
     case "thread":
       return selectThread(target.thread.environmentId, target.thread.id);
   }
@@ -206,7 +206,7 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
 
 /**
  * Cmd+1 to Cmd+9 (Ctrl off the Mac), upstream's thread jumps: the left
- * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft, an ask (its row expanded, its Star selected) or a thread,
+ * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft, an ask (its file opened among its Star's tabs, as its card's click) or a thread,
  * whether or not the panel shows (`followJumpKeys`). Each is a command too,
  * `pult-shell.jump.1` to `.9`, for another binding; not in the palette,
  * where Pult: Open Thread… is. Registered before the workbench starts.

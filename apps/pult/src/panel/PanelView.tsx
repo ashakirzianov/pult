@@ -56,7 +56,7 @@ import {
   shelfOrder,
   useReveal,
 } from "./shelves.tsx";
-import { AskRow } from "./StarAsks.tsx";
+import { AskCard } from "./StarAsks.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -249,13 +249,11 @@ export function PanelView() {
           >
             {draftCards.map(draftCard)}
             {asks.map(({ star, home, ask }) => (
-              <AskRow
+              <AskCard
                 key={askKey({ starId: star.id, name: ask.name })}
                 star={star}
-                home={home}
                 ask={ask}
                 environment={chip(home.environmentId)}
-                selected={selection === starKey(star.id)}
               />
             ))}
             {listed.map(card)}
