@@ -38,6 +38,35 @@ export function citeFileLines(target: ComposerTarget, lines: FileLines): boolean
   );
 }
 
+/** A passage of a file's rendered preview to cite: the file's path as `FileLines` has it, the source lines it came from, and its text as the preview shows it. */
+export interface Passage {
+  readonly path: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly text: string;
+}
+
+/**
+ * Adds the passage as `citeFileLines` adds lines, as upstream's file comment
+ * of its source lines quoting the passage's text, not theirs, under its own
+ * section title, so the agent and the reader see what was read.
+ */
+export function citePassage(target: ComposerTarget, passage: Passage): boolean {
+  return cite(target, {
+    ...buildFileReviewComment({
+      id: nextFileCommentId(),
+      filePath: passage.path,
+      startLine: passage.startLine,
+      endLine: passage.endLine,
+      text: "",
+      contents: "",
+    }),
+    sectionTitle: "Preview selection",
+    diff: passage.text,
+    fenceLanguage: "text",
+  });
+}
+
 /** A diff's lines to cite: the file's path as the agent should read it, the diff's source as upstream labels it, and the excerpt (`src/composer/diffExcerpt.ts`). */
 export interface DiffLines {
   readonly path: string;

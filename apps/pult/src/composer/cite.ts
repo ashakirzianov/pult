@@ -1,4 +1,4 @@
-import { getService, INotificationService } from "@codingame/monaco-vscode-api";
+import { getService, IEditorService, INotificationService } from "@codingame/monaco-vscode-api";
 import {
   Action2,
   MenuId,
@@ -9,8 +9,10 @@ import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/
 import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/services/codeEditorService.service";
 
 import type { ICodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
+import { COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS } from "@t3tools/contracts";
 
 import { toHostPath } from "../files/paths.ts";
+import { readerPassage } from "../reader/pane.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { citedPath, diffFile, type CitedCheckout } from "./citedPath.ts";
@@ -87,7 +89,9 @@ function changesDiff(
  * (`view/citations.ts`), its path relative to the thread's
  * checkout, absolute for another checkout's file (`citedPath.ts`); in a diff, as a diff comment of the lines and the other side's
  * between them (`diffExcerpt.ts`), labelled with the diff's source; and the
- * composer shown under the file. Hidden for a file of the Explorer
+ * composer shown under the file. From the HTML reader, the selected passage
+ * as it reads, under its source lines (`readerPassage`, `citePassage`), and
+ * never another editor's lines. Hidden for a file of the Explorer
  * workspace, which has no thread. Registered before the workbench starts.
  */
 export function registerCiteCommand(): void {
@@ -103,14 +107,36 @@ export function registerCiteCommand(): void {
         });
       }
 
-      async run(accessor: Parameters<Action2["run"]>[0]): Promise<void> {
+      /** `captured`: the reader's context menu's capture (`src/reader/pane.ts`). */
+      async run(accessor: Parameters<Action2["run"]>[0], captured?: unknown): Promise<void> {
         const editors = accessor.get(ICodeEditorService);
+        const passage = readerPassage(accessor.get(IEditorService), captured);
         const editor = editors.getFocusedCodeEditor() ?? editors.getActiveCodeEditor();
         const model = editor?.getModel();
         const selection = editor?.getSelection();
         const target = selectedTarget();
         const notify = async (message: string) =>
           (await getService(INotificationService)).info(message);
+        if (typeof passage === "string") return void (await notify(passage));
+        if (passage !== undefined) {
+          if (target === null)
+            return void (await notify("Cite cites into the selected thread's composer."));
+          if (passage.text.length > COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS)
+            return void (await notify("The selection is too long to cite. Select less."));
+          const citations = await import("../../view/citations.ts");
+          const cited = citations.citePassage(target, {
+            path: citedPath(selectedCheckout(), {
+              environmentId: passage.file.authority,
+              hostPath: toHostPath(passage.file.path),
+            }),
+            startLine: passage.startLine,
+            endLine: passage.endLine,
+            text: passage.text,
+          });
+          if (!cited)
+            return void (await notify("The composer is not ready yet. Try again in a moment."));
+          return composerStrip.setOpen(true);
+        }
         if (
           editor === null ||
           editor === undefined ||

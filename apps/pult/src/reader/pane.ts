@@ -1,9 +1,12 @@
 // The reader: a project's HTML file rendered in the file's own tab, Show
 // Preview and Show Source switching the tab between it and the text editor
 // in place. It reads the file's text model, unsaved edits included, and
-// renders it with `render.ts`, which runs no script and loads nothing.
+// renders it with `render.ts`, which runs no script and loads nothing. Cite
+// (`src/composer/cite.ts`) takes a passage of it (`readerPassage`).
 import {
   getService,
+  IClipboardService,
+  ICommandService,
   IEditorGroupsService,
   IEditorService,
   INotificationService,
@@ -13,6 +16,7 @@ import {
   type IEditorGroup,
   type IInstantiationService,
 } from "@codingame/monaco-vscode-api";
+import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { basename, isEqual } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
@@ -22,6 +26,7 @@ import {
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import type { ServicesAccessor } from "@codingame/monaco-vscode-api/vscode/vs/platform/instantiation/common/instantiation";
 import {
   DEFAULT_EDITOR_ASSOCIATION,
@@ -44,8 +49,11 @@ import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
 import { createReaderFrame, type ReaderFrame } from "./render.ts";
+import type { Passage } from "./selection.ts";
 
 const READER_ID = "pult.shell.reader";
+/** Cite's command (`src/composer/cite.ts`), which the reader's context menu runs with its capture. */
+const CITE_SELECTION = "pult-shell.citeSelection";
 const TEXT_FILE_EDITOR_ID = "workbench.editors.files.textFileEditor";
 
 /** A project file the reader renders: a `pult:` file named `.html` or `.htm`. */
@@ -61,6 +69,56 @@ const IN_PREVIEW = ContextKeyExpr.equals("activeEditor", READER_ID);
 
 const modelReference = async (file: URI) =>
   (await getService(ITextModelService)).createModelReference(file);
+
+type TextModel = Awaited<ReturnType<ReaderInput["textModel"]>>;
+
+/** The selection's composer as a capture compares it. */
+const targetKey = () => JSON.stringify(selectionTarget() ?? null);
+
+/**
+ * A reader's selection as Cite takes it, read against the tab it was made
+ * in, the version of the file's text the page showed and the selection's
+ * composer, so a change of any refuses it rather than cite stale lines.
+ */
+class ReaderCapture {
+  constructor(
+    readonly pane: ReaderPane,
+    readonly input: ReaderInput,
+    readonly version: number,
+    readonly target: string,
+    readonly passage: Passage | undefined,
+  ) {}
+}
+
+/** A passage of a reader's page to cite: its file, the text as the page shows it, and the one-based, inclusive source lines it came from. */
+export interface ReaderPassage {
+  readonly file: URI;
+  readonly text: string;
+  readonly startLine: number;
+  readonly endLine: number;
+}
+
+/**
+ * What Cite takes from a reader: the passage its context menu captured
+ * (`captured`), else, when the active editor is a reader, its selection now;
+ * a refusal in words when that no longer holds or holds nothing to cite.
+ * Undefined when neither is a reader's, so Cite takes a text editor's lines:
+ * a reader never falls back on another editor's selection.
+ */
+export function readerPassage(
+  editors: IEditorService,
+  captured: unknown,
+): ReaderPassage | string | undefined {
+  const pane = editors.activeEditorPane;
+  const capture =
+    captured instanceof ReaderCapture
+      ? captured
+      : pane instanceof ReaderPane
+        ? pane.capture()
+        : undefined;
+  if (capture !== undefined) return capture.pane.passageOf(capture);
+  return pane instanceof ReaderPane ? "The preview has not rendered yet." : undefined;
+}
 
 /**
  * A file's reader tab: the file as its resource, so the tab, the explorer and
@@ -130,9 +188,21 @@ class ReaderInput extends SimpleEditorInput {
  * per pane, so a switch back to the same file keeps the reader's place.
  */
 class ReaderPane extends SimpleEditorPane {
-  private readonly frame: ReaderFrame = createReaderFrame();
+  private readonly frame: ReaderFrame = createReaderFrame({
+    onDocument: (doc) => {
+      doc.addEventListener("contextmenu", (event) => this.showContextMenu(event));
+      // Focus inside the frame never reaches the workbench's own tracking, so its group is
+      // activated here, and Cite reads this reader rather than another group's editor.
+      doc.defaultView?.addEventListener("focus", () =>
+        StandaloneServices.get(IEditorGroupsService).activateGroup(this.group),
+      );
+    },
+  });
   private readonly notice = document.createElement("div");
   private shown: URI | undefined;
+  private model: TextModel | undefined;
+  /** The version of the model's text the frame shows. */
+  private version: number | undefined;
   private refresh: (() => void) | undefined;
   private stale = false;
 
@@ -153,13 +223,17 @@ class ReaderPane extends SimpleEditorPane {
     if (!(input instanceof ReaderInput)) return { dispose: () => {} };
     const model = await input.textModel();
     if (this.input !== input) return { dispose: () => {} };
+    this.model = model;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const render = async () => {
       this.stale = false;
       const fresh = !isEqual(this.shown, input.file);
       this.shown = input.file;
-      const { scripts } = await this.frame.show(model.getValue(), { fresh });
-      if (this.input === input) this.showNotice(input, scripts);
+      const version = model.getVersionId();
+      const shown = await this.frame.show(model.getValue(), { fresh });
+      if (shown === undefined || this.input !== input) return;
+      this.version = version;
+      this.showNotice(input, shown.scripts);
     };
     this.refresh = () => void render();
     const changes = model.onDidChangeContent(() => {
@@ -173,8 +247,61 @@ class ReaderPane extends SimpleEditorPane {
         clearTimeout(timer);
         changes.dispose();
         this.refresh = undefined;
+        this.model = undefined;
+        this.version = undefined;
       },
     };
+  }
+
+  /** The page's selection now, read against the tab, the version shown and the composer; none before the page renders. */
+  capture(): ReaderCapture | undefined {
+    const input = this.input;
+    if (!(input instanceof ReaderInput) || this.version === undefined) return undefined;
+    return new ReaderCapture(this, input, this.version, targetKey(), this.frame.selection());
+  }
+
+  /** The captured passage while its tab, its text and the composer are as they were, else why not. */
+  passageOf(capture: ReaderCapture): ReaderPassage | string {
+    if (this.input !== capture.input || !this.isVisible())
+      return "The preview shows another file now. Select the passage again.";
+    if (this.model?.getVersionId() !== capture.version || this.version !== capture.version)
+      return "The page changed since the selection. Select the passage again.";
+    if (targetKey() !== capture.target)
+      return "Another thread is selected since the selection. Select the passage again.";
+    const { passage } = capture;
+    if (passage === undefined) return "Select text in the preview to cite it.";
+    if (passage.lines === undefined) return "The selection holds no text of the file.";
+    const { start, end } = passage.lines;
+    return { file: capture.input.file, text: passage.text, startLine: start, endLine: end };
+  }
+
+  /**
+   * The page's selection's context menu, the workbench's: Cite, while a
+   * thread or draft is selected, with the selection as it was when the menu
+   * opened, and Copy. With nothing selected the browser's own, none in the
+   * desktop.
+   */
+  private showContextMenu(event: MouseEvent): void {
+    const capture = this.capture();
+    if (capture?.passage === undefined) return;
+    event.preventDefault();
+    const { text } = capture.passage;
+    const frame = this.frame.element.getBoundingClientRect();
+    const anchor = { x: frame.left + event.clientX, y: frame.top + event.clientY };
+    const cite = toAction({
+      id: CITE_SELECTION,
+      label: "Cite",
+      run: () => StandaloneServices.get(ICommandService).executeCommand(CITE_SELECTION, capture),
+    });
+    const copy = toAction({
+      id: "pult-shell.reader.copy",
+      label: "Copy",
+      run: () => StandaloneServices.get(IClipboardService).writeText(text),
+    });
+    StandaloneServices.get(IContextMenuService).showContextMenu({
+      getAnchor: () => anchor,
+      getActions: () => (selectionTarget() === undefined ? [copy] : [cite, copy]),
+    });
   }
 
   /** Scripts are off here: the notice says so and opens the page in a browser tab, where they run, until closed. */

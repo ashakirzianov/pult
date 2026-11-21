@@ -5,6 +5,8 @@
 // so the browser never parses the page's markup nor sees a URL of it.
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 
+import { type Passage, selectedPassage, type SourceText } from "./selection.ts";
+
 type Node = DefaultTreeAdapterTypes.ChildNode;
 
 /**
@@ -82,12 +84,22 @@ function kept(element: string, name: string, value: string): string | undefined 
 
 interface Built {
   scripts: boolean;
+  /** The page's text, which each text node's place in it is read from. */
+  readonly source: string;
+  readonly origins: WeakMap<Text, SourceText>;
 }
 
 function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built: Built): void {
   for (const node of nodes) {
     if (node.nodeName === "#text") {
-      parent.append(doc.createTextNode((node as DefaultTreeAdapterTypes.TextNode).value));
+      const { value, sourceCodeLocation: at } = node as DefaultTreeAdapterTypes.TextNode;
+      const text = doc.createTextNode(value);
+      if (at) {
+        const source = built.source.slice(at.startOffset, at.endOffset);
+        const literal = source.replace(/\r\n?/g, "\n") === value;
+        built.origins.set(text, { line: at.startLine, source, literal });
+      }
+      parent.append(text);
       continue;
     }
     if (!("tagName" in node)) continue; // comments and the doctype
@@ -130,11 +142,17 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
 /** The frame a reader shows its page in, `show` rendering a revision of the page's text. */
 export interface ReaderFrame {
   readonly element: HTMLIFrameElement;
-  /** Renders `source`, at the reader's scroll position or, `fresh`, at the top; whether the page has scripts, which never run here. */
+  /**
+   * Renders `source`, at the reader's scroll position or, `fresh`, at the
+   * top; whether the page has scripts, which never run here. Undefined when
+   * a later `show` superseded it before it rendered.
+   */
   show(
     source: string,
     options?: { readonly fresh?: boolean },
-  ): Promise<{ readonly scripts: boolean }>;
+  ): Promise<{ readonly scripts: boolean } | undefined>;
+  /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
+  selection(): Passage | undefined;
 }
 
 /**
@@ -144,7 +162,10 @@ export interface ReaderFrame {
  * click, a form's submit and a drop never navigate it, and a link to a
  * fragment of the page scrolls to it.
  */
-export function createReaderFrame(): ReaderFrame {
+export function createReaderFrame(options?: {
+  /** Each document the frame loads, guarded already, for the reader's own listeners on it. */
+  readonly onDocument?: (doc: Document) => void;
+}): ReaderFrame {
   const element = document.createElement("iframe");
   element.className = "pult-reader-frame";
   element.setAttribute("sandbox", "allow-same-origin");
@@ -157,6 +178,7 @@ export function createReaderFrame(): ReaderFrame {
   // Where the reader is in the page, kept across the document's reloads.
   let position = { top: 0, left: 0 };
   let shown: Document | undefined;
+  const origins = new WeakMap<Text, SourceText>();
 
   // Each load of the frame's document is guarded and followed for the
   // reader's place: its first, and any the browser makes again, as for a
@@ -166,6 +188,7 @@ export function createReaderFrame(): ReaderFrame {
     const doc = element.contentDocument;
     if (doc === null || !doc.URL.startsWith("about:srcdoc")) return;
     guard(doc, element);
+    options?.onDocument?.(doc);
     doc.addEventListener("scroll", () => {
       const scroller = doc.scrollingElement;
       if (scroller !== null) position = { top: scroller.scrollTop, left: scroller.scrollLeft };
@@ -191,11 +214,12 @@ export function createReaderFrame(): ReaderFrame {
     async show(source, options) {
       const revision = ++latest;
       last = source;
-      const tree = parse(source, { scriptingEnabled: false });
+      const tree = parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
       const doc = await frameDocument();
-      const built: Built = { scripts: false };
+      if (revision !== latest) return undefined;
+      const built: Built = { scripts: false, source, origins };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
-      if (revision !== latest || html === undefined || !("tagName" in html)) return built;
+      if (html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");
       if (html.attrs.some((attr) => attr.name.startsWith("on"))) built.scripts = true;
       for (const attr of html.attrs) {
@@ -215,6 +239,11 @@ export function createReaderFrame(): ReaderFrame {
       doc.replaceChild(root, doc.documentElement);
       doc.scrollingElement?.scrollTo(left, top);
       return built;
+    },
+    selection() {
+      return shown === undefined || shown !== element.contentDocument
+        ? undefined
+        : selectedPassage(shown, origins);
     },
   };
   return frame;

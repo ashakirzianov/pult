@@ -131,7 +131,7 @@ NodeTest.describe("the reader's frame", () => {
         const frame = window.reader.createReaderFrame();
         frame.element.id = "reader";
         document.body.append(frame.element);
-        const result = await frame.show(source);
+        const result = (await frame.show(source))!;
         const doc = frame.element.contentDocument!;
         const refused: string[] = [];
         doc.addEventListener("securitypolicyviolation", (event) => refused.push(event.blockedURI));
@@ -198,7 +198,7 @@ NodeTest.describe("the reader's frame", () => {
         const frame = window.reader.createReaderFrame();
         document.body.append(frame.element);
         const results = [];
-        for (const source of sources) results.push((await frame.show(source)).scripts);
+        for (const source of sources) results.push((await frame.show(source))!.scripts);
         frame.element.remove();
         return results;
       },
@@ -212,6 +212,60 @@ NodeTest.describe("the reader's frame", () => {
     NodeAssert.deepEqual(scripts, [true, true, true, false]);
   });
 
+  NodeTest.it("cites a selection as it reads, under the source lines it came from", async () => {
+    // Lines 2 and 6 say the same; line 9's text decodes an entity.
+    const source = [
+      "<!doctype html>",
+      '<p id="a">Save the file</p>',
+      '<p id="b">Then',
+      "read it",
+      "back</p>",
+      '<p id="c">Save the file</p>',
+      '<ul><li id="d">first</li>',
+      '<li id="e">second</li></ul>',
+      '<p><a id="f" href="#x">Save &amp;',
+      "close</a></p>",
+    ].join("\n");
+    const cited = await page.evaluate(async (source) => {
+      const frame = window.reader.createReaderFrame();
+      document.body.append(frame.element);
+      await frame.show(source);
+      const doc = frame.element.contentDocument!;
+      const text = (id: string) => doc.getElementById(id)!.firstChild!;
+      const select = (from: [string, number], to: [string, number]) => {
+        const range = doc.createRange();
+        range.setStart(text(from[0]), from[1]);
+        range.setEnd(text(to[0]), to[1]);
+        doc.getSelection()!.removeAllRanges();
+        doc.getSelection()!.addRange(range);
+        return frame.selection();
+      };
+      const passages = {
+        repeated: select(["c", 0], ["c", 13]),
+        withinParagraph: select(["b", 5], ["b", 9]),
+        acrossBlocks: select(["b", 5], ["e", 3]),
+        entity: select(["f", 0], ["f", 12]),
+        afterEntity: select(["f", 7], ["f", 12]),
+        untouchedEnd: select(["a", 0], ["b", 0]),
+        none: (doc.getSelection()!.removeAllRanges(), frame.selection()),
+      };
+      frame.element.remove();
+      return passages;
+    }, source);
+    NodeAssert.deepEqual(cited, {
+      repeated: { text: "Save the file", lines: { start: 6, end: 6 } },
+      withinParagraph: { text: "read", lines: { start: 4, end: 4 } },
+      acrossBlocks: {
+        text: "read it back\n\nSave the file\n\nfirst\nsec",
+        lines: { start: 4, end: 8 },
+      },
+      entity: { text: "Save & close", lines: { start: 9, end: 10 } },
+      afterEntity: { text: "close", lines: { start: 9, end: 10 } },
+      untouchedEnd: { text: "Save the file", lines: { start: 2, end: 2 } },
+      none: undefined,
+    });
+  });
+
   NodeTest.it(
     "follows edits, and a frame put back in the page, at the reader's scroll position",
     async () => {
@@ -221,7 +275,7 @@ NodeTest.describe("the reader's frame", () => {
         async ([first, second]) => {
           const frame = window.reader.createReaderFrame();
           document.body.append(frame.element);
-          const { scripts } = await frame.show(first!);
+          const { scripts } = (await frame.show(first!))!;
           frame.element.contentDocument!.scrollingElement!.scrollTop = 500;
           await frame.show(second!);
           const edited = frame.element.contentDocument!;
