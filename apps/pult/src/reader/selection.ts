@@ -39,7 +39,8 @@ function linesOf(text: string, line: number, from: number, to: number) {
  * The document's selection as a passage: its text with its paragraph breaks,
  * as the browser copies it, and the lines from the first to the last source
  * line of the text it touches. Blank text, a node's untouched end at offset
- * zero among it, and nodes made from no source text address nothing.
+ * zero among it, text not rendered and nodes made from no source text
+ * address nothing.
  * Undefined when nothing is selected.
  */
 export function selectedPassage(
@@ -60,7 +61,8 @@ export function selectedPassage(
       if (node.nodeType !== Node.TEXT_NODE || !range.intersectsNode(node)) continue;
       const textNode = node as Text;
       const origin = origins.get(textNode);
-      if (origin === undefined) continue;
+      // Text the page never renders (a style in the body, a hidden element) is in no quote.
+      if (origin === undefined || textNode.parentElement?.checkVisibility() !== true) continue;
       const from = textNode === range.startContainer ? range.startOffset : 0;
       const to = textNode === range.endContainer ? range.endOffset : textNode.length;
       if (linesOf(textNode.data, 0, from, to) === undefined) continue;

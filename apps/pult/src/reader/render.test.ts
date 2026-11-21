@@ -213,7 +213,7 @@ NodeTest.describe("the reader's frame", () => {
   });
 
   NodeTest.it("cites a selection as it reads, under the source lines it came from", async () => {
-    // Lines 2 and 6 say the same; line 9's text decodes an entity.
+    // Lines 2 and 6 say the same; line 9's text decodes an entity; line 11's is never rendered.
     const source = [
       "<!doctype html>",
       '<p id="a">Save the file</p>',
@@ -225,6 +225,8 @@ NodeTest.describe("the reader's frame", () => {
       '<li id="e">second</li></ul>',
       '<p><a id="f" href="#x">Save &amp;',
       "close</a></p>",
+      "<style>p { margin: 0 }</style>",
+      '<p id="g">after</p>',
     ].join("\n");
     const cited = await page.evaluate(async (source) => {
       const frame = window.reader.createReaderFrame();
@@ -247,6 +249,7 @@ NodeTest.describe("the reader's frame", () => {
         entity: select(["f", 0], ["f", 12]),
         afterEntity: select(["f", 7], ["f", 12]),
         untouchedEnd: select(["a", 0], ["b", 0]),
+        unrendered: select(["f", 7], ["g", 0]),
         none: (doc.getSelection()!.removeAllRanges(), frame.selection()),
       };
       frame.element.remove();
@@ -262,6 +265,7 @@ NodeTest.describe("the reader's frame", () => {
       entity: { text: "Save & close", lines: { start: 9, end: 10 } },
       afterEntity: { text: "close", lines: { start: 9, end: 10 } },
       untouchedEnd: { text: "Save the file", lines: { start: 2, end: 2 } },
+      unrendered: { text: "close", lines: { start: 9, end: 10 } },
       none: undefined,
     });
   });

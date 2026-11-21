@@ -110,7 +110,10 @@ export function registerCiteCommand(): void {
       /** `captured`: the reader's context menu's capture (`src/reader/pane.ts`). */
       async run(accessor: Parameters<Action2["run"]>[0], captured?: unknown): Promise<void> {
         const editors = accessor.get(ICodeEditorService);
-        const passage = readerPassage(accessor.get(IEditorService), captured);
+        const editorPanes = accessor.get(IEditorService);
+        // The view's module first, so what is cited is read and written with no wait between.
+        const citations = await import("../../view/citations.ts");
+        const passage = readerPassage(editorPanes, captured);
         const editor = editors.getFocusedCodeEditor() ?? editors.getActiveCodeEditor();
         const model = editor?.getModel();
         const selection = editor?.getSelection();
@@ -123,7 +126,6 @@ export function registerCiteCommand(): void {
             return void (await notify("Cite cites into the selected thread's composer."));
           if (passage.text.length > COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS)
             return void (await notify("The selection is too long to cite. Select less."));
-          const citations = await import("../../view/citations.ts");
           const cited = citations.citePassage(target, {
             path: citedPath(selectedCheckout(), {
               environmentId: passage.file.authority,
@@ -154,7 +156,6 @@ export function registerCiteCommand(): void {
           selection.endLineNumber > selection.startLineNumber && selection.endColumn === 1
             ? selection.endLineNumber - 1
             : selection.endLineNumber;
-        const citations = await import("../../view/citations.ts");
         const diff = changesDiff(editors.listDiffEditors(), editor);
         let cited: boolean;
         if (diff !== undefined) {
