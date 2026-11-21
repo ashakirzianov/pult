@@ -10,10 +10,16 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+import {
+  executeAtomQuery,
+  isAtomCommandInterrupted,
+  runAtomCommand,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { EnvironmentId, type PreviewSessionSnapshot, ThreadId } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
 
+import { openFileInPreview as openUpstreamFile } from "~/browser/openFileInPreview";
 import { startAgentOpenedPreviews } from "~/components/preview/agentOpenedPreviews";
 import { closePreviewSession as closeUpstreamSession } from "~/components/preview/closePreviewSession";
 import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
@@ -25,7 +31,9 @@ import {
   readEnvironmentSupportsServerBrowser,
 } from "~/state/entities";
 import { environmentServerConfigsAtom } from "~/state/server";
+import { assetEnvironment } from "~/state/assets";
 import { previewEnvironment } from "~/state/preview";
+import { readPreparedConnection } from "~/state/session";
 import { threadViewHost } from "./host.ts";
 import { syncPreviewSessions } from "./PreviewMount.tsx";
 import { previewRoutes } from "./previewRoutes.ts";
@@ -220,4 +228,34 @@ export async function closePreviewSession(
     threadRef: ref,
   });
   return result._tag === "Success";
+}
+
+/**
+ * Opens a file of the environment in a new browser session of the thread, as
+ * upstream's Open in browser does, which the shell's preview tab shows
+ * (`startPreviews`): a page with its scripts running, for the reader's
+ * notice (`src/reader/pane.ts`). The file is served from the thread's
+ * checkout `workspaceRoot` with its folder beside it, or alone from outside
+ * it; the reason it did not open, if it did not.
+ */
+export async function openFileInPreview(
+  environmentId: string,
+  threadId: string,
+  path: string,
+  workspaceRoot: string | undefined,
+): Promise<string | undefined> {
+  const connection = readPreparedConnection(EnvironmentId.make(environmentId));
+  if (connection === null) return "The environment is not connected.";
+  const result = await openUpstreamFile({
+    threadRef: threadRef(environmentId, threadId),
+    filePath: path,
+    workspaceRoot,
+    httpBaseUrl: connection.httpBaseUrl,
+    createAssetUrl: (target) =>
+      executeAtomQuery(appAtomRegistry, assetEnvironment.createUrl(target), { refresh: true }),
+    openPreview: (input) => runAtomCommand(appAtomRegistry, previewEnvironment.open, input),
+  });
+  if (result._tag === "Success" || isAtomCommandInterrupted(result)) return undefined;
+  const error = squashAtomCommandFailure(result);
+  return error instanceof Error ? error.message : String(error);
 }

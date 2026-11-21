@@ -366,3 +366,50 @@ body.pult-dragging .pult-browser-host webview {
 .monaco-workbench:not(.pult-mode-vscode) .pult-panel-tabs[role="tablist"] {
   display: none;
 }
+
+/* A project HTML file's reader (`src/reader/`): the scripts notice over the page's frame. The frame's
+   element keeps the `normal` scheme with a white canvas behind the page, as a browser tab shows a page
+   with no background of its own; a page declaring a dark scheme gets Chromium's opaque dark backdrop. */
+.pult-reader {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pult-reader-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: white;
+  color-scheme: normal;
+}
+
+.pult-reader-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 12px;
+  font-size: 12px;
+  color: var(--vscode-editorWidget-foreground);
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
+}
+
+.pult-reader-notice[hidden] {
+  display: none;
+}
+
+.pult-reader-notice a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.pult-reader-notice a:hover {
+  text-decoration: underline;
+}
+
+.pult-reader-notice .pult-reader-notice-close {
+  margin-left: auto;
+  color: var(--vscode-icon-foreground);
+}

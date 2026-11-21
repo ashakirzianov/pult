@@ -24,6 +24,7 @@ import { setThreadViewHost, type ThreadViewHost } from "./host.ts";
 import {
   closePreviewSession,
   followPreviewSessions,
+  openFileInPreview,
   previewSessions,
   startPreviews,
   type ThreadPreviewSessions,
@@ -103,6 +104,13 @@ export interface ThreadViewMounts {
     threadId: string,
     listener: (sessions: ThreadPreviewSessions) => void,
   ): () => void;
+  /** Opens a file in a new browser session of the thread, its scripts running (`preview.ts`); why it did not, if it did not. */
+  openFileInPreview(
+    environmentId: string,
+    threadId: string,
+    path: string,
+    workspaceRoot: string | undefined,
+  ): Promise<string | undefined>;
   /** Ends a session on its server (Close Browser Session, a user's tab closed); whether it ended. */
   closePreviewSession(environmentId: string, threadId: string, tabId: string): Promise<boolean>;
   /**
@@ -159,6 +167,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     previewSessions,
     followPreviewSessions,
     closePreviewSession,
+    openFileInPreview,
     toggleTerminal,
   };
 }

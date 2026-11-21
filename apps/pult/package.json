@@ -87,6 +87,7 @@
     "effect": "catalog:",
     "lucide-react": "^0.564.0",
     "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@37.6.1",
+    "parse5": "^8.0.1",
     "react": "catalog:",
     "react-dom": "catalog:",
     "vscode": "npm:@codingame/monaco-vscode-api@37.6.1"

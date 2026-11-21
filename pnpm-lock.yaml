@@ -1072,6 +1072,9 @@ importers:
       monaco-editor:
         specifier: npm:@codingame/monaco-vscode-editor-api@37.6.1
         version: '@codingame/monaco-vscode-editor-api@37.6.1'
+      parse5:
+        specifier: ^8.0.1
+        version: 8.0.1
       react:
         specifier: 'catalog:'
         version: 19.3.0
