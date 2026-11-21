@@ -51,9 +51,6 @@ export type StarThread = Pick<
   | "ageFrom"
 >;
 
-/** Asleep while no channel is open, Working while any open channel's run is on, else Awake. */
-export type StarState = "asleep" | "awake" | "working";
-
 /** An open channel of a Star's: its slug and its current conversation, the page's live row of the thread a home's plugin names. */
 export interface StarChannel<Thread extends StarThread = ShellThread> {
   readonly slug: string;
@@ -78,7 +75,6 @@ export interface Star<Thread extends StarThread = ShellThread> {
   /** `user`'s open conversation; null while `user` sleeps, whatever the other channels do. */
   readonly current: Thread | null;
   readonly asleepSince: string;
-  readonly state: StarState;
   /** The environments where a channel of its is open on its home there, whose conversations write in its folder there (`sync.ts`). */
   readonly awakeOn: ReadonlyArray<string>;
 }
@@ -237,12 +233,6 @@ export function starsOf<Thread extends StarThread>(
       channels,
       current,
       asleepSince: drawnHome(star)?.asleepSince ?? first.created,
-      state:
-        channels.length === 0
-          ? "asleep"
-          : channels.some(({ thread }) => thread.working)
-            ? "working"
-            : "awake",
       awakeOn: [...new Set(live.map(({ thread }) => thread.environmentId))],
     };
   });
@@ -259,8 +249,7 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
     star.name,
     star.tint,
     star.homes,
-    star.state,
-    star.channels.map(({ slug, thread }) => [slug, thread.id, thread.workingSince]),
+    star.channels.map(({ slug, thread }) => [slug, thread.id, thread.working, thread.workingSince]),
     star.asleepSince,
     star.awakeOn,
   ]);

@@ -110,6 +110,11 @@ NodeTest.describe("starLook over several channels", () => {
     NodeAssert.equal(lookOver([idle, thread("work")]), "awake");
   });
 
+  NodeTest.test("reads each channel from the store's live rows, not the Star's own", () => {
+    NodeAssert.equal(lookOver([idle], [thread("user", { awaitsUser: true })]), "waiting");
+    NodeAssert.equal(lookOver([idle], [thread("user", { working: true })]), "working");
+  });
+
   NodeTest.test("keeps the precedence across channels", () => {
     NodeAssert.equal(lookOver([working, asking]), "waiting");
     NodeAssert.equal(lookOver([asking, failed]), "troubled");

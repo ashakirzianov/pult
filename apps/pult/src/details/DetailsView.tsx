@@ -34,7 +34,7 @@ type Subject =
 
 /**
  * The selection's subject, re-rendering on its change: a Star, selected or
- * through a subagent of its current conversation, as its card stays
+ * through a subagent of its current conversation, as its square stays
  * selected then (`PanelView.tsx`); a thread the store holds; a draft; the
  * Explorer workspace; or nothing (no selection yet, a thread not yet in).
  */

@@ -110,7 +110,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
         return {
           badge: undefined,
           empty: stars.length === 0,
-          // As its card in the panel: with the Star, or with one of its conversation's subagents.
+          // As its square in the panel: with the Star, or with one of its conversation's subagents.
           selected: stars.some(
             (star) =>
               starKey(star.id) === selection ||

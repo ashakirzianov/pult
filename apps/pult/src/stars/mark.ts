@@ -38,7 +38,7 @@ export function tintColor(tint: string, scheme: Scheme): string {
 /**
  * The Stars' looks, by id, and what the workbench theme gives their marks:
  * its scheme, which picks the tint's colour, and its error colour, the
- * troubled ring's, which the tab's still resolves (the card's mark reads
+ * troubled ring's, which the tab's still resolves (the square's mark reads
  * `--vscode-errorForeground` itself).
  */
 export interface StarMarks {

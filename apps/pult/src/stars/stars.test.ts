@@ -138,7 +138,6 @@ NodeTest.describe("starsOf", () => {
         star?.channels.map(({ slug, thread }) => [slug, thread.id]),
         [["user", "newer"]],
       );
-      NodeAssert.equal(star?.state, "working");
     },
   );
 
@@ -161,25 +160,20 @@ NodeTest.describe("starsOf", () => {
     NodeAssert.equal(star?.current?.id, "u");
   });
 
-  NodeTest.test(
-    "is awake while any channel is open, `user` asleep among them, and working while any works",
-    () => {
-      const working = of(
-        [open("user", "u"), open("work", "w")],
-        [thread("a", "u", CREATED), thread("a", "w", CREATED, { working: true })],
-      );
-      NodeAssert.equal(working?.state, "working");
-      const userAsleep = of([open("work", "w")], [thread("a", "w", CREATED)]);
-      NodeAssert.equal(userAsleep?.state, "awake");
-      NodeAssert.equal(userAsleep?.current, null);
-    },
-  );
+  NodeTest.test("holds another channel open while `user` sleeps", () => {
+    const userAsleep = of([open("work", "w")], [thread("a", "w", CREATED)]);
+    NodeAssert.deepEqual(
+      userAsleep?.channels.map(({ slug }) => slug),
+      ["work"],
+    );
+    NodeAssert.equal(userAsleep?.current, null);
+  });
 
   NodeTest.test(
     "is asleep only while no channel is open: none named, or each seen settled or held by no row",
     () => {
       const asleep = (channels: RouteStar["channels"], threads: ReturnType<typeof thread>[]) =>
-        of(channels, threads)?.state;
+        of(channels, threads)?.channels.length === 0 ? "asleep" : "awake";
       NodeAssert.equal(asleep([], [thread("a", "t", CREATED)]), "asleep");
       NodeAssert.equal(
         asleep(
@@ -244,7 +238,6 @@ NodeTest.describe("starsSignature", () => {
       NodeAssert.deepEqual(both.awakeOn, ["laptop", "desk"]);
       NodeAssert.deepEqual(settled.awakeOn, ["desk"]);
       // The Star looks the same, the desk's conversation its channel's either way: only `awakeOn` tells the sleep.
-      NodeAssert.equal(settled.state, both.state);
       NodeAssert.deepEqual(
         settled.channels.map(({ thread }) => thread.id),
         both.channels.map(({ thread }) => thread.id),

@@ -342,7 +342,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
   const all = () => true;
 
   NodeTest.test("syncs nothing while another channel is open, `user` asleep", () => {
-    NodeAssert.equal(workOpen.state, "awake");
+    NodeAssert.equal(workOpen.channels.length, 1);
     NodeAssert.equal(homeSleeps("env", workOpen, all), false);
     NodeAssert.deepEqual(sleepOccasions(new Map(), [workOpen], all).occasions, []);
   });

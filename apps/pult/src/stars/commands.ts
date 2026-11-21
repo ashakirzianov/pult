@@ -78,7 +78,7 @@ async function editStarInstructions(star: Star): Promise<void> {
 
 /**
  * A schedule's file of the Star's as a tab among the Star's, from the home
- * it is drawn from, as its card lists them: `name`'s, or one picked among
+ * it is drawn from, as its details list them: `name`'s, or one picked among
  * them; the Star selected first.
  */
 async function openStarSchedule(

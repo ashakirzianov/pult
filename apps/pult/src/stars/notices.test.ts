@@ -209,7 +209,6 @@ const thread = (id: string, overrides: Partial<LookThread> = {}) => ({
   rootId: id,
   title: `Thread ${id}`,
   working: false,
-  waiting: false,
   awaitsUser: false,
   latestRun: null,
   ...overrides,

@@ -17,7 +17,7 @@ function run(command: string, ...args: unknown[]): void {
 }
 
 /**
- * The card's context menu: Refresh Context while the Star can be put to
+ * The square's context menu: Refresh Context while the Star can be put to
  * sleep by hand (`canSleepStar`), its next message then waking it in a
  * fresh conversation, then Edit Star Instructions and Open Star Folder.
  */
@@ -52,7 +52,7 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
 
 /**
  * The Star's mark, drawn live (`src/stars/flat/`): the mark's span made once
- * per card, since each holds ids of its own, and a change of look set on its
+ * per square, since each holds ids of its own, and a change of look set on its
  * `data-state`, so the halo's motion carries on from where it was. Its colour
  * is the tint's in the theme's scheme, set on the element around it.
  */

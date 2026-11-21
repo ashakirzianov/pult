@@ -1,7 +1,5 @@
 // Which of its five looks a Star wears (`pult/decisions`, `star-states`),
-// apart from the workbench so `node --test src/stars/look.test.ts` can run
-// it. Its coarse state, Asleep, Awake or Working, stays `stars.ts`'s: the
-// sleep reads that one.
+// apart from the workbench so `node --test src/stars/look.test.ts` can run it.
 import type { ShellThread } from "../threads/store.ts";
 import type { State } from "./flat/states.ts";
 import { lineageWorks, threadsBelow } from "./stars.ts";
@@ -34,8 +32,10 @@ export type LookThread = Pick<
 >;
 
 /**
- * A Star's look, read over every open channel's conversation, each look
- * holding when it holds for any; asleep with none open. Else the first that
+ * A Star's look, read over every open channel's conversation, each read
+ * from `threads`, the store's live rows, since a Star's own rows change only
+ * with its signature (`starsSignature`), each look holding when it holds for
+ * any; asleep with none open. Else the first that
  * holds of: troubled, a conversation's latest run failed, a usage limit's
  * stop among them, until its next starts (an interrupted run is not a
  * failure); waiting, a runtime request of a conversation or of a thread
@@ -48,8 +48,11 @@ export function starLook(
   threads: ReadonlyArray<LookThread>,
 ): StarLook {
   if (star.channels.length === 0) return "asleep";
+  const live = (thread: LookThread) =>
+    threads.find((each) => each.environmentId === thread.environmentId && each.id === thread.id) ??
+    thread;
   const any = (holds: (thread: LookThread) => boolean) =>
-    star.channels.some(({ thread }) => holds(thread));
+    star.channels.some(({ thread }) => holds(live(thread)));
   if (any((thread) => thread.latestRun?.status === "failed")) return "troubled";
   if (
     any(

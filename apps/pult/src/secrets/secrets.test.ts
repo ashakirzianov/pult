@@ -65,7 +65,6 @@ const star: Star = {
   channels: [],
   current: null,
   asleepSince: NOW,
-  state: "awake",
   awakeOn: ["env"],
 };
 
