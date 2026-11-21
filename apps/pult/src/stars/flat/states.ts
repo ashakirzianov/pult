@@ -1,4 +1,4 @@
-// The Star's states, as Pult reads them (xaxis `pult/issues/star-states.md`), in order: every generated Star has a look for each, and Pult shows each state's still. When several hold, Pult shows the first of troubled, waiting, talking, thinking, delegating, listening, finished, awake; asleep and stirring hold only alone.
+// The Star's states, as Pult reads them (xaxis `pult/tasks/star-states.task`), in order: every generated Star has a look for each, and Pult shows each state's still. When several hold, Pult shows the first of troubled, waiting, talking, thinking, delegating, listening, finished, awake; asleep and stirring hold only alone.
 export const states = {
   asleep: "no current conversation",
   stirring: "asleep, and the user is typing to it",

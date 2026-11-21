@@ -148,7 +148,7 @@ function changesOf(
  * The one source a checkout shows, with its changes: the working tree while
  * it has uncommitted changes, else the branch against its base, since the
  * server's branch range repeats the uncommitted ones
- * (`pult/issues/committed-only-branch-diff`), but for a branch whose base is
+ * (`pult/tasks/committed-only-branch-diff.task`), but for a branch whose base is
  * its own upstream, whose range is only its unpushed commits; undefined with
  * neither.
  */

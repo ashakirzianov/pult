@@ -2,7 +2,7 @@
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
 // Pult: an xaxis checkout's source control through the services the RPCs call, over a
 // real `xaxis` against `scm-server serve` on a memory store (xaxis
-// `pult/issues/xaxis-source-control`, "Test plan"). Skipped, with the reason printed,
+// `pult/tasks/xaxis-source-control.task`, "Test plan"). Skipped, with the reason printed,
 // unless XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the two binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

@@ -522,9 +522,9 @@ export const WS_METHODS = {
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
   vcsInit: "vcs.init",
-  // Pult: points a repository's remote at a URL (xaxis `pult/issues/star-sync`).
+  // Pult: points a repository's remote at a URL (xaxis `pult/tasks/star-sync.task`).
   vcsSetRemote: "vcs.setRemote",
-  // Pult: takes one side of an xaxis checkout's conflicted paths (xaxis `pult/issues/xaxis-source-control`).
+  // Pult: takes one side of an xaxis checkout's conflicted paths (xaxis `pult/tasks/xaxis-source-control.task`).
   vcsResolveConflict: "vcs.resolveConflict",
 
   gitRunStackedAction: "git.runStackedAction",
@@ -532,7 +532,7 @@ export const WS_METHODS = {
   gitPreparePullRequestThread: "git.preparePullRequestThread",
 
   reviewGetBranchCommits: "review.getBranchCommits",
-  // Pult: a checkout's commit log and refs (xaxis `pult/issues/scm-history`).
+  // Pult: a checkout's commit log and refs (xaxis `pult/tasks/scm-history.task`).
   reviewGetLog: "review.getLog",
   reviewGetRefs: "review.getRefs",
   reviewGetDiffPreview: "review.getDiffPreview",

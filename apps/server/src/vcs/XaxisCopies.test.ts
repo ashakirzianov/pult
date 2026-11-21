@@ -2,7 +2,7 @@
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
 // Pult: a thread's copy of a checkout, made and removed through the worktree calls of
 // `GitWorkflowService`, over a real `xaxis` against `scm-server serve` (xaxis
-// `pult/issues/thread-copies`, "Test plan"). Skipped, with the reason printed, unless
+// `pult/tasks/thread-copies.task`, "Test plan"). Skipped, with the reason printed, unless
 // XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the two binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

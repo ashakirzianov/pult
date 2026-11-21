@@ -34,7 +34,7 @@ function launchFailure(launchCause: Error) {
 
 describe("failedDraftThreadId", () => {
   it("gives a draft whose thread already exists a fresh id, so its next send can create one", () => {
-    // The stuck draft of pult/issues/stale-draft-thread-id: its id names a thread the server created from it.
+    // The stuck draft of pult/tasks/stale-draft-thread-id.task: its id names a thread the server created from it.
     const error = launchFailure(
       namedError(
         "ThreadLaunchError",

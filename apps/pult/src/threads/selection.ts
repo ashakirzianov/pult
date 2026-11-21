@@ -585,7 +585,7 @@ let flushQueued = false;
  * Saves the workbench's state once the current burst of changes is done. The
  * workbench saves it every few seconds and on shutdown, but a reload does not
  * wait for the shutdown's write to IndexedDB, so a tab opened just before a
- * reload was gone after it (`pult/issues/reload-loses-new-tabs.md`).
+ * reload was gone after it (`pult/tasks/reload-loses-new-tabs.task`).
  */
 function flushSoon(storage: IStorageService): void {
   if (flushQueued) return;

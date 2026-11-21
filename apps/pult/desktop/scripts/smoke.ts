@@ -14,7 +14,7 @@
  * server's logs.
  *
  * It runs on Pult's own runner, a Mac in use beside an installed Pult
- * (xaxis `pult/issues/release-on-own-runner.md`), so the app under test keeps
+ * (xaxis `pult/tasks/release-on-own-runner.task`), so the app under test keeps
  * apart from it: its `userData` is a temporary folder (Chromium's
  * `--user-data-dir`, which the desktop main honours), and with it the
  * single-instance lock; its server's home is another (`T3CODE_HOME`); none of

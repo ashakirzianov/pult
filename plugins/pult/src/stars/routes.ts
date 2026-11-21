@@ -1,4 +1,4 @@
-// The Stars' routes under `/api/plugins/pult` (xaxis `pult/design-durable-agent-sleep`, The routes):
+// The Stars' routes under `/api/plugins/pult` (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, The routes):
 // each decodes, calls the Stars, and maps an unknown id to 404 and a failure to `{ error }`.
 import { RuntimeMode } from "@t3tools/contracts";
 

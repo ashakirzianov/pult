@@ -1,4 +1,4 @@
-// `pult_star_sleep` (xaxis `pult/issues/star-sleep-on-request.md`): a Star, from its own
+// `pult_star_sleep` (xaxis `pult/tasks/star-sleep-on-request.task`): a Star, from its own
 // conversation, asks to fall asleep when the current turn ends. Declared through the server's
 // `McpToolAccess` with `actsAsCaller`, so upstream's checks of the calling thread run unchanged.
 import {

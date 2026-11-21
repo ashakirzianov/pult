@@ -1,7 +1,7 @@
-// The one door for every message Pult sends a Star (xaxis `pult/issues/message-star.md`): under the
+// The one door for every message Pult sends a Star (xaxis `pult/tasks/message-star.task`): under the
 // Star's lock it is queued into its channel's current conversation, else the channel wakes fresh, tagged,
 // at the modes of its newest conversation (else `user`'s, else the Star's newest) and the model the Star
-// chose for it (`pult/issues/star-channel-model.md`), else that conversation's; the page's wakes ask it too.
+// chose for it (`pult/tasks/star-channel-model.task`), else that conversation's; the page's wakes ask it too.
 import {
   type ModelSelection,
   type RuntimeMode,

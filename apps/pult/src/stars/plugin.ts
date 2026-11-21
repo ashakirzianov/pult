@@ -1,5 +1,5 @@
 // The server's Pult plugin, as the page asks it (`plugins/pult`, xaxis
-// `pult/design-durable-agent-sleep`, The routes): the one file that names its
+// `pult/tasks/durable-agent-sleep.task/design.md`, The routes): the one file that names its
 // routes, apart from the workbench so `node --test src/stars/plugin.test.ts`
 // can run it. `about` says what the plugin of a server does; the Stars'
 // routes serve everything the page knows of a Star, each answer decoded
@@ -77,7 +77,7 @@ export async function readAbout(credential: Credential): Promise<ReadonlyArray<s
   return features ?? [];
 }
 
-/** The channel with the user, whose conversation is the Star's tab (xaxis `pult/issues/star-channels.md`). */
+/** The channel with the user, whose conversation is the Star's tab (xaxis `pult/tasks/star-channels.task`). */
 export const USER_CHANNEL = "user";
 
 /**

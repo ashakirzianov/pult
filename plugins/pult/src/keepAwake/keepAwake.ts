@@ -1,4 +1,4 @@
-// Keeps this Mac awake while agents work (xaxis `pult/issues/keep-awake-while-agents-work.md`): while the server
+// Keeps this Mac awake while agents work (xaxis `pult/tasks/keep-awake-while-agents-work.task`): while the server
 // is not at rest by `ServerActivity`, a `caffeinate -i -w <server pid>` child holds an idle-sleep assertion, which
 // goes with the server's process however it ends. The switch is `<stateDir>/plugins/pult/keep-awake-off`, written
 // only by the route below.
@@ -38,9 +38,9 @@ const holdCommand = (platform: NodeJS.Platform, pid: number): ChildProcess.Comma
         stderr: "ignore",
       });
     case "linux":
-      return todo("pult/issues/linux-support.md: keep-awake");
+      return todo("pult/tasks/linux-support.task: keep-awake");
     case "win32":
-      return todo("pult/issues/windows-support.md: keep-awake");
+      return todo("pult/tasks/windows-support.task: keep-awake");
     default:
       return todo(`keep-awake on ${platform}`);
   }

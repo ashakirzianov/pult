@@ -63,7 +63,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const projectConfig = yield* VcsProjectConfig.VcsProjectConfig;
   const git = yield* GitVcsDriver.makeVcsDriver;
-  // Pult: an xaxis checkout, known by its marker (xaxis `pult/issues/xaxis-source-control`).
+  // Pult: an xaxis checkout, known by its marker (xaxis `pult/tasks/xaxis-source-control.task`).
   const xaxis = yield* XaxisVcsDriver.makeVcsDriver;
   const drivers: Partial<Record<VcsDriverKind, VcsDriver.VcsDriver["Service"]>> = {
     git,

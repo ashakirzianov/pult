@@ -1,4 +1,4 @@
-// A Star's model per channel (xaxis `pult/issues/star-channel-model.md`): `.pult/channel-models.json`
+// A Star's model per channel (xaxis `pult/tasks/star-channel-model.task`): `.pult/channel-models.json`
 // names a `default` and exact channels' `{provider, model, effort?}`. A choice this environment
 // cannot serve, its provider lacking the wake's runtime mode included, falls back, entry to `default`
 // to the newest conversation's; what was wrong comes back with the content's hash, told once per content.

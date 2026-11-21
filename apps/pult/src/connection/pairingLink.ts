@@ -1,4 +1,4 @@
-// Where a pairing link Pair Device mints points (xaxis `pult/issues/pair-device`),
+// Where a pairing link Pair Device mints points (xaxis `pult/tasks/pair-device.task`),
 // apart from the workbench so `node --test src/connection/pairingLink.test.ts`
 // can run it. Never upstream's hosted pairing link (`pult/decisions`,
 // `t3-connect-stance`).

@@ -155,7 +155,7 @@ async function originAt(environmentId: string, root: string): Promise<string | u
 }
 
 /**
- * The page's Stars (xaxis `pult/design-durable-agent-sleep`, The page on
+ * The page's Stars (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, The page on
  * the routes): on each held environment, what its Pult plugin's `stars`
  * route serves, read once its `about` lists `stars` on each connect, and
  * again a moment after a burst of changes under its Stars directory

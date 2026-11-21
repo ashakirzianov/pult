@@ -1,4 +1,4 @@
-// `pult_usage_limits` (xaxis `pult/issues/limits-tool-for-agents.md`, `usage-limits-go-stale.md`): this
+// `pult_usage_limits` (xaxis `pult/tasks/limits-tool-for-agents.task`, `usage-limits-go-stale.md`): this
 // server's usage limits, paced and warned, refreshed when older than five minutes at most once per five
 // minutes, as upstream's timer needs a page in front. `collectLimitAccounts` drops every account whose
 // limits are unavailable, so an account carries no `unavailable`: only a notice tells of it.

@@ -1,4 +1,4 @@
-// The Stars of this server (xaxis `pult/design-durable-agent-sleep`, `pult/issues/star-channels.md`):
+// The Stars of this server (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, `pult/tasks/star-channels.task`):
 // found on demand from the store and the record files, kept up in their folders, their conversations,
 // one current per channel, which a `pult:channel:<slug>` tag names and `user` where none does, put to
 // sleep and transcribed once a minute and before one is handed to anyone. The plugin persists nothing.

@@ -1,5 +1,5 @@
 // What is asked of the user, told outside the page (xaxis
-// `pult/issues/notify-outside-the-page.md`; `pult/decisions`,
+// `pult/tasks/notify-outside-the-page.task`; `pult/decisions`,
 // `notifications`): the dock badge, the posted asks the panel shows whoever
 // posted them and the secrets agents wait for, and a desktop notification for
 // a new one and when a Star starts waiting on the user for anything else. A thread notifies nothing else; upstream's

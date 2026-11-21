@@ -474,7 +474,7 @@ const layerGit = Layer.empty.pipe(
 const layerGitWorkflow = GitWorkflowService.layer.pipe(
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(layerGit),
-  // Pult: an xaxis checkout's status (xaxis `pult/issues/xaxis-source-control`).
+  // Pult: an xaxis checkout's status (xaxis `pult/tasks/xaxis-source-control.task`).
   Layer.provideMerge(XaxisVcsDriver.layer),
 );
 

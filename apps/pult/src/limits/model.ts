@@ -49,7 +49,7 @@ function latestCheck(config: ServerConfig | null): string | null {
 }
 
 /**
- * The page's usage limits (xaxis `pult/issues/provider-limits-page`): every
+ * The page's usage limits (xaxis `pult/tasks/provider-limits-page.task`): every
  * held environment's provider snapshots and hub sources from the server
  * config its session keeps live, merged into accounts across the
  * environments as upstream merges them (`collectLimitAccounts`), into

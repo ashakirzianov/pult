@@ -9,7 +9,7 @@ export interface CitedCheckout {
 /**
  * A cited file's path as the selected thread's agent should read it: relative
  * to the file's own checkout when that is the selected one's, absolute
- * otherwise (`pult/issues/cite-from-other-checkout`). A diff's file names its
+ * otherwise (`pult/tasks/cite-from-other-checkout.task`). A diff's file names its
  * checkout; a `pult:` file is the selected one's when it lies under its root.
  */
 export function citedPath(

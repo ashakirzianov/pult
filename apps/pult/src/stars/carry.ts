@@ -1,6 +1,6 @@
 // Unsent text carried into a sleeping Star's draft (xaxis
-// `pult/design-durable-agent-sleep`, Unsent text), and out of it into the
-// conversation someone else woke (`pult/issues/message-star.md`), apart from
+// `pult/tasks/durable-agent-sleep.task/design.md`, Unsent text), and out of it into the
+// conversation someone else woke (`pult/tasks/message-star.task`), apart from
 // the workbench so `node --test src/stars/carry.test.ts` can run it. The
 // server's plugin puts a Star to sleep whatever its composer holds, and wakes
 // it for a message whatever its draft holds, so the page carries text typed

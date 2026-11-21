@@ -1,4 +1,4 @@
-// `pult_star_list` (xaxis `pult/issues/star-directory-tool.md`): a thread finds the Stars of this
+// `pult_star_list` (xaxis `pult/tasks/star-directory-tool.task`): a thread finds the Stars of this
 // server, each with the id `pult_star_message` takes, its name and its record's `description`.
 // Declared through the server's `McpToolAccess`, so it refuses the callers `pult_star_message` does.
 import { OrchestratorMcpFailure } from "@t3tools/contracts";

@@ -12,7 +12,7 @@ import { type PairingAddress, pairingAddresses } from "./pairingLink.ts";
 
 /**
  * A pairing link Pair Device minted for another device (xaxis
- * `pult/issues/pair-device`), shown under its environment's row of the
+ * `pult/tasks/pair-device.task`), shown under its environment's row of the
  * settings page until it expires, is redeemed or revoked, or is put away:
  * the code, and the addresses a link of it may use (`pairingLink.ts`).
  */

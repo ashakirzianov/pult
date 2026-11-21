@@ -1,4 +1,4 @@
-// A Star's schedule (xaxis `pult/issues/star-schedules.md`): `.pult/schedules/<name>.md`, a front
+// A Star's schedule (xaxis `pult/tasks/star-schedules.task`): `.pult/schedules/<name>.md`, a front
 // matter with a required IANA `timezone` and one rule over the message as its body, read strictly.
 // Its `to` is any channel's slug, `user` where absent; a `run` command makes it a watcher
 // (`./command.ts`). Every due time is a function of the file alone.

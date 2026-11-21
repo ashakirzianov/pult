@@ -1,4 +1,4 @@
-// `pult_star_message` (xaxis `pult/issues/message-star.md`, `pult/issues/star-channels.md`): a thread
+// `pult_star_message` (xaxis `pult/tasks/message-star.task`, `pult/tasks/star-channels.task`): a thread
 // messages a Star by its id, into the call's channel, else its tag's beside the Star's child tag, else
 // `work`, nothing refused. Declared through the server's `McpToolAccess` and `toolkitRegistration`,
 // as the built-in toolkits are, so upstream's access checks run unchanged.

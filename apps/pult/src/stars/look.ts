@@ -1,4 +1,4 @@
-// Which of its looks a Star wears (xaxis `pult/issues/star-states`), apart
+// Which of its looks a Star wears (xaxis `pult/tasks/star-states.task`), apart
 // from the workbench so `node --test src/stars/look.test.ts` can run it. Its
 // coarse state, Asleep, Awake or Working, stays `stars.ts`'s: the card's
 // status and the sleep read that one.

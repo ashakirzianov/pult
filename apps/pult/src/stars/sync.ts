@@ -115,7 +115,7 @@ interface SyncedHome {
  * failure, writing nothing, where the repository holding it is the Stars
  * directory itself, still one repository for every Star, as every
  * directory was until each Star had its own: the split is made by hand
- * (`pult/issues/star-repo-per-star.md`), never in code. The status after,
+ * (`pult/tasks/star-repo-per-star.task`), never in code. The status after,
  * for the plan.
  */
 export async function ownRepository(

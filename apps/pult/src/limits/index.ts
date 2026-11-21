@@ -12,7 +12,7 @@ import { revealLimits } from "./shelf.ts";
 import { limitsWeekend, registerLimitsWeekend, startLimitsWeekend } from "./weekend.ts";
 
 /**
- * The usage limits (xaxis `pult/issues/provider-limits-page`): the model
+ * The usage limits (xaxis `pult/tasks/provider-limits-page.task`): the model
  * (`model.ts`), and the palette's Pult: Show Usage Limits and Refresh Usage
  * Limits, and the weekend the pace waits over (`weekend.ts`). The shelf
  * itself is the left panel's (`src/panel/LimitsShelf.tsx`). Registered

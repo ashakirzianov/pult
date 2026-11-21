@@ -109,7 +109,7 @@ export const ReviewDiffPreviewError = Schema.Union([VcsError, GitCommandError]);
 export type ReviewDiffPreviewError = typeof ReviewDiffPreviewError.Type;
 
 // Pult: a checkout's commit history and its refs, for the shell's Source Control
-// Graph (xaxis `pult/issues/scm-history`); a commit's files and their two sides
+// Graph (xaxis `pult/tasks/scm-history.task`); a commit's files and their two sides
 // are `getDiffPreview` with `commitSha` and `getDiffFileContents` with `commit`.
 
 /** The most commits one page of `review.getLog` holds. */

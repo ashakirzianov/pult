@@ -1,4 +1,4 @@
-// The Stars' schedules (xaxis `pult/issues/star-schedules.md`), kept in memory with the next due
+// The Stars' schedules (xaxis `pult/tasks/star-schedules.task`), kept in memory with the next due
 // time and read again when the watch names one, a run comes due, or ten minutes passed. Each due
 // run is one delivery as the plugin, then its record in `.pult/runs/`; a watcher's (`run:`) runs
 // its command first, and a silent command leaves no record, only memory.

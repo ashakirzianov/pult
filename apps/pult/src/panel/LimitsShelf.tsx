@@ -22,7 +22,7 @@ const refreshAction = toAction({
 });
 
 /**
- * The Limits shelf (xaxis `pult/issues/provider-limits-page`):
+ * The Limits shelf (xaxis `pult/tasks/provider-limits-page.task`):
  * the provider accounts' usage windows with something spent, under its
  * header with the count of warning windows while any warns, open until closed, when its icon
  * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows

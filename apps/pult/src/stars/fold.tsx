@@ -165,7 +165,7 @@ function Conversation({
 
 /**
  * The fold of a Star's earlier conversations, at the top of its timeline
- * (xaxis `pult/issues/star-sleep`): the transcripts of the home it is drawn
+ * (xaxis `pult/tasks/star-sleep.task`): the transcripts of the home it is drawn
  * from (`drawnHome`), never live threads, their names from the Pult plugin's
  * `stars` route and each one read from its transcript route (`foldState.ts`).
  * Collapsed, "Earlier conversations · N", the names alone, and

@@ -1,5 +1,5 @@
 // What the shell tells the user outside the page (xaxis
-// `pult/issues/notify-outside-the-page.md`; `pult/decisions`,
+// `pult/tasks/notify-outside-the-page.task`; `pult/decisions`,
 // `notifications`), apart from the DOM so `node --test
 // src/stars/notices.test.ts` can run it: the dock badge's count, the posted
 // asks whoever posted them and the secrets agents wait for, and which asks,

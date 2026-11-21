@@ -9,7 +9,7 @@ import { Registry } from "@codingame/monaco-vscode-api/vscode/vs/platform/regist
 import { writeUserValue } from "../settings/userSetting.ts";
 
 /**
- * The weekend (xaxis `pult/issues/weekend-aware-limits`), `pult.limits.weekend`,
+ * The weekend (xaxis `pult/tasks/weekend-aware-limits.task`), `pult.limits.weekend`,
  * in the user's settings under Pult: the days the user does not work, which
  * the Limits shelf's pace counts no time on (`paceShare`); Saturday and
  * Sunday by default, none for a pace by the calendar.

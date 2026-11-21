@@ -33,7 +33,7 @@ import {
 } from "./updateSteps.ts";
 
 /**
- * Pult.app's updates (`pult/issues/release-feed`), through upstream's updater
+ * Pult.app's updates (`pult/tasks/release-feed.task`), through upstream's updater
  * over `window.desktopBridge`: the palette's Pult: Check for Updates, which
  * checks, downloads what it finds and answers with one notification, and
  * Pult: Restart to Update while a downloaded update waits, which installs it

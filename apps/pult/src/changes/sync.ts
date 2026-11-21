@@ -81,7 +81,7 @@ export type SyncAction =
   | { readonly kind: "publish" }
   | XaxisAction;
 
-/** An xaxis checkout's button, in its own words (xaxis `pult/issues/xaxis-source-control`). */
+/** An xaxis checkout's button, in its own words (xaxis `pult/tasks/xaxis-source-control.task`). */
 export interface XaxisAction {
   readonly kind: "commit-land" | "get-latest";
   readonly enabled: boolean;

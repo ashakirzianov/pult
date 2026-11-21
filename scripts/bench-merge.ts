@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off extendsNativeError:off - runs on the bench, which may have no `vp i`.
 // An upstream merge from the bench, once Pult's code lives in xaxis: the mechanical steps
-// of `pult/issues/upstream-merges-from-the-bench.md` (pick 5, steps 1 to 5); `AGENTS.md`,
+// of `pult/tasks/upstream-merges-from-the-bench.task` (pick 5, steps 1 to 5); `AGENTS.md`,
 // "Upstream merges from the bench", is how to run it. Run it in the bench, a git clone
 // whose `origin` is the mirror, with `upstream` and Pult's `rr-cache`:
 //

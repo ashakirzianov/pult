@@ -1,4 +1,4 @@
-// A watcher's command (xaxis `pult/issues/star-watcher-scripts.md`): a schedule's `run`, run with
+// A watcher's command (xaxis `pult/tasks/star-watcher-scripts.task`): a schedule's `run`, run with
 // `sh -c` in its Star's folder with the server's environment, for a minute at most and 64 KiB of
 // output. Only what it printed decides whether the Star hears of it; stderr goes into a failure.
 import { Effect, ProcessRunner } from "../host.ts";

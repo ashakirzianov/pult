@@ -1,4 +1,4 @@
-// A Star's channels (xaxis `pult/issues/star-channels.md`): a channel is a slug nothing registers,
+// A Star's channels (xaxis `pult/tasks/star-channels.task`): a channel is a slug nothing registers,
 // told on a thread by its tag `pult:channel:<slug>`; `user` is the one with the user, and `work`
 // the one a message lands in that names none.
 

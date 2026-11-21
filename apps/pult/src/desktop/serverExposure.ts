@@ -5,7 +5,7 @@ import { desktopHost } from "./host.ts";
 import { localServerEnabled } from "./localServer.ts";
 
 /**
- * Pult.app's local server's network access (xaxis `pult/issues/pair-device`):
+ * Pult.app's local server's network access (xaxis `pult/tasks/pair-device.task`):
  * upstream's desktop setting, `local-only` or `network-accessible`, which
  * decides whether another device reaches it, so a pairing link of it works
  * there. Read from the app once something looks, `undefined` until then and

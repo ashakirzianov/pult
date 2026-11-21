@@ -19,7 +19,7 @@ import * as Stream from "effect/Stream";
 import { connection } from "./connection.ts";
 import { withPreparedConnection } from "./http.ts";
 
-// An environment's access (xaxis `pult/issues/pair-device`): the pairing
+// An environment's access (xaxis `pult/tasks/pair-device.task`): the pairing
 // links it has outstanding and the clients it has authorized, which the
 // settings page lists, and the HTTP calls minting and revoking them, each
 // gated by the server on the session's scopes (`access:write` to mint and

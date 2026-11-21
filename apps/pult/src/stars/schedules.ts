@@ -1,4 +1,4 @@
-// A Star's schedules as its card lists them (xaxis `pult/issues/star-schedules.md`), apart from
+// A Star's schedules as its card lists them (xaxis `pult/tasks/star-schedules.task`), apart from
 // the workbench so `node --test src/stars/schedules.test.ts` can run it. The page parses no
 // schedule file and does no rule math: the rule in words, the next due instant and the last run
 // are the plugin's, from the `stars` route; the page formats the instants in its own zone and

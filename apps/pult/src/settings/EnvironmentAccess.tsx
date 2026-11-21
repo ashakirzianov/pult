@@ -9,7 +9,7 @@ import { dismissPairing, type Pairing } from "../connection/pairDevice.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 
 // An environment's devices on the settings page, under Devices in its group
-// (xaxis `pult/issues/pair-device`): the pairing link Pair Device minted, and
+// (xaxis `pult/tasks/pair-device.task`): the pairing link Pair Device minted, and
 // the environment's outstanding pairing links and authorized clients.
 
 const dateTime = (millis: number) =>

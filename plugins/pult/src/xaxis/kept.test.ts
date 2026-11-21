@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - the fixture drives the real CLI and server as a person would.
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
 // The kept xaxis checkout through the plugin's activation and its route, the real driver over a real
-// `xaxis` against `scm-server serve` (xaxis `pult/issues/xaxis-checkouts-on-main.md`, "Test plan").
+// `xaxis` against `scm-server serve` (xaxis `pult/tasks/xaxis-checkouts-on-main.task`, "Test plan").
 // Skipped, with the reason printed, unless XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
