@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 
 import markUrl from "../../assets/pult/mark.svg?no-inline";
 import { selectionSnapshot } from "../panel/jump.ts";
@@ -17,6 +17,8 @@ import {
   selectedThread,
 } from "../threads/selection.ts";
 import { isSubagent, type ShellThread, threadStore } from "../threads/store.ts";
+import type { DetailsColumn } from "../../view/main.tsx";
+import { detailsColumn } from "./column.ts";
 import { StarDetails } from "./StarDetails.tsx";
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
@@ -136,15 +138,48 @@ export function DetailsTitle() {
 }
 
 /**
+ * The element upstream's thread details render into for the selected thread
+ * or draft, from the pane's view showing it (`view/ThreadDetailsCard.tsx`):
+ * one of the view's roots (`pult-view-theme`), so its stylesheet, its
+ * shortcuts and its text sizes reach it.
+ */
+function ThreadDetailsColumn({ subject }: { subject: DetailsColumn["subject"] }) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const key = JSON.stringify(subject);
+  useLayoutEffect(() => {
+    if (element === null) return;
+    detailsColumn.set({ element, subject: JSON.parse(key) });
+    return () => detailsColumn.set(null);
+  }, [element, key]);
+  return <div ref={setElement} className="pult-details-thread pult-view-theme" />;
+}
+
+/**
  * The Details view's body: a Star's details (`StarDetails.tsx`), from the
- * same rows its card held; for a thread or a draft, until upstream's rows
- * come (the design's unit 2), and for the Explorer workspace, one muted line.
+ * same rows its card held; a thread's or a draft's, upstream's rows
+ * (`ThreadDetailsColumn`); for the Explorer workspace, one muted line.
  */
 export function DetailsView() {
   const subject = useSubject();
   const { threads, environments } = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const now = useMinuteClock();
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
+  if (subject.kind === "thread" || subject.kind === "draft")
+    return (
+      <div className="pult-panel pult-details">
+        <ThreadDetailsColumn
+          subject={
+            subject.kind === "thread"
+              ? {
+                  kind: "thread",
+                  environmentId: subject.thread.environmentId,
+                  threadId: subject.thread.id,
+                }
+              : subject
+          }
+        />
+      </div>
+    );
   if (subject.kind !== "star")
     return (
       <div className="pult-panel pult-details">

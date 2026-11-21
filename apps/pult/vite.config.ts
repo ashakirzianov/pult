@@ -59,8 +59,10 @@ function threadViewRelease(): Plugin {
 /**
  * The view's elements in the page, the scope of its stylesheet: the roots the
  * shell mounts it in, the thread's and the composer strip's
- * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`) and the
- * browser host's (`view/browserHost.tsx`), and what it puts on the page's
+ * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`), the
+ * browser host's (`view/browserHost.tsx`) and the Details column's element a
+ * thread's details render into (`src/details/DetailsView.tsx`), each
+ * `pult-view-theme` but the first two, and what it puts on the page's
  * body: base-ui's portal node for every popover, menu, tooltip, dialog and
  * toast, and upstream's own portals there, the composer's command menu, the
  * cite-selection button and the context menu a page without the desktop's

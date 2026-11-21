@@ -41,7 +41,7 @@ import {
   type ViewTarget,
 } from "./ThreadView.tsx";
 
-export type { ThreadViewHost, TurnCheckpoints } from "./host.ts";
+export type { DetailsColumn, DetailsColumnValue, ThreadViewHost, TurnCheckpoints } from "./host.ts";
 export type { ShellConnectionServices } from "./connectionRuntime.ts";
 export type { MountedView, MountOptions, ViewTarget } from "./ThreadView.tsx";
 export type { PreviewOwner, PreviewSessionInfo, ThreadPreviewSessions } from "./preview.ts";

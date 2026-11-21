@@ -20,6 +20,7 @@ import {
 import { createRoot } from "react-dom/client";
 
 import { allowNativeScroll } from "../nativeScroll.ts";
+import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { DetailsTitle, DetailsView } from "./DetailsView.tsx";
 import "./details.css";
 
@@ -68,6 +69,8 @@ export function registerDetails(): void {
     renderBody(container) {
       container.style.height = "100%";
       allowNativeScroll(container);
+      // Upstream's rows for a thread may hold a text field, which keeps the browser's menu.
+      allowNativeTextMenu(container);
       const root = createRoot(container);
       root.render(<DetailsView />);
       return { dispose: () => root.unmount() };

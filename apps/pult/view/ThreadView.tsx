@@ -63,6 +63,7 @@ import {
   startTaggedDraft,
 } from "./drafts.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
+import { DetailsTarget } from "./ThreadDetailsCard.tsx";
 import { threadViewHost } from "./host.ts";
 import { closeThreadPanel } from "./rightPanel.ts";
 
@@ -405,7 +406,10 @@ function makeRoot(mount: Mount, bar: HTMLElement, composerOnly: boolean, arrived
             <CustomSnoozeDialogHost />
             {/* Keyed: a view moved to a new element with its target unchanged mounts its content again, since a moved scroller forgets where it stood. */}
             <SidebarProvider key={again} defaultOpen={false}>
-              <Outlet />
+              {/* The pane's view renders its target's details into the Details column; the composer strip's renders none. */}
+              <DetailsTarget value={composerOnly || target.kind === "none" ? null : target}>
+                <Outlet />
+              </DetailsTarget>
             </SidebarProvider>
             {/* Into the element the timeline's header places, which keeps it across the list's own remounts. */}
             {header === undefined ? null : createPortal(header.content, header.element)}

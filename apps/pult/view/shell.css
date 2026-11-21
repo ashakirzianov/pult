@@ -2,8 +2,9 @@
    with no T3 theme chosen, its canvas and text follow the editor's colours
    and its sans font inherits from the workbench. The colour variables live
    on the workbench element, not the document's root as in a webview.
-   The view's other roots, a preview tab's (`PreviewMount.tsx`) and the
-   page-wide webview host's
+   The view's other roots, a preview tab's (`PreviewMount.tsx`), the Details
+   column's element for a thread's details (`src/details/DetailsView.tsx`) and
+   the page-wide webview host's
    (`browserHost.tsx`), take the same with `pult-view-theme`; the host sits on
    the page's body, outside the workbench element, where its variables do not
    reach, so it keeps upstream's colours and takes the text scale alone. */

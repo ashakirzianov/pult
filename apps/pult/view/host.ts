@@ -89,6 +89,13 @@ export interface ThreadViewHost {
     }>,
   ) => void;
   /**
+   * Where the selected thread's or draft's details render: the Details
+   * column's element while the selection is one, with what it is
+   * (`src/details/`), null otherwise. The pane's view renders upstream's
+   * rows there (`ThreadDetailsCard.tsx`) while it shows that subject.
+   */
+  readonly detailsColumn: DetailsColumnValue;
+  /**
    * The colour scheme the view's theme follows in its System mode, as the
    * system's: the workbench theme's, light or dark (`main.tsx`).
    */
@@ -101,6 +108,20 @@ export interface ThreadViewHost {
    * (`browserHost.tsx`); absent outside Pult.app.
    */
   readonly keepRendering: ((keep: boolean) => Promise<void>) | undefined;
+}
+
+/** The Details column's element for the selected thread or draft, and which it is. */
+export interface DetailsColumn {
+  readonly element: HTMLElement;
+  readonly subject:
+    | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
+    | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+}
+
+/** The Details column live: null while the selection is no thread or draft, or the column is not rendered. */
+export interface DetailsColumnValue {
+  get(): DetailsColumn | null;
+  subscribe(listener: () => void): () => void;
 }
 
 /**

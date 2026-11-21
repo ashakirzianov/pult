@@ -114,6 +114,7 @@
       "entry": [
         "view/connectionRuntime.ts!",
         "view/panelLayoutControls.tsx!",
+        "view/ThreadDetailsCard.tsx!",
         "view/keybindings.ts!",
         "view/stubs/*.ts!",
         "src/**/*.test.ts",
