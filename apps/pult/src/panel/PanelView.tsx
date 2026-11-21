@@ -1,7 +1,7 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
+import { askRef, type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
 
 import { starStore } from "../stars/model.ts";
@@ -45,6 +45,7 @@ import {
   draftCards as draftCardsOf,
   draftKey,
   groupOf,
+  inboxRows,
   keyOf,
   type PanelShelf,
   SETTLED_TAIL_INITIAL_COUNT,
@@ -61,6 +62,17 @@ import {
   useReveal,
 } from "./shelves.tsx";
 import { StarCard } from "./StarCard.tsx";
+
+/** A row's object, which the rows it was listed from hold by its key. */
+function found<Row>(rows: ReadonlyMap<string, Row>, key: string): Row {
+  const row = rows.get(key);
+  if (row === undefined) throw new Error(`Inbox lists a row it does not hold: ${key}`);
+  return row;
+}
+
+function unreachable(value: never): never {
+  throw new Error(`unreachable: ${JSON.stringify(value)}`);
+}
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -142,7 +154,8 @@ function subagentsByRoot(
  * are cards, in the store's order, which is upstream's: pinned and active
  * under Inbox, whose first cards are the projects' drafts of new threads
  * that hold something (`drafts.ts`), newest first, and the selected draft,
- * then the posted asks (`AskCard.tsx`), a Star's while Show Star is on;
+ * then the posted asks (`AskCard.tsx`), a Star's while Show Star is on, the
+ * rows Inbox's order lists (`inboxRows`);
  * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
  * several environments, each card names its own. The selected card expands
  * with its details and its subagents; a subagent has no card, so while one
@@ -160,9 +173,6 @@ export function PanelView() {
   // Read on the selection's change, which re-renders the panel.
   const draft = selectedDraft();
   const drafts = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  const listed = state.threads.filter(
-    (thread) => thread.shelf === "pinned" || thread.shelf === "active",
-  );
   const working = state.threads.filter((thread) => thread.shelf === "working");
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
@@ -233,6 +243,30 @@ export function PanelView() {
   const askCard = (ask: PageAsk) => (
     <AskCard key={askKey(ask)} ask={ask} environment={chip(ask.environmentId)} now={now} />
   );
+  // Inbox's rows in its order, each drawn as its kind's card.
+  const byKey = <Row,>(rows: ReadonlyArray<Row>, key: (row: Row) => string) =>
+    new Map(rows.map((row) => [key(row), row] as const));
+  const asksByKey = byKey(asks, askKey);
+  const inbox = inboxRows({
+    drafts: draftCards,
+    asks: asks.map(askRef),
+    threads: state.threads,
+    environmentIds: [...environments.keys()],
+  }).map((row) => {
+    switch (row.kind) {
+      case "draft":
+        return draftCard(row.draft);
+      case "ask":
+        return askCard(found(asksByKey, row.key));
+      case "thread":
+        return card(row.thread);
+      case "star":
+      case "file":
+        throw new Error(`Inbox has no ${row.kind} row`);
+      default:
+        return unreachable(row);
+    }
+  });
   const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   // The Stars' shelf is no shelf at all while Show Star is off.
   const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
@@ -256,14 +290,10 @@ export function PanelView() {
           <Shelf
             key={name}
             name={name}
-            empty={
-              listed.length === 0 && draftCards.length === 0 && asksOn(asks, "inbox").length === 0
-            }
+            empty={inbox.length === 0}
             actions={<NewAction title="New Thread" command="pult-shell.newThread" />}
           >
-            {draftCards.map(draftCard)}
-            {asksOn(asks, "inbox").map(askCard)}
-            {listed.map(card)}
+            {inbox}
           </Shelf>
         );
       case "working":

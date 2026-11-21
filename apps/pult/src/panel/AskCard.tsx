@@ -2,25 +2,16 @@ import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useState, useSyncExternalStore } from "react";
 
 import type { PageAsk } from "../asks/asks.ts";
-import { posterName } from "../asks/asks.ts";
 import { actOnPageAsk, askStore } from "../asks/model.ts";
-import { starMarks, starStillUrl } from "../stars/mark.ts";
-import { starById, starStore } from "../stars/model.ts";
-import { type Star, starName } from "../stars/stars.ts";
+import type { Star } from "../stars/stars.ts";
 import { showSnoozePresets } from "../threads/park.ts";
-import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
-import { type ShellThread, threadStore } from "../threads/store.ts";
-import { EnvironmentChip } from "./DraftCard.tsx";
-import { JumpHint } from "./JumpHint.tsx";
 import { askKey } from "./order.ts";
 import { age } from "./PanelView.tsx";
+import { PosterCard } from "./PosterCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
-
-const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
-const threadsSnapshot = () => threadStore.get();
 
 /**
  * A Star's posted asks' count after its name on the card, across the
@@ -156,32 +147,12 @@ function AskSlot({ ask, now }: { ask: PageAsk; now: number }) {
   );
 }
 
-/** The poster's icon in the project's place: a Star's mark as its tab shows it, a thread's project's icon. */
-function PosterIcon({ star, thread }: { star: Star | undefined; thread: ShellThread | undefined }) {
-  const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
-  useProjectIcons();
-  if (star !== undefined)
-    return <img className="pult-card-icon" src={starStillUrl(star, marks)} alt="" />;
-  if (thread !== undefined)
-    return (
-      <img
-        className="pult-card-icon"
-        src={projectIconUri(threadProjectIcon(thread)).toString(true)}
-        alt=""
-      />
-    );
-  return <i className="codicon codicon-comment-discussion pult-card-icon" aria-hidden />;
-}
-
 /**
  * An ask's row (Beta's `designs/ask-model.md`), on the shelf its status
- * puts it on: a thread card's look with its poster in the project's place,
- * a Star's mark and name with its channel but `user`'s, or the posting
- * thread's project icon and title, its environment's chip while there are
- * several, its status where a thread's sits, giving way on hover to a
- * thread card's Snooze, Wake, Settle or Un-settle, and its title. A click
- * opens its file among its poster's tabs with the poster's composer under
- * it, a reply (`pult-shell.openAsk`).
+ * puts it on: a poster's row (`PosterCard.tsx`) with its status, giving way
+ * on hover to a thread card's Snooze, Wake, Settle or Un-settle, and its
+ * title. A click opens its file among its poster's tabs with the poster's
+ * composer under it, a reply (`pult-shell.openAsk`).
  */
 export function AskCard({
   ask,
@@ -192,52 +163,16 @@ export function AskCard({
   environment: string | undefined;
   now: number;
 }) {
-  useSyncExternalStore(starStore.subscribe, starStore.get);
-  const { threads } = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
-  const star = "star" in ask.poster ? starById(ask.poster.star) : undefined;
-  const thread =
-    "thread" in ask.poster
-      ? threads.find(
-          (each) =>
-            each.environmentId === ask.environmentId &&
-            "thread" in ask.poster &&
-            each.id === ask.poster.thread,
-        )
-      : undefined;
-  const name = posterName(
-    ask,
-    (starId) => {
-      const found = starById(starId);
-      return found === undefined ? undefined : starName(found);
-    },
-    () => thread?.title,
-  );
-  const open = () => run("pult-shell.openAsk", ask.environmentId, ask.id);
   return (
-    <li className={`pult-card${ask.status === "settled" ? " pult-card-settled" : ""}`}>
-      {/* A button by role, as a thread's card: its actions are buttons inside it. */}
-      <div
-        role="button"
-        tabIndex={0}
-        className="pult-card-select"
-        title={ask.title}
-        onClick={open}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " "))
-            return;
-          event.preventDefault();
-          open();
-        }}
-      >
-        <span className="pult-card-top">
-          <PosterIcon star={star} thread={thread} />
-          <span className="pult-card-project">{name}</span>
-          <EnvironmentChip label={environment} />
-          <AskSlot ask={ask} now={now} />
-        </span>
-        <span className="pult-card-title">{ask.title}</span>
-        <JumpHint rowKey={askKey(ask)} />
-      </div>
-    </li>
+    <PosterCard
+      environmentId={ask.environmentId}
+      poster={ask.poster}
+      environment={environment}
+      rowKey={askKey(ask)}
+      title={ask.title}
+      settled={ask.status === "settled"}
+      slot={<AskSlot ask={ask} now={now} />}
+      onOpen={() => run("pult-shell.openAsk", ask.environmentId, ask.id)}
+    />
   );
 }
