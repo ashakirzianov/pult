@@ -4,6 +4,7 @@
  * `host.serve` dispatch below; its tools register last.
  */
 import * as Asks from "./asks/asks.ts";
+import { tellRetiredAsks } from "./asks/retired.ts";
 import { asksRoute } from "./asks/routes.ts";
 import * as AskTools from "./asks/tools.ts";
 import { Effect, HttpServerResponse, Layer, type PluginHost, ProcessRunner } from "./host.ts";
@@ -23,14 +24,13 @@ import * as XaxisKept from "./xaxis/kept.ts";
  * What this build does, one name per feature the page relies on; the page
  * reads it on each connect, and anything but this JSON means no plugin.
  * `star-schedules` only where this server fires them, `keep-awake` only on
- * darwin; `asks` (`pult_ask`'s) beside `star-asks` until the page moves.
+ * darwin.
  */
 const features: ReadonlyArray<string> = [
   "stars",
   "star-messages",
   "star-sleep-request",
   "star-sleep",
-  "star-asks",
   "asks",
   "star-channel-models",
   "usage-limits",
@@ -42,6 +42,13 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const stars = yield* Stars.make;
   const delivering = deliverTo(stars);
   const asks = yield* Asks.make(stars, delivering.deliver);
+  // Delivery waits for the server's commands, so the Stars with files left in `.pult/asks/` are told apart.
+  yield* tellRetiredAsks(stars, delivering.deliver).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not look for the Stars' retired asks.", { error }),
+    ),
+    Effect.forkDetach,
+  );
   // The server's own runner, over the spawner of its context.
   const runner = yield* ProcessRunner.ProcessRunner.pipe(Effect.provide(ProcessRunner.layer));
   const schedules = yield* Schedules.make(stars, delivering.deliver, (root, command) =>

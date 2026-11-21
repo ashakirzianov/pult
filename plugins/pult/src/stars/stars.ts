@@ -31,7 +31,6 @@ import {
 } from "../host.ts";
 import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
-import { type Ask, askName, ASKS_DIRECTORY, askTitle } from "./asks.ts";
 import { wakeChannelModel } from "./channelModels.ts";
 import { type Channel, taggedChannel, USER_CHANNEL } from "./channels.ts";
 import {
@@ -118,8 +117,6 @@ export interface StarsView {
       /** The model a wake into `user` takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
       readonly model: ModelSelection | null;
       readonly conversations: ReadonlyArray<string>;
-      /** By name. */
-      readonly asks: ReadonlyArray<Ask>;
     }
   >;
 }
@@ -642,42 +639,6 @@ export const make = Effect.gen(function* () {
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
 
-  /** Every `.md` file of the Star's asks, read as asked; one that fails to read counts under its name, and a folder that fails to list as none, each logged. */
-  const asksOf = Effect.fn("Stars.asksOf")(function* (star: Star) {
-    const folder = path.join(star.root, ASKS_DIRECTORY);
-    const files = yield* Effect.flatMap(fs.exists(folder), (there) =>
-      there ? fs.readDirectory(folder) : Effect.succeed([]),
-    ).pipe(
-      Effect.catchCause((cause) =>
-        Effect.as(
-          Effect.logWarning("Could not list a Star's asks.", { starId: star.id, folder, cause }),
-          [],
-        ),
-      ),
-    );
-    const names = files.flatMap((file) => {
-      const name = askName(file);
-      return name === undefined ? [] : [name];
-    });
-    return yield* Effect.forEach(names.toSorted(), (name) => {
-      const file = path.join(folder, `${name}.md`);
-      return fs.readFileString(file).pipe(
-        Effect.catchCause((cause) =>
-          Effect.as(
-            Effect.logWarning("Could not read a Star's ask.", { starId: star.id, file, cause }),
-            undefined,
-          ),
-        ),
-        Effect.map((text) => ({
-          name,
-          title: askTitle(name, text ?? ""),
-          text: text ?? "",
-          path: file,
-        })),
-      );
-    });
-  });
-
   const view = Effect.gen(function* () {
     // The asks folder's project is hidden as a Star's is (`asks.ts`).
     const asksFolder = asksFolderOf(directory, path);
@@ -726,7 +687,6 @@ export const make = Effect.gen(function* () {
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
           model: chosen?.selection ?? newest?.modelSelection ?? null,
           conversations: yield* transcriptNames(star),
-          asks: yield* asksOf(star),
         };
       }),
     );

@@ -106,7 +106,6 @@ const harnessWith = (
       asleepSince: star.created,
       model: null,
       conversations: [],
-      asks: [],
     };
     const view = Effect.map(
       schedules.withSchedules({ directory: server.directory, hidden: [], stars: [starView] }),

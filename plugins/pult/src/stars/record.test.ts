@@ -105,9 +105,18 @@ describe("AGENTS.md", () => {
     assert.strictEqual(parseRecord(AGENTS_TEXT), undefined);
   });
 
-  it("calls .pult/asks/ the Star's, apart from the rest of .pult/", () => {
-    assert.match(AGENTS_TEXT, /^- `\.pult\/asks\/` is yours: /m);
-    assert.include(AGENTS_TEXT, "`.pult/`, apart from what is called yours above,");
+  it("points the Star at the three ask tools, whose reply and notice name its channel", () => {
+    for (const tool of ["`pult_ask`", "`pult_ask_settle`", "`pult_ask_list`"])
+      assert.include(AGENTS_TEXT, tool);
+    assert.include(
+      AGENTS_TEXT,
+      '`[In reply to your ask <id> "<title>", to your channel <channel>]`',
+    );
+    assert.include(
+      AGENTS_TEXT,
+      "or of the user's reply to one of your asks, names the channel you are in",
+    );
+    assert.notInclude(AGENTS_TEXT, ".pult/asks");
   });
 
   it("calls .pult/schedules/ the Star's, and names the runs' record", () => {

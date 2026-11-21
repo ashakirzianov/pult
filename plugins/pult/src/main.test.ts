@@ -218,7 +218,6 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-messages",
           "star-sleep-request",
           "star-sleep",
-          "star-asks",
           "asks",
           "star-channel-models",
           "usage-limits",

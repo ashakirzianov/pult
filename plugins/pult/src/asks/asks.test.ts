@@ -124,7 +124,7 @@ it.effect(
       const page = Effect.map(send("GET", "/asks"), (each) => each.body);
 
       expect((yield* send("GET", "/about")).body.features).toEqual(
-        expect.arrayContaining(["asks", "star-asks"]),
+        expect.arrayContaining(["asks"]),
       );
 
       // A Star, its conversation with the user open and warm; a worker in a repository's worktree.

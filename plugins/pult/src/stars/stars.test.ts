@@ -12,10 +12,12 @@ import {
 } from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
+import { RETIRED_ASKS_NOTICE, tellRetiredAsks } from "../asks/retired.ts";
 import { Effect, FileSystem, Layer, Path } from "../host.ts";
 import { AGENTS_TEXT, AGENTS_VERSION } from "./agents.ts";
 import { recordText } from "./record.ts";
 import { type Channel, channelTag } from "./channels.ts";
+import type { Delivery } from "./deliver.ts";
 import * as Stars from "./stars.ts";
 import { at, fakeServer, run, userMessage } from "./testing.ts";
 
@@ -894,49 +896,32 @@ describe("the user's request to sleep", () => {
   );
 });
 
-describe("asks", () => {
-  it.effect(
-    "are the .md files of .pult/asks by name, an empty one and an unreadable one titled by it",
-    () =>
-      Effect.gen(function* () {
-        const h = yield* harness;
-        const star = yield* h.stars.create({ ifNone: true });
-        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.asks, []);
-
-        const folder = h.path.join(star.root, ".pult/asks");
-        yield* h.write(h.path.join(folder, "rust-backend.md"), "# Rust backend\n\nWhich crate?\n");
-        yield* h.write(h.path.join(folder, "empty.md"), "");
-        yield* h.write(h.path.join(folder, "notes.txt"), "no ask");
-        // A link to nowhere: listed, and failing to read.
-        yield* h.fs.symlink(h.path.join(h.tmp, "nowhere.md"), h.path.join(folder, "lost.md"));
-
-        const askAt = (name: string) => h.path.join(folder, `${name}.md`);
-        assert.deepStrictEqual((yield* h.stars.view).stars[0]?.asks, [
-          { name: "empty", title: "empty", text: "", path: askAt("empty") },
-          { name: "lost", title: "lost", text: "", path: askAt("lost") },
-          {
-            name: "rust-backend",
-            title: "Rust backend",
-            text: "# Rust backend\n\nWhich crate?\n",
-            path: askAt("rust-backend"),
-          },
-        ]);
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("are none where .pult/asks is a file, and the other Stars' are still served", () =>
+describe("tellRetiredAsks", () => {
+  it.effect("tells each Star with a file left in .pult/asks to post it again, in work", () =>
     Effect.gen(function* () {
       const h = yield* harness;
-      const broken = yield* h.stars.create({ ifNone: true });
-      const other = yield* h.stars.create({ ifNone: false });
-      yield* h.write(h.path.join(broken.root, ".pult/asks"), "not a folder");
-      yield* h.write(h.path.join(other.root, ".pult/asks/crate.md"), "# Which crate?\n");
-
-      const asks = new Map((yield* h.stars.view).stars.map((star) => [star.id, star.asks]));
-      assert.deepStrictEqual(asks.get(broken.id), []);
+      const asking = yield* h.stars.create({ ifNone: true });
+      const quiet = yield* h.stars.create({ ifNone: false });
+      yield* h.write(h.path.join(asking.root, ".pult/asks/crate.md"), "# Which crate?\n");
+      yield* h.write(h.path.join(quiet.root, ".pult/asks/notes.txt"), "no ask");
+      const told: Array<Delivery> = [];
+      yield* tellRetiredAsks(h.stars, (delivery) =>
+        Effect.sync(() => {
+          told.push(delivery);
+          return { outcome: "launched" as const, threadId: null };
+        }),
+      ).pipe(Effect.provide(NodeServices.layer));
       assert.deepStrictEqual(
-        asks.get(other.id)?.map((ask) => ask.title),
-        ["Which crate?"],
+        told.map(({ star, text, to, key, sender }) => ({ star: star.id, text, to, key, sender })),
+        [
+          {
+            star: asking.id,
+            text: RETIRED_ASKS_NOTICE,
+            to: "work",
+            key: "asks-retired",
+            sender: "plugin",
+          },
+        ],
       );
     }).pipe(Effect.scoped),
   );
