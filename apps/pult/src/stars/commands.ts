@@ -31,18 +31,10 @@ import {
   starById,
   starStore,
 } from "./model.ts";
-import type { RouteAsk } from "./plugin.ts";
-import {
-  channelRows,
-  drawnHome,
-  rotatedChannelTab,
-  type Star,
-  type StarHome,
-  starName,
-} from "./stars.ts";
+import { channelRows, drawnHome, rotatedChannelTab, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
-/** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder, Open Star Schedule and Open Star Ask are offered then. */
+/** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder and Open Star Schedule are offered then. */
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 /** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
@@ -87,7 +79,7 @@ async function editStarInstructions(star: Star): Promise<void> {
 /**
  * A schedule's file of the Star's as a tab among the Star's, from the home
  * it is drawn from, as its card lists them: `name`'s, or one picked among
- * them; the Star selected first, as Open Star Ask selects it.
+ * them; the Star selected first.
  */
 async function openStarSchedule(
   quickInput: IQuickInputService,
@@ -129,62 +121,6 @@ async function openStarSchedule(
     resource: pultResource(home.environmentId, toUriPath(schedule.path)),
     options: { pinned: true },
   });
-}
-
-/**
- * An ask of the Star's (xaxis `pult/issues/star-asks-list.md`), from the
- * home it is drawn from, as Inbox lists them: `name`'s, or one picked by
- * its title among them; told by a notification when there is none.
- */
-async function pickAsk(
-  quickInput: IQuickInputService,
-  star: Star,
-  name: unknown,
-  placeHolder: string,
-): Promise<{ home: StarHome; ask: RouteAsk } | undefined> {
-  const notifications = await getService(INotificationService);
-  const home = drawnHome(star);
-  if (home === undefined || connection.environment(home.environmentId) === undefined)
-    return void notifications.info("Pult is not connected to your Star's environment.");
-  const asks = home.asks;
-  if (typeof name !== "string" && asks.length === 0)
-    return void notifications.info(`${starName(star)} asks nothing of you.`);
-  const ask =
-    typeof name === "string"
-      ? asks.find((each) => each.name === name)
-      : asks.length === 1
-        ? asks[0]
-        : (
-            await quickInput.pick(
-              asks.map((each) => ({ ask: each, label: each.title, description: each.name })),
-              { placeHolder },
-            )
-          )?.ask;
-  if (ask === undefined) {
-    if (typeof name === "string") notifications.info(`${starName(star)} has no ask ${name}.`);
-    return undefined;
-  }
-  return { home, ask };
-}
-
-/**
- * An ask's file among the Star's tabs, the Star selected, as a file link in
- * its conversation opens one (`src/threads/files.ts`), and the composer
- * strip shown, so the Star's composer is under it and a citation of the
- * ask goes to the Star: Inbox's ask card, the card's badge, an ask's
- * notification and a jump to its card.
- */
-async function openStarAsk(quickInput: IQuickInputService, star: Star, name: unknown) {
-  const picked = await pickAsk(quickInput, star, name, "Open an ask of the Star's");
-  if (picked === undefined) return;
-  const commands = await getService(ICommandService);
-  await commands.executeCommand("pult-shell.selectStar", star.id);
-  // A switch cancelled over a modified file leaves the selection as it was, so the ask is not opened among its tabs.
-  if (selectedStar() !== star.id) return;
-  await (
-    await getService(IEditorService)
-  ).openEditor({ resource: pultResource(picked.home.environmentId, toUriPath(picked.ask.path)) });
-  await commands.executeCommand("pult-shell.showComposer");
 }
 
 /**
@@ -320,9 +256,7 @@ function todo(reason: string): never {
  * (`pult-shell.editStarInstructions [starId]`), Open Star Folder
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
- * Open Star Ask… (`pult-shell.openStarAsk [starId] [name]`, Inbox's ask
- * card, the Star card's badge and an ask's notification: its file among the
- * Star's tabs), Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
+ * Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
  * the card's channel rows), Sync Star (`pult-shell.syncStar
  * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
  * [starId]`, the Star's current conversation in `user` put to sleep, offered only
@@ -443,25 +377,6 @@ export function registerStarCommands(): void {
         const quickInput = accessor.get(IQuickInputService);
         const star = await pickStar(quickInput, starId, "Open a Star's schedule");
         if (star !== undefined) await openStarSchedule(quickInput, star, name);
-      }
-    },
-  );
-  registerAction2(
-    class extends Action2 {
-      constructor() {
-        super({
-          id: "pult-shell.openStarAsk",
-          title: { value: "Open Star Ask…", original: "Open Star Ask…" },
-          category,
-          f1: true,
-          precondition: HasStarContext,
-        });
-      }
-
-      async run(accessor: ServicesAccessor, starId?: unknown, name?: unknown): Promise<void> {
-        const quickInput = accessor.get(IQuickInputService);
-        const star = await pickStar(quickInput, starId, "Open a Star's ask");
-        if (star !== undefined) await openStarAsk(quickInput, star, name);
       }
     },
   );

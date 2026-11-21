@@ -180,13 +180,34 @@ export interface RouteSchedule {
   readonly last: RouteRun | null;
 }
 
-/** A thing the Star needs from the user, as the plugin read its file, `.pult/asks/<name>.md`: its title the file's first line, its text the whole file. */
+/** Where `about` lists it, the plugin serves the asks (`pult_ask`'s): `GET asks` and `POST asks/<id>/<action>`. */
+export const ASKS_FEATURE = "asks";
+
+/** Who posted an ask: a Star's conversation in a channel, or any other thread. */
+export type RoutePoster =
+  | { readonly star: string; readonly channel: string }
+  | { readonly thread: string };
+
+export type AskStatus = "posted" | "replied" | "snoozed" | "settled";
+
+/** An ask as the plugin serves it on a card's action; `file` is a host path, `settled` its own settle or its thread's. */
 export interface RouteAsk {
-  readonly name: string;
+  readonly id: string;
   readonly title: string;
-  readonly text: string;
-  /** The file, a host path. */
-  readonly path: string;
+  readonly status: AskStatus;
+  readonly file: string;
+  readonly poster: RoutePoster;
+  readonly posted: string;
+  readonly replied: string | null;
+  readonly snoozedUntil: string | null;
+  readonly settled: string | null;
+}
+
+/** What `GET asks` answers: the asks folder (a host path) and its hidden project, null before its first Markdown, and every ask by `posted`, each with the line its reply opens with. */
+export interface AsksAnswer {
+  readonly folder: string;
+  readonly projectId: string | null;
+  readonly asks: ReadonlyArray<RouteAsk & { readonly prefix: string }>;
 }
 
 /** A model as the server's threads carry it, the fields the page checks; the view decodes it in full. */
@@ -208,8 +229,6 @@ export interface RouteStar extends WrittenStar {
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules' files, by name; none from a plugin older than the schedules. */
   readonly schedules: ReadonlyArray<RouteSchedule>;
-  /** Its asks, by name; none from a plugin older than the asks. */
-  readonly asks: ReadonlyArray<RouteAsk>;
 }
 
 /** What `GET /stars` answers: the server's Stars directory (a host path), the projects a page draws as no project, and its Stars. */
@@ -327,15 +346,6 @@ const schedule = struct<RouteSchedule>({
 const schedules: Decode<ReadonlyArray<RouteSchedule>> = (value, at) =>
   value === undefined ? [] : arrayOf(schedule)(value, at);
 
-/** A plugin older than the asks serves none: absent reads as none, any other shape fails. */
-const asks: Decode<ReadonlyArray<RouteAsk>> = (value, at) =>
-  value === undefined
-    ? []
-    : arrayOf(struct<RouteAsk>({ name: string, title: string, text: string, path: string }))(
-        value,
-        at,
-      );
-
 /** A plugin older than the field serves none: absent reads as null. Its options and any other field are kept, for the view to decode. */
 const model: Decode<RouteModel | null> = (value, at) => {
   if (value === undefined || value === null) return null;
@@ -365,7 +375,6 @@ const routeStar = struct<RouteStar>({
   model,
   conversations: arrayOf(string),
   schedules,
-  asks,
 });
 
 const starsAnswer = struct<StarsAnswer>({
@@ -394,6 +403,39 @@ const transcript = struct<Transcript>({
   ),
 });
 
+const askStatus: Decode<AskStatus> = (value, at) =>
+  value === "posted" || value === "replied" || value === "snoozed" || value === "settled"
+    ? value
+    : fail(at, "posted, replied, snoozed or settled");
+
+const poster: Decode<RoutePoster> = (value, at) => {
+  if (isFields(value) && typeof value.star === "string" && typeof value.channel === "string")
+    return { star: value.star, channel: value.channel };
+  if (isFields(value) && typeof value.thread === "string") return { thread: value.thread };
+  return fail(at, "{ star, channel } or { thread }");
+};
+
+const routeAsk = struct<RouteAsk>({
+  id: string,
+  title: string,
+  status: askStatus,
+  file: string,
+  poster,
+  posted: string,
+  replied: nullable(string),
+  snoozedUntil: nullable(string),
+  settled: nullable(string),
+});
+
+const asksAnswer = struct<AsksAnswer>({
+  folder: string,
+  projectId: nullable(string),
+  asks: arrayOf((value, at) => ({
+    ...routeAsk(value, at),
+    prefix: struct<{ prefix: string }>({ prefix: string })(value, at).prefix,
+  })),
+});
+
 /** A transcript as the lookup by its thread serves it, with its name among the Star's `conversations`. */
 export interface NamedTranscript extends Transcript {
   readonly name: string;
@@ -409,6 +451,8 @@ export const decodeStars = (body: unknown): StarsAnswer => starsAnswer(body, "st
 /** A Star as the write routes answer it, decoded; a throw for any other shape. */
 const decodeStar = (body: unknown): WrittenStar => writtenStar(body, "star");
 /** A transcript's answer, decoded; a throw for any other shape. */
+const decodeAsks = (body: unknown): AsksAnswer => asksAnswer(body, "asks");
+const decodeAsk = (body: unknown): RouteAsk => routeAsk(body, "ask");
 export const decodeTranscript = (body: unknown): Transcript => transcript(body, "transcript");
 
 /**
@@ -518,6 +562,24 @@ export const readStarTranscriptOfThread = (credential: Credential, id: string, t
 
 const keepAwakeAnswer = (body: unknown): boolean =>
   isFields(body) && typeof body.on === "boolean" ? body.on : fail("keep-awake", "{ on }");
+
+/** The server's asks, every one, by `posted`. */
+export const readAsks = (credential: Credential) => ask(credential, "GET", "/asks", decodeAsks);
+
+/** What a page does to an ask: its reply sent, Settle, Un-settle, or Snooze until a time, null being Wake. */
+export type AskAction =
+  | { readonly kind: "replied" | "settle" | "unsettle" }
+  | { readonly kind: "snooze"; readonly until: string | null };
+
+/** Acts on the ask, answering it as it stands after; a refusal (unknown, its thread's settle, a settle notice that failed) throws the plugin's words. */
+export const actOnAsk = (credential: Credential, id: string, action: AskAction) =>
+  ask(
+    credential,
+    "POST",
+    `/asks/${encodeURIComponent(id)}/${action.kind}`,
+    decodeAsk,
+    action.kind === "snooze" ? { until: action.until } : undefined,
+  );
 
 /** Whether the server keeps its Mac awake while agents work. */
 export const readKeepAwake = (credential: Credential) =>

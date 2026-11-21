@@ -9,7 +9,8 @@ import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { openAsks } from "../stars/stars.ts";
+import { askRef, shownAsks } from "../asks/asks.ts";
+import { askStore } from "../asks/model.ts";
 import {
   explorerSelected,
   onDidSelectThread,
@@ -80,7 +81,7 @@ function currentTargets(): JumpTarget<URI>[] {
   const stars = starEnabled.get() ? starStore.get() : [];
   return jumpTargets({
     stars: stars.map((star) => star.id),
-    asks: openAsks(stars).map(({ star, ask }) => ({ starId: star.id, name: ask.name })),
+    asks: shownAsks(askStore.get(), starEnabled.get()).map(askRef),
     environmentIds,
     files: openExplorerFiles.get().files,
     drafts: draftCards(
@@ -197,7 +198,11 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
       return selectDraft(target.draft.environmentId, target.draft.projectId);
     case "ask":
       return getService(ICommandService).then((commands) =>
-        commands.executeCommand<void>("pult-shell.openStarAsk", target.ask.starId, target.ask.name),
+        commands.executeCommand<void>(
+          "pult-shell.openAsk",
+          target.ask.environmentId,
+          target.ask.id,
+        ),
       );
     case "thread":
       return selectThread(target.thread.environmentId, target.thread.id);

@@ -17,7 +17,7 @@ import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { citedPath, diffFile, type CitedCheckout } from "./citedPath.ts";
 import { diffExcerpt } from "./diffExcerpt.ts";
-import { composerStrip, HasComposerContext, selectedTarget } from "./index.tsx";
+import { composerStrip, HasComposerContext, stripTarget } from "./index.tsx";
 
 const CITE_SELECTION = "pult-shell.citeSelection";
 
@@ -117,7 +117,7 @@ export function registerCiteCommand(): void {
         const editor = editors.getFocusedCodeEditor() ?? editors.getActiveCodeEditor();
         const model = editor?.getModel();
         const selection = editor?.getSelection();
-        const target = selectedTarget();
+        const target = stripTarget(editorPanes.activeEditor?.resource?.toString());
         const notify = async (message: string) =>
           (await getService(INotificationService)).info(message);
         if (typeof passage === "string") return void (await notify(passage));

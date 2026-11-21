@@ -35,7 +35,6 @@ const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar =>
   model: null,
   conversations: [],
   schedules: [],
-  asks: [],
   ...overrides,
 });
 const answer = (stars: ReadonlyArray<RouteStar>, hidden: ReadonlyArray<string> = []) =>

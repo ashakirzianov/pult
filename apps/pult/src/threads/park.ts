@@ -267,21 +267,21 @@ function threadParkActions(target: ShellThread): ParkActions {
   return parkActions(target, features);
 }
 
-/** Upstream's snooze presets, each with its time, then Custom…, which asks the user for one. */
-function snoozeActions(target: ThreadRef): IAction[] {
+/** Upstream's snooze presets, each with its time, then Custom…, which asks the user for one; `snooze` takes the time picked. */
+function snoozeActions(snooze: (wake: string) => void): IAction[] {
   return [
     ...resolveSnoozePresets(new Date()).map((preset) =>
       toAction({
         id: `pult-shell.snooze.${preset.id}`,
         label: `${preset.label} (${preset.whenLabel})`,
-        run: () => snoozeThread(target, preset.snoozedUntil),
+        run: () => snooze(preset.snoozedUntil),
       }),
     ),
     new Separator(),
     toAction({
       id: "pult-shell.snooze.custom",
       label: "Custom…",
-      run: () => snoozeThread(target, CUSTOM_WAKE),
+      run: () => snooze(CUSTOM_WAKE),
     }),
   ];
 }
@@ -289,15 +289,25 @@ function snoozeActions(target: ThreadRef): IAction[] {
 type Anchor = HTMLElement | { x: number; y: number };
 
 /** The card's clock: the snooze presets under it. `onHide` once the menu closes. */
-export async function showSnoozeMenu(
-  target: ThreadRef,
+export const showSnoozeMenu = (target: ThreadRef, anchor: HTMLElement, onHide: () => void) =>
+  showSnoozePresets(anchor, onHide, (wake) => void snoozeThread(target, wake));
+
+/** The snooze presets under `anchor`, the time picked, Custom…'s asked for, given to `snooze`: an ask's card's clock (`src/panel/AskCard.tsx`). */
+export async function showSnoozePresets(
   anchor: HTMLElement,
   onHide: () => void,
+  snooze: (snoozedUntil: string) => void,
 ): Promise<void> {
   const menus = await getService(IContextMenuService);
   menus.showContextMenu({
     getAnchor: () => anchor,
-    getActions: () => snoozeActions(target),
+    getActions: () =>
+      snoozeActions((wake) => {
+        if (wake !== CUSTOM_WAKE) return snooze(wake);
+        void customWake().then((until) => {
+          if (until !== undefined) snooze(until);
+        });
+      }),
     onHide,
   });
 }
@@ -321,7 +331,11 @@ export async function showThreadMenu(target: ShellThread, anchor: Anchor): Promi
       : null,
     offered.snooze
       ? target.canSnooze
-        ? new SubmenuAction("pult-shell.snoozeThread", "Snooze", snoozeActions(target))
+        ? new SubmenuAction(
+            "pult-shell.snoozeThread",
+            "Snooze",
+            snoozeActions((wake) => void snoozeThread(target, wake)),
+          )
         : toAction({
             id: "pult-shell.snoozeThread",
             label: "Snooze",

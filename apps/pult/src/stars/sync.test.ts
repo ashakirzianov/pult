@@ -324,7 +324,6 @@ NodeTest.describe("the sync on a Star's sleep", () => {
           model: null,
           conversations: [],
           schedules: [],
-          asks: [],
         },
       ],
     },

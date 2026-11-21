@@ -56,7 +56,7 @@ const keys = (targets: ReadonlyArray<{ readonly key: string }>) =>
 
 NodeTest.describe("jumpTargets", () => {
   NodeTest.test(
-    "reaches the Explorer's files, then the drafts, the asks, then the threads shelf by shelf, as the panel lists them",
+    "reaches the Explorer's files, then the drafts, then shelf by shelf the asks and the threads, as the panel lists them",
     () => {
       const targets = jumpTargets(
         panel({
@@ -64,9 +64,11 @@ NodeTest.describe("jumpTargets", () => {
           files: [file("other", "/b.ts"), file("env", "/a.ts")],
           drafts: [draft("project")],
           asks: [
-            { starId: "beta", name: "review.md" },
-            { starId: "beta", name: "spend.md" },
-            { starId: "gamma", name: "access.md" },
+            { environmentId: "env", id: "review", shelf: "inbox" },
+            { environmentId: "env", id: "spend", shelf: "settled" },
+            { environmentId: "other", id: "access", shelf: "inbox" },
+            { environmentId: "env", id: "sent", shelf: "working" },
+            { environmentId: "env", id: "later", shelf: "snoozed" },
           ],
           threads: [
             thread("settled", "settled"),
@@ -82,13 +84,15 @@ NodeTest.describe("jumpTargets", () => {
         "pult://env/a.ts",
         "pult://other/b.ts",
         "draft:env/project",
-        "ask:beta/review.md",
-        "ask:beta/spend.md",
-        "ask:gamma/access.md",
+        "ask:env/review",
+        "ask:other/access",
         "env/pinned",
         "env/active",
+        "ask:env/sent",
         "env/working",
+        "ask:env/later",
         "env/snoozed",
+        "ask:env/spend",
         "env/settled",
       ]);
     },
@@ -120,7 +124,7 @@ NodeTest.describe("jumpTargets", () => {
           panel({
             stars: ["one"],
             files,
-            asks: [{ starId: "one", name: "ask.md" }],
+            asks: [{ environmentId: "env", id: "ask", shelf: "inbox" }],
             threads,
             open: [],
             selection: "env/active",

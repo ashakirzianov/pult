@@ -32,7 +32,12 @@ const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined)
  * the model it shows, the choice the plugin resolved for it, unless one was
  * picked in it; the answer is not used.
  */
-async function afterDraftWake(starId: string, environmentId: string, threadId: string) {
+export async function afterDraftWake(
+  starId: string,
+  environmentId: string,
+  threadId: string,
+  channel?: string,
+) {
   try {
     const projection = await connection.run(
       environmentId,
@@ -40,7 +45,7 @@ async function afterDraftWake(starId: string, environmentId: string, threadId: s
         threadId: ThreadId.make(threadId),
       }),
     );
-    await starWakeModel(starId, environmentId, projection.thread.runtimeMode);
+    await starWakeModel(starId, environmentId, projection.thread.runtimeMode, channel);
   } catch (error) {
     console.warn("[pult-shell] the Star's woken conversation could not be read", error);
   }

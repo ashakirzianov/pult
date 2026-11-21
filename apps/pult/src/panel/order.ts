@@ -140,14 +140,16 @@ export const environmentKey = (environmentId: string) => `environment:${environm
 /** A Star's card's key, beside the threads' in the selection's snapshot. */
 export const starKey = (starId: string) => `star:${starId}`;
 
-/** An ask's row in Inbox: its Star's id and the ask's name, unique among the Star's. */
+/** An ask's row: its environment and id, and the shelf its status puts it on (`src/asks/asks.ts`). */
 export interface AskRef {
-  readonly starId: string;
-  readonly name: string;
+  readonly environmentId: string;
+  readonly id: string;
+  readonly shelf: "inbox" | "working" | "snoozed" | "settled";
 }
 
 /** An ask's row's key, beside the cards' in the jump hints. */
-export const askKey = (ask: AskRef) => `ask:${ask.starId}/${ask.name}`;
+export const askKey = (ask: Pick<AskRef, "environmentId" | "id">) =>
+  `ask:${ask.environmentId}/${ask.id}`;
 
 /** What the panel's order needs of a thread. */
 type ThreadRef = Pick<ShellThread, "environmentId" | "id" | "shelf">;
@@ -251,7 +253,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly files: ReadonlyArray<File>;
   /** Inbox's draft cards (`draftCards`). */
   readonly drafts: ReadonlyArray<ProjectDraft>;
-  /** Inbox's ask rows, the Stars' open asks (`openAsks`, `src/stars/stars.ts`); none while Show Star is off. */
+  /** The asks' rows, each on its shelf, in the model's order (`shownAsks`, `src/asks/asks.ts`). */
   readonly asks: ReadonlyArray<AskRef>;
   /** The store's threads, in its order. */
   readonly threads: ReadonlyArray<Thread>;
@@ -268,8 +270,9 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
  * rows: shelf by shelf in the open shelves' order, a closed shelf reaching
  * none; the Stars' cards, the Explorer shelf's open files, its environments'
- * rows left out, Inbox's rows (`inboxRows`), and the cards of the Working,
- * Snoozed and Settled shelves', the threads none while no environment is held.
+ * rows left out, Inbox's rows (`inboxRows`), and the ask rows then the cards
+ * of the Working, Snoozed and Settled shelves', the threads none while no
+ * environment is held.
  * The Limits shelf's rows are none: they select nothing.
  */
 export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
@@ -284,6 +287,10 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     key: keyOf(thread),
     thread,
   });
+  const asksOn = (shelf: AskRef["shelf"]) =>
+    panel.asks
+      .filter((ask) => ask.shelf === shelf)
+      .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask }));
   const rows = (shelf: PanelShelf): JumpTarget<File, Thread>[] => {
     switch (shelf) {
       case "stars":
@@ -297,9 +304,12 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
         return inboxRows(panel);
       case "working":
       case "snoozed":
-        return on(shelf).map(threadTarget);
+        return [...asksOn(shelf), ...on(shelf).map(threadTarget)];
       case "settled":
-        return settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget);
+        return [
+          ...asksOn("settled"),
+          ...settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
+        ];
       case "limits":
         return [];
     }
@@ -308,8 +318,8 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
 }
 
 /**
- * Inbox's rows, top to bottom: the draft cards, then the ask rows, then the
- * pinned and active threads' cards, none while no environment is held.
+ * Inbox's rows, top to bottom: the draft cards, then the posted asks' rows,
+ * then the pinned and active threads' cards, none while no environment is held.
  */
 export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
   panel: Pick<PanelRows<File, Thread>, "drafts" | "asks" | "threads" | "environmentIds">,
@@ -320,7 +330,9 @@ export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
       key: draftKey(draft),
       draft,
     })),
-    ...panel.asks.map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask })),
+    ...panel.asks
+      .filter((ask) => ask.shelf === "inbox")
+      .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask })),
     ...(panel.environmentIds.length === 0
       ? []
       : panel.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active")

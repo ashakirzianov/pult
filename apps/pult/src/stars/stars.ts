@@ -5,7 +5,6 @@
 // for a Star to be created.
 import type { ShellThread } from "../threads/store.ts";
 import {
-  type RouteAsk,
   type RouteChannel,
   type RouteModel,
   type RouteSchedule,
@@ -33,8 +32,6 @@ export interface StarHome {
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules as this environment's plugin read them (`schedules.ts`). */
   readonly schedules: ReadonlyArray<RouteSchedule>;
-  /** Its asks as this environment's plugin read them, by name. */
-  readonly asks: ReadonlyArray<RouteAsk>;
   /** Where the folder's repository syncs, its `origin`; absent while it does not (`sync.ts`). */
   readonly origin?: string;
 }
@@ -139,7 +136,7 @@ export function conversationsOf<Thread extends StarThread>(
 const later = (left: string, right: string) => Date.parse(right) > Date.parse(left);
 
 /**
- * The home a Star is drawn from, for the fold and the card's asks and
+ * The home a Star is drawn from, for the fold and the card's
  * schedules: the home of its current conversation, else the one
  * whose `asleepSince` is latest.
  */
@@ -176,27 +173,6 @@ export function isEarlierConversation(
   );
 }
 
-/** An open ask as the page draws it: its Star, the home it is drawn from (`drawnHome`) and the ask as that home's plugin serves it. */
-export interface OpenAsk<S> {
-  readonly star: S;
-  readonly home: StarHome;
-  readonly ask: RouteAsk;
-}
-
-/**
- * The Stars' open asks, in the Stars' order, each Star's those of the home
- * it is drawn from, by name as its plugin serves them: Inbox's ask rows,
- * which its tray icon counts among its rows.
- */
-export function openAsks<S extends Pick<Star<StarThread>, "homes" | "current">>(
-  stars: ReadonlyArray<S>,
-): OpenAsk<S>[] {
-  return stars.flatMap((star) => {
-    const home = drawnHome(star);
-    return home === undefined ? [] : home.asks.map((ask) => ({ star, home, ask }));
-  });
-}
-
 /**
  * The Stars of the environments' answers, in the order of their first home:
  * one id on several environments is one Star with a home on each. Name and
@@ -228,7 +204,6 @@ export function starsOf<Thread extends StarThread>(
         asleepSince: star.asleepSince,
         conversations: star.conversations,
         schedules: star.schedules,
-        asks: star.asks,
         ...(origin === undefined ? {} : { origin }),
       });
     }

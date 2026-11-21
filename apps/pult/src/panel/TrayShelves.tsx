@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 
+import { askRef, asksOn, shownAsks } from "../asks/asks.ts";
+import { askStore } from "../asks/model.ts";
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { openAsks } from "../stars/stars.ts";
 import { onDidSelectThread, openExplorerFiles, selectedDraft } from "../threads/selection.ts";
 import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
@@ -53,7 +54,7 @@ const threadsSnapshot = () => threadStore.get();
  * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
  * a badge in the accent colour, as Source Control's tab does (Inbox's
- * counting its rows, the Stars' asks among them), but Stars, whose asks
+ * counting its rows, the posted asks among them), but Stars, whose asks
  * Inbox counts, Settled, whose count is in its tooltip, and Limits,
  * whose badge is the count of warning windows, none while nothing warns;
  * dimmed with no badge while the shelf holds nothing; highlighted as the
@@ -68,6 +69,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
   const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
+  const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
   // The Stars' shelf is no shelf at all while Show Star is off.
   const closed = closedShelves.filter(
     (shelf) => groupOf(shelf) === group && (shelf !== "stars" || starsShown),
@@ -118,14 +120,11 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
           title: label,
         };
       case "inbox": {
-        // Its rows: the drafts', the asks' while Show Star is on, then the pinned and active threads'.
+        // Its rows: the drafts', the posted asks', then the pinned and active threads'.
         const threads = [...on("pinned"), ...on("active")];
-        const asks = starsShown
-          ? openAsks(stars).map(({ star, ask }) => ({ starId: star.id, name: ask.name }))
-          : [];
         const count = inboxRows({
           drafts,
-          asks,
+          asks: asks.map(askRef),
           threads: state.threads,
           environmentIds: state.environments.map((environment) => environment.id),
         }).length;
@@ -140,7 +139,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
       }
       case "working":
       case "snoozed": {
-        const count = on(shelf).length;
+        const count = on(shelf).length + asksOn(asks, shelf).length;
         return {
           badge: count > 0 ? count : undefined,
           empty: count === 0,
@@ -149,12 +148,13 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
         };
       }
       case "settled":
-        // Every settled thread, the older ones the shells leave out among them, as the shelf's header counts.
+        // Every settled thread, the older ones the shells leave out among them, and ask, as the shelf's header counts.
+        const settledAsks = asksOn(asks, "settled").length;
         return {
           badge: undefined,
-          empty: on("settled").length === 0 && state.settled.count === 0,
+          empty: on("settled").length === 0 && state.settled.count === 0 && settledAsks === 0,
           selected: holdsSelected("settled"),
-          title: `${label} · ${state.settled.count}`,
+          title: `${label} · ${state.settled.count + settledAsks}`,
         };
       case "limits": {
         const shelfShown = limitsShelf(limits.accounts, now, false, weekend);

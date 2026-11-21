@@ -3,32 +3,39 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import type { LookThread } from "./look.ts";
-import { NOTHING_SEEN, type NoticeStar, notices, type Seen, waitingThread } from "./notices.ts";
+import {
+  NOTHING_SEEN,
+  type NoticeAsks,
+  type NoticeStar,
+  notices,
+  type Seen,
+  waitingThread,
+} from "./notices.ts";
 
-const ask = (name: string) => ({ name, title: `Title of ${name}` });
-type Asks = ReturnType<typeof ask>[];
-const home = (environmentId: string, asks: Asks, current = true) => ({
+const ask = (id: string) => ({ id, title: `Title of ${id}`, poster: "Vega" });
+const on = (environmentId: string, ids: ReadonlyArray<string>, current = true): NoticeAsks => ({
   environmentId,
   current,
-  asks,
+  posted: ids.map(ask),
 });
 
 const star = (overrides: Partial<NoticeStar> = {}): NoticeStar => ({
   id: "s",
   name: "Vega",
-  homes: [home("a", [])],
-  drawn: "a",
   waitingOn: null,
   ...overrides,
 });
-/** A Star with one home, `a`, holding `asks`. */
-const asking = (asks: Asks, current = true) => [star({ homes: [home("a", asks, current)] })];
 
 /** Runs the readings in order, each over the last one's `seen`, and returns every result. */
-function readings(...each: ReadonlyArray<ReadonlyArray<NoticeStar>>) {
+function readings(
+  ...each: ReadonlyArray<{
+    readonly stars?: ReadonlyArray<NoticeStar>;
+    readonly asks?: ReadonlyArray<NoticeAsks>;
+  }>
+) {
   let seen: Seen = NOTHING_SEEN;
-  return each.map((stars) => {
-    const result = notices(stars, seen);
+  return each.map(({ stars = [], asks = [] }) => {
+    const result = notices(stars, asks, seen);
     seen = result.seen;
     return result;
   });
@@ -37,70 +44,72 @@ const shownTags = (results: ReturnType<typeof readings>) =>
   results.map((result) => result.show.map((notice) => notice.tag));
 
 NodeTest.describe("notices", () => {
-  NodeTest.it("counts the cards' asks, the drawn home's, across the Stars", () => {
-    const [result] = readings([
-      star({ homes: [home("a", [ask("x"), ask("y")]), home("b", [ask("z")])] }),
-      star({ id: "t", homes: [home("a", [ask("x")])] }),
-    ]);
+  NodeTest.it("counts the posted asks across the environments", () => {
+    const [result] = readings({ asks: [on("a", ["x", "y"]), on("b", ["z"], false)] });
     NodeAssert.equal(result?.badge, 3);
   });
 
-  NodeTest.it("takes a home's first answer as a baseline, and notifies an ask new after it", () => {
-    const [first, second] = readings(asking([ask("old")]), asking([ask("old"), ask("new")]));
-    NodeAssert.deepEqual(first?.show, []);
-    NodeAssert.deepEqual(second?.show, [
-      {
-        kind: "ask",
-        tag: "pult-ask:s:new",
-        starId: "s",
-        ask: "new",
-        title: "Vega",
-        body: "Title of new",
-      },
-    ]);
-  });
-
-  NodeTest.it("replays nothing when a home's environment reconnects", () => {
-    const results = readings(
-      asking([]),
-      asking([], false),
-      asking([ask("during")]),
-      asking([ask("during"), ask("after")]),
-    );
-    NodeAssert.deepEqual(shownTags(results), [[], [], [], ["pult-ask:s:after"]]);
-  });
-
   NodeTest.it(
-    "tells of an ask once, when it reaches the drawn home, whichever home has it first",
+    "takes an environment's first answer as a baseline, and notifies an ask posted after it",
     () => {
-      const two = (a: Asks, b: Asks, drawn: string) =>
-        [star({ homes: [home("a", a), home("b", b)], drawn })] as const;
-      const results = readings(
-        two([], [], "a"),
-        two([], [ask("x")], "a"),
-        two([ask("x")], [ask("x")], "a"),
-        two([ask("x")], [ask("x")], "b"),
-        two([ask("x"), ask("y")], [], "a"),
-        two([ask("x"), ask("y")], [ask("y")], "b"),
+      const [first, second] = readings(
+        { asks: [on("a", ["old"])] },
+        { asks: [on("a", ["old", "new"])] },
       );
-      NodeAssert.deepEqual(shownTags(results), [
-        [],
-        [],
-        ["pult-ask:s:x"],
-        [],
-        ["pult-ask:s:y"],
-        [],
+      NodeAssert.deepEqual(first?.show, []);
+      NodeAssert.deepEqual(second?.show, [
+        {
+          kind: "ask",
+          tag: "pult-ask:a:new",
+          environmentId: "a",
+          ask: "new",
+          title: "Vega",
+          body: "Title of new",
+        },
       ]);
     },
   );
 
-  NodeTest.it("keeps an ask's notification while any home holds the ask, current or not", () => {
-    const [result] = readings([star({ homes: [home("a", []), home("b", [ask("x")], false)] })]);
-    NodeAssert.deepEqual([...(result?.live ?? [])], ["pult-ask:s:x"]);
-  });
+  NodeTest.it(
+    "replays nothing across a reconnect, and notifies an ask posted again after it left Inbox",
+    () => {
+      const results = readings(
+        { asks: [on("a", [])] },
+        { asks: [on("a", [], false)] },
+        { asks: [on("a", ["during"])] },
+        { asks: [on("a", ["during", "after"])] },
+        { asks: [on("a", ["during"])] },
+        { asks: [on("a", ["during", "after"])] },
+      );
+      NodeAssert.deepEqual(shownTags(results), [
+        [],
+        [],
+        [],
+        ["pult-ask:a:after"],
+        [],
+        ["pult-ask:a:after"],
+      ]);
+    },
+  );
+
+  NodeTest.it(
+    "keeps an ask's notification while it is posted, or its environment is not current",
+    () => {
+      const results = readings(
+        { asks: [on("a", [])] },
+        { asks: [on("a", ["x"])] },
+        { asks: [on("a", [], false)] },
+        { asks: [on("a", [])] },
+      );
+      NodeAssert.deepEqual(
+        results.map((result) => [...result.live]),
+        [[], ["pult-ask:a:x"], ["pult-ask:a:x"], []],
+      );
+    },
+  );
 
   NodeTest.it("notifies a Star entering waiting once, after a reading that knew it was not", () => {
-    const waits = (waitingOn: NoticeStar["waitingOn"]) => [star({ waitingOn })];
+    const waits = (waitingOn: NoticeStar["waitingOn"]) => ({ stars: [star({ waitingOn })] });
     const results = readings(
       waits(undefined),
       waits({ title: "Ship it" }),
@@ -117,21 +126,6 @@ NodeTest.describe("notices", () => {
       [true, true, false, true, true],
     );
   });
-
-  NodeTest.it(
-    "forgets everything while Show Star is off, so turning it on notifies nothing",
-    () => {
-      const results = readings(asking([ask("x")]), [], asking([ask("x"), ask("y")]));
-      NodeAssert.deepEqual(
-        results.map((result) => [result.badge, result.show.length, result.live.size]),
-        [
-          [1, 0, 1],
-          [0, 0, 0],
-          [2, 0, 2],
-        ],
-      );
-    },
-  );
 });
 
 const thread = (id: string, overrides: Partial<LookThread> = {}) => ({

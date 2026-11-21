@@ -21,7 +21,9 @@ import {
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import { createRoot } from "react-dom/client";
 
-import type { MountedView, ViewTarget } from "../../view/main.tsx";
+import type { MountedView, MountOptions, ViewTarget } from "../../view/main.tsx";
+import { askStore } from "../asks/model.ts";
+import { onDidChangeReply, replyComposer } from "../asks/reply.ts";
 import { connection } from "../connection/connection.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { BarTip } from "../threads/barEntries.tsx";
@@ -104,7 +106,7 @@ function followFilled(): void {
 }
 
 /** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
-export function selectedTarget(): ViewTarget | null {
+function selectedTarget(): ViewTarget | null {
   const target = selectionTarget();
   const environmentId = connection.environment(target?.environmentId ?? "")?.environmentId;
   if (target === undefined || environmentId === undefined) return null;
@@ -113,14 +115,16 @@ export function selectedTarget(): ViewTarget | null {
     : { kind: "draft", environmentId, projectId: target.projectId };
 }
 
+/** The composer the strip shows, and Cite cites into: a reply's under its ask's file (`src/asks/reply.ts`), else the selection's (`selectedTarget`). */
+export function stripTarget(activeResource: string | undefined): ViewTarget | null {
+  return replyComposer(activeResource)?.target ?? selectedTarget();
+}
+
 /** The selected Star's composer as its tab has it (`starComposerOptions`), or upstream's for any other selection. */
 function selectedStarComposer() {
   const starId = selectedStar();
   return starId === undefined ? {} : starComposerOptions(starId);
 }
-
-const sameTarget = (left: ViewTarget | null, right: ViewTarget | null) =>
-  JSON.stringify(left) === JSON.stringify(right);
 
 /** The strip's height before its composer has rendered. */
 const INITIAL_HEIGHT = 120;
@@ -176,7 +180,8 @@ function stripView() {
 /**
  * The composer under a file (xaxis `pult/issues/file-citations`): while the
  * strip is open and the active editor is a file of the selected thread's or
- * draft's tab set, that thread's or draft's composer, a composer-only mount
+ * draft's tab set, that thread's or draft's composer, or under an ask's file
+ * its reply's (`src/asks/reply.ts`), a composer-only mount
  * of the thread view (`view/ThreadView.tsx`), in a view of the
  * layout's grid between the editor part and the status strip. Mounted when
  * first shown, and again when the selection changes while it is open.
@@ -197,7 +202,9 @@ export async function startComposerStrip(): Promise<void> {
   workbenchGrid.addView(strip.view, strip.view.minimumHeight, editorPartView, Direction.Down);
   workbenchGrid.setViewVisible(strip.view, false);
 
-  let mounted: { target: ViewTarget; view: MountedView | undefined; disposed: boolean } | undefined;
+  let mounted:
+    | { key: string; target: ViewTarget; view: MountedView | undefined; disposed: boolean }
+    | undefined;
   const unmount = () => {
     if (mounted === undefined) return;
     mounted.disposed = true;
@@ -205,17 +212,17 @@ export async function startComposerStrip(): Promise<void> {
     mounted = undefined;
     if (view !== undefined) queueMicrotask(() => view.dispose());
   };
-  const mount = (target: ViewTarget) => {
+  const mount = (key: string, target: ViewTarget, options: MountOptions) => {
     unmount();
     const host = document.createElement("div");
     host.className = "pult-composer-strip-view";
     strip.content.replaceChildren(host);
-    const current: NonNullable<typeof mounted> = { target, view: undefined, disposed: false };
+    const current: NonNullable<typeof mounted> = { key, target, view: undefined, disposed: false };
     mounted = current;
     void threadView().then(
       (mounts) => {
         if (current.disposed) return;
-        const view = mounts.mountComposer(host, target, selectedStarComposer());
+        const view = mounts.mountComposer(host, target, options);
         const removeClose = addCloseEntry(view.bar);
         current.view = {
           bar: view.bar,
@@ -235,12 +242,16 @@ export async function startComposerStrip(): Promise<void> {
     const { open } = state;
     openKey.set(open);
     const active = editors.activeEditor;
-    const target = selectedTarget();
+    // Under an ask's file its reply's composer, a key of its own; else the selection's.
+    const reply = replyComposer(active?.resource?.toString());
+    const target = reply?.target ?? selectedTarget();
+    const key = reply?.key ?? JSON.stringify(target);
     hasComposerKey.set(target !== null);
     const visible = open && target !== null && active !== undefined && !isShellTab(active);
-    if (visible && !sameTarget(mounted?.target ?? null, target)) mount(target);
+    if (visible && mounted?.key !== key)
+      mount(key, target, reply?.options ?? selectedStarComposer());
     // A selection the strip no longer shows lets its composer go; the next one mounts when shown.
-    if (!sameTarget(mounted?.target ?? null, target)) unmount();
+    if (mounted?.key !== key) unmount();
     workbenchGrid.setViewVisible(strip.view, visible);
     setState({ available: target !== null, shown: visible });
   };
@@ -248,6 +259,8 @@ export async function startComposerStrip(): Promise<void> {
   editors.onDidEditorsChange(update);
   onDidSelectThread(update);
   starStore.subscribe(update);
+  askStore.subscribe(update);
+  onDidChangeReply(update);
   onDidChangeState.event(update);
   connection.onDidChange(update);
   update();

@@ -3,6 +3,7 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import {
+  actOnAsk,
   channelTranscriptStars,
   createStarOn,
   decodeAbout,
@@ -11,6 +12,7 @@ import {
   writeStarRecord,
   PluginAnswerError,
   readAbout,
+  readAsks,
   readStars,
   readStarTranscript,
   readStarTranscriptOfThread,
@@ -200,14 +202,6 @@ const star = {
       last: null,
     },
   ],
-  asks: [
-    {
-      name: "design",
-      title: "Which backend?",
-      text: "# Which backend?\n\nSee `pult/issues/backend.md`.\n",
-      path: "/Users/a/.pult/stars/star/.pult/asks/design.md",
-    },
-  ],
 };
 const stars = { directory: "/Users/a/.pult/stars", hidden: ["p1", "p2"], stars: [star] };
 
@@ -223,11 +217,6 @@ NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads a plugin older than the schedules as serving none", () => {
     const { schedules: _, ...older } = star;
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
-  });
-
-  NodeTest.test("reads a plugin older than the asks as serving none", () => {
-    const { asks: _, ...older } = star;
-    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.asks, []);
   });
 
   NodeTest.test("reads a plugin older than the model as naming none", () => {
@@ -291,8 +280,6 @@ NodeTest.describe("decodeStars", () => {
         ],
       },
       { ...stars, stars: [{ ...star, model: { instanceId: "codex" } }] },
-      { ...stars, stars: [{ ...star, asks: {} }] },
-      { ...stars, stars: [{ ...star, asks: [{ ...star.asks[0], title: null }] }] },
       { hidden: [], stars: [] },
     ])
       NodeAssert.throws(() => decodeStars(body), PluginAnswerError, JSON.stringify(body));
@@ -455,6 +442,67 @@ NodeTest.describe("the Stars' routes", () => {
     );
     NodeAssert.ok(unnamed.result instanceof PluginAnswerError);
   });
+
+  NodeTest.test(
+    "reads the asks, and acts on one by its id, reading the plugin's refusal",
+    async () => {
+      const ask = {
+        id: "a1b2c3d4",
+        title: "Which backend?",
+        status: "posted",
+        file: "/Users/a/repo/design.md",
+        poster: { star: "s1", channel: "ask-model" },
+        posted: "2026-11-21T12:00:00.000Z",
+        replied: null,
+        snoozedUntil: null,
+        settled: null,
+      };
+      const prefix = '[In reply to your ask a1b2c3d4 "Which backend?", to your channel ask-model]';
+      const read = await askOver(
+        () => json({ folder: "/Users/a/.pult/asks", projectId: null, asks: [{ ...ask, prefix }] }),
+        () => readAsks(credential),
+      );
+      NodeAssert.deepEqual(read.result, {
+        folder: "/Users/a/.pult/asks",
+        projectId: null,
+        asks: [{ ...ask, prefix }],
+      });
+      const thread = { ...ask, poster: { thread: "t9" } };
+      const misshapen = await askOver(
+        () => json({ folder: "/f", projectId: null, asks: [{ ...thread, poster: {} }] }),
+        () => readAsks(credential),
+      );
+      NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
+      const snoozed = { ...thread, status: "snoozed", snoozedUntil: "2026-11-22T09:00:00.000Z" };
+      const acted = await askOver(
+        () => json(snoozed),
+        () => actOnAsk(credential, "a1b2c3d4", { kind: "snooze", until: snoozed.snoozedUntil }),
+      );
+      NodeAssert.deepEqual(
+        acted.asked.map((each) => [each.method, each.url, each.body]),
+        [
+          [
+            "POST",
+            "http://127.0.0.1:3773/api/plugins/pult/asks/a1b2c3d4/snooze",
+            { until: "2026-11-22T09:00:00.000Z" },
+          ],
+        ],
+      );
+      NodeAssert.deepEqual(acted.result, snoozed);
+      const failed = await askOver(
+        () =>
+          json(
+            { error: "Pult could not tell the poster of the settle, so the ask is not settled." },
+            500,
+          ),
+        () => actOnAsk(credential, "a1b2c3d4", { kind: "settle" }),
+      );
+      NodeAssert.deepEqual(
+        [failed.asked[0]?.body, (failed.result as Error).message],
+        [undefined, "Pult could not tell the poster of the settle, so the ask is not settled."],
+      );
+    },
+  );
 
   NodeTest.test("asks a Star to sleep, reading the hold that refused it", async () => {
     const slept = await askOver(

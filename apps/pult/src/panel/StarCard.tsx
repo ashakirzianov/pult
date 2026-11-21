@@ -15,7 +15,7 @@ import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
 import { keyOf, starKey } from "./order.ts";
 import { type Activity, age, Elapsed, Status, Subagents } from "./PanelView.tsx";
-import { StarAsksBadge } from "./StarAsks.tsx";
+import { StarAsksBadge } from "./AskCard.tsx";
 import { StarSchedules } from "./StarSchedules.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -78,7 +78,7 @@ function StarMark({ look, color }: { look: StarLook; color: string }) {
  * A Star's card, the panel's first row, under no header (`star-card`): two
  * rows beside its mark (`StarMark`, its look by `look.ts` in `src/stars/`),
  * its name ("Star" while it has none) with its asks' count, a click on
- * which reveals its first ask in Inbox (`StarAsks.tsx`), and its
+ * which opens its first posted ask (`AskCard.tsx`), and its
  * environment's chip while the page holds several,
  * over its state, Asleep with how long (dimmed), Awake,
  * or Working with its elapsed time. A click selects the Star

@@ -39,7 +39,9 @@ function look(): void {
  * keeps its own), moves the text into the draft
  * (`carryInto`); whenever the Star is awake in a conversation its draft did
  * not create and a draft of its holds text, moves the text into that
- * conversation's composer (`carryOutOf`), whether or not its tab is open.
+ * conversation's composer (`carryOutOf`), whether or not its tab is open;
+ * and the same for each other open channel, from the drafts tagged with it,
+ * which a reply to an ask wakes it from, into its conversation.
  * A state looked at on every change, so text stranded while no page was
  * open is carried on the next look. Unsent text holds no Star awake, nor
  * asleep: its plugin puts it to sleep, and wakes it for a message,
@@ -49,6 +51,19 @@ function carry(drafts: typeof Drafts): void {
   if (!starSettingKnown() || !starEnabled.get()) return;
   const threads = threadStore.get().threads;
   for (const star of starStore.get()) {
+    // Each other open channel's conversation takes what its tagged drafts hold (`src/asks/reply.ts`).
+    for (const channel of star.channels)
+      if (channel.slug !== USER_CHANNEL)
+        carryOut(
+          drafts,
+          star,
+          {
+            kind: "thread",
+            environmentId: channel.thread.environmentId,
+            threadId: channel.thread.id,
+          },
+          [`pult:channel:${channel.slug}`],
+        );
     const target = starTarget(star);
     if (target?.kind === "thread") {
       carryOut(drafts, star, target);
@@ -103,15 +118,16 @@ function carry(drafts: typeof Drafts): void {
   }
 }
 
-/** Moves an awake Star's drafts' text into its current conversation's composer (`carryOutOf`). */
+/** Moves an awake Star's drafts' text into its current conversation's composer, or a channel's tagged drafts' into its conversation's (`carryOutOf`). */
 function carryOut(
   drafts: typeof Drafts,
   star: Star,
   target: Extract<StarTarget, { kind: "thread" }>,
+  tags?: ReadonlyArray<string>,
 ): void {
   // Keyed by the draft and the conversation, so what stuck or was told in one wake holds no later one.
   const keyOf = (environmentId: string, projectId: string) =>
-    `${drafts.draftKey(environmentId, projectId)}|${target.environmentId}:${target.threadId}`;
+    `${drafts.draftKey(environmentId, projectId, tags)}|${target.environmentId}:${target.threadId}`;
   const decision = carryOutOf(
     { holds: drafts.composerHasContent(target) },
     star.homes.map(({ environmentId, projectId }) => ({
@@ -119,9 +135,9 @@ function carryOut(
       projectId,
       holds:
         !stuck.has(keyOf(environmentId, projectId)) &&
-        drafts.composerHoldsText({ kind: "draft", environmentId, projectId }) === true,
+        drafts.composerHoldsText({ kind: "draft", environmentId, projectId, tags }) === true,
       createsCurrent: drafts.isPromotion(
-        { environmentId, projectId },
+        { environmentId, projectId, tags },
         target.environmentId,
         target.threadId,
       ),
@@ -129,7 +145,7 @@ function carryOut(
   );
   if (decision === undefined) return;
   const { environmentId, projectId } = decision.draft;
-  const from = { kind: "draft", environmentId, projectId } as const;
+  const from = { kind: "draft", environmentId, projectId, tags } as const;
   const key = keyOf(from.environmentId, from.projectId);
   if (decision.kind === "move") {
     drafts.moveComposerText(from, target);

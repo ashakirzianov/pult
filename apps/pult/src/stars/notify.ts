@@ -1,18 +1,27 @@
-// What a Star needs of the user, told outside the page (xaxis
+// What is asked of the user, told outside the page (xaxis
 // `pult/issues/notify-outside-the-page.md`; `pult/decisions`,
-// `notifications`): the dock badge, the open asks across the Stars the
-// panel shows, and a desktop notification when a Star asks or starts
-// waiting on the user. Ordinary threads notify nothing; upstream's
+// `notifications`): the dock badge, the posted asks the panel shows whoever
+// posted them, and a desktop notification for a new one and when a Star
+// starts waiting on the user. A thread notifies nothing else; upstream's
 // `startThreadNotifications` is not started. The logic is `notices.ts`.
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 
+import { posterName, shownAsks } from "../asks/asks.ts";
+import { askStore, asksAnsweredOn } from "../asks/model.ts";
 import { connection } from "../connection/index.ts";
 import { desktopHost } from "../desktop/host.ts";
 import { threadStore } from "../threads/store.ts";
-import { starsAnsweredOn, starStore } from "./model.ts";
-import { NOTHING_SEEN, type Notice, type NoticeStar, notices, waitingThread } from "./notices.ts";
+import { starById, starsAnsweredOn, starStore } from "./model.ts";
+import {
+  NOTHING_SEEN,
+  type Notice,
+  type NoticeAsks,
+  type NoticeStar,
+  notices,
+  waitingThread,
+} from "./notices.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
-import { drawnHome, starName } from "./stars.ts";
+import { starName } from "./stars.ts";
 
 let seen = NOTHING_SEEN;
 let badge: number | undefined;
@@ -38,21 +47,48 @@ function noticeStars(): NoticeStar[] {
     return {
       id: star.id,
       name: starName(star),
-      homes: star.homes.map((home) => ({
-        environmentId: home.environmentId,
-        current: current(home.environmentId),
-        asks: home.asks,
-      })),
-      drawn: drawnHome(star)?.environmentId,
       waitingOn: known ? waitingThread(star, threads) : undefined,
     };
   });
 }
 
+/** Each held environment's posted asks the panel shows, a Star's only while Show Star is on, each with its poster's name as its row has it. */
+function noticeAsks(): NoticeAsks[] {
+  if (!starSettingKnown()) return [];
+  const { threads } = threadStore.get();
+  const asks = shownAsks(askStore.get(), starEnabled.get());
+  return connection.environments.map(({ environmentId }) => ({
+    environmentId,
+    current: ready(environmentId) && asksAnsweredOn(environmentId),
+    posted: asks.flatMap((ask) =>
+      ask.environmentId === environmentId && ask.status === "posted"
+        ? [
+            {
+              id: ask.id,
+              title: ask.title,
+              poster: posterName(
+                ask,
+                (starId) => {
+                  const star = starById(starId);
+                  return star === undefined ? undefined : starName(star);
+                },
+                (threadEnvironment, threadId) =>
+                  threads.find(
+                    (thread) =>
+                      thread.environmentId === threadEnvironment && thread.id === threadId,
+                  )?.title,
+              ),
+            },
+          ]
+        : [],
+    ),
+  }));
+}
+
 /** Sends the badge, shows what is new while the page is hidden or lacks focus, and closes what has gone. */
 function update(): void {
   scheduled = false;
-  const next = notices(noticeStars(), seen);
+  const next = notices(noticeStars(), noticeAsks(), seen);
   seen = next.seen;
   if (next.badge !== badge) sendBadge(next.badge);
   for (const [tag, notification] of shown) {
@@ -104,13 +140,14 @@ async function open(notice: Notice): Promise<void> {
   else await host.revealWindow();
   const commands = await getService(ICommandService);
   if (notice.kind === "ask")
-    await commands.executeCommand("pult-shell.openStarAsk", notice.starId, notice.ask);
+    await commands.executeCommand("pult-shell.openAsk", notice.environmentId, notice.ask);
   else await commands.executeCommand("pult-shell.selectStar", notice.starId);
 }
 
-/** Starts the notices, after `startStars()`: on the Stars, the threads, Show Star and the connection. */
+/** Starts the notices, after `startStars()` and `startAsks()`: on the Stars, the asks, the threads, Show Star and the connection. */
 export function startStarNotices(): void {
   starStore.subscribe(schedule);
+  askStore.subscribe(schedule);
   threadStore.subscribe(schedule);
   starEnabled.subscribe(schedule);
   connection.onDidChange(schedule);

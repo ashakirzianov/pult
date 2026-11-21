@@ -1,7 +1,7 @@
 // The asks (Beta's `designs/ask-model.md`): one JSON record per ask in `<stateDir>/plugins/pult/asks/`,
 // its context a file the poster names or Markdown Pult keeps in the asks folder, a hidden project. A
 // settled ask goes 7 days after its settle, and a plain thread's follow its thread, read when listing,
-// with no timer. Today's `.pult/asks/` files are the Stars' own (`stars/asks.ts`).
+// with no timer. The Stars' old `.pult/asks/` files are read no more (`retired.ts`).
 import {
   CommandId,
   MessageId,

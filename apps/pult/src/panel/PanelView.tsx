@@ -1,9 +1,12 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
+import { askStore } from "../asks/model.ts";
+
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { cardRows, openAsks, type Star } from "../stars/stars.ts";
+import { cardRows, type Star } from "../stars/stars.ts";
 import { retrySettledThreads, showSettledThreads } from "../threads/model.ts";
 import {
   settleThread,
@@ -24,6 +27,7 @@ import {
   type ThreadState,
   threadStore,
 } from "../threads/store.ts";
+import { AskCard } from "./AskCard.tsx";
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
 import {
@@ -56,7 +60,6 @@ import {
   shelfOrder,
   useReveal,
 } from "./shelves.tsx";
-import { AskCard } from "./StarAsks.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -139,8 +142,8 @@ function subagentsByRoot(
  * are cards, in the store's order, which is upstream's: pinned and active
  * under Inbox, whose first cards are the projects' drafts of new threads
  * that hold something (`drafts.ts`), newest first, and the selected draft,
- * then the Stars' asks (`StarAsks.tsx`), while Show Star is on;
- * then the Working, Snoozed and Settled shelves. While the page holds
+ * then the posted asks (`AskCard.tsx`), a Star's while Show Star is on;
+ * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
  * several environments, each card names its own. The selected card expands
  * with its details and its subagents; a subagent has no card, so while one
  * is selected its root's card is the expanded one. The Limits shelf is the
@@ -225,8 +228,11 @@ export function PanelView() {
       now={now}
     />
   );
-  // Inbox's ask rows, the Stars' open asks, none while Show Star is off.
-  const asks = starsShown ? openAsks(stars) : [];
+  // The asks' rows, each on its status's shelf before its threads; a Star's none while Show Star is off.
+  const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
+  const askCard = (ask: PageAsk) => (
+    <AskCard key={askKey(ask)} ask={ask} environment={chip(ask.environmentId)} now={now} />
+  );
   const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   // The Stars' shelf is no shelf at all while Show Star is off.
   const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
@@ -245,25 +251,23 @@ export function PanelView() {
           <Shelf
             key={name}
             name={name}
-            empty={listed.length === 0 && draftCards.length === 0 && asks.length === 0}
+            empty={
+              listed.length === 0 && draftCards.length === 0 && asksOn(asks, "inbox").length === 0
+            }
           >
             {draftCards.map(draftCard)}
-            {asks.map(({ star, home, ask }) => (
-              <AskCard
-                key={askKey({ starId: star.id, name: ask.name })}
-                star={star}
-                ask={ask}
-                environment={chip(home.environmentId)}
-              />
-            ))}
+            {asksOn(asks, "inbox").map(askCard)}
             {listed.map(card)}
           </Shelf>
         );
       case "working":
       case "snoozed": {
         const threads = name === "working" ? working : snoozed;
+        const shelved = asksOn(asks, name);
+        const count = threads.length + shelved.length;
         return (
-          <Shelf key={name} name={name} count={threads.length} empty={threads.length === 0}>
+          <Shelf key={name} name={name} count={count} empty={count === 0}>
+            {shelved.map(askCard)}
             {threads.map(card)}
           </Shelf>
         );
@@ -273,9 +277,14 @@ export function PanelView() {
           <Shelf
             key={name}
             name={name}
-            count={state.settled.count}
-            empty={settled.length === 0 && state.settled.count === 0}
+            count={state.settled.count + asksOn(asks, "settled").length}
+            empty={
+              settled.length === 0 &&
+              state.settled.count === 0 &&
+              asksOn(asks, "settled").length === 0
+            }
           >
+            {asksOn(asks, "settled").map(askCard)}
             <SettledTail
               threads={settled}
               shelf={state.settled}
