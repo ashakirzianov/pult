@@ -60,6 +60,8 @@ interface ComposerPrimaryActionsProps {
   preserveComposerFocusOnPointerDown?: boolean;
   isEditingQueuedMessage?: boolean;
   onSubmitMessage?: MouseEventHandler<HTMLButtonElement>;
+  /** Pult: the send button's context menu (`ComposerScheduledSend`); upstream's app sets none. */
+  onSendContextMenu?: MouseEventHandler<HTMLButtonElement> | undefined;
   onResume?: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
@@ -252,6 +254,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   preserveComposerFocusOnPointerDown = false,
   isEditingQueuedMessage = false,
   onSubmitMessage,
+  onSendContextMenu,
   onResume,
   onPreviousPendingQuestion,
   onInterrupt,
@@ -448,6 +451,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         if (showResume) onResume?.();
         else onSubmitMessage?.(event);
       }}
+      onContextMenu={showResume || isEditingQueuedMessage ? undefined : onSendContextMenu}
       disabled={
         isSendBusy ||
         isSendDisabled ||

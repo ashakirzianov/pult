@@ -5,9 +5,11 @@ import {
   IssueTrackerKind,
   ORCHESTRATION_V2_WS_METHODS,
   RunId,
+  ScheduledTaskId,
   ThreadId,
   WS_METHODS,
   type IssueDetail,
+  type ScheduledTaskUpsertInput,
   type IssueRef,
   type ThreadIssueLink,
 } from "@t3tools/contracts";
@@ -477,6 +479,83 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
   expect(launches).toHaveLength(1);
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
   expect(launches[0]?.initialMessage?.text).toBe('[In reply to your ask a1 "Ship it?"]\n\nYes');
+});
+
+it("the send button's menu schedules the message on its thread and clears the composer", async () => {
+  // The dialog's layers need the app's styles to stack, and those a desktop viewport.
+  await page.viewport(1400, 900);
+  const style = document.createElement("style");
+  style.textContent = stylesheet;
+  document.head.append(style);
+  using _style = { [Symbol.dispose]: () => style.remove() };
+  const thread = threadWithHistory("scheduled-send", 1);
+  using _environment = installFakeEnvironment([thread], { acceptCommands: true });
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const saved: ScheduledTaskUpsertInput[] = [];
+  using _upsert = answerRpc(WS_METHODS.scheduledTasksUpsert, (input: ScheduledTaskUpsertInput) => {
+    saved.push(input);
+    const at = "2026-01-01T00:00:00.000Z";
+    return Effect.succeed({
+      task: {
+        id: ScheduledTaskId.make("scheduled-send-task"),
+        title: input.title,
+        prompt: input.prompt,
+        enabled: input.enabled,
+        schedule: input.schedule,
+        projectId: input.projectId,
+        threadId: input.threadId ?? null,
+        workspaceStrategy: input.workspaceStrategy,
+        modelSelection: input.modelSelection,
+        runtimeMode: input.runtimeMode,
+        interactionMode: input.interactionMode,
+        createdBy: "user",
+        creationSource: "web",
+        createdAt: at,
+        updatedAt: at,
+        nextRunAt: input.schedule.type === "once" ? input.schedule.runAt : null,
+        lastRunAt: null,
+        lastRunStatus: "never",
+        lastRunError: null,
+        runCount: 0,
+      },
+    });
+  });
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${thread.id}`] }),
+  );
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, {
+    // AppRoot brings its own router.
+    router: false,
+  });
+  const editor = page.getByTestId("composer-editor");
+  await expect.element(editor).toBeVisible();
+  await userEvent.click(editor);
+  await insertText("Check the build\nthen report");
+
+  await userEvent.click(page.getByRole("button", { name: "Submit message" }), {
+    button: "right",
+  });
+  await userEvent.click(page.getByRole("menuitem", { name: "Custom time…" }));
+  await userEvent.fill(page.getByLabelText("Send at"), "2099-01-02T09:30");
+  await userEvent.click(page.getByRole("button", { name: "Schedule" }));
+
+  await vi.waitFor(() => expect(saved).toHaveLength(1));
+  expect(saved[0]).toMatchObject({
+    title: "Check the build",
+    prompt: "Check the build\nthen report",
+    enabled: true,
+    projectId: PROJECT_ID,
+    threadId: thread.id,
+    modelSelection: thread.modelSelection,
+    schedule: { type: "once", runAt: new Date("2099-01-02T09:30").toISOString() },
+  });
+  await vi.waitFor(() => expect((editor.element() as HTMLElement).innerText.trim()).toBe(""));
+  // Saved as a task, never sent now.
+  expect(JSON.stringify(dispatchedCommands())).not.toContain("Check the build");
 });
 
 it("opens the thread actions menu for an older settled thread the shell leaves out", async () => {

@@ -89,6 +89,7 @@ import {
 } from "../../composer-logic";
 import { DEFAULT_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { useShellPlaceholder } from "./ShellComposerOptions";
+import { useComposerScheduledSend } from "./ComposerScheduledSend";
 import { deriveComposerSendState, getAntigravitySendBlockReason } from "../ChatView.logic";
 import { threadHasStarted } from "../../lib/chatThreadActions";
 import {
@@ -2313,6 +2314,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const handleSubmitMessageStable = useStableCallback(handleSubmitMessage);
+  // Pult: the send button's menu sends the message later.
+  const scheduledSend = useComposerScheduledSend({
+    environmentId,
+    thread: routeKind === "server" ? activeThread : undefined,
+    composerDraftTarget,
+    composerRef,
+    promptRef,
+    runtimeMode,
+  });
   const submitCitationAndSend = () => {
     return submitComposer(
       undefined,
@@ -3846,6 +3856,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <ComposerPromptLengthValidation
               message={providerInputSubmissionError ?? composerSubmissionError}
             />
+            {scheduledSend.dialog}
 
             {speechInput.preview ? (
               // column-reverse pins the scroll to the bottom; the single inner div keeps the text in normal order.
@@ -3935,6 +3946,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       preserveComposerFocusOnPointerDown={isMobileViewport}
                       isEditingQueuedMessage={isEditingQueuedMessage}
                       onSubmitMessage={handleSubmitMessageStable}
+                      onSendContextMenu={scheduledSend.onSendContextMenu}
                       onResume={onResume}
                       onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                       onInterrupt={handleInterruptPrimaryActionStable}
