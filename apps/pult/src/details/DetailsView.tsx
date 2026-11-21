@@ -122,7 +122,11 @@ export function DetailsTitle() {
     case "explorer":
       return (
         <>
-          <img className="pult-details-icon" src={markUrl} alt="" />
+          <span
+            className="pult-details-icon pult-details-mark"
+            style={{ maskImage: `url("${markUrl}")` }}
+            aria-hidden
+          />
           <span className="pult-details-name">Explorer</span>
         </>
       );
@@ -158,6 +162,7 @@ export function DetailsView() {
   return (
     <div className="pult-panel pult-details">
       <StarDetails
+        key={star.id}
         star={star}
         environment={environments.find((environment) => environment.id === environmentId)?.name}
         rows={cardRows(star, threads)}

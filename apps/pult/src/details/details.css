@@ -54,6 +54,11 @@
   height: 16px;
 }
 
+.pult-details-mark {
+  background: currentColor;
+  mask: no-repeat 50% 50% / 16px;
+}
+
 .pult-details-name {
   min-width: 0;
   overflow: hidden;

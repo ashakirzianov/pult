@@ -266,7 +266,7 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
   ]);
 
 /**
- * The rows under a selected Star's card: one per open channel but `user`,
+ * The rows of a selected Star's details: one per open channel but `user`,
  * whose conversation is the Star's tab, by slug.
  */
 export function channelRows<Thread extends StarThread>(
@@ -308,21 +308,21 @@ const CHILD_TAG = "pult:child:star:";
 /** The channel a child's messages land in where it names none (`star-channels`). */
 const WORK_CHANNEL = "work";
 
-/** A row under a selected Star's card: a channel but `user`, its open conversation, null while it sleeps, and the Star's children of it, oldest first. */
+/** A row of a selected Star's details: a channel but `user`, its open conversation, null while it sleeps, and the Star's children of it, oldest first. */
 export interface ChannelRow<Thread> {
   readonly slug: string;
   readonly thread: Thread | null;
   readonly children: ReadonlyArray<Thread>;
 }
 
-/** What a selected Star's card lists: `user`'s children, directly under it, then its channel rows. */
+/** What a selected Star's details list: `user`'s children, directly under it, then its channel rows. */
 export interface CardRows<Thread> {
   readonly children: ReadonlyArray<Thread>;
   readonly channels: ReadonlyArray<ChannelRow<Thread>>;
 }
 
 /**
- * What a selected Star's card lists, as the page's threads have them now
+ * What a selected Star's details list, as the page's threads have them now
  * (the Stars' model tells only a change of conversation or of its run): its
  * children, the unsettled threads tagged `pult:child:star:<id>` but its own
  * conversations, each under the row of its channel, its channel tag, `work`

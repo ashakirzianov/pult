@@ -626,7 +626,7 @@
   list-style: none;
 }
 
-/* A selected Star's channel rows (src/panel/StarCard.tsx): a sleeping one's opens nothing; a channel's children sit indented under it. */
+/* A selected Star's channel rows (src/details/StarDetails.tsx): a sleeping one's opens nothing; a channel's children sit indented under it. */
 .pult-subagent-asleep,
 .pult-subagent-asleep:hover {
   background: none;
@@ -637,7 +637,7 @@
   padding-left: 16px;
 }
 
-/* The Channels header inside a selected Star's card: the subagents' header. */
+/* The Channels header in a selected Star's details: the subagents' header. */
 .pult-card-channels .pult-shelf-header {
   height: 22px;
   padding: 0 4px;

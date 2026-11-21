@@ -26,8 +26,11 @@ const WORKBENCH_CHORDS = new Set(["KeyP", "KeyS", "KeyG"]);
 function isViewKey(event: Upstream.ShortcutEventLike): boolean {
   const target = event.target ?? document.activeElement;
   if (!(target instanceof Element) || target.closest(VIEW_ELEMENTS) === null) return false;
-  if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return true;
   const code = event.code ?? `Key${event.key.toUpperCase()}`;
+  // Cmd+Alt+B, upstream's right panel toggle, is Pult: Show and Hide Details (`src/details/`).
+  const mod = event.metaKey || event.ctrlKey;
+  if (mod && event.altKey && !event.shiftKey && code === "KeyB") return false;
+  if (!mod || !event.shiftKey || event.altKey) return true;
   if (!WORKBENCH_CHORDS.has(code)) return true;
   // An open project list keeps Cmd+Shift+P, which pins its highlighted project.
   return code === "KeyP" && target.closest('[role="combobox"][aria-expanded="true"]') !== null;
