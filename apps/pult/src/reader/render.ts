@@ -2,9 +2,11 @@
 // page with its own CSS and inline images, in a frame of its own, with no
 // script run and nothing fetched or navigated to. The buffer is parsed here,
 // in JavaScript, and the frame's document built node by node from the tree,
-// so the browser never parses the page's markup nor sees a URL of it.
+// so the browser never parses the page's markup nor sees a URL of it. A
+// Markdown file is parsed to the same tree (`markdown.ts`) and built the same.
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 
+import { markdownLiteral, markdownTree } from "./markdown.ts";
 import { type Passage, selectedPassage, type SourceText } from "./selection.ts";
 
 type Node = DefaultTreeAdapterTypes.ChildNode;
@@ -87,7 +89,12 @@ interface Built {
   /** The page's text, which each text node's place in it is read from. */
   readonly source: string;
   readonly origins: WeakMap<Text, SourceText>;
+  /** Whether a text node's text is its source text as written, a part of it on its own lines (`SourceText`). */
+  readonly literal: (source: string, value: string) => boolean;
 }
+
+/** An HTML text node is as written when it decodes nothing. */
+const htmlLiteral = (source: string, value: string) => source.replace(/\r\n?/g, "\n") === value;
 
 function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built: Built): void {
   for (const node of nodes) {
@@ -96,8 +103,11 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
       const text = doc.createTextNode(value);
       if (at) {
         const source = built.source.slice(at.startOffset, at.endOffset);
-        const literal = source.replace(/\r\n?/g, "\n") === value;
-        built.origins.set(text, { line: at.startLine, source, literal });
+        built.origins.set(text, {
+          line: at.startLine,
+          source,
+          literal: built.literal(source, value),
+        });
       }
       parent.append(text);
       continue;
@@ -143,13 +153,14 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
 export interface ReaderFrame {
   readonly element: HTMLIFrameElement;
   /**
-   * Renders `source`, at the reader's scroll position or, `fresh`, at the
-   * top; whether the page has scripts, which never run here. Undefined when
-   * a later `show` superseded it before it rendered.
+   * Renders `source`, a page or, `markdown`, a Markdown file, at the
+   * reader's scroll position or, `fresh`, at the top; whether the page has
+   * scripts, which never run here. Undefined when a later `show` superseded
+   * it before it rendered.
    */
   show(
     source: string,
-    options?: { readonly fresh?: boolean },
+    options?: { readonly fresh?: boolean; readonly markdown?: boolean },
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
   selection(): Passage | undefined;
@@ -174,7 +185,7 @@ export function createReaderFrame(options?: {
   let current: Document | undefined;
   let loading: Array<(doc: Document) => void> = [];
   let latest = 0;
-  let last: string | undefined;
+  let last: { source: string; markdown: boolean } | undefined;
   // Where the reader is in the page, kept across the document's reloads.
   let position = { top: 0, left: 0 };
   let shown: Document | undefined;
@@ -197,7 +208,7 @@ export function createReaderFrame(options?: {
     const waiting = loading;
     loading = [];
     for (const resolve of waiting) resolve(doc);
-    if (waiting.length === 0 && last !== undefined) void frame.show(last);
+    if (waiting.length === 0 && last !== undefined) void frame.show(last.source, last);
   });
 
   /** The frame's document once loaded, waited for while the browser loads it (again). */
@@ -213,11 +224,15 @@ export function createReaderFrame(options?: {
     element,
     async show(source, options) {
       const revision = ++latest;
-      last = source;
-      const tree = parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
+      const markdown = options?.markdown === true;
+      last = { source, markdown };
+      const tree = markdown
+        ? markdownTree(source, element)
+        : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
       const doc = await frameDocument();
       if (revision !== latest) return undefined;
-      const built: Built = { scripts: false, source, origins };
+      const literal = markdown ? markdownLiteral : htmlLiteral;
+      const built: Built = { scripts: false, source, origins, literal };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");

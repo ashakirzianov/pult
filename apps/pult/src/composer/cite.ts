@@ -89,7 +89,7 @@ function changesDiff(
  * (`view/citations.ts`), its path relative to the thread's
  * checkout, absolute for another checkout's file (`citedPath.ts`); in a diff, as a diff comment of the lines and the other side's
  * between them (`diffExcerpt.ts`), labelled with the diff's source; and the
- * composer shown under the file. From the HTML reader, the selected passage
+ * composer shown under the file. From the reader, the selected passage
  * as it reads, under its source lines (`readerPassage`, `citePassage`), and
  * never another editor's lines. Hidden for a file of the Explorer
  * workspace, which has no thread. Registered before the workbench starts.

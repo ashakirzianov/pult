@@ -270,6 +270,104 @@ NodeTest.describe("the reader's frame", () => {
     });
   });
 
+  NodeTest.it("renders Markdown and cites it under the source lines it came from", async () => {
+    // Lines 3 and 18 say the same; lines 13 to 16 are a fence; 19 and 20 raw HTML, 19 continuing 18; 22 to 26 math.
+    const source = [
+      "# Notes",
+      "",
+      "Save the file",
+      "",
+      "- first item",
+      "  wraps here",
+      "- a [**bold** link](https://leak.test/link) after",
+      "",
+      "| Key | Value |",
+      "| --- | ----- |",
+      "| `zq` | cell b |",
+      "",
+      "```mermaid",
+      "graph TD",
+      "  A --> B",
+      "```",
+      "",
+      "Save the file",
+      '<img src="https://leak.test/md.png"><script>top.ran.push("md")</script>',
+      "<p>raw <b>html</b></p>",
+      "",
+      "Math $a_1 + b_1$ costs $5 or $10:",
+      "",
+      "$$",
+      "x\\,dx",
+      "$$",
+    ].join("\n");
+    const before = requests.length;
+    const cited = await page.evaluate(async (source) => {
+      const frame = window.reader.createReaderFrame();
+      document.body.append(frame.element);
+      const { scripts } = (await frame.show(source, { markdown: true }))!;
+      const doc = frame.element.contentDocument!;
+      /** The `nth` text node holding `text`, and where `text` starts in it. */
+      const at = (text: string, nth = 0): [Text, number] => {
+        const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          const index = (node as Text).data.indexOf(text);
+          if (index >= 0 && nth-- === 0) return [node as Text, index];
+        }
+        throw new Error(`no ${text}`);
+      };
+      const select = (from: string, to: string, nth: [number, number] = [0, 0]) => {
+        const [start, startOffset] = at(from, nth[0]);
+        const [end, endOffset] = at(to, nth[1]);
+        const range = doc.createRange();
+        range.setStart(start, startOffset);
+        range.setEnd(end, endOffset + to.length);
+        doc.getSelection()!.removeAllRanges();
+        doc.getSelection()!.addRange(range);
+        return frame.selection();
+      };
+      const passages = {
+        heading: select("Notes", "Notes"),
+        repeated: select("Save the file", "Save the file", [1, 1]),
+        wrappedItem: select("wraps", "here"),
+        formattedLink: select("bold", "link"),
+        tableCell: select("cell b", "cell b"),
+        inlineCode: select("zq", "zq"),
+        fence: select("A --> B", "A --> B"),
+        acrossBlocks: select("first", "Key"),
+        rawHtml: select("html", "html"),
+        inlineMath: select("a_1", "b_1"),
+        displayMath: select("x\\,dx", "x\\,dx"),
+      };
+      frame.element.remove();
+      return {
+        scripts,
+        tags: [...doc.body.children].map((element) => element.tagName.toLowerCase()),
+        passages,
+      };
+    }, source);
+    await page.evaluate(() => fetch("http://leak.test/control").catch(() => undefined));
+    NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
+    NodeAssert.deepEqual(await page.evaluate(() => window.ran), []);
+    NodeAssert.equal(cited.scripts, true);
+    NodeAssert.deepEqual(cited.tags, ["h1", "p", "ul", "table", "pre", "p", "p", "p", "pre"]);
+    NodeAssert.deepEqual(cited.passages, {
+      heading: { text: "Notes", lines: { start: 1, end: 1 } },
+      repeated: { text: "Save the file", lines: { start: 18, end: 18 } },
+      wrappedItem: { text: "wraps here", lines: { start: 6, end: 6 } },
+      formattedLink: { text: "bold link", lines: { start: 7, end: 7 } },
+      tableCell: { text: "cell b", lines: { start: 11, end: 11 } },
+      inlineCode: { text: "zq", lines: { start: 11, end: 11 } },
+      fence: { text: "A --> B", lines: { start: 15, end: 15 } },
+      acrossBlocks: {
+        text: "first item wraps here\na bold link after\nKey",
+        lines: { start: 5, end: 9 },
+      },
+      rawHtml: { text: "html", lines: { start: 20, end: 20 } },
+      inlineMath: { text: "a_1 + b_1", lines: { start: 22, end: 22 } },
+      displayMath: { text: "x\\,dx", lines: { start: 25, end: 25 } },
+    });
+  });
+
   NodeTest.it(
     "follows edits, and a frame put back in the page, at the reader's scroll position",
     async () => {

@@ -5,8 +5,11 @@
 /**
  * Where a rendered text node came from: the source's text it was made from,
  * which starts on `line`, and whether the node's text is that text as written,
- * line breaks aside, so a part of the node has lines of its own; a node made
- * otherwise (an entity decoded) has its source text's lines whole.
+ * its line breaks the source's, so a part of the node has lines of its own (an
+ * HTML node decoding nothing; a Markdown node, whose source may add markup,
+ * escapes and indents, breaking its lines where the source does); a node
+ * made otherwise (an entity decoded, inline code's line joined) has its
+ * source text's lines whole.
  */
 export interface SourceText {
   readonly line: number;

@@ -1,7 +1,7 @@
-// The reader: a project's HTML file rendered in the file's own tab, Show
-// Preview and Show Source switching the tab between it and the text editor
-// in place. It reads the file's text model, unsaved edits included, and
-// renders it with `render.ts`, which runs no script and loads nothing. Cite
+// The reader: a project's HTML or Markdown file rendered in the file's own
+// tab, Show Preview and Show Source switching the tab between it and the text
+// editor in place. It reads the file's text model, unsaved edits included,
+// and renders it with `render.ts`, which runs no script and loads nothing. Cite
 // (`src/composer/cite.ts`) takes a passage of it (`readerPassage`).
 import {
   getService,
@@ -12,6 +12,7 @@ import {
   INotificationService,
   ITextFileService,
   ITextModelService,
+  IThemeService,
   StandaloneServices,
   type IEditorGroup,
   type IInstantiationService,
@@ -56,10 +57,10 @@ const READER_ID = "pult.shell.reader";
 const CITE_SELECTION = "pult-shell.citeSelection";
 const TEXT_FILE_EDITOR_ID = "workbench.editors.files.textFileEditor";
 
-/** A project file the reader renders: a `pult:` file named `.html` or `.htm`. */
+/** A project file the reader renders: a `pult:` file named `.html`, `.htm` or `.md`. */
 const READABLE = ContextKeyExpr.and(
   ContextKeyExpr.equals("resourceScheme", "pult"),
-  ContextKeyExpr.regex("resourceExtname", /^\.html?$/i),
+  ContextKeyExpr.regex("resourceExtname", /^\.(?:html?|md)$/i),
 );
 const IN_SOURCE = ContextKeyExpr.and(
   READABLE,
@@ -130,11 +131,14 @@ export function readerPassage(
 class ReaderInput extends SimpleEditorInput {
   private model: ReturnType<typeof modelReference> | undefined;
   private readonly files = StandaloneServices.get(ITextFileService);
+  /** Whether the file is Markdown, else a page. */
+  readonly markdown: boolean;
   /** Whether the scripts notice was closed in this tab. */
   noticeClosed = false;
 
   constructor(readonly file: URI) {
     super(file);
+    this.markdown = /\.md$/i.test(file.path);
     this.setName(basename(file));
     this.setTitle(`${basename(file)} (Preview)`);
     this.setDescription("Preview");
@@ -184,8 +188,9 @@ class ReaderInput extends SimpleEditorInput {
 
 /**
  * The reader's pane: the scripts notice over the page's frame, which follows
- * the text model while visible and catches up when shown again. One frame
- * per pane, so a switch back to the same file keeps the reader's place.
+ * the text model, and for Markdown the workbench's theme, while visible and
+ * catches up when shown again. One frame per pane, so a switch back to the
+ * same file keeps the reader's place.
  */
 class ReaderPane extends SimpleEditorPane {
   private readonly frame: ReaderFrame = createReaderFrame({
@@ -230,22 +235,28 @@ class ReaderPane extends SimpleEditorPane {
       const fresh = !isEqual(this.shown, input.file);
       this.shown = input.file;
       const version = model.getVersionId();
-      const shown = await this.frame.show(model.getValue(), { fresh });
+      const shown = await this.frame.show(model.getValue(), { fresh, markdown: input.markdown });
       if (shown === undefined || this.input !== input) return;
       this.version = version;
-      this.showNotice(input, shown.scripts);
+      // A Markdown file's raw HTML is no page a browser tab would run.
+      this.showNotice(input, !input.markdown && shown.scripts);
     };
     this.refresh = () => void render();
-    const changes = model.onDidChangeContent(() => {
+    const changed = () => {
       clearTimeout(timer);
       if (!this.isVisible()) this.stale = true;
       else timer = setTimeout(() => void render(), 150);
-    });
+    };
+    const changes = model.onDidChangeContent(changed);
+    const themes = input.markdown
+      ? StandaloneServices.get(IThemeService).onDidColorThemeChange(changed)
+      : undefined;
     await render();
     return {
       dispose: () => {
         clearTimeout(timer);
         changes.dispose();
+        themes?.dispose();
         this.refresh = undefined;
         this.model = undefined;
         this.version = undefined;
@@ -375,8 +386,9 @@ async function activeEditor(context: unknown) {
 
 /**
  * The reader's pane and input, its serialiser, so a working set restores a
- * reader tab, and its place among the editors a `.html` or `.htm` project
- * file opens in, an option under Open With, never the default; and Show
+ * reader tab, and its place among the editors a `.html`, `.htm` or `.md`
+ * project file opens in, an option under Open With, never the default (a
+ * Markdown file's stock preview stays another); and Show
  * Preview and Show Source, which switch the tab in place, each a title
  * action and in the palette. Registered before the workbench starts.
  */
@@ -397,7 +409,7 @@ export function registerReader(): void {
     },
   );
   registerEditor(
-    "*.{html,htm}",
+    "*.{html,htm,md}",
     {
       id: READER_ID,
       label: "Preview",
