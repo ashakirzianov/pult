@@ -3951,6 +3951,8 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  /** Pult: the new thread's tags, stored as it is created (a Star channel's draft); a stock server ignores them. */
+  tags: Schema.optional(Schema.Array(ThreadTag)),
   initialMessage: Schema.optional(
     Schema.Struct({
       messageId: Schema.optional(MessageId),

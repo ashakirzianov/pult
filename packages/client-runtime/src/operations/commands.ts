@@ -26,6 +26,7 @@ import {
   type RuntimeMode,
   type RuntimeRequestId,
   type ThreadId,
+  type ThreadTag,
   type ThreadEnvMode,
   type UploadChatAttachment,
   type GuestMessageId,
@@ -169,6 +170,8 @@ interface StartThreadBootstrap {
     readonly branch: string | null;
     readonly worktreePath: string | null;
     readonly createdAt: string;
+    /** Pult: the tags the new thread is created with (a Star channel's draft). */
+    readonly tags?: ReadonlyArray<ThreadTag>;
   };
   readonly prepareWorktree?: {
     readonly requireWorktree?: boolean;
@@ -806,6 +809,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,
+      ...(bootstrap?.tags === undefined ? {} : { tags: bootstrap.tags }), // Pult: a Star channel's draft.
       initialMessage: {
         messageId: input.message.messageId,
         text: input.message.text,

@@ -2235,6 +2235,7 @@ export const layerWsRpc = (
                           runtimeMode: input.runtimeMode,
                           interactionMode: input.interactionMode,
                           workspaceStrategy: input.workspaceStrategy,
+                          ...(input.tags === undefined ? {} : { tags: input.tags }), // Pult: a Star channel's draft.
                           ...(input.initialMessage === undefined
                             ? {}
                             : {
