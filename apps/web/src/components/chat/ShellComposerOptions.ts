@@ -1,6 +1,7 @@
 // Pult's hook point, not upstream's: how the app around the view presents one
-// mount's composer, which upstream's app never sets. Pult sets it on a Star's
-// tab and its composer strip (`apps/pult/src/stars/tab.tsx`).
+// mount's composer, and what its sends carry, which upstream's app never sets.
+// Pult sets it on a Star's tab and its composer strip (`apps/pult/src/stars/tab.tsx`),
+// and on a Star channel's draft (`apps/pult/view/ThreadView.tsx`).
 import { createContext, use, useSyncExternalStore } from "react";
 
 /** A value the app keeps and changes, read live. */
@@ -14,12 +15,25 @@ export interface ShellComposerOptions {
   readonly draftHero: boolean;
   /** The composer's resting placeholder in place of upstream's default; null for upstream's. */
   readonly placeholder: ShellValue<string> | null;
+  /** The tags a thread created by this composer's draft is created with (a Star channel's); null for none. */
+  readonly creationTags: ReadonlyArray<string> | null;
+  /** The reply this composer's sends are (an answer to a Star's ask); null for a plain message. */
+  readonly reply: ShellReply | null;
+}
+
+export interface ShellReply {
+  /** The line the sent message opens with, above what the user wrote. */
+  readonly prefix: string;
+  /** Told once a send was accepted, with the thread it went to, a draft's new one included. */
+  readonly sent: (environmentId: string, threadId: string) => void;
 }
 
 /** Upstream's presentation, as its own app has it. */
 export const ShellComposerOptions = createContext<ShellComposerOptions>({
   draftHero: true,
   placeholder: null,
+  creationTags: null,
+  reply: null,
 });
 
 const NO_PLACEHOLDER: ShellValue<string | null> = { get: () => null, subscribe: () => () => {} };

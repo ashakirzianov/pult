@@ -25,6 +25,7 @@ import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform (React Compiler over ~4k lines)
 // takes 6-11s; importing it here keeps that out of the test's timeout.
 import "~/components/ChatView";
+import { ShellComposerOptions } from "~/components/chat/ShellComposerOptions";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
@@ -46,6 +47,7 @@ import {
   emitThreadEvent,
   hasPendingAssetUrl,
   installFakeEnvironment,
+  projectionOf,
   rejectPendingCommand,
   threadWithHistory,
   threadWithQuestion,
@@ -417,6 +419,63 @@ it("an interrupted image-only first send of a new thread says it may not have be
   await expect.element(editor).toHaveTextContent("next draft");
   // With no text there is nothing to copy.
   expect(page.getByText("Copy message", { exact: true }).query()).toBeNull();
+});
+
+// Pult: the app around the view names a draft's creation tags and a reply (`ShellComposerOptions`).
+it("a draft's first send carries the app's creation tags and reply prefix, and tells it sent", async () => {
+  using _environment = installFakeEnvironment([]);
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const draftId = DraftId.make("draft-reply");
+  const threadId = ThreadId.make("thread-reply");
+  useComposerDraftStore
+    .getState()
+    .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId, { threadId });
+  const launches: Array<{ readonly tags?: unknown; readonly initialMessage?: { text: string } }> =
+    [];
+  using _launch = answerRpc(
+    ORCHESTRATION_V2_WS_METHODS.launchThread,
+    (input: (typeof launches)[number]) => {
+      launches.push(input);
+      return Effect.succeed({
+        threadId,
+        projection: projectionOf(threadWithHistory(threadId, 0)),
+        resumed: false,
+      });
+    },
+  );
+  const sent = vi.fn();
+  const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
+  await router.load();
+  await using _app = await render(
+    <ShellComposerOptions
+      value={{
+        draftHero: true,
+        placeholder: null,
+        creationTags: ["pult:channel:review"],
+        reply: { prefix: '[In reply to your ask a1 "Ship it?"]', sent },
+      }}
+    >
+      <AppRoot router={router} />
+    </ShellComposerOptions>,
+    // AppRoot brings its own router.
+    { router: false },
+  );
+  const editor = page.getByTestId("composer-editor");
+  await expect.element(editor).toBeVisible();
+  // The send needs the project, which arrives with the shell snapshot.
+  await expect.element(page.getByText("render", { exact: true }).first()).toBeVisible();
+
+  await userEvent.click(editor);
+  await insertText("Yes");
+  await userEvent.keyboard("{Enter}");
+
+  await vi.waitFor(() => expect(sent).toHaveBeenCalledWith(ENVIRONMENT_ID, threadId));
+  expect(launches).toHaveLength(1);
+  expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
+  expect(launches[0]?.initialMessage?.text).toBe('[In reply to your ask a1 "Ship it?"]\n\nYes');
 });
 
 it("opens the thread actions menu for an older settled thread the shell leaves out", async () => {
