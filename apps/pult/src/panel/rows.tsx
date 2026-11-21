@@ -1,6 +1,7 @@
 import {
   getService,
   ICommandService,
+  IContextKeyService,
   IPaneCompositePartService,
   IStorageService,
   IWorkbenchLayoutService,
@@ -10,7 +11,9 @@ import {
   type Grid,
   type IView,
 } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/grid/grid";
+import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { Event } from "@codingame/monaco-vscode-api/vscode/vs/base/common/event";
+import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import {
   StorageScope,
   StorageTarget,
@@ -74,8 +77,8 @@ function RowButton({ title, icon, command }: { title: string; icon: string; comm
  * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
  * Pult's logo, the top group's tray (its closed shelves' icons,
  * `TrayShelves.tsx`, nothing while none is closed) and, rightmost, New
- * Thread. In the desktop it drags the window, its buttons and the tray's
- * drop room excepted.
+ * (`NewButton`). In the desktop it drags the window, its buttons and the
+ * tray's drop room excepted.
  */
 function PanelHeader() {
   return (
@@ -89,8 +92,44 @@ function PanelHeader() {
       <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
       <TrayShelves group="top" />
       <span className="pult-panel-row-spacer" />
-      <RowButton title="New Thread" icon="add" command="pult-shell.newThread" />
+      <NewButton />
     </>
+  );
+}
+
+/** The header's plus: a menu under it of New Thread and New Star, the palette's New Thread and Create Star, the latter while the palette offers it. */
+function NewButton() {
+  const show = async (anchor: HTMLElement) => {
+    const [menus, commands, contextKeys] = await Promise.all([
+      getService(IContextMenuService),
+      getService(ICommandService),
+      getService(IContextKeyService),
+    ]);
+    const entry = (id: string, label: string, enabled = true) =>
+      toAction({ id, label, enabled, run: () => commands.executeCommand(id) });
+    menus.showContextMenu({
+      getAnchor: () => anchor,
+      getActions: () => [
+        entry("pult-shell.newThread", "New Thread"),
+        entry(
+          "pult-shell.createStar",
+          "New Star",
+          contextKeys.getContextKeyValue("pult.canCreateStar") === true,
+        ),
+      ],
+    });
+  };
+  return (
+    <button
+      type="button"
+      className="pult-panel-row-button"
+      title="New"
+      aria-label="New"
+      aria-haspopup="menu"
+      onClick={(event) => void show(event.currentTarget)}
+    >
+      <i className="codicon codicon-add" aria-hidden />
+    </button>
   );
 }
 
