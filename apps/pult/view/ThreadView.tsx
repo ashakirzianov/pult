@@ -154,7 +154,9 @@ function makeMount() {
       onPromoted = promoted;
       consumesCitation = options.consumesCitation;
       draftSent = options.draftSent;
-      const draftHero = options.draftHero ?? true;
+      // A tagged draft rests without the hero, whose project picker would move it to another project's draft.
+      const draftHero =
+        next.kind === "draft" && next.tags !== undefined ? false : (options.draftHero ?? true);
       const placeholder = options.placeholder ?? null;
       const creationTags = next.kind === "draft" ? (next.tags ?? null) : null;
       const reply = options.reply ?? null;

@@ -473,6 +473,7 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
   await userEvent.keyboard("{Enter}");
 
   await vi.waitFor(() => expect(sent).toHaveBeenCalledWith(ENVIRONMENT_ID, threadId));
+  expect(sent).toHaveBeenCalledTimes(1);
   expect(launches).toHaveLength(1);
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
   expect(launches[0]?.initialMessage?.text).toBe('[In reply to your ask a1 "Ship it?"]\n\nYes');
