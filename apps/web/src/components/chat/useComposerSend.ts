@@ -413,17 +413,21 @@ export function useComposerSend(input: ComposerSendInput) {
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
-    submissionIntent: ComposerSubmissionIntent = "foreground",
+    requestedIntent: ComposerSubmissionIntent = "foreground",
     directAnnotation?: {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
   ) => {
     e?.preventDefault();
+    // Pult: a tagged draft sent in the background would lose the promotion its mount follows.
+    const submissionIntent = creationTags === null ? requestedIntent : "foreground";
     // What the user pressed send on; uploads below can take a while, and a redirect must not
     // decline approvals for a draft that changed meanwhile.
     const promptAtSend = promptRef.current;
     if (
+      // Pult: a reply is sent as written, its prefix on it, never read as a command.
+      reply === null &&
       usageLimitsOffered &&
       usageLimitsKey !== null &&
       !directAnnotation &&
@@ -441,7 +445,7 @@ export function useComposerSend(input: ComposerSendInput) {
     const sendCtx = composerRef.current?.getSendContext();
     // `/side` beats an open question and a plan follow-up, which would send the text to main.
     const sideChatCommand =
-      sendCtx && !directAnnotation && !queuedRunEdit.isEditing
+      sendCtx && !directAnnotation && !queuedRunEdit.isEditing && reply === null
         ? parseSideChatCommand(promptAtSend)
         : null;
     const answeringQuestion =
@@ -1539,7 +1543,8 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
-        reply?.sent(environmentId, threadIdForSend); // Pult.
+        // Pult: told after the send's own work, so a throw of the app's never leaves the composer locked.
+        if (reply !== null) queueMicrotask(() => reply.sent(environmentId, threadIdForSend));
         if (checkoutPullRequestUrl) {
           linkCheckoutPullRequest(
             scopeThreadRef(environmentId, threadIdForSend),
