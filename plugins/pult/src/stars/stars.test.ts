@@ -689,6 +689,48 @@ describe("a full context", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "waits for background work its turn ended awaiting, against its own request too, and not for a dev server",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        const work = conversation(
+          h,
+          star,
+          "work",
+          [channelTag("work")],
+          [run("work-run", "completed")],
+          turnUsing(250_000, 1_000_000),
+        );
+        const devServer = { taskId: "dev", kind: "command" } as const;
+        work.shell = {
+          ...work.shell,
+          pendingBackgroundTasks: [
+            devServer,
+            { taskId: "compare", kind: "command", awaited: true },
+          ],
+        };
+
+        yield* h.runPass;
+        yield* h.stars.sleepNow(star, {
+          threadId: work.shell.id,
+          runId: RunId.make("work-run"),
+          calledAt: at("2026-11-10T12:00:30.000Z"),
+        });
+        assert.deepStrictEqual(h.threads.settles, []);
+        assert.deepStrictEqual(servedChannel((yield* h.stars.view).stars[0], "work")?.sleeps, {
+          heldBy: "background-work",
+        });
+
+        // The awaited command ended; the dev server runs on.
+        work.shell = { ...work.shell, pendingBackgroundTasks: [devServer] };
+        yield* h.runPass;
+        assert.deepStrictEqual(h.threads.settles, [work.shell.id]);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("never ends the conversation with the user before its cache expires", () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));

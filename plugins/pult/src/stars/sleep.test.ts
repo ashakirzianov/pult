@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   MessageId,
   NodeId,
+  type OrchestrationV2PendingBackgroundTask,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Subagent,
   type OrchestrationV2Run,
@@ -366,6 +367,22 @@ describe("a full context", () => {
       ),
       { kind: "held", by: "queued" },
     );
+    // Background work holds as the server's settle check reads it: awaited, or of a kind that always holds.
+    const holding = (pendingBackgroundTasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>) =>
+      wakefulness(input, expiresAt, { rotatesWhenFull: true, pendingBackgroundTasks });
+    const held = { kind: "held", by: "background-work" } as const;
+    assert.deepStrictEqual(holding([{ taskId: "compare", kind: "command", awaited: true }]), held);
+    assert.deepStrictEqual(holding([{ taskId: "lookup", kind: "background_task" }]), held);
+    // A dev server or its watchdog the agent did not wait on holds nothing, nor work done.
+    const passed = { kind: "deadline", at: ms(ended) } as const;
+    assert.deepStrictEqual(
+      holding([
+        { taskId: "dev", kind: "command" },
+        { taskId: "watch", kind: "monitor" },
+      ]),
+      passed,
+    );
+    assert.deepStrictEqual(holding([]), passed);
   });
 
   it("keeps a hand wake's 10 minutes for a full conversation that rotates on it", () => {

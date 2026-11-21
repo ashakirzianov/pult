@@ -238,12 +238,14 @@ const instant = (iso: string | undefined) => {
 
 /**
  * The sleep rule's reading of a conversation: every channel but `user` rotates on a full context,
- * and none sleeps while the shell's latest run, which a queued run does not conceal, is stopped by
- * a usage limit; a deliberate settle or archive still ends it.
+ * and none sleeps while the shell's background work holds it, or while its latest run, which a
+ * queued run does not conceal, is stopped by a usage limit; a deliberate settle or archive still
+ * ends it.
  */
 const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
   wakefulness(records, thread.promptCacheExpiresAt, {
     rotatesWhenFull: channelOf(thread) !== USER_CHANNEL,
+    pendingBackgroundTasks: thread.pendingBackgroundTasks,
     usageLimited: thread.status === "failed" && thread.lastErrorClass === "usage_limit",
   });
 

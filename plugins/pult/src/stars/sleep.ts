@@ -3,7 +3,9 @@
 import type {
   OrchestrationV2ProviderTurnTokenUsage,
   OrchestrationV2ThreadProjection,
+  OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 
 import { DateTime } from "../host.ts";
 
@@ -18,7 +20,7 @@ const FULL_CONTEXT_SHARE = 0.75;
 export type Wakefulness =
   | {
       readonly kind: "held";
-      readonly by: "run" | "subagent" | "queued" | "request" | "usage-limit";
+      readonly by: "run" | "subagent" | "queued" | "request" | "background-work" | "usage-limit";
     }
   | { readonly kind: "deadline"; readonly at: number };
 
@@ -57,12 +59,16 @@ export function contextFull(providerTurns: SleepInput["providerTurns"]): boolean
  * Asleep at the prompt cache expiry, else the last turn's end plus its observed TTL (10 minutes
  * where none), at that end itself when full and `rotatesWhenFull`, or 10 minutes after a later
  * un-settlement; held while a run is on or queued, a subagent works, a request awaits the user,
- * or `usageLimited`, its latest executed run stopped by a usage limit, known reset or not.
+ * the shell's background work holds as the server's settle check reads it, or `usageLimited`.
  */
 export function wakefulness(
   projection: SleepInput,
   promptCacheExpiresAt?: DateTime.Utc | null,
-  options: { readonly rotatesWhenFull?: boolean; readonly usageLimited?: boolean } = {},
+  options: {
+    readonly rotatesWhenFull?: boolean;
+    readonly pendingBackgroundTasks?: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
+    readonly usageLimited?: boolean;
+  } = {},
 ): Wakefulness {
   if (projection.runs.some((run) => LIVE_RUNS.has(run.status))) return { kind: "held", by: "run" };
   if (projection.subagents.some((subagent) => LIVE_SUBAGENTS.has(subagent.status)))
@@ -70,6 +76,8 @@ export function wakefulness(
   if (projection.runs.some((run) => run.status === "queued")) return { kind: "held", by: "queued" };
   if (projection.runtimeRequests.some((request) => request.status === "pending"))
     return { kind: "held", by: "request" };
+  if (backgroundWorkHoldsCompletion(options.pendingBackgroundTasks ?? []))
+    return { kind: "held", by: "background-work" };
   if (options.usageLimited === true) return { kind: "held", by: "usage-limit" };
   const { unsettledAt } = projection.thread;
   // A full context takes the deadline as passed: the last turn's end, every hold still applying.

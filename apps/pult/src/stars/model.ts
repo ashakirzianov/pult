@@ -113,6 +113,8 @@ function holdText(heldBy: string): string {
       return "a thread below it still works";
     case "request":
       return "it waits for your answer";
+    case "background-work":
+      return "it waits on work running in the background";
     case "usage-limit":
       return "a usage limit stopped it, until it resumes or is settled";
     default:
