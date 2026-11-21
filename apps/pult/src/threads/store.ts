@@ -85,6 +85,8 @@ export interface ShellEnvironment {
   readonly features: ThreadFeatures;
   /** Whether its threads and projects are in: until then the store lists none of them. */
   readonly loaded: boolean;
+  /** Whether a snapshot came since it was last not ready: until then its threads are the last connect's. */
+  readonly fresh: boolean;
 }
 
 /** A project of an environment, threads or none: what a new thread's draft shows of it. */

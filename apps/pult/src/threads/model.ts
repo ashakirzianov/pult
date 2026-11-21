@@ -61,6 +61,8 @@ interface Followed {
   readonly olderSettled: OlderSettledThreads;
   features: ThreadFeatures | null;
   wasReady: boolean;
+  /** A snapshot came since the environment was last not ready. */
+  fresh: boolean;
   readonly stop: () => void;
 }
 
@@ -146,11 +148,13 @@ class ThreadsModel {
           olderSettled: new OlderSettledThreads(environmentId, () => this.present(environmentId)),
           features: null,
           wasReady: false,
+          fresh: false,
           stop: () => void Effect.runFork(Fiber.interrupt(fiber)),
         };
         this.followed.set(environmentId, followed);
       }
       const ready = environment.phase === "ready";
+      if (!ready) followed.fresh = false;
       if (ready && !followed.wasReady) void this.loadFeatures(environmentId, followed);
       followed.wasReady = ready;
     }
@@ -162,6 +166,7 @@ class ThreadsModel {
     if (followed === undefined || state === undefined || followed.held?.snapshot === state.snapshot)
       return;
     followed.held = { ...state, threads: [] };
+    followed.fresh = true;
     followed.olderSettled.follow(state.snapshot, state.generation, state.removedAt);
     this.present(environmentId);
   }
@@ -255,6 +260,7 @@ class ThreadsModel {
           followed.held !== null &&
           followed.features !== null &&
           hiddenProjects(environment.environmentId) !== undefined,
+        fresh: followed.fresh,
       })),
       threads,
       settled,

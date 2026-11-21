@@ -1,8 +1,8 @@
 // What is asked of the user, told outside the page (xaxis
 // `pult/issues/notify-outside-the-page.md`; `pult/decisions`,
 // `notifications`): the dock badge, the posted asks the panel shows whoever
-// posted them, and a desktop notification for a new one and when a Star
-// starts waiting on the user. A thread notifies nothing else; upstream's
+// posted them and the secrets agents wait for, and a desktop notification for
+// a new one and when a Star starts waiting on the user for anything else. A thread notifies nothing else; upstream's
 // `startThreadNotifications` is not started. The logic is `notices.ts`.
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 
@@ -10,12 +10,15 @@ import { posterName, shownAsks } from "../asks/asks.ts";
 import { askStore, asksAnsweredOn } from "../asks/model.ts";
 import { connection } from "../connection/index.ts";
 import { desktopHost } from "../desktop/host.ts";
+import { secretStore } from "../secrets/model.ts";
+import { cardKey } from "../secrets/secrets.ts";
 import { threadStore } from "../threads/store.ts";
 import { starById, starsAnsweredOn, starStore } from "./model.ts";
 import {
   NOTHING_SEEN,
   type Notice,
   type NoticeAsks,
+  type NoticeSecrets,
   type NoticeStar,
   notices,
   waitingThread,
@@ -31,6 +34,37 @@ const shown = new Map<string, Notification>();
 
 const ready = (environmentId: string) => connection.environment(environmentId)?.phase === "ready";
 
+/** A poster's name as its row has it. */
+function nameOf(row: Parameters<typeof posterName>[0]): string {
+  const { threads } = threadStore.get();
+  return posterName(
+    row,
+    (starId) => {
+      const star = starById(starId);
+      return star === undefined ? undefined : starName(star);
+    },
+    (threadEnvironment, threadId) =>
+      threads.find((thread) => thread.environmentId === threadEnvironment && thread.id === threadId)
+        ?.title,
+  );
+}
+
+/** Whether the thread waits on a secret, or on a card not yet read. */
+function cardOf(thread: {
+  readonly environmentId: string;
+  readonly id: string;
+  readonly pendingCard: { readonly id: string } | null;
+}): "secret" | "unread" | undefined {
+  if (thread.pendingCard === null) return undefined;
+  const key = cardKey({
+    environmentId: thread.environmentId,
+    threadId: thread.id,
+    id: thread.pendingCard.id,
+  });
+  if (secretStore.get().some((secret) => cardKey(secret) === key)) return "secret";
+  return secretStore.unread().has(key) ? "unread" : undefined;
+}
+
 /** The panel's Stars as the notices read them, each channel's thread from the store's live rows. */
 function noticeStars(): NoticeStar[] {
   if (!starSettingKnown() || !starEnabled.get()) return [];
@@ -44,10 +78,13 @@ function noticeStars(): NoticeStar[] {
       (home) =>
         !ready(home.environmentId) || (current(home.environmentId) && loaded(home.environmentId)),
     );
+    if (!known) return { id: star.id, name: starName(star), waitingOn: undefined };
+    const thread = waitingThread(star, threads);
+    const card = thread === null ? undefined : cardOf(thread);
     return {
       id: star.id,
       name: starName(star),
-      waitingOn: known ? waitingThread(star, threads) : undefined,
+      waitingOn: thread === null ? null : { title: thread.title, ...(card && { card }) },
     };
   });
 }
@@ -55,7 +92,6 @@ function noticeStars(): NoticeStar[] {
 /** Each held environment's posted asks the panel shows, a Star's only while Show Star is on, each with its poster's name as its row has it. */
 function noticeAsks(): NoticeAsks[] {
   if (!starSettingKnown()) return [];
-  const { threads } = threadStore.get();
   const asks = shownAsks(askStore.get(), starEnabled.get());
   return connection.environments.map(({ environmentId }) => ({
     environmentId,
@@ -66,18 +102,7 @@ function noticeAsks(): NoticeAsks[] {
             {
               id: ask.id,
               title: ask.title,
-              poster: posterName(
-                ask,
-                (starId) => {
-                  const star = starById(starId);
-                  return star === undefined ? undefined : starName(star);
-                },
-                (threadEnvironment, threadId) =>
-                  threads.find(
-                    (thread) =>
-                      thread.environmentId === threadEnvironment && thread.id === threadId,
-                  )?.title,
-              ),
+              poster: nameOf(ask),
             },
           ]
         : [],
@@ -85,10 +110,40 @@ function noticeAsks(): NoticeAsks[] {
   }));
 }
 
+/** Each held environment's secrets Inbox shows, a Star's only while Show Star is on, and its cards not yet read; current once a snapshot of this connect is in. */
+function noticeSecrets(): NoticeSecrets[] {
+  if (!starSettingKnown()) return [];
+  const { environments } = threadStore.get();
+  const secrets = shownAsks(secretStore.get(), starEnabled.get());
+  const unread = [...secretStore.unread()];
+  return connection.environments.map(({ environmentId }) => ({
+    environmentId,
+    current:
+      ready(environmentId) &&
+      environments.some(
+        (environment) =>
+          environment.id === environmentId && environment.loaded && environment.fresh,
+      ),
+    posted: secrets.flatMap((secret) =>
+      secret.environmentId === environmentId
+        ? [
+            {
+              key: cardKey(secret),
+              threadId: secret.threadId,
+              label: secret.label,
+              poster: nameOf(secret),
+            },
+          ]
+        : [],
+    ),
+    unread: unread.filter((key) => key.startsWith(`${environmentId}/`)),
+  }));
+}
+
 /** Sends the badge, shows what is new while the page is hidden or lacks focus, and closes what has gone. */
 function update(): void {
   scheduled = false;
-  const next = notices(noticeStars(), noticeAsks(), seen);
+  const next = notices(noticeStars(), noticeAsks(), noticeSecrets(), seen);
   seen = next.seen;
   if (next.badge !== badge) sendBadge(next.badge);
   for (const [tag, notification] of shown) {
@@ -133,21 +188,41 @@ function show(notice: Notice): void {
   });
 }
 
-/** The window revealed, then the ask opened or the Star selected. */
+function unreachable(value: never): never {
+  throw new Error(`unreachable: ${JSON.stringify(value)}`);
+}
+
+/** The window revealed, then the ask or the secret opened, or the Star selected. */
 async function open(notice: Notice): Promise<void> {
   const host = desktopHost();
   if (host === undefined) window.focus();
   else await host.revealWindow();
   const commands = await getService(ICommandService);
-  if (notice.kind === "ask")
-    await commands.executeCommand("pult-shell.openAsk", notice.environmentId, notice.ask);
-  else await commands.executeCommand("pult-shell.selectStar", notice.starId);
+  switch (notice.kind) {
+    case "ask":
+      return void (await commands.executeCommand(
+        "pult-shell.openAsk",
+        notice.environmentId,
+        notice.ask,
+      ));
+    case "secret":
+      return void (await commands.executeCommand(
+        "pult-shell.openSecret",
+        notice.environmentId,
+        notice.threadId,
+      ));
+    case "waiting":
+      return void (await commands.executeCommand("pult-shell.selectStar", notice.starId));
+    default:
+      return unreachable(notice);
+  }
 }
 
-/** Starts the notices, after `startStars()` and `startAsks()`: on the Stars, the asks, the threads, Show Star and the connection. */
+/** Starts the notices, after `startStars()`, `startAsks()` and `startSecrets()`: on the Stars, the asks, the secrets, the threads, Show Star and the connection. */
 export function startStarNotices(): void {
   starStore.subscribe(schedule);
   askStore.subscribe(schedule);
+  secretStore.subscribe(schedule);
   threadStore.subscribe(schedule);
   starEnabled.subscribe(schedule);
   connection.onDidChange(schedule);

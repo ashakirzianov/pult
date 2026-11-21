@@ -48,6 +48,7 @@ class SecretsModel {
   private readonly reads = new Map<string, CardRead>();
   private readonly reading = new Set<string>();
   private secrets: ReadonlyArray<PageSecret> = [];
+  private unread: ReadonlySet<string> = new Set();
   private readonly listeners = new Set<() => void>();
   private retry: ReturnType<typeof setTimeout> | undefined;
 
@@ -59,6 +60,10 @@ class SecretsModel {
 
   get(): ReadonlyArray<PageSecret> {
     return this.secrets;
+  }
+
+  getUnread(): ReadonlySet<string> {
+    return this.unread;
   }
 
   subscribe(listener: () => void): () => void {
@@ -134,8 +139,14 @@ class SecretsModel {
 
   private update(): void {
     const next = pageSecrets(threadStore.get().threads, this.reads, starStore.get());
-    if (JSON.stringify(next) === JSON.stringify(this.secrets)) return;
+    const unread = new Set([...waitingCards().keys()].filter((key) => !this.reads.has(key)));
+    if (
+      JSON.stringify(next) === JSON.stringify(this.secrets) &&
+      JSON.stringify([...unread]) === JSON.stringify([...this.unread])
+    )
+      return;
     this.secrets = next;
+    this.unread = unread;
     for (const listener of this.listeners) listener();
   }
 }
@@ -147,9 +158,10 @@ export function startSecrets(): void {
   model.start();
 }
 
-/** Every held environment's secrets awaiting the user, oldest first. */
+/** Every held environment's secrets awaiting the user, oldest first; `unread`, the waiting cards (by `cardKey`) not yet known to be a secret's or not. */
 export const secretStore = {
   get: () => model.get(),
+  unread: () => model.getUnread(),
   subscribe: (listener: () => void) => model.subscribe(listener),
 };
 
