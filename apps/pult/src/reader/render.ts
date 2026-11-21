@@ -16,14 +16,6 @@ type Node = DefaultTreeAdapterTypes.ChildNode;
 const FRAME_POLICY =
   "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:";
 
-/** The doctype the frame starts with, so it renders in the page's own mode. */
-const DOCTYPES: Record<string, string> = {
-  "no-quirks": "<!doctype html>",
-  "limited-quirks":
-    '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">',
-  quirks: "",
-};
-
 /** Elements left out with their contents: scripts, a base URL, loaders and nested documents, and inert templates. */
 const DROPPED = new Set([
   "script",
@@ -61,8 +53,9 @@ const URL_ATTRIBUTES = new Set([
   "srcdoc",
 ]);
 
-/** A script element's types that run: none, a JavaScript MIME type, or a module. */
-const SCRIPT_TYPE = /^$|^module$|(java|ecma|j)script/i;
+/** A script element's types that run: none, a module, or a JavaScript MIME type (the MIME Sniffing Standard's). */
+const SCRIPT_TYPE =
+  /^(?:|module|(?:text|application)\/(?:x-)?(?:java|ecma)script|text\/javascript1\.[0-5]|text\/(?:jscript|livescript))$/i;
 
 /** A URL attribute's value as the URL parser reads it: no tab or newline anywhere, no leading space or control character. */
 const urlText = (value: string) =>
@@ -71,14 +64,20 @@ const urlText = (value: string) =>
     .replace(/^[\u0000- ]+/, "")
     .toLowerCase();
 
-/** Whether the attribute is kept: no event handler; a URL only as `data:` or a fragment, a link's own target aside, which never navigates (`createReaderFrame`). */
-function keeps(element: string, name: string, value: string): boolean {
-  if (name.startsWith("on")) return false;
-  if (!URL_ATTRIBUTES.has(name)) return true;
-  if (name === "ping" || name === "srcdoc") return false;
-  if (name === "href" && (element === "a" || element === "area")) return true;
+/**
+ * The attribute's value as the frame gets it, or none to leave it out: no
+ * event handler; a URL only as `data:` or a fragment of the page, but a
+ * link's target, which stays a link, for its look, pointing at the page's
+ * top, so no menu, preconnect or default action of the browser's leaves it.
+ */
+function kept(element: string, name: string, value: string): string | undefined {
+  if (name.startsWith("on")) return undefined;
+  if (!URL_ATTRIBUTES.has(name)) return value;
+  if (name === "ping" || name === "srcdoc") return undefined;
   const url = urlText(value);
-  return url.startsWith("data:") || url.startsWith("#");
+  if (url.startsWith("#")) return value;
+  if (name === "href" && (element === "a" || element === "area")) return "#";
+  return url.startsWith("data:") ? value : undefined;
 }
 
 interface Built {
@@ -109,14 +108,15 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
       continue;
     }
     for (const attr of node.attrs) {
-      if (!keeps(name, attr.name, attr.value)) continue;
+      const value = kept(name, attr.name, attr.value);
+      if (value === undefined) continue;
       try {
-        if (attr.namespace === undefined) element.setAttribute(attr.name, attr.value);
+        if (attr.namespace === undefined) element.setAttribute(attr.name, value);
         else
           element.setAttributeNS(
             attr.namespace,
             attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name,
-            attr.value,
+            value,
           );
       } catch {
         // A name the DOM refuses is dropped.
@@ -127,7 +127,7 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
   }
 }
 
-/** The frame a reader shows its page in: `show` renders a revision of the page's text, `dispose` removes the frame. */
+/** The frame a reader shows its page in, `show` rendering a revision of the page's text. */
 export interface ReaderFrame {
   readonly element: HTMLIFrameElement;
   /** Renders `source`, at the reader's scroll position or, `fresh`, at the top; whether the page has scripts, which never run here. */
@@ -150,7 +150,6 @@ export function createReaderFrame(): ReaderFrame {
   element.setAttribute("sandbox", "allow-same-origin");
   element.setAttribute("referrerpolicy", "no-referrer");
   element.setAttribute("allow", "");
-  let mode: string | undefined;
   let current: Document | undefined;
   let loading: Array<(doc: Document) => void> = [];
   let latest = 0;
@@ -165,7 +164,7 @@ export function createReaderFrame(): ReaderFrame {
   // hidden pane), which shows the page again where the reader was.
   element.addEventListener("load", () => {
     const doc = element.contentDocument;
-    if (doc === null || doc.URL !== "about:srcdoc") return;
+    if (doc === null || !doc.URL.startsWith("about:srcdoc")) return;
     guard(doc, element);
     doc.addEventListener("scroll", () => {
       const scroller = doc.scrollingElement;
@@ -178,17 +177,14 @@ export function createReaderFrame(): ReaderFrame {
     if (waiting.length === 0 && last !== undefined) void frame.show(last);
   });
 
-  /** The frame's document in `next`'s mode, once loaded: started afresh when the mode changes, waited for while the browser loads it again. */
-  const frameDocument = (next: string): Promise<Document> => {
-    if (next === mode && current !== undefined && current === element.contentDocument)
-      return Promise.resolve(current);
-    const loaded = new Promise<Document>((resolve) => loading.push(resolve));
-    if (next !== mode) {
-      mode = next;
-      element.srcdoc = `${DOCTYPES[next] ?? ""}<meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}">`;
-    }
-    return loaded;
-  };
+  /** The frame's document once loaded, waited for while the browser loads it (again). */
+  const frameDocument = (): Promise<Document> =>
+    current !== undefined && current === element.contentDocument
+      ? Promise.resolve(current)
+      : new Promise((resolve) => loading.push(resolve));
+  // A `srcdoc` document is in no-quirks mode whatever its doctype, so every page renders in it.
+  // Its base URL would be the shell's: its own makes a fragment the page's, and no other relative URL resolves.
+  element.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}"><base href="about:srcdoc">`;
 
   const frame: ReaderFrame = {
     element,
@@ -196,19 +192,20 @@ export function createReaderFrame(): ReaderFrame {
       const revision = ++latest;
       last = source;
       const tree = parse(source, { scriptingEnabled: false });
-      const doc = await frameDocument(tree.mode);
+      const doc = await frameDocument();
       const built: Built = { scripts: false };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (revision !== latest || html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");
       if (html.attrs.some((attr) => attr.name.startsWith("on"))) built.scripts = true;
-      for (const attr of html.attrs)
-        if (keeps("html", attr.name, attr.value)) root.setAttribute(attr.name, attr.value);
+      for (const attr of html.attrs) {
+        const value = kept("html", attr.name, attr.value);
+        if (value !== undefined) root.setAttribute(attr.name, value);
+      }
       build(doc, root, html.childNodes, built);
-      // The policy's own element leads the page's head, where the frame's parser applied it.
-      const policy = doc.head.querySelector("meta[http-equiv]");
+      // The policy's and the base URL's elements lead the page's head, where the frame's parser applied them.
       const head = root.querySelector(":scope > head");
-      if (policy !== null) head?.prepend(policy);
+      head?.prepend(...doc.head.querySelectorAll(":scope > meta[http-equiv], :scope > base"));
       const scroller = doc.scrollingElement;
       if (options?.fresh) position = { top: 0, left: 0 };
       else if (doc === shown && scroller !== null)
@@ -234,7 +231,8 @@ export function createReaderFrame(): ReaderFrame {
 function guard(doc: Document, element: HTMLIFrameElement): void {
   const stay = (event: Event) => {
     const target = event.target as Element | null;
-    const link = target?.closest?.("a, area");
+    // A link drawn by an SVG `use` reaches here as the `use`.
+    const link = target?.closest?.("a, area, use");
     if (link === null || link === undefined) return;
     event.preventDefault();
     const href = link.getAttribute("href") ?? "";

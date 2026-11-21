@@ -55,6 +55,10 @@ p { outline: 1px solid rgb(4, 5, 6); }
   <script>top.ran.push("svg")</script>
   <a xlink:href="${LEAK}/svg-link"><text id="svg-link" y="30">svg link</text></a>
 </svg>
+<svg width="100" height="40">
+  <defs><a id="used-link" href="${LEAK}/used-link"><rect width="100" height="40"/></a></defs>
+  <use id="use" href="#used-link"/>
+</svg>
 <a id="link" href="${LEAK}/link" ping="${LEAK}/ping">link</a>
 <a id="javascript" href="javascript:top.ran.push('javascript')">javascript</a>
 <form action="${LEAK}/form"><button id="submit">submit</button></form>
@@ -158,9 +162,21 @@ NodeTest.describe("the reader's frame", () => {
         REFUSED,
       );
 
+      // The workbench takes a hidden pane out of the page; the frame the browser loads again is the same.
+      await page.evaluate(async () => {
+        const element = document.getElementById("reader")!;
+        element.remove();
+        const loaded = new Promise((resolve) =>
+          element.addEventListener("load", resolve, { once: true }),
+        );
+        document.body.append(element);
+        await loaded;
+        await new Promise(requestAnimationFrame);
+      });
+
       // The page's ways to leave, taken by a user.
       const frame = page.frameLocator("#reader");
-      for (const selector of ["#link", "#javascript", "#svg-link", "#submit", "#styled"])
+      for (const selector of ["#link", "#javascript", "#svg-link", "#use", "#submit", "#styled"])
         await frame.locator(selector).click();
 
       // A request of the shell's own, seen last, shows every earlier one was seen.
@@ -175,6 +191,26 @@ NodeTest.describe("the reader's frame", () => {
       );
     },
   );
+
+  NodeTest.it("tells a page with scripts from one with data blocks", async () => {
+    const scripts = await page.evaluate(
+      async (sources) => {
+        const frame = window.reader.createReaderFrame();
+        document.body.append(frame.element);
+        const results = [];
+        for (const source of sources) results.push((await frame.show(source)).scripts);
+        frame.element.remove();
+        return results;
+      },
+      [
+        '<script type="text/livescript"></script>',
+        '<script type="module"></script>',
+        '<p onclick="x()">handler</p>',
+        '<script type="application/ld+json">{}</script><script type="text/template"><b></b></script>',
+      ],
+    );
+    NodeAssert.deepEqual(scripts, [true, true, true, false]);
+  });
 
   NodeTest.it(
     "follows edits, and a frame put back in the page, at the reader's scroll position",

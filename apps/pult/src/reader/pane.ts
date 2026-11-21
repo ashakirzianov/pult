@@ -9,6 +9,7 @@ import {
   INotificationService,
   ITextFileService,
   ITextModelService,
+  StandaloneServices,
   type IEditorGroup,
   type IInstantiationService,
 } from "@codingame/monaco-vscode-api";
@@ -22,7 +23,11 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import type { ServicesAccessor } from "@codingame/monaco-vscode-api/vscode/vs/platform/instantiation/common/instantiation";
-import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
+import {
+  DEFAULT_EDITOR_ASSOCIATION,
+  type IRevertOptions,
+} from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
+import type { ITextFileSaveOptions } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/textfile/common/textfiles";
 import {
   type EditorInput,
   type IEditorSerializer,
@@ -60,10 +65,13 @@ const modelReference = async (file: URI) =>
 /**
  * A file's reader tab: the file as its resource, so the tab, the explorer and
  * the editor's context keys see the file, and its text model held while the
- * tab lives, so unsaved edits and their undo outlive a switch to Source.
+ * tab lives, so unsaved edits and their undo outlive a switch to Source. The
+ * tab is dirty while the file is, and saves and reverts it, so closing it
+ * asks as the file's own tab would. Made once the workbench is up.
  */
 class ReaderInput extends SimpleEditorInput {
   private model: ReturnType<typeof modelReference> | undefined;
+  private readonly files = StandaloneServices.get(ITextFileService);
   /** Whether the scripts notice was closed in this tab. */
   noticeClosed = false;
 
@@ -72,6 +80,23 @@ class ReaderInput extends SimpleEditorInput {
     this.setName(basename(file));
     this.setTitle(`${basename(file)} (Preview)`);
     this.setDescription("Preview");
+    this._register(
+      this.files.files.onDidChangeDirty((model) => {
+        if (isEqual(model.resource, this.file)) this._onDidChangeDirty.fire();
+      }),
+    );
+  }
+
+  override isDirty(): boolean {
+    return this.files.isDirty(this.file);
+  }
+
+  override async save(_group: number, options?: ITextFileSaveOptions) {
+    return (await this.files.save(this.file, options)) === undefined ? undefined : this;
+  }
+
+  override async revert(_group: number, options?: IRevertOptions): Promise<void> {
+    await this.files.revert(this.file, options);
   }
 
   override get typeId(): string {
@@ -318,6 +343,8 @@ export function registerReader(): void {
                 resource: editor.file,
                 options: { override: DEFAULT_EDITOR_ASSOCIATION.id },
               },
+              // The text editor takes the same model, so its unsaved edits stay without a prompt.
+              forceReplaceDirty: editor.isDirty(),
             },
           ],
           group,
