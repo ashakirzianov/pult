@@ -7,7 +7,7 @@
  * which starts on `line`, and whether the node's text is that text as written,
  * its line breaks the source's, so a part of the node has lines of its own (an
  * HTML node decoding nothing; a Markdown node, whose source may add markup,
- * escapes and indents, breaking its lines where the source does); a node
+ * escapes and indents, breaking its lines as many times as it spans); a node
  * made otherwise (an entity decoded, inline code's line joined) has its
  * source text's lines whole.
  */

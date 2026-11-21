@@ -271,7 +271,7 @@ NodeTest.describe("the reader's frame", () => {
   });
 
   NodeTest.it("renders Markdown and cites it under the source lines it came from", async () => {
-    // Lines 3 and 18 say the same; lines 13 to 16 are a fence; 19 and 20 raw HTML, 19 continuing 18; 22 to 26 math.
+    // Lines 3 and 18 say the same; lines 13 to 16 are a fence; 19 and 20 raw HTML, 19 continuing 18; 22 to 26 math; 28 on a nested list, raw HTML in quotes and code at the end.
     const source = [
       "# Notes",
       "",
@@ -299,6 +299,18 @@ NodeTest.describe("the reader's frame", () => {
       "$$",
       "x\\,dx",
       "$$",
+      "",
+      "- parent",
+      "  - child",
+      "",
+      "> > <div>",
+      "> > one",
+      "> > two",
+      "> > three",
+      "> > </div>",
+      "",
+      "    first",
+      "    second",
     ].join("\n");
     const before = requests.length;
     const cited = await page.evaluate(async (source) => {
@@ -337,6 +349,10 @@ NodeTest.describe("the reader's frame", () => {
         rawHtml: select("html", "html"),
         inlineMath: select("a_1", "b_1"),
         displayMath: select("x\\,dx", "x\\,dx"),
+        nestedParent: select("parent", "parent"),
+        nestedBoth: select("parent", "child"),
+        quotedRawHtml: select("three", "three"),
+        codeAtEnd: select("second", "second"),
       };
       frame.element.remove();
       return {
@@ -349,7 +365,20 @@ NodeTest.describe("the reader's frame", () => {
     NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
     NodeAssert.deepEqual(await page.evaluate(() => window.ran), []);
     NodeAssert.equal(cited.scripts, true);
-    NodeAssert.deepEqual(cited.tags, ["h1", "p", "ul", "table", "pre", "p", "p", "p", "pre"]);
+    NodeAssert.deepEqual(cited.tags, [
+      "h1",
+      "p",
+      "ul",
+      "table",
+      "pre",
+      "p",
+      "p",
+      "p",
+      "pre",
+      "ul",
+      "blockquote",
+      "pre",
+    ]);
     NodeAssert.deepEqual(cited.passages, {
       heading: { text: "Notes", lines: { start: 1, end: 1 } },
       repeated: { text: "Save the file", lines: { start: 18, end: 18 } },
@@ -365,6 +394,10 @@ NodeTest.describe("the reader's frame", () => {
       rawHtml: { text: "html", lines: { start: 20, end: 20 } },
       inlineMath: { text: "a_1 + b_1", lines: { start: 22, end: 22 } },
       displayMath: { text: "x\\,dx", lines: { start: 25, end: 25 } },
+      nestedParent: { text: "parent", lines: { start: 28, end: 28 } },
+      nestedBoth: { text: "parent\nchild", lines: { start: 28, end: 29 } },
+      quotedRawHtml: { text: "three", lines: { start: 34, end: 34 } },
+      codeAtEnd: { text: "second", lines: { start: 38, end: 38 } },
     });
   });
 

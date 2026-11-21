@@ -6,7 +6,7 @@
 // Markdown file is parsed to the same tree (`markdown.ts`) and built the same.
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 
-import { markdownLiteral, markdownTree } from "./markdown.ts";
+import { markdownOrigins, markdownTree, type SourceLocation } from "./markdown.ts";
 import { type Passage, selectedPassage, type SourceText } from "./selection.ts";
 
 type Node = DefaultTreeAdapterTypes.ChildNode;
@@ -86,29 +86,23 @@ function kept(element: string, name: string, value: string): string | undefined 
 
 interface Built {
   scripts: boolean;
-  /** The page's text, which each text node's place in it is read from. */
-  readonly source: string;
   readonly origins: WeakMap<Text, SourceText>;
-  /** Whether a text node's text is its source text as written, a part of it on its own lines (`SourceText`). */
-  readonly literal: (source: string, value: string) => boolean;
+  /** Where a text node of `value` at `at` came from. */
+  readonly origin: (at: SourceLocation, value: string) => SourceText;
 }
 
-/** An HTML text node is as written when it decodes nothing. */
-const htmlLiteral = (source: string, value: string) => source.replace(/\r\n?/g, "\n") === value;
+/** Where each HTML text node of `source` came from: its text there, as written when it decodes nothing. */
+const htmlOrigins = (source: string) => (at: SourceLocation, value: string) => {
+  const text = source.slice(at.startOffset, at.endOffset);
+  return { line: at.startLine, source: text, literal: text.replace(/\r\n?/g, "\n") === value };
+};
 
 function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built: Built): void {
   for (const node of nodes) {
     if (node.nodeName === "#text") {
       const { value, sourceCodeLocation: at } = node as DefaultTreeAdapterTypes.TextNode;
       const text = doc.createTextNode(value);
-      if (at) {
-        const source = built.source.slice(at.startOffset, at.endOffset);
-        built.origins.set(text, {
-          line: at.startLine,
-          source,
-          literal: built.literal(source, value),
-        });
-      }
+      if (at) built.origins.set(text, built.origin(at, value));
       parent.append(text);
       continue;
     }
@@ -231,8 +225,8 @@ export function createReaderFrame(options?: {
         : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
       const doc = await frameDocument();
       if (revision !== latest) return undefined;
-      const literal = markdown ? markdownLiteral : htmlLiteral;
-      const built: Built = { scripts: false, source, origins, literal };
+      const origin = (markdown ? markdownOrigins : htmlOrigins)(source);
+      const built: Built = { scripts: false, origins, origin };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");

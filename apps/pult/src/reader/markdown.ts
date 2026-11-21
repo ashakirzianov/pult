@@ -14,36 +14,38 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
+import type { SourceText } from "./selection.ts";
+
+/** Where parse5 found a node in the source. */
+export type SourceLocation = NonNullable<DefaultTreeAdapterTypes.TextNode["sourceCodeLocation"]>;
+
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkMath)
   .use(remarkRehype, { allowDangerousHtml: true })
-  .use(() => (tree: Root, file) => placeCode(tree, String(file.value)))
+  .use(() => (tree: Root, file) => placeText(tree, String(file.value)))
   .use(rehypeRaw);
 
 const LINE_BREAK = /\r\n?|\n/g;
 
-/** The offset in `source` past `count` line breaks from `from`, or its end. */
-function pastLines(source: string, from: number, count: number): number {
-  LINE_BREAK.lastIndex = from;
-  let at = from;
-  for (let index = 0; index < count; index++) {
-    const found = LINE_BREAK.exec(source);
-    if (found === null) return source.length;
-    at = found.index + found[0].length;
-  }
-  return at;
-}
-
 /**
- * The text of code and math where it is in the file, which remark gives only
- * its element: an inline one's text the element's place, delimiters
- * included; a block's from the line after its fence, or its own line for an
- * indented one, through as many lines as the text has.
+ * The tree's text as `build` reads it. The whitespace remark puts between
+ * blocks has no place in the file and is left out, since `rehype-raw` would
+ * merge it into the text beside it, which then loses its place. The text of
+ * code and math, which remark places only by its element, is given its lines:
+ * an inline one's the element's, delimiters included; a block's from the
+ * line after its fence, or its own line for an indented one, as many as the
+ * text has.
  */
-function placeCode(node: Root | Element, source: string): void {
-  for (const child of node.children as Array<RootContent | ElementContent>) {
+function placeText(node: Root | Element, source: string): void {
+  const children = node.children as Array<RootContent | ElementContent>;
+  for (let index = children.length - 1; index >= 0; index--) {
+    const child = children[index]!;
+    if (child.type === "text" && child.position === undefined && child.value.trim() === "")
+      children.splice(index, 1);
+  }
+  for (const child of children) {
     if (child.type !== "element") continue;
     const block = child.tagName === "pre" ? child.children[0] : undefined;
     const code = block ?? child;
@@ -56,7 +58,7 @@ function placeCode(node: Root | Element, source: string): void {
       position === undefined ||
       offset === undefined
     ) {
-      placeCode(child, source);
+      placeText(child, source);
       continue;
     }
     if (block === undefined) {
@@ -64,13 +66,12 @@ function placeCode(node: Root | Element, source: string): void {
       continue;
     }
     const fenced = /^(?:`{3,}|~{3,}|\${2,})/.test(source.slice(offset));
-    const start = fenced ? pastLines(source, offset, 1) : offset;
-    const lines = text.value.match(LINE_BREAK)?.length ?? 0;
-    const end = pastLines(source, start, lines);
     const line = position.start.line + (fenced ? 1 : 0);
+    const lines = text.value.match(LINE_BREAK)?.length ?? 0;
+    // `markdownOrigins` reads lines alone.
     text.position = {
-      start: { line, column: 1, offset: start },
-      end: { line: line + lines, column: 1, offset: end },
+      start: { line, column: 1, offset },
+      end: { line: line + lines, column: 1, offset },
     };
   }
 }
@@ -194,6 +195,22 @@ export function markdownTree(
   return toParse5({ type: "root", children: [html] }) as DefaultTreeAdapterTypes.Document;
 }
 
-/** A Markdown text node's text is as written when its line breaks are its source's, each line then its own. */
-export const markdownLiteral = (source: string, value: string) =>
-  (source.match(LINE_BREAK)?.length ?? 0) === (value.match(LINE_BREAK)?.length ?? 0);
+/**
+ * Where each Markdown text node of `source` came from, read by its lines
+ * alone: `rehype-raw` puts raw HTML's nodes on their lines, but at offsets
+ * into the HTML with a container's markers (`> `, an indent) taken out. A
+ * node is literal while its line breaks are the lines it spans, so a part of
+ * it has lines of its own; its source text is its lines whole, but a last
+ * one it ends at the start of.
+ */
+export function markdownOrigins(source: string) {
+  const lines = source.split(LINE_BREAK);
+  return (at: SourceLocation, value: string): SourceText => {
+    const last = at.endCol === 1 && at.endLine > at.startLine ? at.endLine - 1 : at.endLine;
+    return {
+      line: at.startLine,
+      source: lines.slice(at.startLine - 1, last).join("\n"),
+      literal: (value.match(LINE_BREAK)?.length ?? 0) === at.endLine - at.startLine,
+    };
+  };
+}
