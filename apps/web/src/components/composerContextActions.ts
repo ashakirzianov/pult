@@ -8,7 +8,8 @@ export interface ComposerContextActions {
   expandImage: (imageId: string) => void;
   expandVideo: (fileId: string) => void;
   openFile: (fileId: string) => void;
-  openMention: (path: string) => void;
+  /** Pult's hook point: a file comment's block opens its lines, `line` to `endLine` (`ComposerCitationBlock.tsx`). */
+  openMention: (path: string, line?: number, endLine?: number) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
 }
 

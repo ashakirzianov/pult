@@ -9,7 +9,7 @@ import type { ShellConnectionServices } from "./connectionRuntime.ts";
  * where a project's new thread does, and where what the view would show in
  * its right panel goes instead (`rightPanel.ts`): a file, as a path relative
  * to the thread's checkout (its worktree, else its project's root) or an
- * absolute host path, with a line to reveal, which the shell looks up across
+ * absolute host path, with a line to reveal, or a citation's lines to select, which the shell looks up across
  * the environment's checkouts when the thread's lacks it; the thread's changes, with a file's path when one was named and a
  * turn's checkpoints when the view named a turn; and
  * what the view knows of its lineage's activity; and the preview browsers
@@ -32,6 +32,7 @@ export interface ThreadViewHost {
     threadId: string,
     path: string,
     line: number | null,
+    endLine: number | null,
   ) => void;
   /** The thread's changes, a turn's when the view named one whose checkpoints it knows. */
   readonly openChanges: (

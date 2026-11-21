@@ -695,7 +695,14 @@ export function ComposerReviewCommentBlock({
                 className="truncate text-muted-foreground text-xs no-underline hover:text-foreground"
                 onClick={(event) => {
                   event.preventDefault();
-                  actions.openMention(comment.filePath);
+                  // A file comment's indices are its lines; a diff comment's, rows of the diff.
+                  if (comment.sectionId.startsWith("file:"))
+                    actions.openMention(
+                      comment.filePath,
+                      comment.startIndex + 1,
+                      comment.endIndex + 1,
+                    );
+                  else actions.openMention(comment.filePath);
                 }}
               />
             }

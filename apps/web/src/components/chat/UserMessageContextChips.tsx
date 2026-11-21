@@ -599,17 +599,40 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
     m,
   );
 
+  // Pult's hook point: a file comment's path and lines open its lines, which Pult's shell selects.
+  const threadRef = ctx.threadRef;
+  const openLines =
+    threadRef && comment.sectionId.startsWith("file:")
+      ? () =>
+          useRightPanelStore
+            .getState()
+            .openFile(threadRef, comment.filePath, comment.startIndex + 1, comment.endIndex + 1)
+      : undefined;
+  const header = (
+    <>
+      <span className="block text-xs font-medium text-foreground">
+        {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
+      </span>
+      <span className="block text-2xs text-muted-foreground">
+        {reviewCommentSectionText(comment.sectionTitle, m)} ·{" "}
+        {reviewCommentRangeText(comment.rangeLabel, m)}
+      </span>
+    </>
+  );
+
   return (
     <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
-      <div className="space-y-1">
-        <div className="text-xs font-medium text-foreground">
-          {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
-        </div>
-        <div className="text-2xs text-muted-foreground">
-          {reviewCommentSectionText(comment.sectionTitle, m)} ·{" "}
-          {reviewCommentRangeText(comment.rangeLabel, m)}
-        </div>
-      </div>
+      {openLines ? (
+        <button
+          type="button"
+          className="block space-y-1 text-left hover:[&>span:first-child]:underline"
+          onClick={openLines}
+        >
+          {header}
+        </button>
+      ) : (
+        <div className="space-y-1">{header}</div>
+      )}
       {comment.text.length > 0 && (
         <div className="wrap-break-word text-sm">
           <ChatMarkdown

@@ -160,7 +160,8 @@ interface RightPanelStoreState {
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
-  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  /** Pult's hook point: `endLine` closes the lines a citation names, which Pult's shell selects; this panel reveals `line` alone. */
+  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number, endLine?: number) => void;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,

@@ -20,8 +20,14 @@ import { turnCheckpoints } from "./turnCheckpoints.ts";
 export function routeRightPanel(): void {
   const { open, openProactive } = useRightPanelStore.getState();
   useRightPanelStore.setState({
-    openFile: (ref, path, line) =>
-      threadViewHost().openFile(ref.environmentId, ref.threadId, path, line ?? null),
+    openFile: (ref, path, line, endLine) =>
+      threadViewHost().openFile(
+        ref.environmentId,
+        ref.threadId,
+        path,
+        line ?? null,
+        endLine ?? null,
+      ),
     open: (ref, kind) => {
       if (kind !== "diff") return open(ref, kind);
       // The view selects the turn and its file in the diff store before opening the surface.

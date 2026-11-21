@@ -744,7 +744,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (preview) onExpandImage(preview);
     },
     openFile: setPreviewFileId,
-    openMention: (path: string) => useRightPanelStore.getState().openFile(routeThreadRef, path),
+    openMention: (path: string, line?: number, endLine?: number) =>
+      useRightPanelStore.getState().openFile(routeThreadRef, path, line, endLine),
     expandVideo: (fileId: string) => {
       const file = composerFiles.find((candidate) => candidate.id === fileId);
       if (!file || !isVideoAttachment(file)) return;

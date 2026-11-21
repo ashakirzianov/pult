@@ -111,8 +111,8 @@ export function threadView() {
       // A draft the view went to, which it remembered as the project's.
       openDraft: (environmentId, projectId) =>
         run("pult-shell.newThread", environmentId, projectId),
-      openFile: (environmentId, threadId, path, line) =>
-        void openThreadFile(environmentId, threadId, path, line),
+      openFile: (environmentId, threadId, path, line, endLine) =>
+        void openThreadFile(environmentId, threadId, path, line, endLine),
       // The changes view (`src/changes/`): the Source Control view over the thread's project, with a turn's group when the view named one.
       openChanges: (environmentId, threadId, path, turn) =>
         run("pult-shell.showChanges", environmentId, threadId, path, turn),

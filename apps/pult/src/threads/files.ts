@@ -6,6 +6,7 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
 import type { IQuickPickItem } from "@codingame/monaco-vscode-api/vscode/vs/platform/quickinput/common/quickInput";
+import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
 import { checkoutName, checkoutsOf } from "../changes/checkouts.ts";
@@ -24,7 +25,8 @@ const ENTRY_LIMIT = 50;
  * Opens a file the thread view names as an editor tab, where upstream would
  * show it in the view's right panel: `path` relative to the thread's
  * checkout, its worktree else its project's root, or an absolute host path,
- * at `line` when given. Resolved by `resolveThreadPath` (`src/files/resolve.ts`):
+ * at `line` when given, in the text editor whatever the file's default, the
+ * lines to `endLine` selected when given (a citation's). Resolved by `resolveThreadPath` (`src/files/resolve.ts`):
  * the literal path when the checkout has it, else the files of the thread's
  * checkout whose path ends with it, else of the environment's other
  * checkouts, through the server's index, a quick pick among several; an
@@ -40,6 +42,7 @@ export async function openThreadFile(
   threadId: string,
   path: string,
   line: number | null,
+  endLine: number | null,
 ): Promise<void> {
   if (threadStore.thread(environmentId, threadId) === undefined) return;
   const [files, editors, notifications, quickInput] = await Promise.all([
@@ -101,7 +104,22 @@ export async function openThreadFile(
   if (opened === undefined) return;
   await editors.openEditor({
     resource: pultResource(environmentId, opened),
-    options: line === null ? {} : { selection: { startLineNumber: line, startColumn: 1 } },
+    options:
+      line === null
+        ? {}
+        : {
+            override: DEFAULT_EDITOR_ASSOCIATION.id,
+            // A selection to the next line's start takes the last line whole, as Cite reads it back.
+            selection:
+              endLine === null
+                ? { startLineNumber: line, startColumn: 1 }
+                : {
+                    startLineNumber: line,
+                    startColumn: 1,
+                    endLineNumber: endLine + 1,
+                    endColumn: 1,
+                  },
+          },
   });
 }
 
@@ -126,21 +144,29 @@ async function pickCandidate(
 }
 
 /**
- * `pult-shell.openThreadFile <environmentId> <threadId> <path> [line]`, what
- * a file link in the thread view does, for `window.pult.exec` and
+ * `pult-shell.openThreadFile <environmentId> <threadId> <path> [line] [endLine]`,
+ * what a file link in the thread view does, or a citation's lines, for `window.pult.exec` and
  * `scripts/drive.ts`; not in the palette, whose way to a file is Go to File.
  */
 export function registerOpenThreadFileCommand(): void {
   CommandsRegistry.registerCommand(
     "pult-shell.openThreadFile",
-    (_accessor, environmentId: unknown, threadId: unknown, path: unknown, line: unknown) => {
+    (
+      _accessor,
+      environmentId: unknown,
+      threadId: unknown,
+      path: unknown,
+      line: unknown,
+      endLine: unknown,
+    ) => {
       if (
         typeof environmentId !== "string" ||
         typeof threadId !== "string" ||
         typeof path !== "string"
       )
         return;
-      return openThreadFile(environmentId, threadId, path, typeof line === "number" ? line : null);
+      const number = (value: unknown) => (typeof value === "number" ? value : null);
+      return openThreadFile(environmentId, threadId, path, number(line), number(endLine));
     },
   );
 }
