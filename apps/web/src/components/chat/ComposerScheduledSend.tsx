@@ -22,9 +22,21 @@ import {
   type ScheduledTaskUpsertInput,
 } from "@t3tools/contracts";
 import { T, useGT, useMessages } from "gt-react";
-import { use, useId, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import {
+  use,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
-import { useComposerDraftStore, type ComposerThreadTarget } from "../../composerDraftStore";
+import {
+  composerTargetKey,
+  useComposerDraftStore,
+  type ComposerThreadTarget,
+} from "../../composerDraftStore";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { readLocalApi } from "../../localApi";
@@ -34,7 +46,8 @@ import { serverEnvironment } from "../../state/server";
 import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatShortTimestamp } from "../../timestampFormat";
-import type { Thread } from "../../types";
+import { threadHasStarted } from "../../lib/chatThreadActions";
+import { DEFAULT_INTERACTION_MODE, type Thread } from "../../types";
 import { toDateTimeLocalValue } from "../settings/scheduledTasksSettings.logic";
 import { Button } from "../ui/button";
 import {
@@ -50,10 +63,21 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import type { ChatComposerHandle } from "./ChatComposer";
+import { getComposerPromptLengthValidationMessage } from "./composerSubmission";
 import { readFreshSessionArm } from "./freshSessionArms";
 import { ShellComposerOptions } from "./ShellComposerOptions";
 
 const HOUR_MS = 3_600_000;
+
+type ModelOptions = Thread["modelSelection"]["options"];
+
+/** An option both selections set to different values, such as an effort changed in the composer. */
+function optionsConflict(composer: ModelOptions, thread: ModelOptions): boolean {
+  const threadValues = new Map((thread ?? []).map((option) => [option.id, option.value]));
+  return (composer ?? []).some(
+    (option) => threadValues.has(option.id) && threadValues.get(option.id) !== option.value,
+  );
+}
 
 export function useComposerScheduledSend(input: {
   readonly environmentId: EnvironmentId;
@@ -81,13 +105,22 @@ export function useComposerScheduledSend(input: {
     label: "composer scheduled send",
   });
   const [customOpen, setCustomOpen] = useState(false);
+  const saving = useRef(false);
+  // The composer stays mounted across threads, and its prompt ref is the shown thread's.
+  const shownTargetKey = useRef("");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the shown draft target to a ref an awaited save reads
+  useLayoutEffect(() => {
+    shownTargetKey.current = composerTargetKey(composerDraftTarget);
+  });
 
   /** The message to schedule, or why this draft cannot be. */
   const readMessage = (): { text: string; thread: Thread } | { refused: string } => {
     const sendCtx = composerRef.current?.getSendContext();
     const draft = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
     const text = (sendCtx?.prompt ?? promptRef.current).trim();
-    if (thread === undefined) return { refused: gt("A new thread's first message sends now") };
+    if (saving.current) return { refused: gt("Still scheduling the previous message") };
+    if (thread === undefined || !threadHasStarted(thread))
+      return { refused: gt("A new thread's first message sends now") };
     if (!offersOnce) return { refused: gt("This environment can't schedule one-time messages") };
     if (!canSchedule) return { refused: gt("You can't schedule tasks on this environment") };
     if (reply !== null) return { refused: gt("A reply sends now") };
@@ -107,11 +140,16 @@ export function useComposerScheduledSend(input: {
       return { refused: gt("Only plain text can be scheduled") };
     if (text.length === 0) return { refused: gt("Type a message to schedule") };
     if (text.startsWith("/")) return { refused: gt("Commands send now") };
+    const tooLong = getComposerPromptLengthValidationMessage(text, messages);
+    if (tooLong !== null) return { refused: tooLong };
     if (
       sendCtx.multipleModelSelections !== null ||
       sendCtx.selectedModelSelection.instanceId !== thread.modelSelection.instanceId ||
       sendCtx.selectedModelSelection.model !== thread.modelSelection.model ||
-      runtimeMode !== thread.runtimeMode
+      optionsConflict(sendCtx.selectedModelSelection.options, thread.modelSelection.options) ||
+      runtimeMode !== thread.runtimeMode ||
+      // A composer send always runs in the default mode.
+      thread.interactionMode !== DEFAULT_INTERACTION_MODE
     )
       return { refused: gt("A scheduled message uses the thread's model and mode") };
     if (
@@ -153,8 +191,24 @@ export function useComposerScheduledSend(input: {
       interactionMode: target.interactionMode,
       creationSource: "web",
     };
+    // Cleared at schedule time as a send clears it, so nothing typed during the save is lost.
+    const targetKey = composerTargetKey(composerDraftTarget);
+    const store = useComposerDraftStore.getState();
+    store.clearComposerContent(composerDraftTarget);
+    promptRef.current = "";
+    composerRef.current?.resetCursorState();
+    saving.current = true;
     const result = await upsertTask({ environmentId, input: taskInput });
+    saving.current = false;
     if (result._tag === "Failure") {
+      // Put back above anything typed meanwhile, as a failed send does.
+      const current = store.getComposerDraft(composerDraftTarget)?.prompt ?? "";
+      const restored = current.trim() ? `${current}\n\n${text}` : text;
+      store.setPrompt(composerDraftTarget, restored);
+      if (shownTargetKey.current === targetKey) {
+        promptRef.current = restored;
+        composerRef.current?.resetCursorState({ prompt: restored, cursor: restored.length });
+      }
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         toastManager.add(
@@ -166,12 +220,6 @@ export function useComposerScheduledSend(input: {
         );
       }
       return;
-    }
-    // Cleared as a send clears it, unless the draft changed while the save was in flight.
-    if (promptRef.current.trim() === text) {
-      useComposerDraftStore.getState().clearComposerContent(composerDraftTarget);
-      promptRef.current = "";
-      composerRef.current?.resetCursorState();
     }
     toastManager.add(
       stackedThreadToast({
