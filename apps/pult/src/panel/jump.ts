@@ -11,6 +11,7 @@ import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { askRef, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { secretStore } from "../secrets/model.ts";
 import {
   explorerSelected,
   onDidSelectThread,
@@ -81,6 +82,7 @@ function currentTargets(): JumpTarget<URI>[] {
   const stars = starEnabled.get() ? starStore.get() : [];
   return jumpTargets({
     stars: stars.map((star) => star.id),
+    secrets: shownAsks(secretStore.get(), starEnabled.get()),
     asks: shownAsks(askStore.get(), starEnabled.get()).map(askRef),
     environmentIds,
     files: openExplorerFiles.get().files,
@@ -184,6 +186,7 @@ function followJumpKeys(): void {
   shelfOrder.subscribe(refreshHints);
   starStore.subscribe(refreshHints);
   starEnabled.subscribe(refreshHints);
+  secretStore.subscribe(refreshHints);
 }
 
 function jump(target: JumpTarget<URI> | undefined): Promise<void> {
@@ -196,6 +199,14 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
       return showExplorerFile(target.file);
     case "draft":
       return selectDraft(target.draft.environmentId, target.draft.projectId);
+    case "secret":
+      return getService(ICommandService).then((commands) =>
+        commands.executeCommand<void>(
+          "pult-shell.openSecret",
+          target.secret.environmentId,
+          target.secret.threadId,
+        ),
+      );
     case "ask":
       return getService(ICommandService).then((commands) =>
         commands.executeCommand<void>(
@@ -211,7 +222,7 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
 
 /**
  * Cmd+1 to Cmd+9 (Ctrl off the Mac), upstream's thread jumps: the left
- * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft, an ask (its file opened among its Star's tabs, as its card's click) or a thread,
+ * panel's Nth row in its shelves' order (`jumpTargets`), a Star, an Explorer file, a draft, a secret (its poster opened with the keyboard in its input, as its card's click), an ask (its file opened among its Star's tabs, as its card's click) or a thread,
  * whether or not the panel shows (`followJumpKeys`). Each is a command too,
  * `pult-shell.jump.1` to `.9`, for another binding; not in the palette,
  * where Pult: Open Thread… is. Registered before the workbench starts.

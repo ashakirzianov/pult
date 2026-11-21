@@ -42,6 +42,7 @@ function panel(
     environmentIds: ["env"],
     files: [],
     drafts: [],
+    secrets: [],
     asks: [],
     threads: [],
     selection: undefined,
@@ -56,13 +57,14 @@ const keys = (targets: ReadonlyArray<{ readonly key: string }>) =>
 
 NodeTest.describe("jumpTargets", () => {
   NodeTest.test(
-    "reaches the Explorer's files, then the drafts, then shelf by shelf the asks and the threads, as the panel lists them",
+    "reaches the Explorer's files, then the drafts and the secrets, then shelf by shelf the asks and the threads, as the panel lists them",
     () => {
       const targets = jumpTargets(
         panel({
           environmentIds: ["env", "other"],
           files: [file("other", "/b.ts"), file("env", "/a.ts")],
           drafts: [draft("project")],
+          secrets: [{ environmentId: "other", threadId: "asker", id: "card" }],
           asks: [
             { environmentId: "env", id: "review", shelf: "inbox" },
             { environmentId: "env", id: "spend", shelf: "settled" },
@@ -84,6 +86,7 @@ NodeTest.describe("jumpTargets", () => {
         "pult://env/a.ts",
         "pult://other/b.ts",
         "draft:env/project",
+        "secret:other/asker/card",
         "ask:env/review",
         "ask:other/access",
         "env/pinned",

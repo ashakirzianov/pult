@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { askRef, type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { secretStore } from "../secrets/model.ts";
+import type { PageSecret } from "../secrets/secrets.ts";
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
@@ -50,6 +52,7 @@ import {
   type PanelShelf,
   SETTLED_TAIL_INITIAL_COUNT,
   SETTLED_TAIL_PAGE_COUNT,
+  secretKey,
   settledTail,
   starKey,
 } from "./order.ts";
@@ -61,6 +64,7 @@ import {
   shelfOrder,
   useReveal,
 } from "./shelves.tsx";
+import { SecretCard } from "./SecretCard.tsx";
 import { StarCard } from "./StarCard.tsx";
 
 /** A row's object, which the rows it was listed from hold by its key. */
@@ -154,8 +158,9 @@ function subagentsByRoot(
  * are cards, in the store's order, which is upstream's: pinned and active
  * under Inbox, whose first cards are the projects' drafts of new threads
  * that hold something (`drafts.ts`), newest first, and the selected draft,
- * then the posted asks (`AskCard.tsx`), a Star's while Show Star is on, the
- * rows Inbox's order lists (`inboxRows`);
+ * then the secrets threads' agents wait for (`SecretCard.tsx`) and the
+ * posted asks (`AskCard.tsx`), a Star's while Show Star is on, the rows
+ * Inbox's order lists (`inboxRows`);
  * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
  * several environments, each card names its own. The selected card expands
  * with its details and its subagents; a subagent has no card, so while one
@@ -243,12 +248,26 @@ export function PanelView() {
   const askCard = (ask: PageAsk) => (
     <AskCard key={askKey(ask)} ask={ask} environment={chip(ask.environmentId)} now={now} />
   );
+  const secrets = shownAsks(
+    useSyncExternalStore(secretStore.subscribe, secretStore.get),
+    starsShown,
+  );
+  const secretCard = (secret: PageSecret) => (
+    <SecretCard
+      key={secretKey(secret)}
+      secret={secret}
+      environment={chip(secret.environmentId)}
+      now={now}
+    />
+  );
   // Inbox's rows in its order, each drawn as its kind's card.
   const byKey = <Row,>(rows: ReadonlyArray<Row>, key: (row: Row) => string) =>
     new Map(rows.map((row) => [key(row), row] as const));
   const asksByKey = byKey(asks, askKey);
+  const secretsByKey = byKey(secrets, secretKey);
   const inbox = inboxRows({
     drafts: draftCards,
+    secrets,
     asks: asks.map(askRef),
     threads: state.threads,
     environmentIds: [...environments.keys()],
@@ -256,6 +275,8 @@ export function PanelView() {
     switch (row.kind) {
       case "draft":
         return draftCard(row.draft);
+      case "secret":
+        return secretCard(found(secretsByKey, row.key));
       case "ask":
         return askCard(found(asksByKey, row.key));
       case "thread":

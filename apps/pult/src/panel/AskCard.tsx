@@ -3,40 +3,55 @@ import { useState, useSyncExternalStore } from "react";
 
 import type { PageAsk } from "../asks/asks.ts";
 import { actOnPageAsk, askStore } from "../asks/model.ts";
+import { secretStore } from "../secrets/model.ts";
 import type { Star } from "../stars/stars.ts";
 import { showSnoozePresets } from "../threads/park.ts";
 import { askKey } from "./order.ts";
 import { age } from "./PanelView.tsx";
 import { PosterCard } from "./PosterCard.tsx";
 
-function run(command: string, ...args: unknown[]): void {
+export function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
 /**
- * A Star's posted asks' count after its name on the card, across the
- * environments: the number alone, the titles its tooltip, one per line, the
- * same in every state and never dimmed; a click opens its first ask as its
- * row does (`pult-shell.openAsk`). None at zero.
+ * A Star's count after its name on the card, across the environments: the
+ * secrets its conversations wait for, then its posted asks, as Inbox lists
+ * them; the number alone, their labels and titles its tooltip, one per line,
+ * the same in every state and never dimmed; a click opens the first as its
+ * row does (`pult-shell.openSecret`, `pult-shell.openAsk`). None at zero.
  */
 export function StarAsksBadge({ star }: { star: Star }) {
+  const secrets = useSyncExternalStore(secretStore.subscribe, secretStore.get).filter(
+    (secret) => "star" in secret.poster && secret.poster.star === star.id,
+  );
   const asks = useSyncExternalStore(askStore.subscribe, askStore.get).filter(
     (ask) => ask.status === "posted" && "star" in ask.poster && ask.poster.star === star.id,
   );
-  const first = asks[0];
+  const rows = [
+    ...secrets.map((secret) => ({
+      title: secret.label,
+      open: () => run("pult-shell.openSecret", secret.environmentId, secret.threadId),
+    })),
+    ...asks.map((ask) => ({
+      title: ask.title,
+      open: () => run("pult-shell.openAsk", ask.environmentId, ask.id),
+    })),
+  ];
+  const first = rows[0];
   if (first === undefined) return null;
   return (
     <span
       className="pult-star-asks-badge"
-      title={asks.map((ask) => ask.title).join("\n")}
-      aria-label={`${asks.length} ${asks.length === 1 ? "ask" : "asks"}`}
+      title={rows.map((row) => row.title).join("\n")}
+      aria-label={`${rows.length} waiting on you`}
       onClick={(event) => {
         // The card's own click would select the Star alone.
         event.stopPropagation();
-        run("pult-shell.openAsk", first.environmentId, first.id);
+        first.open();
       }}
     >
-      {asks.length}
+      {rows.length}
     </span>
   );
 }

@@ -151,6 +151,17 @@ export interface AskRef {
 export const askKey = (ask: Pick<AskRef, "environmentId" | "id">) =>
   `ask:${ask.environmentId}/${ask.id}`;
 
+/** A secret's row: its thread, in its environment, and its card's turn item (`src/secrets/secrets.ts`). */
+export interface SecretRef {
+  readonly environmentId: string;
+  readonly threadId: string;
+  readonly id: string;
+}
+
+/** A secret's row's key, beside the cards' in the jump hints. */
+export const secretKey = (secret: SecretRef) =>
+  `secret:${secret.environmentId}/${secret.threadId}/${secret.id}`;
+
 /** What the panel's order needs of a thread. */
 type ThreadRef = Pick<ShellThread, "environmentId" | "id" | "shelf">;
 
@@ -236,11 +247,12 @@ export function settledTail<Thread extends ThreadRef>(
   return visible;
 }
 
-/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's card, an open file of the Explorer shelf, a draft card, an ask's row or a thread card. */
+/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's card, an open file of the Explorer shelf, a draft card, a secret's row, an ask's row or a thread card. */
 export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThread> =
   | { readonly kind: "star"; readonly key: string; readonly starId: string }
   | { readonly kind: "file"; readonly key: string; readonly file: File }
   | { readonly kind: "draft"; readonly key: string; readonly draft: ProjectDraft }
+  | { readonly kind: "secret"; readonly key: string; readonly secret: SecretRef }
   | { readonly kind: "ask"; readonly key: string; readonly ask: AskRef }
   | { readonly kind: "thread"; readonly key: string; readonly thread: Thread };
 
@@ -253,6 +265,8 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly files: ReadonlyArray<File>;
   /** Inbox's draft cards (`draftCards`). */
   readonly drafts: ReadonlyArray<ProjectDraft>;
+  /** The secrets' rows, in the model's order, all in Inbox (`src/secrets/`). */
+  readonly secrets: ReadonlyArray<SecretRef>;
   /** The asks' rows, each on its shelf, in the model's order (`shownAsks`, `src/asks/asks.ts`). */
   readonly asks: ReadonlyArray<AskRef>;
   /** The store's threads, in its order. */
@@ -318,17 +332,26 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
 }
 
 /**
- * Inbox's rows, top to bottom: the draft cards, then the posted asks' rows,
- * then the pinned and active threads' cards, none while no environment is held.
+ * Inbox's rows, top to bottom, which the panel draws, counts and jumps to:
+ * the draft cards, then the secrets' rows, then the posted asks' rows, then
+ * the pinned and active threads' cards, none while no environment is held.
  */
 export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
-  panel: Pick<PanelRows<File, Thread>, "drafts" | "asks" | "threads" | "environmentIds">,
+  panel: Pick<
+    PanelRows<File, Thread>,
+    "drafts" | "secrets" | "asks" | "threads" | "environmentIds"
+  >,
 ): JumpTarget<File, Thread>[] {
   return [
     ...panel.drafts.map((draft): JumpTarget<File, Thread> => ({
       kind: "draft",
       key: draftKey(draft),
       draft,
+    })),
+    ...panel.secrets.map((secret): JumpTarget<File, Thread> => ({
+      kind: "secret",
+      key: secretKey(secret),
+      secret,
     })),
     ...panel.asks
       .filter((ask) => ask.shelf === "inbox")

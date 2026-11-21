@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { askRef, asksOn, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { secretStore } from "../secrets/model.ts";
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
@@ -55,7 +56,7 @@ const threadsSnapshot = () => threadStore.get();
  * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
  * a badge in the accent colour, as Source Control's tab does (Inbox's
- * counting its rows, the posted asks among them), but Stars, whose asks
+ * counting its rows, the secrets and posted asks among them), but Stars, whose asks
  * Inbox counts, Settled, whose count is in its tooltip, and Limits,
  * whose badge is the count of warning windows, none while nothing warns;
  * dimmed with no badge while the shelf holds nothing; highlighted as the
@@ -71,6 +72,10 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
+  const secrets = shownAsks(
+    useSyncExternalStore(secretStore.subscribe, secretStore.get),
+    starsShown,
+  );
   // The Stars' shelf is no shelf at all while Show Star is off.
   const closed = closedShelves.filter(
     (shelf) => groupOf(shelf) === group && (shelf !== "stars" || starsShown),
@@ -121,10 +126,11 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
           title: label,
         };
       case "inbox": {
-        // Its rows: the drafts', the posted asks', then the pinned and active threads'.
+        // Its rows: the drafts', the secrets', the posted asks', then the pinned and active threads'.
         const threads = [...on("pinned"), ...on("active")];
         const count = inboxRows({
           drafts,
+          secrets,
           asks: asks.map(askRef),
           threads: state.threads,
           environmentIds: state.environments.map((environment) => environment.id),

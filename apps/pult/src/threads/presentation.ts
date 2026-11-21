@@ -166,6 +166,13 @@ export function limitedLabel(
   return `Limited · resets ${instantText(usageLimit.resetsAt, now, zone).replace(/^today /, "")}`;
 }
 
+/** The card only the user can answer that the shell says awaits them, a secret's or a link's: its turn item's id (upstream's `secretRequestAsPendingInput`) and when it asked. */
+function pendingCardOf(thread: EnvironmentThreadShell): ShellThread["pendingCard"] {
+  const request = thread.source.pendingRuntimeRequest;
+  if (request?.kind !== "user_input" || request.userOnly !== true) return null;
+  return { id: request.id, since: DateTime.formatIso(request.createdAt) };
+}
+
 /** The next time one of `threads` wakes from its snooze, after `now`. */
 export function nextWake(
   threads: ReadonlyArray<EnvironmentThreadShell>,
@@ -381,6 +388,7 @@ export function shellThreads(
       workingSince: resolveThreadWorkingStartedAt(thread),
       pinned: thread.pinnedAt !== null,
       awaitsUser: thread.hasPendingApprovals || thread.hasPendingUserInput,
+      pendingCard: pendingCardOf(thread),
       assistantStreaming: thread.source.assistantMessageStreaming === true,
       canSnooze: canSnooze(thread, { now }),
       usageLimit:
