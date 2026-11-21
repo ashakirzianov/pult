@@ -240,7 +240,12 @@ export function PanelView() {
     switch (name) {
       case "stars":
         return (
-          <Shelf key={name} name={name} empty={stars.length === 0}>
+          <Shelf
+            key={name}
+            name={name}
+            empty={stars.length === 0}
+            actions={<NewAction title="New Star" command="pult-shell.createStar" />}
+          >
             {stars.map(starCard)}
           </Shelf>
         );
@@ -254,6 +259,7 @@ export function PanelView() {
             empty={
               listed.length === 0 && draftCards.length === 0 && asksOn(asks, "inbox").length === 0
             }
+            actions={<NewAction title="New Thread" command="pult-shell.newThread" />}
           >
             {draftCards.map(draftCard)}
             {asksOn(asks, "inbox").map(askCard)}
@@ -334,17 +340,19 @@ export function PanelView() {
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
  * in its group's tray (`TrayShelves.tsx`), which is highlighted while the shelf
  * holds the selected card. Where it is persists in localStorage
- * (`shelves.tsx`).
+ * (`shelves.tsx`). `actions` sit in its header before Close.
  */
 function Shelf({
   name,
   count,
   empty,
+  actions,
   children,
 }: {
   name: "stars" | "inbox" | "working" | "snoozed" | "settled";
   count?: number;
   empty: boolean;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const element = useRef<HTMLLIElement>(null);
@@ -357,9 +365,24 @@ function Shelf({
       className={`pult-shelf pult-shelf-${name}${groupOf(name) === "bottom" ? " pult-shelf-lower" : ""}`}
       data-shelf={name}
     >
-      <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} />
+      <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} actions={actions} />
       <ul className="pult-shelf-cards">{children}</ul>
     </li>
+  );
+}
+
+/** A shelf header's plus, running `command`: the Stars' New Star, the Inbox's New Thread. */
+function NewAction({ title, command }: { title: string; command: string }) {
+  return (
+    <button
+      type="button"
+      className="pult-shelf-action"
+      title={title}
+      aria-label={title}
+      onClick={() => run(command)}
+    >
+      <i className="codicon codicon-add" aria-hidden />
+    </button>
   );
 }
 
