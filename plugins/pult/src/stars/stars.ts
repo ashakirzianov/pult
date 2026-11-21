@@ -29,6 +29,7 @@ import {
   ServerEnvironment,
   ThreadManagementService,
 } from "../host.ts";
+import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { type Ask, askName, ASKS_DIRECTORY, askTitle } from "./asks.ts";
 import { wakeChannelModel } from "./channelModels.ts";
@@ -678,8 +679,13 @@ export const make = Effect.gen(function* () {
   });
 
   const view = Effect.gen(function* () {
+    // The asks folder's project is hidden as a Star's is (`asks.ts`).
+    const asksFolder = asksFolderOf(directory, path);
     const hidden = (yield* projects.listShells())
-      .filter((project) => isStarRoot(project.workspaceRoot))
+      .filter(
+        (project) =>
+          isStarRoot(project.workspaceRoot) || path.resolve(project.workspaceRoot) === asksFolder,
+      )
       .map((project) => project.id);
     const stars = yield* Effect.forEach(yield* list, (star) =>
       Effect.gen(function* () {
