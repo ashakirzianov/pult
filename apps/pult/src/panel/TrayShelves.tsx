@@ -27,6 +27,7 @@ import { setLimitsShowAll } from "../limits/shelf.ts";
 import {
   openShelf,
   SHELF_ICONS,
+  ShelfIcon,
   shelfDrag,
   shelfDragHandlers,
   ShelfDropLine,
@@ -193,7 +194,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
                 : showThreads().then(() => openShelf(shelf)))
             }
           >
-            <i className={`codicon codicon-${SHELF_ICONS[shelf].icon}`} aria-hidden />
+            <ShelfIcon icon={SHELF_ICONS[shelf].icon} />
             {badge === undefined ? null : <span className="pult-panel-tab-badge">{badge}</span>}
           </button>
         );

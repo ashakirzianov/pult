@@ -459,6 +459,18 @@
   margin-right: -3px;
 }
 
+/* The Stars' icon, the Star's mark as a mask in the text's colour, a codicon's size (`ShelfIcon`, shelves.tsx). */
+.pult-shelf-star-mark {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
 .pult-shelf-header-closable:has(.pult-shelf-open:hover) {
   background: var(--vscode-list-hoverBackground);
 }

@@ -7,6 +7,9 @@ import {
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { type RefObject, useEffect, useSyncExternalStore } from "react";
 
+import { flatStill } from "../stars/flat/star.ts";
+import markCss from "../stars/flat/star.css?raw";
+
 import {
   closeIn,
   DEFAULT_SHELF_ORDER,
@@ -20,9 +23,17 @@ import {
   type ShelfOrder,
 } from "./order.ts";
 
-/** Each shelf's label and codicon, its header's and its tray icon's (`TrayShelves.tsx`). */
+/** The Stars' icon, the Star's mark (`ShelfIcon`) where every other shelf's is a codicon. */
+const STAR_MARK = "pult-shelf-star-mark";
+
+/** The Star's mark awake, still, as a mask, so `ShelfIcon` draws it in its element's colour as a codicon is. */
+const starMarkMask = `url("data:image/svg+xml,${encodeURIComponent(
+  flatStill("awake", `${markCss}\n.flat-star { color: #000; --err: #000; }`),
+)}")`;
+
+/** Each shelf's label and icon, a codicon or `STAR_MARK`, its header's and its tray icon's (`TrayShelves.tsx`). */
 export const SHELF_ICONS: Record<PanelShelf, { readonly label: string; readonly icon: string }> = {
-  stars: { label: "Stars", icon: "star-empty" },
+  stars: { label: "Stars", icon: STAR_MARK },
   explorer: { label: "Explorer", icon: "files" },
   inbox: { label: "Inbox", icon: "inbox" },
   working: { label: "Working", icon: "pulse" },
@@ -30,6 +41,19 @@ export const SHELF_ICONS: Record<PanelShelf, { readonly label: string; readonly 
   settled: { label: "Settled", icon: "check" },
   limits: { label: "Limits", icon: "dashboard" },
 };
+
+/** A shelf's icon, `SHELF_ICONS`' or its header's own: the codicon it names, or the Star's mark. */
+export function ShelfIcon({ icon, className = "" }: { icon: string; className?: string }) {
+  return icon === STAR_MARK ? (
+    <i
+      className={`pult-shelf-star-mark ${className}`}
+      style={{ maskImage: starMarkMask }}
+      aria-hidden
+    />
+  ) : (
+    <i className={`codicon codicon-${icon} ${className}`} aria-hidden />
+  );
+}
 
 /** Where the shelves' order is kept, as upstream keeps its shelves' state. */
 const ORDER_KEY = "pult-shell.panel.shelves";
@@ -294,7 +318,7 @@ export function ShelfHeader({
 }) {
   const heading = (
     <>
-      <i className={`codicon codicon-${icon} pult-shelf-icon`} aria-hidden />
+      <ShelfIcon icon={icon} className="pult-shelf-icon" />
       <span className="pult-shelf-label">{label}</span>
       {count !== undefined ? <span className="pult-shelf-count">{count}</span> : null}
     </>
