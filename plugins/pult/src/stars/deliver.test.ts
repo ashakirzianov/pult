@@ -589,10 +589,12 @@ describe("deliver", () => {
         const shown = Effect.map(h.stars.view, (view) => view.stars[0]?.model);
         // No file: the page keeps its own, the newest conversation's.
         assert.deepStrictEqual(yield* shown, last.shell.modelSelection);
-        assert.strictEqual(yield* h.pageWakeModel(h.star, "auto"), null);
+        assert.strictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), null);
         yield* h.choose({ default: FABLE, channels: { user: SOL } });
         assert.deepStrictEqual(yield* shown, selected(SOL));
-        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto"), selected(SOL));
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), selected(SOL));
+        // Another channel's tagged draft takes its own: here the default.
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "review"), selected(FABLE));
         // At a mode its provider does not offer, the entry falls to the default, and the page's send tells work.
         yield* h.choose({
           default: FABLE,
@@ -600,14 +602,14 @@ describe("deliver", () => {
         });
         assert.deepStrictEqual(yield* shown, selected(FABLE));
         assert.strictEqual(h.launches.launches.length, 0, "showing the choice tells nothing");
-        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto"), selected(FABLE));
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), selected(FABLE));
         assert.deepStrictEqual(
           h.launches.launches.map((each) => each.tags),
           [["pult:channel:work"]],
         );
         assert.include(h.threads.messages[0]?.text, '"codex-narrow" does not offer runtime mode');
         // The same content is told once, whichever wake finds it next.
-        yield* h.pageWakeModel(h.star, "auto");
+        yield* h.pageWakeModel(h.star, "auto", "user");
         yield* h.fromPlugin("k1", "Hello", "unit-2");
         assert.strictEqual(h.threads.messages.length, 2);
       }).pipe(Effect.scoped),

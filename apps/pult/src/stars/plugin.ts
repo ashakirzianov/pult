@@ -483,12 +483,20 @@ const wakeModel = (body: unknown): RouteModel | null =>
 
 /**
  * The model the page wakes the Star's `user` at itself (its draft, a sync's
- * handoff), at `runtimeMode`: the Star's choice, its options kept for the
- * caller to decode, or null for the page's own; the plugin tells the Star's
- * `work` of a file it cannot serve.
+ * handoff), or `channel` (its tagged draft), at `runtimeMode`: the Star's
+ * choice, its options kept for the caller to decode, or null for the page's
+ * own; the plugin tells the Star's `work` of a file it cannot serve.
  */
-export const readWakeModel = (credential: Credential, id: string, runtimeMode: string) =>
-  ask(credential, "POST", `${starPath(id)}/model`, wakeModel, { runtimeMode });
+export const readWakeModel = (
+  credential: Credential,
+  id: string,
+  runtimeMode: string,
+  channel?: string,
+) =>
+  ask(credential, "POST", `${starPath(id)}/model`, wakeModel, {
+    runtimeMode,
+    ...(channel === undefined ? {} : { channel }),
+  });
 
 /** One transcript of the Star on this environment, parsed. */
 export const readStarTranscript = (credential: Credential, id: string, name: string) =>

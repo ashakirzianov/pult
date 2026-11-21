@@ -26,7 +26,7 @@ import {
   ThreadManagementService,
 } from "../host.ts";
 import { type BrokenFile, CHANNEL_MODELS_FILE, wakeChannelModel } from "./channelModels.ts";
-import { type Channel, channelTag, isChannel, USER_CHANNEL } from "./channels.ts";
+import { type Channel, channelTag, isChannel } from "./channels.ts";
 import { starName } from "./record.ts";
 import type { Conversations, Star, Stars } from "./stars.ts";
 
@@ -58,13 +58,14 @@ export interface Delivered {
 export type Deliver = (delivery: Delivery) => Effect.Effect<Delivered, OrchestratorMcpFailure>;
 
 /**
- * The model a fresh conversation of `user` the page wakes itself (its sleeping draft, a sync's handoff)
- * starts at `runtimeMode`: the Star's choice, else null for the page's own; telling the Star's `work`
+ * The model a fresh conversation of `channel` the page wakes itself (`user`'s sleeping draft, a sync's
+ * handoff, another channel's tagged draft) starts at `runtimeMode`: the Star's choice, else null for the page's own; telling the Star's `work`
  * what is wrong with its file as a wake by message does.
  */
 export type PageWakeModel = (
   star: Star,
   runtimeMode: RuntimeMode,
+  channel: Channel,
 ) => Effect.Effect<ModelSelection | null>;
 
 export interface Delivering {
@@ -268,8 +269,8 @@ export const make = Effect.gen(function* () {
       return delivered;
     });
     const pageWakeModel: PageWakeModel = Effect.fn("Stars.pageWakeModel")(
-      function* (star, runtimeMode) {
-        const model = yield* chosenFor(star, USER_CHANNEL, runtimeMode);
+      function* (star, runtimeMode, channel) {
+        const model = yield* chosenFor(star, channel, runtimeMode);
         // `tell` logs whatever fails but an interruption, so a failure here is no notice's.
         if (model?.broken != null)
           yield* tell((notice) => deliver(notice, false), star, model.broken).pipe(Effect.orDie);

@@ -560,8 +560,8 @@ class StarsModel {
   }
 
   /**
-   * The model the page wakes the Star's `user` at itself on the environment,
-   * at `runtimeMode`, through its plugin (`POST /stars/<id>/model`), which
+   * The model the page wakes the Star's `user`, or `channel`, at itself on the
+   * environment, at `runtimeMode`, through its plugin (`POST /stars/<id>/model`), which
    * tells the Star's `work` of a file it cannot serve: the Star's choice, or
    * null for the page's own, which is also what a plugin without the feature
    * and a failure, logged, answer.
@@ -570,10 +570,11 @@ class StarsModel {
     starId: string,
     environmentId: string,
     runtimeMode: string,
+    channel?: string,
   ): Promise<RouteModel | null> {
     if (pluginFeatures(environmentId)?.has(CHANNEL_MODELS_FEATURE) !== true) return null;
     try {
-      return await readWakeModel(this.credential(environmentId), starId, runtimeMode);
+      return await readWakeModel(this.credential(environmentId), starId, runtimeMode, channel);
     } catch (error) {
       console.warn(
         `[pult-shell] the Star's model choice could not be read; it wakes at its own: ${errorMessage(error)}`,
@@ -632,9 +633,13 @@ export function starById(starId: string): Star | undefined {
 /** Asks for a new Star named `name` on the environment. */
 export const createStar = (environmentId: string, name: string) =>
   model.create(environmentId, { ifNone: false, name });
-/** The model the page wakes the Star's `user` at itself, telling its `work` of a broken file; null for the page's own (`StarsModel.wakeModel`). */
-export const starWakeModel = (starId: string, environmentId: string, runtimeMode: string) =>
-  model.wakeModel(starId, environmentId, runtimeMode);
+/** The model the page wakes the Star's `user`, or `channel`, at itself, telling its `work` of a broken file; null for the page's own (`StarsModel.wakeModel`). */
+export const starWakeModel = (
+  starId: string,
+  environmentId: string,
+  runtimeMode: string,
+  channel?: string,
+) => model.wakeModel(starId, environmentId, runtimeMode, channel);
 /** Asks the environment's plugin for its Stars again: after a sync occasion, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
 export const canCreateStarOn = (environmentId: string) => model.canCreateOn(environmentId);

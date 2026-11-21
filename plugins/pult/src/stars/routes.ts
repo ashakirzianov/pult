@@ -4,6 +4,7 @@ import { RuntimeMode } from "@t3tools/contracts";
 
 import { Effect, HttpServerRequest, HttpServerResponse, Schema } from "../host.ts";
 import type { Schedules } from "../schedules/schedules.ts";
+import { isChannel, USER_CHANNEL } from "./channels.ts";
 import type { PageWakeModel } from "./deliver.ts";
 import type { Stars, StarsError } from "./stars.ts";
 
@@ -13,7 +14,9 @@ const decodeCreate = Schema.decodeUnknownEffect(
 const decodeFields = Schema.decodeUnknownEffect(
   Schema.Struct({ name: Schema.optional(Schema.String), tint: Schema.optional(Schema.String) }),
 );
-const decodeWake = Schema.decodeUnknownEffect(Schema.Struct({ runtimeMode: RuntimeMode }));
+const decodeWake = Schema.decodeUnknownEffect(
+  Schema.Struct({ runtimeMode: RuntimeMode, channel: Schema.optional(Schema.String) }),
+);
 
 /** The reserved name of `GET stars/<id>/conversations/<name>` that looks a transcript up by its thread. */
 const BY_THREAD = "by-thread";
@@ -87,16 +90,17 @@ export const starsRoute = (
           : json(outcome);
       }),
     );
-  // The page wakes `user` itself (its draft, a sync's handoff): the model to wake it at, telling `work` of a broken file.
+  // The page wakes `user` itself (its draft, a sync's handoff), or another channel (its tagged draft): the model to wake it at, telling `work` of a broken file.
   if (segments.length === 3 && id !== undefined && sub === "model" && method === "POST")
     return answer(
       Effect.gen(function* () {
         const body = yield* bodyOf(request, decodeWake);
-        if (body._tag === "None")
-          return json({ error: "The body must be JSON: { runtimeMode }." }, 400);
+        const channel = body._tag === "None" ? undefined : (body.value.channel ?? USER_CHANNEL);
+        if (body._tag === "None" || channel === undefined || !isChannel(channel))
+          return json({ error: "The body must be JSON: { runtimeMode, channel? }." }, 400);
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;
-        return json({ model: yield* pageWakeModel(star, body.value.runtimeMode) });
+        return json({ model: yield* pageWakeModel(star, body.value.runtimeMode, channel) });
       }),
     );
   if (

@@ -365,6 +365,10 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     const wake = { runtimeMode: "full-access" };
     expect((yield* send("POST", `/stars/${star.id}/model`, "reader", wake)).status).toBe(403);
     expect((yield* send("POST", `/stars/${star.id}/model`, "writer", {})).status).toBe(400);
+    expect(
+      (yield* send("POST", `/stars/${star.id}/model`, "writer", { ...wake, channel: "Not A Slug" }))
+        .status,
+    ).toBe(400);
     expect((yield* send("POST", "/stars/nobody/model", "writer", wake)).status).toBe(404);
     expect(yield* send("POST", `/stars/${star.id}/model`, "writer", wake)).toEqual({
       status: 200,

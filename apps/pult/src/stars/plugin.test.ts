@@ -501,6 +501,11 @@ NodeTest.describe("the Stars' routes", () => {
         ],
       );
       NodeAssert.deepEqual(asked.result, chosen);
+      const channel = await askOver(
+        () => json({ model: chosen }),
+        () => readWakeModel(credential, "s1", "auto", "review"),
+      );
+      NodeAssert.deepEqual(channel.asked[0]?.body, { runtimeMode: "auto", channel: "review" });
       const none = await askOver(
         () => json({ model: null }),
         () => readWakeModel(credential, "s1", "auto"),
