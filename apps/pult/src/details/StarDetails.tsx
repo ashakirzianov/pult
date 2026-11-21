@@ -6,6 +6,8 @@ import { CollapsibleHeader, useExpanded } from "../panel/collapsible.tsx";
 import { keyOf } from "../panel/order.ts";
 import { type Activity, age, Elapsed, Status, Subagents } from "../panel/PanelView.tsx";
 import { StarSchedules } from "../panel/StarSchedules.tsx";
+import { LOOK_WORDS, type StarLook } from "../stars/look.ts";
+import { starLookOf, starMarks } from "../stars/mark.ts";
 import { type CardRows, channelThreads, type Star } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 
@@ -15,7 +17,7 @@ function run(command: string, ...args: unknown[]): void {
 
 /**
  * A selected Star's details in the Details column (`pult/decisions`,
- * `star-card`): its state in words with its time, over the environment it
+ * `star-card`): its look in words with its time, over the environment it
  * is drawn on; its posted asks (`StarAsks`); `user`'s children and a
  * collapsible Channels holding a row per channel but `user`
  * (`StarChannels`); its current conversation's subagents, as a thread's
@@ -228,28 +230,30 @@ function ChannelsStatus({
   );
 }
 
-/** The Star's status, on its card and in its details: Working, while any open channel works, with the longest elapsed time; Awake; or Asleep, with how long `user` has slept. */
-export function StarStatus({ star, now }: { star: Star; now: number }) {
-  if (star.state === "working") {
-    // The longest elapsed time is the earliest start.
-    const since = star.channels
-      .flatMap(({ thread }) =>
-        thread.working && thread.workingSince !== null ? [thread.workingSince] : [],
-      )
-      .toSorted((a, b) => Date.parse(a) - Date.parse(b))[0];
-    return (
-      <span className="pult-card-status pult-card-status-working">
-        Working
-        {since === undefined ? null : <Elapsed since={since} />}
-      </span>
-    );
-  }
-  if (star.state === "awake")
-    return <span className="pult-card-status pult-star-awake">Awake</span>;
-  const since = age(star.asleepSince, now);
+/** The look's colour on the state line. */
+const LOOK_CLASSES: Readonly<Record<StarLook, string>> = {
+  troubled: "pult-card-status-failed",
+  waiting: "pult-card-status-waiting",
+  working: "pult-card-status-working",
+  awake: "pult-star-awake",
+  asleep: "pult-star-asleep",
+};
+
+/** The Star's state line in its details: its look in words (`LOOK_WORDS`), Working with the longest elapsed time of its working conversations, Asleep with how long `user` has slept. */
+function StarStatus({ star, now }: { star: Star; now: number }) {
+  const look = starLookOf(star, useSyncExternalStore(starMarks.subscribe, starMarks.get));
+  // The longest elapsed time is the earliest start.
+  const since = star.channels
+    .flatMap(({ thread }) =>
+      thread.working && thread.workingSince !== null ? [thread.workingSince] : [],
+    )
+    .toSorted((a, b) => Date.parse(a) - Date.parse(b))[0];
+  const asleepFor = age(star.asleepSince, now);
   return (
-    <span className="pult-card-status pult-star-asleep">
-      Asleep{since === "" ? "" : ` · ${since}`}
+    <span className={`pult-card-status ${LOOK_CLASSES[look]}`}>
+      {LOOK_WORDS[look]}
+      {look === "working" && since !== undefined ? <Elapsed since={since} /> : null}
+      {look === "asleep" && asleepFor !== "" ? ` · ${asleepFor}` : null}
     </span>
   );
 }

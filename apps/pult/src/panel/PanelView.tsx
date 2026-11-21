@@ -152,7 +152,7 @@ export function subagentsByRoot(
  * the panel's top, its tray in the Pult tab's header, and the bottom group
  * (Working, Snoozed, Settled, Limits) to its bottom, its tray under the
  * panel (`groupOf`), the panel's notice, Not connected or No threads, between. The Stars' shelf holds the
- * Stars' cards, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
+ * Stars' squares, wrapping, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
  * Star's threads have no card of their own. The Explorer shelf is the
  * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
  * are cards, in the store's order, which is upstream's: pinned and active
@@ -211,19 +211,17 @@ export function PanelView() {
   );
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
-  // A Star's card stands for its conversation: selected with the Star, or with one of its conversation's subagents.
+  // A Star's square stands for its conversation: selected with the Star, or with one of its conversation's subagents.
   const starCard = (star: Star) => {
     const conversation = star.current === null ? undefined : keyOf(star.current);
     return (
       <StarCard
         key={starKey(star.id)}
         star={star}
-        environment={chip(star.current?.environmentId ?? star.homes[0]?.environmentId ?? "")}
         selected={
           selection === starKey(star.id) ||
           (conversation !== undefined && selectedCard === conversation)
         }
-        now={now}
       />
     );
   };

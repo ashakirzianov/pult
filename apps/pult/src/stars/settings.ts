@@ -19,7 +19,7 @@ import { writeUserValue } from "../settings/userSetting.ts";
 
 /**
  * Show Star, `pult.star.enabled`, in the user's settings under Pult beside
- * `pult.mode` (`src/mode.ts`): on by default; off hides the Star's card and creates
+ * `pult.mode` (`src/mode.ts`): on by default; off hides the Star's square and creates
  * no Star, deleting nothing, the way out of the Star.
  */
 const ENABLED = "pult.star.enabled";

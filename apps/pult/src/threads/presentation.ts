@@ -389,7 +389,6 @@ export function shellThreads(
       pinned: thread.pinnedAt !== null,
       awaitsUser: thread.hasPendingApprovals || thread.hasPendingUserInput,
       pendingCard: pendingCardOf(thread),
-      assistantStreaming: thread.source.assistantMessageStreaming === true,
       canSnooze: canSnooze(thread, { now }),
       usageLimit:
         thread.runtime?.status === "failed" && thread.runtime.lastErrorClass === "usage_limit"

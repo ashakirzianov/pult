@@ -1,4 +1,4 @@
-import type { StarLook as State } from "../look.ts";
+import type { State } from "./states.ts";
 
 // The flat Star: a mark in a 48-unit box, drawn as SVG in `currentColor`, flat, with no blur, glow or gradient. The disc is wakefulness (solid awake, a dimmed outline asleep), the halo behind it activity, and signs around it what involves someone else. `star.css` beside this is every state's look and motion, keyed on the mark's `data-state`, so setting that attribute moves the mark to another state with its motion carrying on. Nothing here depends on a page: Pult takes this directory as it is.
 //

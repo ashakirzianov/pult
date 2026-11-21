@@ -4,9 +4,9 @@
 // src/stars/notices.test.ts` can run it: the dock badge's count, the posted
 // asks whoever posted them and the secrets agents wait for, and which asks,
 // secrets and Stars' waits are new since the page last looked. `notify.ts` shows them.
-import type { LookInputs, LookThread } from "./look.ts";
+import type { LookThread } from "./look.ts";
 import { starLook } from "./look.ts";
-import { type StarHome, threadsBelow } from "./stars.ts";
+import { threadsBelow } from "./stars.ts";
 
 /** A Star as the notices read it: the panel's Stars, none while Show Star is off. */
 export interface NoticeStar {
@@ -199,18 +199,14 @@ export function notices(
  * user, else a thread below one; null while it does not wait.
  */
 export function waitingThread<Thread extends LookThread & { readonly title: string }>(
-  star: {
-    readonly channels: ReadonlyArray<{ readonly thread: Thread }>;
-    readonly homes: ReadonlyArray<Pick<StarHome, "environmentId" | "projectId">>;
-  },
+  star: { readonly channels: ReadonlyArray<{ readonly thread: Thread }> },
   threads: ReadonlyArray<Thread>,
 ): Thread | null {
   const live = (thread: Thread) =>
     threads.find((each) => each.environmentId === thread.environmentId && each.id === thread.id) ??
     thread;
   const channels = star.channels.map(({ thread }) => ({ thread: live(thread) }));
-  const inputs: LookInputs = { threads, unsent: new Set(), drafts: [], now: 0 };
-  if (starLook({ channels, homes: star.homes }, inputs) !== "waiting") return null;
+  if (starLook({ channels }, threads) !== "waiting") return null;
   const awaiting = channels.find(({ thread }) => thread.awaitsUser)?.thread;
   if (awaiting !== undefined) return awaiting;
   const below = channels.flatMap(({ thread }) => threadsBelow(thread, threads));

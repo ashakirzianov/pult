@@ -211,24 +211,22 @@ const thread = (id: string, overrides: Partial<LookThread> = {}) => ({
   working: false,
   waiting: false,
   awaitsUser: false,
-  assistantStreaming: false,
   latestRun: null,
   ...overrides,
 });
-const homes = [{ environmentId: "a", projectId: "p" }];
 
 NodeTest.describe("waitingThread", () => {
   NodeTest.it("reads the conversation from the store's live row, not the Star's", () => {
     const stale = thread("c");
     const live = thread("c", { awaitsUser: true });
-    NodeAssert.equal(waitingThread({ channels: [{ thread: stale }], homes }, [live]), live);
+    NodeAssert.equal(waitingThread({ channels: [{ thread: stale }] }, [live]), live);
   });
 
   NodeTest.it("names a thread below the conversation when it is the one awaiting", () => {
     const conversation = thread("c", { working: true });
     const below = thread("sub", { rootId: "c", awaitsUser: true });
     NodeAssert.equal(
-      waitingThread({ channels: [{ thread: conversation }], homes }, [conversation, below]),
+      waitingThread({ channels: [{ thread: conversation }] }, [conversation, below]),
       below,
     );
   });
@@ -238,6 +236,6 @@ NodeTest.describe("waitingThread", () => {
       awaitsUser: true,
       latestRun: { status: "failed", startedAt: null, finishedAt: null },
     });
-    NodeAssert.equal(waitingThread({ channels: [{ thread: failed }], homes }, [failed]), null);
+    NodeAssert.equal(waitingThread({ channels: [{ thread: failed }] }, [failed]), null);
   });
 });

@@ -272,26 +272,33 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* A Star's card (StarCard.tsx): its mark at 44px with 4px around it, then its name in a title's weight, with its chip, over its state; 52px tall. */
-.pult-card-star .pult-card-select {
-  padding: 4px 10px 4px 4px;
+/* The Stars' squares (StarCard.tsx), wrapping: four to a row at the panel's default width, 300px, more as it widens. */
+.pult-shelf-stars > .pult-shelf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 4px;
+  padding: 2px 0;
 }
 
-.pult-star-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.pult-star-square {
+  margin: 0;
   min-width: 0;
-  height: 44px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+}
+
+/* The mark at 32px over the name, centred. */
+.pult-star-square .pult-card-select {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 2px 5px;
 }
 
 /* The live mark (src/stars/flat/), its span filling the element around it, in the tint that element is given, its troubled ring in the theme's error colour. */
 .pult-star-mark {
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   --err: var(--vscode-errorForeground);
 }
 
@@ -300,54 +307,23 @@
   height: 100%;
 }
 
-.pult-star-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.pult-star-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  height: 18px;
-}
-
 .pult-star-name {
-  flex: 1;
-  min-width: 0;
+  max-width: 100%;
+  padding: 0 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--vscode-foreground);
+  font-size: 11px;
+  line-height: 15px;
 }
 
-.pult-star-head:has(.pult-card-environment) .pult-star-name,
-.pult-star-head:has(.pult-star-asks-badge) .pult-star-name {
-  flex: 0 1 auto;
+/* The jump hint over the square's top-right corner. */
+.pult-star-square .pult-card-select > .pult-jump-hint {
+  top: 2px;
+  right: 2px;
 }
 
-/* The asks' count after the name (src/panel/StarAsks.tsx): the tray badges' colours, inline, never dimmed; a click reveals the first ask in Inbox. */
-.pult-star-asks-badge {
-  flex: none;
-  cursor: pointer;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--vscode-activityBarBadge-background);
-  color: var(--vscode-activityBarBadge-foreground);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
-  text-align: center;
-}
-
+/* A Star's state in its details (src/details/StarDetails.tsx). */
 .pult-star-awake {
   color: var(--vscode-foreground);
   font-weight: 500;

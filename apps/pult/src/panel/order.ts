@@ -137,7 +137,7 @@ export const draftKey = (draft: Pick<ProjectDraft, "environmentId" | "projectId"
 
 export const environmentKey = (environmentId: string) => `environment:${environmentId}`;
 
-/** A Star's card's key, beside the threads' in the selection's snapshot. */
+/** A Star's square's key, beside the threads' in the selection's snapshot. */
 export const starKey = (starId: string) => `star:${starId}`;
 
 /** An ask's row: its environment and id, and the shelf its status puts it on (`src/asks/asks.ts`). */
@@ -247,7 +247,7 @@ export function settledTail<Thread extends ThreadRef>(
   return visible;
 }
 
-/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's card, an open file of the Explorer shelf, a draft card, a secret's row, an ask's row or a thread card. */
+/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's square, an open file of the Explorer shelf, a draft card, a secret's row, an ask's row or a thread card. */
 export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThread> =
   | { readonly kind: "star"; readonly key: string; readonly starId: string }
   | { readonly kind: "file"; readonly key: string; readonly file: File }
@@ -258,7 +258,7 @@ export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThr
 
 /** What the panel shows, as `jumpTargets` reads it. */
 export interface PanelRows<File extends FileRef, Thread extends ThreadRef = ShellThread> {
-  /** The Stars' cards, by their Stars' ids; none while Show Star is off. */
+  /** The Stars' squares, by their Stars' ids; none while Show Star is off. */
   readonly stars: ReadonlyArray<string>;
   readonly environmentIds: ReadonlyArray<string>;
   /** The Explorer shelf's open files. */
@@ -283,7 +283,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * The panel's rows Cmd+1 to Cmd+9 reach, top to bottom as the panel shows
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
  * rows: shelf by shelf in the open shelves' order, a closed shelf reaching
- * none; the Stars' cards, the Explorer shelf's open files, its environments'
+ * none; the Stars' squares, the Explorer shelf's open files, its environments'
  * rows left out, Inbox's rows (`inboxRows`), and the ask rows then the cards
  * of the Working, Snoozed and Settled shelves', the threads none while no
  * environment is held.

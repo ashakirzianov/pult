@@ -396,7 +396,7 @@ function KeepAwakeRow({ environmentId }: { environmentId: string }) {
  * Tint, written into the record of every home the page holds, its
  * Instructions (its own `instructions.md` as a tab), its Folder (the
  * explorer at its folder) and its Sync (`StarSyncRow`); then Show Star (`pult.star.enabled`), a switch, which the palette's Show Star
- * and Hide Star set too: off, the left panel shows no Star's card and Pult
+ * and Hide Star set too: off, the left panel shows no Star's square and Pult
  * creates none, deleting nothing.
  */
 function StarSection() {

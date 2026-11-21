@@ -328,7 +328,7 @@ export function selectStar(starId: string): Promise<void> {
 /**
  * Show Star turned off while a Star is selected moves the selection on, as
  * settling the selected thread does (`park.ts`): to the first pinned or
- * active card, the Star's card being above them all, else a new thread
+ * active card, the Star's square being above them all, else a new thread
  * (`pult-shell.newThread`, a pick of the projects), else, the pick
  * dismissed or no project to pick, the Explorer workspace. The switch
  * closes the Star's tab and keeps its working set, so selecting the Star

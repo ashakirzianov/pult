@@ -2,11 +2,10 @@ import { getService, IThemeService } from "@codingame/monaco-vscode-api";
 import { errorForeground } from "@codingame/monaco-vscode-api/vscode/vs/platform/theme/common/colors/baseColors";
 import { isDark } from "@codingame/monaco-vscode-api/vscode/vs/platform/theme/common/theme";
 
-import { projectDrafts, threadsWithUnsentMessages } from "../panel/drafts.ts";
 import { threadStore } from "../threads/store.ts";
 import { flatStill } from "./flat/star.ts";
 import markCss from "./flat/star.css?raw";
-import { type StarLook, starFinishedUntil, starLook } from "./look.ts";
+import { LOOK_STATES, type StarLook, starLook } from "./look.ts";
 import { starStore } from "./model.ts";
 import type { Star } from "./stars.ts";
 
@@ -48,38 +47,19 @@ export interface StarMarks {
   readonly error: string;
 }
 
-/** The longest the page waits between looks at a finished Star's minute: a timer's clock stops while the machine sleeps. */
-const CLOCK_CHECK_MS = 60_000;
-
 /** Dark 2026's, the shell's default theme (`src/configuration.json`), until the theme service is up. */
 let marks: StarMarks = { looks: new Map(), scheme: "dark", error: "#f48771" };
 const listeners = new Set<() => void>();
 let started = false;
-let timer: ReturnType<typeof setTimeout> | undefined;
 
 function tell(): void {
   for (const listener of listeners) listener();
 }
 
-/** Derives every Star's look again, telling the listeners when one changed, and looks again when a finished minute ends. */
+/** Derives every Star's look again, telling the listeners when one changed. */
 function update(): void {
-  clearTimeout(timer);
-  timer = undefined;
-  const now = Date.now();
-  const inputs = {
-    threads: threadStore.get().threads,
-    unsent: threadsWithUnsentMessages.get(),
-    drafts: projectDrafts.get(),
-    now,
-  };
-  const stars = starStore.get();
-  const looks = new Map(stars.map((star) => [star.id, starLook(star, inputs)]));
-  const ends = stars.flatMap((star) => {
-    const until = starFinishedUntil(star);
-    return until !== null && until > now ? [until] : [];
-  });
-  if (ends.length > 0)
-    timer = setTimeout(update, Math.min(Math.min(...ends) - now + 1, CLOCK_CHECK_MS));
+  const { threads } = threadStore.get();
+  const looks = new Map(starStore.get().map((star) => [star.id, starLook(star, threads)]));
   if (
     looks.size === marks.looks.size &&
     [...looks].every(([id, look]) => marks.looks.get(id) === look)
@@ -89,13 +69,11 @@ function update(): void {
   tell();
 }
 
-/** Follows the threads, the Stars, the composers and the theme, from the first subscriber on. */
+/** Follows the threads, the Stars and the theme, from the first subscriber on. */
 function start(): void {
   started = true;
   threadStore.subscribe(update);
   starStore.subscribe(update);
-  threadsWithUnsentMessages.subscribe(update);
-  projectDrafts.subscribe(update);
   void getService(IThemeService).then((themes) => {
     const apply = () => {
       const theme = themes.getColorTheme();
@@ -143,7 +121,10 @@ function still(color: string, error: string, look: StarLook): string {
   const key = JSON.stringify([color, error, look]);
   const known = stills.get(key);
   if (known !== undefined) return known;
-  const svg = flatStill(look, `${markCss}\n.flat-star { color: ${color}; --err: ${error}; }`);
+  const svg = flatStill(
+    LOOK_STATES[look],
+    `${markCss}\n.flat-star { color: ${color}; --err: ${error}; }`,
+  );
   const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
   stills.set(key, url);
   return url;

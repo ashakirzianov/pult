@@ -53,8 +53,6 @@ export interface ShellThread {
   readonly awaitsUser: boolean;
   /** A secret or link card of its run awaits the user, which only the user can answer (upstream's `userOnly` request): the card's turn item and when it asked; null otherwise, and behind a pending approval, as upstream's shell carries one request (`src/secrets/`). */
   readonly pendingCard: { readonly id: string; readonly since: string } | null;
-  /** An assistant message of its active run is streaming, as its server says; false from a server that predates the flag. */
-  readonly assistantStreaming: boolean;
   /** Whether it may be snoozed now, as of the model's last change: no pending approval or input, no queued turn start. */
   readonly canSnooze: boolean;
   /** Stopped by a provider's usage limit, until its run resumes, with when the limit resets where the server says (upstream's Limited). */
