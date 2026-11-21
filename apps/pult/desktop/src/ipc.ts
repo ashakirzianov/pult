@@ -12,6 +12,8 @@ export const Channel = {
   /** Pult.app's alone (`upstreamHost.ts`): `on` while the page's browser host waits on a capture, `off` after. */
   windowKeepRendering: "pult-desktop:window.keepRendering",
   spellingLearn: "pult-desktop:spelling.learn",
+  /** Pult.app's alone (`upstreamHost.ts`): a long animation frame, as JSON, for the freeze log (`freezeLog.ts`). */
+  longFrame: "pult-desktop:longFrame",
   /** Synchronous, for upstream's preload (`upstreamPreload.ts`): the app's version. */
   version: "pult-desktop:version",
 } as const;

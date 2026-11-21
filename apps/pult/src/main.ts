@@ -35,6 +35,7 @@ import { startMenuActions } from "./desktop/menuActions.ts";
 import { environmentVersions } from "./desktop/environmentUpdates.ts";
 import { registerUpdateCommands, startUpdateContext } from "./desktop/updates.ts";
 import { installDesktopTitleBar } from "./desktop/titleBar.ts";
+import { recordLongFrames } from "./desktop/longFrames.ts";
 import { registerMode, startMode } from "./mode.ts";
 import { gateEditorMenus } from "./editorMenus.ts";
 import { registerPultFiles } from "./files/index.ts";
@@ -69,6 +70,8 @@ import { openVsxGallery, workbenchServices } from "./services.ts";
 import { syncColorScheme } from "./theme.ts";
 import { installWorkers } from "./workers.ts";
 
+// In Pult.app, whose main keeps the freeze log; the thin wrapper has none.
+if (window.pultDesktop && desktopHost()) recordLongFrames(window.pultDesktop);
 installWorkers();
 registerGrammars();
 

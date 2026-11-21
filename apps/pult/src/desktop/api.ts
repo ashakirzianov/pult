@@ -38,6 +38,12 @@ export interface PultDesktop {
    */
   keepRendering(keep: boolean): Promise<void>;
   /**
+   * Pult.app's alone: a long animation frame of the page's into the freeze
+   * log beside upstream's logs (`desktop/src/freezeLog.ts`), from
+   * `src/desktop/longFrames.ts`. The thin wrapper does not answer it.
+   */
+  longFrame(frame: LongFrame): Promise<void>;
+  /**
    * The OS's spell checker, the one Chromium's text fields use
    * (`src/spelling/index.ts`): `misspelled` and `suggestions` answer at once,
    * each a synchronous call to the browser process; `learn` adds a word to
@@ -48,6 +54,20 @@ export interface PultDesktop {
     suggestions(word: string): string[];
     learn(word: string): Promise<void>;
   };
+}
+
+/** A long animation frame as the freeze log keeps it (`longFrame` in `src/desktop/longFrames.ts`). */
+export interface LongFrame {
+  readonly startedAtUnixMs: number;
+  readonly durationMs: number;
+  readonly blockingDurationMs: number;
+  readonly scripts: ReadonlyArray<{
+    readonly sourceURL: string;
+    readonly sourceFunctionName: string;
+    readonly invoker: string;
+    readonly invokerType: string;
+    readonly durationMs: number;
+  }>;
 }
 
 declare global {

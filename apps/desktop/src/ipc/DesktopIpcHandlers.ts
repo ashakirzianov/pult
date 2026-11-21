@@ -188,8 +188,9 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(PreviewIpc.listBrowserImportSources);
   yield* ipc.handle(PreviewIpc.importBrowserCookies);
   // Pult: `window.pultDesktop`'s handlers, for the page at the renderer's origin.
-  const { isDevelopment } = yield* DesktopEnvironment.DesktopEnvironment;
+  const { isDevelopment, logDir } = yield* DesktopEnvironment.DesktopEnvironment;
   installPultDesktop({
     pageOrigin: `${ElectronProtocol.getDesktopScheme(isDevelopment)}://${ElectronProtocol.DESKTOP_HOST}`,
+    logDir,
   });
 });

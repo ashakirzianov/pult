@@ -34,6 +34,7 @@ export function exposePultDesktop(version: string): void {
       },
     },
     keepRendering: (keep) => invoke(Channel.windowKeepRendering, keep ? "on" : "off"),
+    longFrame: (frame) => invoke(Channel.longFrame, JSON.stringify(frame)),
     spelling: {
       misspelled: (word) => webFrame.isWordMisspelled(word),
       suggestions: (word) => webFrame.getWordSuggestions(word),
