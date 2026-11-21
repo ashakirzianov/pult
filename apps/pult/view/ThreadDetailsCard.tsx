@@ -19,6 +19,8 @@ import { createPortal } from "react-dom";
 
 import type * as Upstream from "~/components/chat/ThreadDetailsCard";
 import type { PopoverCreateHandle } from "~/components/ui/popover";
+import { type DraftId, type DraftSessionState, useComposerDraftStore } from "~/composerDraftStore";
+import { draftKey, isDraftOf } from "./drafts.ts";
 import { type DetailsColumn, threadViewHost } from "./host.ts";
 import type { ViewTarget } from "./ThreadView.tsx";
 
@@ -37,15 +39,22 @@ interface ThreadDetailsCardProps {
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }
 
-type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/** Whether A and B are one type: assignability both ways would miss an optional prop added or dropped. */
+type Exactly<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
 // A merge that changes upstream's frame's props fails the typecheck here, so the stub is read again.
 true satisfies Exactly<ThreadDetailsCardProps, ComponentProps<typeof Upstream.ThreadDetailsCard>>;
 
-/** Whether the column's subject is the view's target, and the frame is the target's own thread's. */
+/**
+ * Whether the column's subject is the view's target, and the frame is the
+ * target's own thread's, a draft's its draft session's: while the view goes
+ * to a new target the router still renders the previous one's.
+ */
 function showsSubject(
   target: ViewTarget,
   threadRef: ScopedThreadRef,
+  draft: { readonly id: DraftId; readonly session: DraftSessionState } | null,
   subject: DetailsColumn["subject"],
 ): boolean {
   if (subject.kind === "thread")
@@ -60,7 +69,11 @@ function showsSubject(
     target.kind === "draft" &&
     target.tags === undefined &&
     target.environmentId === subject.environmentId &&
-    target.projectId === subject.projectId
+    target.projectId === subject.projectId &&
+    draft !== null &&
+    // The pane's own draft, though its composer may have moved it to another environment's project (`ThreadView.tsx`).
+    (isDraftOf(target, draft.session) ||
+      localStorage.getItem(draftKey(target.environmentId, target.projectId)) === draft.id)
   );
 }
 
@@ -68,7 +81,12 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
   const target = use(DetailsTarget);
   const { detailsColumn } = threadViewHost();
   const column = useSyncExternalStore(detailsColumn.subscribe, detailsColumn.get);
-  if (target === null || column === null || !showsSubject(target, threadRef, column.subject))
+  const draftId = useComposerDraftStore((state) => state.getDraftIdByRef(threadRef));
+  const session = useComposerDraftStore((state) =>
+    draftId === null ? null : state.getDraftSession(draftId),
+  );
+  const draft = draftId === null || session === null ? null : { id: draftId, session };
+  if (target === null || column === null || !showsSubject(target, threadRef, draft, column.subject))
     return null;
   // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
   return createPortal(

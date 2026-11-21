@@ -21,6 +21,7 @@ import { createRoot } from "react-dom/client";
 
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
+import { detailsColumn } from "./column.ts";
 import { DetailsTitle, DetailsView } from "./DetailsView.tsx";
 import "./details.css";
 
@@ -168,13 +169,15 @@ export async function startDetailsRows(): Promise<void> {
   layout.mainContainer.append(show);
   createRoot(show).render(<Toggle open={false} />);
 
-  const follow = () =>
-    part.classList.toggle(
-      HEADER_IN_TITLE,
-      panes.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() === DETAILS_ID,
-    );
+  const follow = () => {
+    const details =
+      panes.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() === DETAILS_ID;
+    part.classList.toggle(HEADER_IN_TITLE, details);
+    detailsColumn.show(details && layout.isVisible(Parts.AUXILIARYBAR_PART));
+  };
   layout.onDidChangePartVisibility((event) => {
     if (event.partId !== Parts.AUXILIARYBAR_PART) return;
+    follow();
     // The layout stores the part's visibility only when the workbench saves its state: saved now, the next start keeps it.
     void storage.flush();
   });
