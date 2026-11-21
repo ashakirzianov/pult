@@ -107,11 +107,13 @@ const unknownAsk = (id: string) =>
   );
 
 export class AsksError extends Schema.TaggedError<AsksError>()("AsksError", {
-  operation: Schema.Literals(["read", "write"]),
+  operation: Schema.Literals(["read", "write", "tell"]),
   cause: Schema.Defect(),
 }) {
   override get message(): string {
-    return `Pult could not ${this.operation} the asks.`;
+    return this.operation === "tell"
+      ? "Pult could not tell the poster of the settle, so the ask is not settled."
+      : `Pult could not ${this.operation} the asks.`;
   }
 }
 
@@ -147,10 +149,10 @@ export interface Asks {
   readonly folder: string;
   /** The project of the asks folder, which the page hides as it hides the Stars'; null before the first `text`. */
   readonly projectId: Effect.Effect<ProjectId | null, AsksError>;
-  /** `pult_ask`: posts as `poster`, `root` resolving a relative `file`; refuses what the design refuses. */
+  /** `pult_ask`: posts as `poster`, a `file` inside `root`, the caller's worktree or project folder, which a relative one resolves against. */
   readonly post: (
     poster: Poster,
-    root: string,
+    root: string | undefined,
     input: PostInput,
   ) => Effect.Effect<{ readonly id: string; readonly status: "posted" }, OrchestratorMcpFailure>;
   /** `pult_ask_settle`: the poster's own, silently; `mine` says whether a record's poster is the caller. */
@@ -195,11 +197,11 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     Effect.mapError(failed("write")),
   );
 
-  /** The record and Pult's Markdown, gone. */
+  /** Pult's Markdown and the record, gone: the record last, so a removal that fails is retried. */
   const remove = Effect.fn("Asks.remove")(
     function* (record: AskRecord) {
-      yield* fs.remove(recordFile(record.id), { force: true });
       if (record.kept) yield* fs.remove(record.file, { force: true });
+      yield* fs.remove(recordFile(record.id), { force: true });
     },
     Effect.mapError(failed("write")),
   );
@@ -217,7 +219,13 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
         ? threadState(yield* threads.getThreadShell(record.poster.thread))
         : { settled: null };
     if (thread === "gone") return undefined;
-    const settled = record.settled ?? thread.settled;
+    // The later settle counts, so a thread settled after its ask holds it for 7 days from then.
+    const settled =
+      record.settled === null || thread.settled === null
+        ? (record.settled ?? thread.settled)
+        : record.settled > thread.settled
+          ? record.settled
+          : thread.settled;
     if (settled !== null && now - millis(settled) >= EXPIRY_MS) return undefined;
     const status: AskStatus =
       settled !== null
@@ -319,7 +327,20 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
         const title = input.title === undefined ? undefined : oneLine(input.title);
         if (title === "")
           return yield* refused("`title` is empty: leave it out to take the context's first line.");
-        const file = input.file === undefined ? undefined : path.resolve(root, input.file);
+        if (input.file !== undefined && root === undefined)
+          return yield* refused(
+            "This thread has no folder, so it cannot name a `file`: pass `text`.",
+          );
+        const file =
+          input.file === undefined || root === undefined
+            ? undefined
+            : path.resolve(root, input.file);
+        // The page opens a named file in its poster's folder.
+        const inside = file === undefined || root === undefined ? "" : path.relative(root, file);
+        if (file !== undefined && (inside.startsWith("..") || path.isAbsolute(inside)))
+          return yield* refused(
+            `\`file\` names ${file}, outside this thread's folder ${root}: name a file in it, or pass \`text\`.`,
+          );
         const fileText =
           file === undefined
             ? undefined
@@ -448,11 +469,11 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     };
   });
 
-  /** Tells the poster of the user's settle; a notice that fails is logged, the settle standing. */
+  /** Tells the poster of the user's settle, once per posting: a retry after a failure tells it again, a repeat replays. */
   const tellSettled = Effect.fn("Asks.tellSettled")(function* (record: AskRecord) {
     const about = `Pult, about your ask ${record.id} "${record.title}"`;
     const text = settleText(record.replied !== null);
-    const key = `ask-settled:${record.id}:${record.settled}`;
+    const key = `ask-settled:${record.id}:${record.posted}`;
     if ("star" in record.poster) {
       const star = yield* stars.get(record.poster.star);
       if (star === undefined)
@@ -482,47 +503,44 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
   });
 
   const act: Asks["act"] = Effect.fn("Asks.act")(function* (id, action) {
-    const changed:
-      | undefined
-      | { readonly refused: string }
-      | { readonly record: AskRecord; readonly told: boolean } = yield* lock.withPermits(1)(
-      Effect.gen(function* () {
-        const found = (yield* load).find((each) => each.record.id === id);
-        if (found === undefined) return undefined;
-        const { record, ask } = found;
-        const now = iso(yield* DateTime.now);
-        // Its thread's settle is the thread's to undo.
-        if (action.kind === "unsettle" && record.settled === null && ask.settled !== null)
-          return {
-            refused: "The ask reads as settled because its thread is: un-settle the thread.",
-          };
-        const told = action.kind === "settle" && ask.status !== "settled";
-        const next: AskRecord =
-          action.kind === "replied"
-            ? { ...record, replied: now }
-            : action.kind === "snooze"
-              ? { ...record, snoozedUntil: action.until }
-              : action.kind === "unsettle"
-                ? { ...record, settled: null }
-                : told
-                  ? { ...record, settled: now }
-                  : record;
-        if (next !== record) yield* write(next);
-        return { record: next, told };
-      }),
-    );
+    const find = Effect.map(load, (all) => all.find((each) => each.record.id === id));
+    const before = yield* lock.withPermits(1)(find);
+    if (before === undefined) return undefined;
+    // Told before it is written, so a notice that fails fails the settle, to be tried again.
+    if (action.kind === "settle" && before.ask.status !== "settled")
+      yield* tellSettled(before.record).pipe(
+        Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
+        Effect.mapError(failed("tell")),
+      );
+    const changed: undefined | { readonly refused: string } | { readonly record: AskRecord } =
+      yield* lock.withPermits(1)(
+        Effect.gen(function* () {
+          const found = yield* find;
+          if (found === undefined) return undefined;
+          const { record, ask } = found;
+          const now = iso(yield* DateTime.now);
+          // Its thread's settle is the thread's to undo.
+          if (action.kind === "unsettle" && record.settled === null && ask.settled !== null)
+            return {
+              refused: "The ask reads as settled because its thread is: un-settle the thread.",
+            };
+          const next: AskRecord =
+            action.kind === "replied"
+              ? // A reply moves it to Working, from Snoozed too.
+                { ...record, replied: now, snoozedUntil: null }
+              : action.kind === "snooze"
+                ? { ...record, snoozedUntil: action.until }
+                : action.kind === "unsettle"
+                  ? { ...record, settled: null }
+                  : ask.status === "settled"
+                    ? record
+                    : { ...record, settled: now };
+          if (next !== record) yield* write(next);
+          return { record: next };
+        }),
+      );
     if (changed === undefined) return undefined;
     if ("refused" in changed) return { refused: changed.refused };
-    if (changed.told)
-      yield* tellSettled(changed.record).pipe(
-        Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Could not tell a poster the user settled its ask.", {
-            askId: id,
-            cause,
-          }),
-        ),
-      );
     const ask = yield* served(changed.record, DateTime.toEpochMillis(yield* DateTime.now)).pipe(
       Effect.mapError(failed("read")),
     );

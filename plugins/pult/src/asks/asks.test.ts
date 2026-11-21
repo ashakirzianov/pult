@@ -203,8 +203,11 @@ it.effect(
         ],
       });
 
-      // What a post refuses.
+      // What a post refuses; a named file is one of the poster's folder, which the page opens it in.
+      yield* fs.writeFileString(`${server.tmp}/outside.md`, "Out");
+      yield* fs.writeFileString(`${root}/notes.md`, "Notes");
       const refusals = [
+        yield* work.ask({ file: "../outside.md" }),
         yield* work.ask({}),
         yield* work.ask({ file: "notes/q.md", text: "x" }),
         yield* work.ask({ text: "  \n" }),
@@ -212,12 +215,12 @@ it.effect(
         yield* work.ask({ id: "00000000", title: "x" }),
         yield* work.ask({ id: posted.id, title: "Mine now" }),
         yield* work.ask({ id: filed.id, text: "Replaced" }),
-        yield* star.ask({ id: posted.id, file: `${tree}/notes/q.md` }),
+        yield* star.ask({ id: posted.id, file: "notes.md" }),
       ];
       expect(refusals.map((each) => each.refused)).toEqual(
         Array(refusals.length).fill("invalid_request"),
       );
-      expect(refusals[4].message).toContain("expired 7 days after its settle");
+      expect(refusals[5].message).toContain("expired 7 days after its settle");
 
       // Lists: by default the caller's own, a Star's every channel; another's by name.
       expect((yield* star.list()).asks.map((each: { id: string }) => each.id)).toEqual([posted.id]);
@@ -231,13 +234,18 @@ it.effect(
       expect((yield* send("POST", `/asks/${posted.id}/snooze`, { until: "later" })).status).toBe(
         400,
       );
+      const snooze = { until: "2026-11-11T09:00:00Z" };
+      expect((yield* send("POST", `/asks/${posted.id}/snooze`, snooze)).body).toMatchObject({
+        status: "snoozed",
+        snoozedUntil: "2026-11-11T09:00:00.000Z",
+      });
+      // A reply moves it to Working, from Snoozed too.
       expect((yield* send("POST", `/asks/${posted.id}/replied`)).body).toMatchObject({
         status: "replied",
         replied: "2026-11-10T13:00:01.000Z",
+        snoozedUntil: null,
       });
-      expect(
-        (yield* send("POST", `/asks/${posted.id}/snooze`, { until: "2026-11-11T09:00:00Z" })).body,
-      ).toMatchObject({ status: "snoozed", snoozedUntil: "2026-11-11T09:00:00.000Z" });
+      yield* send("POST", `/asks/${posted.id}/snooze`, snooze);
       expect((yield* send("POST", `/asks/${posted.id}/snooze`, { until: null })).body.status).toBe(
         "replied",
       );
