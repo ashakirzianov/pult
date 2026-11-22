@@ -81,6 +81,10 @@ async function bundle(): Promise<string> {
     configFile: false,
     logLevel: "silent",
     root: import.meta.dirname,
+    // The chat's highlighter, which colours a Markdown file's code, is `apps/web`'s.
+    resolve: { alias: { "~": NodePath.join(import.meta.dirname, "../../../web/src") } },
+    // A library build leaves this to its user; the modules the highlighter brings read it.
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
     build: {
       write: false,
       minify: false,
@@ -113,7 +117,7 @@ NodeTest.describe("the reader's frame", () => {
           body: `<!doctype html><p id="host">The shell</p><script>window.ran = [];</script><script src="/reader.js"></script>`,
         });
       if (url === `${ORIGIN}/reader.js`)
-        return route.fulfill({ contentType: "text/javascript", body: script });
+        return route.fulfill({ contentType: "text/javascript; charset=utf-8", body: script });
       requests.push(url);
       return route.abort();
     });
@@ -271,7 +275,8 @@ NodeTest.describe("the reader's frame", () => {
   });
 
   NodeTest.it("renders Markdown and cites it under the source lines it came from", async () => {
-    // Lines 3 and 18 say the same; lines 13 to 16 are a fence; 19 and 20 raw HTML, 19 continuing 18; 22 to 26 math; 28 on a nested list, raw HTML in quotes and code at the end.
+    // Lines 3 and 18 say the same; lines 13 to 16 are a fence; 19 and 20 raw HTML, 19 continuing 18; 22 to 26 math; 28 on a nested list, raw HTML in quotes, indented code, then
+    // code coloured by its language, code in one the highlighter lacks and math KaTeX refuses.
     const source = [
       "# Notes",
       "",
@@ -311,10 +316,25 @@ NodeTest.describe("the reader's frame", () => {
       "",
       "    first",
       "    second",
+      "",
+      "```ts",
+      "const total = 1;",
+      "export { total };",
+      "```",
+      "",
+      "```nolang",
+      "plain words",
+      "```",
+      "",
+      "$$",
+      "\\frac{",
+      "$$",
     ].join("\n");
     const before = requests.length;
     const cited = await page.evaluate(async (source) => {
       const frame = window.reader.createReaderFrame();
+      // As the shell's stylesheet has it, for a page's sake.
+      frame.element.style.colorScheme = "normal";
       document.body.append(frame.element);
       const { scripts } = (await frame.show(source, { markdown: true }))!;
       const doc = frame.element.contentDocument!;
@@ -337,6 +357,14 @@ NodeTest.describe("the reader's frame", () => {
         doc.getSelection()!.addRange(range);
         return frame.selection();
       };
+      /** The contents of the first element matching `selector`, as a reader selects all of it. */
+      const selectAll = (selector: string) => {
+        const range = doc.createRange();
+        range.selectNodeContents(doc.querySelector(selector)!);
+        doc.getSelection()!.removeAllRanges();
+        doc.getSelection()!.addRange(range);
+        return frame.selection();
+      };
       const passages = {
         heading: select("Notes", "Notes"),
         repeated: select("Save the file", "Save the file", [1, 1]),
@@ -344,19 +372,45 @@ NodeTest.describe("the reader's frame", () => {
         formattedLink: select("bold", "link"),
         tableCell: select("cell b", "cell b"),
         inlineCode: select("zq", "zq"),
-        fence: select("A --> B", "A --> B"),
+        fence: select("A", "B"),
         acrossBlocks: select("first", "Key"),
         rawHtml: select("html", "html"),
-        inlineMath: select("a_1", "b_1"),
-        displayMath: select("x\\,dx", "x\\,dx"),
+        // Typeset math reads as KaTeX's glyphs, cited under its TeX's lines.
+        inlineMath: selectAll(".katex")?.lines,
+        displayMath: selectAll(".math-display")?.lines,
         nestedParent: select("parent", "parent"),
         nestedBoth: select("parent", "child"),
         quotedRawHtml: select("three", "three"),
-        codeAtEnd: select("second", "second"),
+        indentedCode: select("second", "second"),
+        colouredLine: select("export", "total", [0, 1]),
+        acrossColouredLines: select("total", "export", [0, 0]),
+        uncolouredCode: select("plain words", "plain words"),
+        refusedMath: select("\\frac{", "\\frac{"),
       };
+      /** A code block's coloured runs, and its child nodes. */
+      const runs = (selector: string) => {
+        const code = doc.querySelector(selector)!;
+        return {
+          coloured: code.querySelectorAll("span[style]").length,
+          nodes: code.childNodes.length,
+        };
+      };
+      // The code's colours follow the shell's colour scheme.
+      const keyword = () =>
+        frame.element
+          .contentDocument!.querySelector("code.language-ts span")!
+          .getAttribute("style");
+      const light = keyword();
+      document.documentElement.style.colorScheme = "dark";
+      await frame.show(source, { markdown: true });
+      const dark = keyword();
+      document.documentElement.style.colorScheme = "";
       frame.element.remove();
       return {
         scripts,
+        schemes: light === dark ? [light] : [],
+        coloured: runs("code.language-ts"),
+        uncoloured: runs("code.language-nolang"),
         tags: [...doc.body.children].map((element) => element.tagName.toLowerCase()),
         passages,
       };
@@ -374,9 +428,12 @@ NodeTest.describe("the reader's frame", () => {
       "p",
       "p",
       "p",
-      "pre",
+      "div",
       "ul",
       "blockquote",
+      "pre",
+      "pre",
+      "pre",
       "pre",
     ]);
     NodeAssert.deepEqual(cited.passages, {
@@ -392,13 +449,20 @@ NodeTest.describe("the reader's frame", () => {
         lines: { start: 5, end: 9 },
       },
       rawHtml: { text: "html", lines: { start: 20, end: 20 } },
-      inlineMath: { text: "a_1 + b_1", lines: { start: 22, end: 22 } },
-      displayMath: { text: "x\\,dx", lines: { start: 25, end: 25 } },
+      inlineMath: { start: 22, end: 22 },
+      displayMath: { start: 25, end: 25 },
       nestedParent: { text: "parent", lines: { start: 28, end: 28 } },
       nestedBoth: { text: "parent\nchild", lines: { start: 28, end: 29 } },
       quotedRawHtml: { text: "three", lines: { start: 34, end: 34 } },
-      codeAtEnd: { text: "second", lines: { start: 38, end: 38 } },
+      indentedCode: { text: "second", lines: { start: 38, end: 38 } },
+      colouredLine: { text: "export { total", lines: { start: 42, end: 42 } },
+      acrossColouredLines: { text: "total = 1;\nexport", lines: { start: 41, end: 42 } },
+      uncolouredCode: { text: "plain words", lines: { start: 46, end: 46 } },
+      refusedMath: { text: "\\frac{", lines: { start: 50, end: 50 } },
     });
+    NodeAssert.ok(cited.coloured.coloured > 4);
+    NodeAssert.deepEqual(cited.schemes, []);
+    NodeAssert.deepEqual(cited.uncoloured, { coloured: 0, nodes: 1 });
   });
 
   NodeTest.it(

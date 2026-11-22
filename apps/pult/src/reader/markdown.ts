@@ -3,10 +3,17 @@
 // the remark pipeline `apps/web` ships, with raw HTML in it parsed in place,
 // to an HTML tree whose every node keeps where in the file it came from, then
 // built by the HTML reader's own rules, so raw HTML runs and loads nothing.
-// Diagrams and math are their source as code: a fenced block, `$` and `$$`.
-import type { Element, ElementContent, Root, RootContent } from "hast";
+// A fenced block is coloured by its language, as the chat colours it, and
+// `$` and `$$` math typeset by KaTeX (`math.ts`), each node of either keeping
+// the lines it came from; diagrams are their source as code.
+import type { Element, ElementContent, Root, RootContent, Text } from "hast";
 import { toParse5 } from "hast-util-to-parse5";
-import type { DefaultTreeAdapterTypes } from "parse5";
+import {
+  defaultTreeAdapter,
+  html as parse5,
+  parseFragment,
+  type DefaultTreeAdapterTypes,
+} from "parse5";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -74,6 +81,145 @@ function placeText(node: Root | Element, source: string): void {
       end: { line: line + lines, column: 1, offset },
     };
   }
+}
+
+/** A fenced block's code element, its language and its text, which `placeText` gave its lines. */
+interface Fenced {
+  readonly code: Element;
+  readonly language: string;
+  readonly text: Text;
+}
+
+/** The code blocks under `node` with a language, but math's, whose text has its lines. */
+function fencedCode(node: Root | Element, found: Fenced[] = []): Fenced[] {
+  for (const child of node.children) {
+    if (child.type !== "element") continue;
+    const code = child.tagName === "pre" ? child.children[0] : undefined;
+    if (code?.type !== "element" || code.tagName !== "code") {
+      fencedCode(child, found);
+      continue;
+    }
+    const classes = code.properties.className;
+    const language = (Array.isArray(classes) ? classes : [])
+      .map(String)
+      .find((name) => name.startsWith("language-"))
+      ?.slice("language-".length);
+    const [text, ...rest] = code.children;
+    if (language === undefined || language === "math" || text?.type !== "text" || rest.length > 0)
+      continue;
+    if (text.position !== undefined) found.push({ code, language, text });
+  }
+  return found;
+}
+
+/**
+ * Each fenced block of `tree` in a language the chat's highlighter knows, in
+ * the scheme's colours: a span per coloured run, each its own text node on
+ * its line of the file; the line breaks between them, which no citation
+ * needs, have none. A block in any other language keeps its one text node.
+ */
+async function colourCode(tree: Root, scheme: "light" | "dark"): Promise<void> {
+  const blocks = fencedCode(tree);
+  if (blocks.length === 0) return;
+  const { highlightCode } = await import("../../view/codeHighlighting.ts");
+  await Promise.all(
+    blocks.map(async ({ code, language, text }) => {
+      const lines = await highlightCode(text.value, language, scheme);
+      if (lines === undefined) return;
+      const shown = lines.map((tokens) => tokens.map((token) => token.content).join("")).join("\n");
+      if (shown !== text.value.replace(LINE_BREAK, "\n"))
+        throw new Error(`The highlighter changed a ${language} block's text`);
+      const start = text.position!.start;
+      code.children = lines.flatMap((tokens, index): ElementContent[] => {
+        const line = start.line + index;
+        const runs = tokens.map((token): ElementContent => {
+          const run: Text = {
+            type: "text",
+            value: token.content,
+            position: { start: { ...start, line }, end: { ...start, line } },
+          };
+          const style = [
+            token.color === undefined ? "" : `color: ${token.color};`,
+            (token.fontStyle ?? 0) & 1 ? "font-style: italic;" : "",
+            (token.fontStyle ?? 0) & 2 ? "font-weight: bold;" : "",
+            (token.fontStyle ?? 0) & 4 ? "text-decoration: underline;" : "",
+          ].join("");
+          return style === ""
+            ? run
+            : { type: "element", tagName: "span", properties: { style }, children: [run] };
+        });
+        return index === 0 ? runs : [{ type: "text", value: "\n" }, ...runs];
+      });
+    }),
+  );
+}
+
+/** A formula's element in its parent: inline code, or a display's `pre`, and its TeX's text node. */
+interface Formula {
+  readonly parent: DefaultTreeAdapterTypes.ParentNode;
+  readonly element: DefaultTreeAdapterTypes.Element;
+  readonly display: boolean;
+  readonly text: DefaultTreeAdapterTypes.TextNode;
+}
+
+/** The formulas under `parent`, as remark-math leaves them: `code.math-inline` and `pre > code.math-display`. */
+function formulas(parent: DefaultTreeAdapterTypes.ParentNode, found: Formula[] = []): Formula[] {
+  for (const node of parent.childNodes) {
+    if (!("tagName" in node)) continue;
+    const code = node.tagName === "pre" ? node.childNodes[0] : node;
+    const classes =
+      code !== undefined && "tagName" in code && code.tagName === "code"
+        ? (code.attrs.find((attr) => attr.name === "class")?.value.split(/\s+/) ?? [])
+        : [];
+    const display = node !== code && classes.includes("math-display");
+    const [text, ...rest] = code !== undefined && "childNodes" in code ? code.childNodes : [];
+    if (
+      (display || classes.includes("math-inline")) &&
+      text?.nodeName === "#text" &&
+      rest.length === 0
+    )
+      found.push({
+        parent,
+        element: node,
+        display,
+        text: text as DefaultTreeAdapterTypes.TextNode,
+      });
+    else formulas(node, found);
+  }
+  return found;
+}
+
+/** Every text node under `parent`. */
+function* textNodes(
+  parent: DefaultTreeAdapterTypes.ParentNode,
+): Generator<DefaultTreeAdapterTypes.TextNode> {
+  for (const node of parent.childNodes) {
+    if (node.nodeName === "#text") yield node as DefaultTreeAdapterTypes.TextNode;
+    else if ("childNodes" in node) yield* textNodes(node);
+  }
+}
+
+/**
+ * Each formula of `doc` typeset in place, a display's in a block of its own,
+ * every text node of its markup placed where its TeX was, so a citation of
+ * any part of it is the formula's lines; one KaTeX refuses stays its source
+ * as code. KaTeX's styles when any was typeset, which the document then needs.
+ */
+async function typesetMath(doc: DefaultTreeAdapterTypes.Document): Promise<string | undefined> {
+  const found = formulas(doc);
+  if (found.length === 0) return undefined;
+  const { MATH_STYLE, typeset } = await import("./math.ts");
+  let typesetAny = false;
+  for (const { parent, element, display, text } of found) {
+    const markup = typeset(text.value, display);
+    if (markup === undefined) continue;
+    const fragment = parseFragment(display ? `<div class="math-display">${markup}</div>` : markup);
+    for (const node of textNodes(fragment)) node.sourceCodeLocation = text.sourceCodeLocation;
+    for (const node of fragment.childNodes) node.parentNode = parent;
+    parent.childNodes.splice(parent.childNodes.indexOf(element), 1, ...fragment.childNodes);
+    typesetAny = true;
+  }
+  return typesetAny ? MATH_STYLE : undefined;
 }
 
 /** The workbench's colours and fonts the reader's styles read, copied into the frame, which inherits none. */
@@ -149,6 +295,8 @@ th { text-align: left; }
 th, td { padding: 5px 10px; border: 1px solid var(--vscode-editorGroup-border, #8884); }
 hr { height: 1px; margin: 24px 0; border: 0; background: var(--vscode-textSeparator-foreground, #8884); }
 img { max-width: 100%; }
+.math-display { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; }
+.math-display > .katex-display { margin: 0; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--vscode-editor-background); }
 ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }
@@ -158,26 +306,34 @@ img { max-width: 100%; }
 
 /**
  * The reader's Markdown document: its styles, with the workbench's colours
- * as `themed` inherits them, and the rendered file as its body, each node
- * with where in `source` it came from.
+ * and colour scheme as `themed` inherits them, and the rendered file as its
+ * body, each node with where in `source` it came from.
  */
-export function markdownTree(
+export async function markdownTree(
   source: string,
   themed: globalThis.Element,
-): DefaultTreeAdapterTypes.Document {
+): Promise<DefaultTreeAdapterTypes.Document> {
   const computed = getComputedStyle(themed);
   const theme = THEME.map((name) => [name, computed.getPropertyValue(name).trim()] as const)
     .filter(([, value]) => value !== "")
     .map(([name, value]) => `${name}: ${value};`)
     .join(" ");
-  const style: Element = {
+  const style = (text: string): Element => ({
     type: "element",
     tagName: "style",
     properties: {},
-    children: [{ type: "text", value: `:root { ${theme} }${STYLE}` }],
+    children: [{ type: "text", value: text }],
+  });
+  const head: Element = {
+    type: "element",
+    tagName: "head",
+    properties: {},
+    children: [style(`:root { ${theme} }${STYLE}`)],
   };
-  const head: Element = { type: "element", tagName: "head", properties: {}, children: [style] };
   const body = processor.runSync(processor.parse(source), source);
+  // The frame's own element is `color-scheme: normal`, for a page's sake; the shell's root follows the workbench theme.
+  const scheme = getComputedStyle(themed.ownerDocument.documentElement).colorScheme;
+  await colourCode(body, scheme.includes("dark") ? "dark" : "light");
   const html: Element = {
     type: "element",
     tagName: "html",
@@ -192,7 +348,16 @@ export function markdownTree(
       },
     ],
   };
-  return toParse5({ type: "root", children: [html] }) as DefaultTreeAdapterTypes.Document;
+  const doc = toParse5({ type: "root", children: [html] }) as DefaultTreeAdapterTypes.Document;
+  const math = await typesetMath(doc);
+  if (math !== undefined) {
+    const [root] = doc.childNodes as DefaultTreeAdapterTypes.Element[];
+    const [parsedHead] = root!.childNodes as DefaultTreeAdapterTypes.Element[];
+    const sheet = defaultTreeAdapter.createElement("style", parse5.NS.HTML, []);
+    defaultTreeAdapter.insertText(sheet, math);
+    defaultTreeAdapter.appendChild(parsedHead!, sheet);
+  }
+  return doc;
 }
 
 /**

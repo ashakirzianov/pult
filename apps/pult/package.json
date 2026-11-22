@@ -86,6 +86,7 @@
     "@tanstack/react-router": "^1.160.2",
     "effect": "catalog:",
     "hast-util-to-parse5": "^8.0.1",
+    "katex": "^0.18.2",
     "lucide-react": "^0.564.0",
     "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@37.6.1",
     "parse5": "^8.0.1",

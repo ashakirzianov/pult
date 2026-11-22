@@ -221,7 +221,7 @@ export function createReaderFrame(options?: {
       const markdown = options?.markdown === true;
       last = { source, markdown };
       const tree = markdown
-        ? markdownTree(source, element)
+        ? await markdownTree(source, element)
         : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
       const doc = await frameDocument();
       if (revision !== latest) return undefined;
