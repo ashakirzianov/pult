@@ -44,15 +44,13 @@ const MENUS = [MenuId.EditorTabsBarContext, MenuId.EditorTitleContext, MenuId.Co
 
 /**
  * The stock buttons of a tab bar's actions that Pult's mode leaves out, each
- * a command, kept in the palette, Open With and the tab's context menu:
- * Split Editor (Right, or Down while splits go down), and the Markdown
- * extension's Open Preview to the Side and Open as Preview, the reader's
- * Show Preview being a Markdown file's one preview button (`src/reader/`).
- * The Markdown ones are registered once the extension's contributions are
- * read, after the workbench starts.
+ * a command, kept in the palette and Open With: the Markdown extension's
+ * Open Preview to the Side and Open as Preview, the reader's Show Preview
+ * being a Markdown file's one preview button (`src/reader/`). They are
+ * registered once the extension's contributions are read, after the
+ * workbench starts.
  */
 const VSCODE_MODE_TITLE_COMMANDS = new Set([
-  "workbench.action.splitEditor",
   "markdown.showPreviewToSide",
   "markdown.reopenAsPreview",
 ]);
@@ -92,12 +90,12 @@ const gateTitle = (item: IMenuItem | ISubmenuItem) =>
  * Shows those entries in VS Code mode alone: their registered items take
  * `pult.vscodeMode` into their `when`. Called before the workbench starts,
  * after the workbench's contributions have registered them, and the tab
- * bar's buttons again as items are added to it; a command a VS Code bump
- * renames is reported, not fatal (a Markdown button's shows again instead).
+ * bar's buttons as items are added to it; a command a VS Code bump renames
+ * is reported, not fatal (a Markdown button's shows again instead).
  */
 export function gateEditorMenus(): void {
   const gated = new Set(MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu)]));
-  for (const key of gateItems(MenuId.EditorTitle, gateTitle)) gated.add(key);
+  gateItems(MenuId.EditorTitle, gateTitle);
   // Ahead of a menu's rebuild, which waits for the changes' debounce.
   MenuRegistry.onDidChangeMenu((event) => {
     if (event.has(MenuId.EditorTitle)) gateItems(MenuId.EditorTitle, gateTitle);
@@ -105,7 +103,6 @@ export function gateEditorMenus(): void {
   const missing = [
     ...VSCODE_MODE_COMMANDS,
     ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id),
-    "workbench.action.splitEditor",
   ].filter((id) => !gated.has(id));
   if (missing.length > 0) console.warn("[pult-shell] menu entries not found to gate:", missing);
 }
