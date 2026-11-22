@@ -14,7 +14,7 @@ export const STUBS: Readonly<Record<string, string>> = {
   "../web/src/components/device/deviceModels.ts": "view/stubs/deviceModels.ts",
   // No panel toggles at the pane's top right, which are the workbench's business in Pult.
   "../web/src/components/chat/PanelLayoutControls.tsx": "view/panelLayoutControls.tsx",
-  // The thread details card's frame: its rows render into the shell's Details column.
+  // The thread details card's frame: the shell's details cards over the thread view.
   "../web/src/components/chat/ThreadDetailsCard.tsx": "view/ThreadDetailsCard.tsx",
   // Upstream's shortcuts gated to the view's elements, and the chords the workbench keeps.
   "../web/src/keybindings.ts": "view/keybindings.ts",

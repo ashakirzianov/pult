@@ -25,7 +25,7 @@ import type {
 } from "../../view/main.tsx";
 
 import { connection } from "../connection/index.ts";
-import { detailsColumn } from "../details/column.ts";
+import { detailsCards } from "../details/cards.ts";
 import { allowFileDrops } from "../nativeFileDrop.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
@@ -124,8 +124,8 @@ export function threadView() {
         previewTabs.closeStalePreviews(environmentId, threadId, liveTabIds),
       // A native subagent's work is a runless turn the shell snapshot cannot see; the view's projection can.
       reportActivity: (activity) => threadStore.reportActivity(activity),
-      // The selected thread's or draft's details go to the Details column (`src/details/`).
-      detailsColumn,
+      // The details cards over the active thread view (`src/details/`).
+      detailsCards,
       // The view's System theme is the workbench theme's light or dark.
       colorScheme: scheme.current,
       onDidChangeColorScheme: scheme.onDidChange,

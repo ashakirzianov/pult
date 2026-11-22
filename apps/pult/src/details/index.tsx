@@ -1,8 +1,7 @@
 import {
   getService,
-  ICommandService,
-  IPaneCompositePartService,
-  IStorageService,
+  IContextKeyService,
+  IEditorService,
   IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
@@ -12,88 +11,58 @@ import {
   MenuId,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  ContextKeyExpr,
+  type IContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { IsTopRightEditorGroupContext } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/contextkeys";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
-import {
-  registerCustomView,
-  ViewContainerLocation,
-} from "@codingame/monaco-vscode-workbench-service-override/common";
 import { createRoot } from "react-dom/client";
 
-import { allowNativeScroll } from "../nativeScroll.ts";
-import { allowNativeTextMenu } from "../nativeTextMenu.ts";
-import { detailsColumn } from "./column.ts";
-import { DetailsTitle, DetailsView } from "./DetailsView.tsx";
+import { starById, starStore, starTarget } from "../stars/model.ts";
+import { DraftInput, StarInput, StarThreadInput, ThreadInput } from "../threads/pane.tsx";
+import { onDidSelectThread } from "../threads/selection.ts";
+import { threadStore } from "../threads/store.ts";
+import type { DetailsCards, DetailsCardsTarget } from "../../view/main.tsx";
+import { detailsCards } from "./cards.ts";
+import { detailsSubject, StarCards } from "./DetailsView.tsx";
 import "./details.css";
 
-/** The Details view's container, the secondary side bar's one. */
-const DETAILS_ID = "pult.details";
-/** On the secondary side bar part while the title row stands in its title, the Details container's. */
-const HEADER_IN_TITLE = "pult-header-in-title";
+/** Whether the cards are open: one state for the whole app, kept for the page's next start. */
+const OPEN_KEY = "pult-shell.details.open";
+const OPEN_CONTEXT = "pult.detailsOpen";
+/** While the active editor is a thread's view, which the cards and their toggle show over alone. */
+const THREAD_VIEW_CONTEXT = "pult.threadViewActive";
 
-/** Hide Details, at the column's title row's right end, the window's top-right. */
-function HideToggle() {
-  return (
-    <button
-      type="button"
-      className="pult-panel-row-button"
-      title="Hide Details"
-      aria-label="Hide Details"
-      onClick={() =>
-        void getService(ICommandService).then((commands) =>
-          commands.executeCommand("pult-shell.hideDetails"),
-        )
-      }
-    >
-      <i className="codicon codicon-layout-sidebar-right" aria-hidden />
-    </button>
-  );
+let open = localStorage.getItem(OPEN_KEY) === "true";
+let openKey: IContextKey<boolean> | undefined;
+let update: () => void = () => {};
+
+function setOpen(next: boolean): void {
+  open = next;
+  localStorage.setItem(OPEN_KEY, String(next));
+  openKey?.set(next);
+  update();
 }
 
 /**
- * The right panel (`pult/decisions`, `view-right-panel`): the workbench's
- * secondary side bar, as the left panel is its primary one, holding one
- * view, Details (`DetailsView.tsx`), with the palette's Pult: Show Details
- * and Hide Details, both on Cmd+Alt+B, VS Code's own key for the part, over
- * its stock toggle; Show Details is also the last of the top-right editor
- * group's tab bar actions while the column is closed, one of them. Registered
- * before the workbench starts.
+ * The right panel's commands (`pult/decisions`, `view-right-panel`): the
+ * palette's Pult: Show Details and Hide Details, both on Cmd+Alt+B, VS
+ * Code's own key for its secondary side bar, over its stock toggle, and
+ * whichever is offered the last of the top-right editor group's tab bar
+ * actions while a thread's view is the active editor. Registered before
+ * the workbench starts.
  */
 export function registerDetails(): void {
-  registerCustomView({
-    id: DETAILS_ID,
-    name: "Details",
-    location: ViewContainerLocation.AuxiliaryBar,
-    default: true,
-    canMoveView: false,
-    renderBody(container) {
-      container.style.height = "100%";
-      allowNativeScroll(container);
-      // Upstream's rows for a thread may hold a text field, which keeps the browser's menu.
-      allowNativeTextMenu(container);
-      const root = createRoot(container);
-      root.render(<DetailsView />);
-      return { dispose: () => root.unmount() };
-    },
-  });
-  registerDetailsToggle("pult-shell.showDetails", "Show Details", false);
-  registerDetailsToggle("pult-shell.hideDetails", "Hide Details", true);
+  registerDetailsToggle("pult-shell.showDetails", "Show Details", true);
+  registerDetailsToggle("pult-shell.hideDetails", "Hide Details", false);
 }
 
-function registerDetailsToggle(id: string, title: string, hide: boolean): void {
-  const visible = ContextKeyExpr.equals("auxiliaryBarVisible", true);
-  const precondition = hide ? visible : ContextKeyExpr.not("auxiliaryBarVisible");
-  // After every other action, Split Editor's 100000 and a single tab's Close's 1000000 among them.
-  const menu = hide
-    ? undefined
-    : {
-        id: MenuId.EditorTitle,
-        when: ContextKeyExpr.and(precondition, IsTopRightEditorGroupContext),
-        group: "navigation",
-        order: 1_000_001,
-      };
+function registerDetailsToggle(id: string, title: string, show: boolean): void {
+  const precondition = show
+    ? ContextKeyExpr.not(OPEN_CONTEXT)
+    : ContextKeyExpr.equals(OPEN_CONTEXT, true);
   registerAction2(
     class extends Action2 {
       constructor() {
@@ -101,10 +70,20 @@ function registerDetailsToggle(id: string, title: string, hide: boolean): void {
           id,
           title: { value: title, original: title },
           category: { value: "Pult", original: "Pult" },
-          icon: Codicon.layoutSidebarRightOff,
+          icon: show ? Codicon.layoutSidebarRightOff : Codicon.layoutSidebarRight,
           f1: true,
           precondition,
-          menu,
+          // After every other action, Split Editor's 100000 and a single tab's Close's 1000000 among them.
+          menu: {
+            id: MenuId.EditorTitle,
+            when: ContextKeyExpr.and(
+              precondition,
+              ContextKeyExpr.equals(THREAD_VIEW_CONTEXT, true),
+              IsTopRightEditorGroupContext,
+            ),
+            group: "navigation",
+            order: 1_000_001,
+          },
           keybinding: {
             primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyB,
             when: precondition,
@@ -114,80 +93,94 @@ function registerDetailsToggle(id: string, title: string, hide: boolean): void {
         });
       }
 
-      async run(): Promise<void> {
-        const [layout, panes] = await Promise.all([
-          getService(IWorkbenchLayoutService),
-          getService(IPaneCompositePartService),
-        ]);
-        layout.setPartHidden(hide, Parts.AUXILIARYBAR_PART);
-        if (
-          !hide &&
-          panes.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() !== DETAILS_ID
-        )
-          await panes.openPaneComposite(DETAILS_ID, ViewContainerLocation.AuxiliaryBar, false);
+      run(): void {
+        setOpen(show);
       }
     },
   );
 }
 
+/** The thread view an editor is: a thread's, a draft's, a Star's (its conversation, or asleep its draft), a Star's channel's or child's; null for any other. */
+function threadViewOf(editor: unknown): DetailsCardsTarget | null {
+  if (editor instanceof ThreadInput || editor instanceof StarThreadInput)
+    return { kind: "thread", environmentId: editor.environmentId, threadId: editor.threadId };
+  if (editor instanceof DraftInput)
+    return { kind: "draft", environmentId: editor.environmentId, projectId: editor.projectId };
+  if (editor instanceof StarInput) {
+    const star = starById(editor.starId);
+    return (star === undefined ? undefined : starTarget(star)) ?? null;
+  }
+  return null;
+}
+
+/** What the cards show while open over a thread's view: the selection's details, a thread's, a draft's or a Star's. */
+function cardsOver(over: DetailsCardsTarget): DetailsCards | null {
+  const subject = detailsSubject();
+  switch (subject.kind) {
+    case "star":
+      return { view: over, subject: { kind: "star" } };
+    case "thread":
+      return {
+        view: over,
+        subject: {
+          kind: "thread",
+          environmentId: subject.thread.environmentId,
+          threadId: subject.thread.id,
+        },
+      };
+    case "draft":
+      return {
+        view: over,
+        subject: {
+          kind: "draft",
+          environmentId: subject.environmentId,
+          projectId: subject.projectId,
+        },
+      };
+    // A thread's view under the Explorer workspace, or before the selection is in: nothing to show.
+    case "explorer":
+    case "none":
+      return null;
+  }
+}
+
 /**
- * The column's own parts. The part keeps a 35px title, which is the
- * column's title row: while the Details container is open (in VS Code mode
- * another may be moved in) the row stands in it (`DetailsTitle`, then the
- * toggle at its right end), its right-click menu gone in Pult's mode, since
- * in the desktop the row drags the window. While the column is closed
- * Show Details is the top-right editor group's last tab bar action, that
- * group told by the workbench's own `isTopRightEditorGroup`. The open state is
- * the layout's, one for the whole app, saved at once on every change, as
- * the left panel's is (`src/panel/rows.tsx`); nothing but the toggle, its
- * commands and the key open it. Started once the workbench is up.
+ * The right panel, floating cards over the active thread's view
+ * (`view/ThreadDetailsCard.tsx`): shown while they are open and the active
+ * editor is a thread's view, a Star's among them, and gone under a file
+ * tab, the Inbox's or any other editor, following the active editor and
+ * the selection. Their toggle is the top-right editor group's last tab bar
+ * action while a thread's view is the active editor (`registerDetails`).
+ * The open state is one for the whole app, kept at once on every change,
+ * and nothing but the toggle, its commands and the
+ * key change it. Started once the workbench is up.
  */
-export async function startDetailsRows(): Promise<void> {
-  const [layout, panes, storage] = await Promise.all([
+export async function startDetails(): Promise<void> {
+  const [layout, editors, contextKeys] = await Promise.all([
     getService(IWorkbenchLayoutService),
-    getService(IPaneCompositePartService),
-    getService(IStorageService),
+    getService(IEditorService),
+    getService(IContextKeyService),
   ]);
-  const part = layout.getContainer(window, Parts.AUXILIARYBAR_PART);
-  const title = part?.querySelector<HTMLElement>(":scope > .composite.title");
-  if (part === undefined || title === null || title === undefined)
-    throw new Error("The secondary side bar has no title to hold the Details column's row");
+  openKey = contextKeys.createKey(OPEN_CONTEXT, open);
+  const threadViewKey = contextKeys.createKey<boolean>(THREAD_VIEW_CONTEXT, false);
+  // The docked column of 0.0.25 left the part open in a profile; nothing lives there now.
+  layout.setPartHidden(true, Parts.AUXILIARYBAR_PART);
 
-  const header = document.createElement("div");
-  header.className = "pult-details-header";
-  title.append(header);
-  createRoot(header).render(
-    <>
-      <span className="pult-details-title">
-        <DetailsTitle />
-      </span>
-      <HideToggle />
-    </>,
-  );
-  // Ahead of the part's own listener on the title, which opens the menu.
-  title.addEventListener(
-    "contextmenu",
-    (event) => {
-      if (title.closest(".pult-mode-vscode") !== null) return;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    { capture: true },
-  );
-
-  const follow = () => {
-    const details =
-      panes.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() === DETAILS_ID;
-    part.classList.toggle(HEADER_IN_TITLE, details);
-    detailsColumn.show(details && layout.isVisible(Parts.AUXILIARYBAR_PART));
-  };
-  layout.onDidChangePartVisibility((event) => {
-    if (event.partId !== Parts.AUXILIARYBAR_PART) return;
-    follow();
-    // The layout stores the part's visibility only when the workbench saves its state: saved now, the next start keeps it.
-    void storage.flush();
+  detailsCards.setStarRenderer((element) => {
+    const root = createRoot(element);
+    root.render(<StarCards />);
+    // The view's root is committing as it lets go of the element; this one unmounts after it.
+    return () => queueMicrotask(() => root.unmount());
   });
-  panes.onDidPaneCompositeOpen(follow);
-  panes.onDidPaneCompositeClose(follow);
-  follow();
+
+  update = () => {
+    const view = threadViewOf(editors.activeEditor);
+    threadViewKey.set(view !== null);
+    detailsCards.set(open && view !== null ? cardsOver(view) : null);
+  };
+  editors.onDidActiveEditorChange(update);
+  onDidSelectThread(update);
+  threadStore.subscribe(update);
+  starStore.subscribe(update);
+  update();
 }

@@ -16,7 +16,7 @@ export const LOOK_STATES: Readonly<Record<StarLook, State>> = {
   asleep: "asleep",
 };
 
-/** Each look in words: the Star's state line in the Details column and its square's label. */
+/** Each look in words: the Star's state line in its details cards and its square's label. */
 export const LOOK_WORDS: Readonly<Record<StarLook, string>> = {
   troubled: "Troubled",
   waiting: "Waiting",

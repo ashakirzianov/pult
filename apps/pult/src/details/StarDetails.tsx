@@ -16,13 +16,13 @@ function run(command: string, ...args: unknown[]): void {
 }
 
 /**
- * A selected Star's details in the Details column (`pult/decisions`,
- * `star-card`): its look in words with its time, over the environment it
- * is drawn on; its posted asks (`StarAsks`); `user`'s children and a
- * collapsible Channels holding a row per channel but `user`
- * (`StarChannels`); its current conversation's subagents, as a thread's
- * card lists its own; then its schedules (`StarSchedules.tsx`). Each list
- * is left out while empty.
+ * A selected Star's details as cards (`pult/decisions`, `star-card`,
+ * `view-right-panel`), one per collapsible section: its look in words with
+ * its time, over the environment it is drawn on and `user`'s children; its
+ * posted asks (`StarAsks`); its channels (`StarChannels`); its current
+ * conversation's subagents, as a thread's card lists its own; then its
+ * schedules (`StarSchedules.tsx`). A card is left out while its list is
+ * empty (`details.css`).
  */
 export function StarDetails({
   star,
@@ -44,21 +44,69 @@ export function StarDetails({
   now: number;
 }) {
   return (
-    <div className="pult-details-star">
-      <div className="pult-details-state">
-        <StarStatus star={star} now={now} />
-        {environment === undefined ? null : (
-          <span className="pult-details-environment">on {environment}</span>
-        )}
-      </div>
-      <StarAsks star={star} now={now} />
-      <StarChannels starId={star.id} rows={rows} activities={activities} now={now} />
+    <>
+      <section className="pult-details-card">
+        <div className="pult-details-state">
+          <StarStatus star={star} now={now} />
+          {environment === undefined ? null : (
+            <span className="pult-details-environment">on {environment}</span>
+          )}
+        </div>
+        {rows.children.length > 0 ? (
+          <ul className="pult-subagents-list" aria-label="Children">
+            <Children starId={star.id} threads={rows.children} activities={activities} now={now} />
+          </ul>
+        ) : null}
+      </section>
+      <section className="pult-details-card">
+        <StarAsks star={star} now={now} />
+      </section>
+      <section className="pult-details-card">
+        <StarChannels starId={star.id} rows={rows} activities={activities} now={now} />
+      </section>
       {subagents.length > 0 ? (
-        <Subagents subagents={subagents} activities={activities} selection={selection} now={now} />
+        <section className="pult-details-card">
+          <Subagents
+            subagents={subagents}
+            activities={activities}
+            selection={selection}
+            now={now}
+          />
+        </section>
       ) : null}
-      <StarSchedules star={star} now={now} />
-    </div>
+      <section className="pult-details-card">
+        <StarSchedules star={star} now={now} />
+      </section>
+    </>
   );
+}
+
+/** A Star's children's rows, in the subagents' look, its title and its status, a click opening it as a thread's tab among the Star's (`pult-shell.openStarChild`). */
+function Children({
+  starId,
+  threads,
+  activities,
+  now,
+}: {
+  starId: string;
+  threads: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+  now: number;
+}) {
+  return threads.map((child) => (
+    <li key={keyOf(child)}>
+      <button
+        type="button"
+        className="pult-subagent"
+        title={child.title}
+        onClick={() => run("pult-shell.openStarChild", starId, child.environmentId, child.id)}
+      >
+        <i className="codicon codicon-hubot" aria-hidden />
+        <span className="pult-subagent-title">{child.title}</span>
+        <Status thread={child} activity={activities.get(keyOf(child)) ?? null} now={now} />
+      </button>
+    </li>
+  ));
 }
 
 /**
@@ -74,7 +122,7 @@ function StarAsks({ star, now }: { star: Star; now: number }) {
   );
   if (asks.length === 0) return null;
   return (
-    <div className="pult-details-asks">
+    <div>
       <CollapsibleHeader
         label="Asks"
         count={asks.length}
@@ -104,18 +152,16 @@ function StarAsks({ star, now }: { star: Star; now: number }) {
 }
 
 /**
- * A selected Star's children and channels: `user`'s
- * children first, then a collapsible "Channels" with their count, collapsed
- * until opened and remembered per Star, its header reading Waiting while a
- * thread in it waits, else Working with the longest elapsed time while one
- * works; open, a row per channel but `user`, labelled by its slug,
- * each over its own children (`cardRows`), every row in the subagents' look,
- * its status Working with its elapsed time, Waiting, or the time since its
- * last turn. A click on an open channel's row opens its conversation as a
- * thread's tab among the Star's (`pult-shell.openStarChannel`), on a
- * child's the child (`pult-shell.openStarChild`); a sleeping channel's row,
- * there while a child of it is unsettled, reads Asleep and opens nothing.
- * Hidden with none.
+ * A selected Star's channels: a collapsible "Channels" with their count,
+ * collapsed until opened and remembered per Star, its header reading
+ * Waiting while a thread in it waits, else Working with the longest elapsed
+ * time while one works; open, a row per channel but `user`, labelled by its
+ * slug, each over its own children (`cardRows`), every row in the
+ * subagents' look, its status Working with its elapsed time, Waiting, or
+ * the time since its last turn. A click on an open channel's row opens its
+ * conversation as a thread's tab among the Star's
+ * (`pult-shell.openStarChannel`); a sleeping channel's row, there while a
+ * child of it is unsettled, reads Asleep and opens nothing. Hidden with none.
  */
 function StarChannels({
   starId,
@@ -129,39 +175,17 @@ function StarChannels({
   now: number;
 }) {
   const [expanded, setExpanded] = useExpanded(`pult-shell.panel.channels-expanded:${starId}`);
-  if (rows.children.length === 0 && rows.channels.length === 0) return null;
-  const children = (threads: ReadonlyArray<ShellThread>) =>
-    threads.map((child) => (
-      <li key={keyOf(child)}>
-        <button
-          type="button"
-          className="pult-subagent"
-          title={child.title}
-          onClick={() => run("pult-shell.openStarChild", starId, child.environmentId, child.id)}
-        >
-          <i className="codicon codicon-hubot" aria-hidden />
-          <span className="pult-subagent-title">{child.title}</span>
-          <Status thread={child} activity={activities.get(keyOf(child)) ?? null} now={now} />
-        </button>
-      </li>
-    ));
+  if (rows.channels.length === 0) return null;
   return (
     <div className="pult-card-channels">
-      {rows.children.length > 0 ? (
-        <ul className="pult-subagents-list" aria-label="Children">
-          {children(rows.children)}
-        </ul>
-      ) : null}
-      {rows.channels.length > 0 ? (
-        <CollapsibleHeader
-          label="Channels"
-          count={rows.channels.length}
-          expanded={expanded}
-          onToggle={() => setExpanded(!expanded)}
-          status={<ChannelsStatus threads={channelThreads(rows)} activities={activities} />}
-        />
-      ) : null}
-      {expanded && rows.channels.length > 0 ? (
+      <CollapsibleHeader
+        label="Channels"
+        count={rows.channels.length}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        status={<ChannelsStatus threads={channelThreads(rows)} activities={activities} />}
+      />
+      {expanded ? (
         <ul className="pult-subagents-list" aria-label="Channels">
           {rows.channels.map(({ slug, thread, children: below }) => (
             <li key={`channel:${slug}`}>
@@ -195,7 +219,7 @@ function StarChannels({
                   className="pult-subagents-list pult-card-children"
                   aria-label={`Children of ${slug}`}
                 >
-                  {children(below)}
+                  <Children starId={starId} threads={below} activities={activities} now={now} />
                 </ul>
               ) : null}
             </li>

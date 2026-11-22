@@ -89,12 +89,12 @@ export interface ThreadViewHost {
     }>,
   ) => void;
   /**
-   * Where the selected thread's or draft's details render: the Details
-   * column's element while the selection is one, with what it is
-   * (`src/details/`), null otherwise. The pane's view renders upstream's
-   * rows there (`ThreadDetailsCard.tsx`) while it shows that subject.
+   * The details cards over the active thread view (`src/details/`): which
+   * view they float over and what they show, null while they are closed or
+   * the active editor is no thread's view. The pane's view showing that
+   * target renders them (`ThreadDetailsCard.tsx`).
    */
-  readonly detailsColumn: DetailsColumnValue;
+  readonly detailsCards: DetailsCardsValue;
   /**
    * The colour scheme the view's theme follows in its System mode, as the
    * system's: the workbench theme's, light or dark (`main.tsx`).
@@ -110,18 +110,25 @@ export interface ThreadViewHost {
   readonly keepRendering: ((keep: boolean) => Promise<void>) | undefined;
 }
 
-/** The Details column's element for the selected thread or draft, and which it is. */
-export interface DetailsColumn {
-  readonly element: HTMLElement;
-  readonly subject:
-    | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-    | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+/** A thread view's target, as the details cards name it: a thread, or a project's draft. */
+export type DetailsCardsTarget =
+  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
+  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+
+/** The details cards while they show: the view they float over, and what they show. */
+export interface DetailsCards {
+  /** The active editor's thread view's target: a thread's, a draft's, a Star's conversation or draft, a Star's channel's or child's. */
+  readonly view: DetailsCardsTarget;
+  /** The selected thread's or draft's details, upstream's rows, or the selected Star's, which the shell renders (`renderStar`). */
+  readonly subject: DetailsCardsTarget | { readonly kind: "star" };
 }
 
-/** The Details column live: null while the selection is no thread or draft, or the column is not rendered. */
-export interface DetailsColumnValue {
-  get(): DetailsColumn | null;
+/** The details cards live, and the shell's renderer of a Star's. */
+export interface DetailsCardsValue {
+  get(): DetailsCards | null;
   subscribe(listener: () => void): () => void;
+  /** Renders the selected Star's cards into `element`, an element of the view's the shell owns from then on; returns their removal. */
+  renderStar(element: HTMLElement): () => void;
 }
 
 /**

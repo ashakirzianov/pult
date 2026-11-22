@@ -59,10 +59,9 @@ function threadViewRelease(): Plugin {
 /**
  * The view's elements in the page, the scope of its stylesheet: the roots the
  * shell mounts it in, the thread's and the composer strip's
- * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`), the
- * browser host's (`view/browserHost.tsx`) and the Details column's element a
- * thread's details render into (`src/details/DetailsView.tsx`), each
- * `pult-view-theme` but the first two, and what it puts on the page's
+ * (`view/ThreadView.tsx`), a preview tab's (`view/PreviewMount.tsx`) and the
+ * browser host's (`view/browserHost.tsx`), each `pult-view-theme` but the
+ * first two, and what it puts on the page's
  * body: base-ui's portal node for every popover, menu, tooltip, dialog and
  * toast, and upstream's own portals there, the composer's command menu, the
  * cite-selection button and the context menu a page without the desktop's
@@ -70,6 +69,12 @@ function threadViewRelease(): Plugin {
  */
 const VIEW_ROOTS =
   ".pult-thread-view, .pult-view-theme, [data-base-ui-portal], [data-composer-drawer-layer], [data-assistant-selection-toolbar], [data-context-menu]";
+
+/**
+ * The shell's elements inside the view's, where its stylesheet stops: the
+ * element a Star's details cards render into (`view/ThreadDetailsCard.tsx`).
+ */
+const SHELL_ISLANDS = ".pult-details-island";
 
 /** One selector, parsed by Lightning CSS. */
 function parseSelector(text: string): Selector {
@@ -173,6 +178,7 @@ const unplaced = (rule: { type: string }) => {
  * classes of its own matches too, and the rest of a rule on the document's
  * root or body moved onto the thread view's root, its conditions on the root
  * kept as an ancestor test (`:root:is(.dark, .dark *) :where(:scope.pult-thread-view)`).
+ * The scope stops at the shell's own elements inside the view's (`SHELL_ISLANDS`).
  */
 function scopeThreadViewStylesheet(code: string, filename: string): string {
   const flat = transform({
@@ -252,7 +258,7 @@ function scopeThreadViewStylesheet(code: string, filename: string): string {
       },
     },
   }).code;
-  return `${page.toString()}\n@scope (${VIEW_ROOTS}) {\n${scoped.toString()}}\n`;
+  return `${page.toString()}\n@scope (${VIEW_ROOTS}) to (${SHELL_ISLANDS}) {\n${scoped.toString()}}\n`;
 }
 
 /** The view's stylesheet (`view/tailwind.css`), once Tailwind has built it, bounded to the view (`scopeThreadViewStylesheet`). */

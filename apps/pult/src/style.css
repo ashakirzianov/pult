@@ -367,15 +367,6 @@ body.pult-dragging .pult-browser-host webview {
   display: none;
 }
 
-/* The Details column's stock title buttons (src/details/index.tsx), Maximize, Hide and More Actions,
-   after its title row, which stands in the part's title in either mode and ends with its own toggle. */
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.auxiliarybar.pult-header-in-title
-  > .composite.title
-  > :is(.title-actions, .global-actions) {
-  display: none;
-}
-
 /* A project HTML file's reader (`src/reader/`): the scripts notice over the page's frame. The frame's
    element keeps the `normal` scheme with a white canvas behind the page, as a browser tab shows a page
    with no background of its own; a page declaring a dark scheme gets Chromium's opaque dark backdrop. */

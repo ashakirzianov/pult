@@ -8,9 +8,8 @@ export * from "~/keybindings";
 
 /**
  * The view's elements in the page: the roots the shell mounts it in
- * (`ThreadView.tsx`, `PreviewMount.tsx`, `browserHost.tsx`), the Details
- * column's element its thread details render into (`ThreadDetailsCard.tsx`)
- * and base-ui's portal node for its popovers, menus and dialogs.
+ * (`ThreadView.tsx`, `PreviewMount.tsx`, `browserHost.tsx`) and base-ui's
+ * portal node for its popovers, menus and dialogs.
  */
 const VIEW_ELEMENTS = ".pult-thread-view, .pult-view-theme, [data-base-ui-portal]";
 

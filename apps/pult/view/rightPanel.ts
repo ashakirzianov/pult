@@ -1,12 +1,13 @@
 // Upstream's right panel in Pult's shell: a file the view would open there
 // opens as an editor tab of the shell's instead, its diff surface is the
-// shell's changes view, and the thread details panel stays closed. The
-// panel's store is Zustand's, its actions fields of the state, so the
-// shell's build replaces them at start and stubs nothing. What the panel
+// shell's changes view, and the thread details card opens only as the
+// shell's details cards show (`ThreadDetailsCard.tsx`), never by upstream's
+// toggles. The panel's store is Zustand's, its actions fields of the state,
+// so the shell's build replaces them at start and stubs nothing. What the panel
 // still holds, pull requests, devices, terminals, stays its own until the
 // shell gives each a place.
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelStore";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -15,7 +16,8 @@ import { turnCheckpoints } from "./turnCheckpoints.ts";
 
 /**
  * Once, before any view mounts: files and the diff go to the shell, a
- * turn's completion opens no panel, the thread details panel cannot open.
+ * turn's completion opens no panel, upstream's toggles of the thread details
+ * card do nothing.
  */
 export function routeRightPanel(): void {
   const { open, openProactive } = useRightPanelStore.getState();
@@ -49,15 +51,16 @@ export function routeRightPanel(): void {
   });
 }
 
-/** The thread's details panel closed, whatever the store remembers of it. */
-export function closeThreadPanel(environmentId: string, threadId: string): void {
-  const key = scopedThreadKey(
-    scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(threadId)),
-  );
+/**
+ * Whether the thread's details card is open inline, which the chat's canvas
+ * clears its lane of: the details cards' stub writes it as they show.
+ */
+export function setThreadPanelInline(ref: ScopedThreadRef, open: boolean): void {
+  const key = scopedThreadKey(ref);
   useRightPanelStore.setState((state) => ({
     threadPanelVisibilityByThreadKey: {
       ...state.threadPanelVisibilityByThreadKey,
-      [key]: { inlineOpen: false, popoverOpen: false },
+      [key]: { inlineOpen: open, popoverOpen: false },
     },
   }));
 }

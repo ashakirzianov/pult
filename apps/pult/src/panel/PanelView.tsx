@@ -164,7 +164,7 @@ export function subagentsByRoot(
  * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
  * several environments, each card names its own. The selected thread's card
  * expands with its details and its subagents (a Star's details are the
- * Details column's, `src/details/`); a subagent has no card, so while one
+ * details cards', `src/details/`); a subagent has no card, so while one
  * is selected its root's card is the expanded one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
  * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A

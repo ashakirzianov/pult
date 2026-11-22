@@ -65,7 +65,6 @@ import {
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { DetailsTarget } from "./ThreadDetailsCard.tsx";
 import { threadViewHost } from "./host.ts";
-import { closeThreadPanel } from "./rightPanel.ts";
 
 /**
  * What a pane shows, in its environment: a thread, or a project's draft until
@@ -175,7 +174,6 @@ function makeMount() {
           draftModel: options.draftModel,
           composer: { draftHero, placeholder, creationTags, reply },
         };
-      if (next.kind === "thread") closeThreadPanel(next.environmentId, next.threadId);
       changed();
     },
     /** The router is on its way to the target: what it resolves before it arrives is the previous target's. */
@@ -198,7 +196,6 @@ function makeMount() {
       if (target.kind !== "draft") return;
       localStorage.removeItem(draftKey(target.environmentId, target.projectId, target.tags));
       target = { kind: "thread", environmentId, threadId };
-      closeThreadPanel(environmentId, threadId);
       changed();
       onPromoted(environmentId, threadId);
       draftSent?.(environmentId, threadId);
@@ -258,8 +255,6 @@ function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) 
           draftKey(target.environmentId, target.projectId, target.tags),
           shown.draftId,
         );
-        // The draft's details panel stays closed too, keyed by the thread id the draft holds.
-        closeThreadPanel(session.environmentId, session.threadId);
         return arrive();
       }
       if (mount.heading()) return goHome();
@@ -406,7 +401,7 @@ function makeRoot(mount: Mount, bar: HTMLElement, composerOnly: boolean, arrived
             <CustomSnoozeDialogHost />
             {/* Keyed: a view moved to a new element with its target unchanged mounts its content again, since a moved scroller forgets where it stood. */}
             <SidebarProvider key={again} defaultOpen={false}>
-              {/* The pane's view renders its target's details into the Details column; the composer strip's renders none. */}
+              {/* The pane's view renders the details cards over its target; the composer strip's renders none. */}
               <DetailsTarget value={composerOnly || target.kind === "none" ? null : target}>
                 <Outlet />
               </DetailsTarget>

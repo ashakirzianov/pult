@@ -56,7 +56,7 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
  * `data-state`, so the halo's motion carries on from where it was. Its colour
  * is the tint's in the theme's scheme, set on the element around it.
  */
-export function StarMark({ look, color }: { look: StarLook; color: string }) {
+function StarMark({ look, color }: { look: StarLook; color: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
@@ -74,7 +74,7 @@ export function StarMark({ look, color }: { look: StarLook; color: string }) {
  * while it has none), and nothing else, its label naming the Star and its
  * look in words. A click selects the Star (`pult-shell.selectStar`), a
  * right-click opens its menu. Selected, it takes the selected card's
- * background; its details are the Details column's (`src/details/`).
+ * background; its details are the details cards' (`src/details/`).
  */
 export function StarCard({ star, selected }: { star: Star; selected: boolean }) {
   const select = () => run("pult-shell.selectStar", star.id);
