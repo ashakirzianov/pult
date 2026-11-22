@@ -168,7 +168,8 @@ function Conversation({
  * (xaxis `pult/tasks/star-sleep.task`): the transcripts of the home it is drawn
  * from (`drawnHome`), never live threads, their names from the Pult plugin's
  * `stars` route and each one read from its transcript route (`foldState.ts`).
- * Collapsed, "Earlier conversations · N", the names alone, and
+ * Open until the user collapses it, kept so for the page's session;
+ * collapsed, "Earlier conversations · N", the names alone, and
  * nothing at 0; open, its newest transcript right above the live view, each
  * conversation followed by its divider, "Fell asleep 14:32", with the
  * environment's name while the page holds several, and Show more above,

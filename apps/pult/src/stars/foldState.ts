@@ -19,6 +19,8 @@ export interface FoldView {
 }
 
 const CLOSED: FoldView = { open: false, shown: 1 };
+/** A fold the user has not touched: open on its newest transcript, as one click on it leaves it. */
+const OPENED: FoldView = { open: true, shown: 1 };
 
 const views = new Map<string, FoldView>();
 const readings = new Map<string, TranscriptReading>();
@@ -52,11 +54,11 @@ export const foldStore = {
   },
 };
 
-export const foldView = (starId: string) => views.get(starId) ?? CLOSED;
+export const foldView = (starId: string) => views.get(starId) ?? OPENED;
 
 /** Opens the fold on its newest transcript, or closes it, forgetting how far it was shown, and giving up a passage being brought into view. */
 export function setFoldOpen(starId: string, open: boolean): void {
-  views.set(starId, open ? { open: true, shown: 1 } : CLOSED);
+  views.set(starId, open ? OPENED : CLOSED);
   if (!open) reveals.get(starId)?.finish("cancelled");
   changed();
 }
