@@ -211,32 +211,6 @@ body.pult-dragging .pult-browser-host webview {
   );
 }
 
-/* With the Details column closed, the top-right editor group's tabs row leaves Show Details its room
-   (src/details/index.tsx), as the top-left one leaves Expand Panel its own. A group is the top-right
-   one unless a horizontal split puts it before another or a vertical split below another. */
-.monaco-workbench.noauxiliarybar
-  .part.editor
-  > .content
-  .editor-group-container:not(
-    .part.editor
-      .monaco-split-view2.horizontal
-      > .monaco-scrollable-element
-      > .split-view-container
-      > .split-view-view:not(:last-child)
-      *
-  ):not(
-    .part.editor
-      .monaco-split-view2.vertical
-      > .monaco-scrollable-element
-      > .split-view-container
-      > .split-view-view:not(:first-child)
-      *
-  )
-  > .title
-  > .tabs-and-actions-container {
-  padding-right: calc(var(--pult-panel-inset) + 23px);
-}
-
 /* Source Control's "No changes." (src/changes/view.ts), which the workbench
    focuses when the view opens empty: no focus ring, as it holds nothing to act on. */
 #workbench\.view\.scm .welcome-view-content:focus {

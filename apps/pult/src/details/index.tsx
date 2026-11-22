@@ -5,13 +5,16 @@ import {
   IStorageService,
   IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
+import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import {
   Action2,
+  MenuId,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
+import { IsTopRightEditorGroupContext } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/contextkeys";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
 import {
   registerCustomView,
@@ -30,25 +33,21 @@ const DETAILS_ID = "pult.details";
 /** On the secondary side bar part while the title row stands in its title, the Details container's. */
 const HEADER_IN_TITLE = "pult-header-in-title";
 
-/** The toggle at the window's top-right, in the title row while the column is open and over the top-right editor group's tabs row while it is closed. */
-function Toggle({ open }: { open: boolean }) {
-  const title = open ? "Hide Details" : "Show Details";
+/** Hide Details, at the column's title row's right end, the window's top-right. */
+function HideToggle() {
   return (
     <button
       type="button"
       className="pult-panel-row-button"
-      title={title}
-      aria-label={title}
+      title="Hide Details"
+      aria-label="Hide Details"
       onClick={() =>
         void getService(ICommandService).then((commands) =>
-          commands.executeCommand(open ? "pult-shell.hideDetails" : "pult-shell.showDetails"),
+          commands.executeCommand("pult-shell.hideDetails"),
         )
       }
     >
-      <i
-        className={`codicon codicon-${open ? "layout-sidebar-right" : "layout-sidebar-right-off"}`}
-        aria-hidden
-      />
+      <i className="codicon codicon-layout-sidebar-right" aria-hidden />
     </button>
   );
 }
@@ -58,7 +57,9 @@ function Toggle({ open }: { open: boolean }) {
  * secondary side bar, as the left panel is its primary one, holding one
  * view, Details (`DetailsView.tsx`), with the palette's Pult: Show Details
  * and Hide Details, both on Cmd+Alt+B, VS Code's own key for the part, over
- * its stock toggle. Registered before the workbench starts.
+ * its stock toggle; Show Details is also the last of the top-right editor
+ * group's tab bar actions while the column is closed, one of them. Registered
+ * before the workbench starts.
  */
 export function registerDetails(): void {
   registerCustomView({
@@ -84,6 +85,15 @@ export function registerDetails(): void {
 function registerDetailsToggle(id: string, title: string, hide: boolean): void {
   const visible = ContextKeyExpr.equals("auxiliaryBarVisible", true);
   const precondition = hide ? visible : ContextKeyExpr.not("auxiliaryBarVisible");
+  // After every other action, Split Editor's 100000 and a single tab's Close's 1000000 among them.
+  const menu = hide
+    ? undefined
+    : {
+        id: MenuId.EditorTitle,
+        when: ContextKeyExpr.and(precondition, IsTopRightEditorGroupContext),
+        group: "navigation",
+        order: 1_000_001,
+      };
   registerAction2(
     class extends Action2 {
       constructor() {
@@ -91,8 +101,10 @@ function registerDetailsToggle(id: string, title: string, hide: boolean): void {
           id,
           title: { value: title, original: title },
           category: { value: "Pult", original: "Pult" },
+          icon: Codicon.layoutSidebarRightOff,
           f1: true,
           precondition,
+          menu,
           keybinding: {
             primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyB,
             when: precondition,
@@ -123,10 +135,9 @@ function registerDetailsToggle(id: string, title: string, hide: boolean): void {
  * column's title row: while the Details container is open (in VS Code mode
  * another may be moved in) the row stands in it (`DetailsTitle`, then the
  * toggle at its right end), its right-click menu gone in Pult's mode, since
- * in the desktop the row drags the window. While the column is closed the
- * toggle sits at the window's top-right over the room the top-right editor
- * group's tabs row leaves it (`src/style.css`), an element of the shell's
- * own on the workbench's container, so it never moves. The open state is
+ * in the desktop the row drags the window. While the column is closed
+ * Show Details is the top-right editor group's last tab bar action, that
+ * group told by the workbench's own `isTopRightEditorGroup`. The open state is
  * the layout's, one for the whole app, saved at once on every change, as
  * the left panel's is (`src/panel/rows.tsx`); nothing but the toggle, its
  * commands and the key open it. Started once the workbench is up.
@@ -150,7 +161,7 @@ export async function startDetailsRows(): Promise<void> {
       <span className="pult-details-title">
         <DetailsTitle />
       </span>
-      <Toggle open />
+      <HideToggle />
     </>,
   );
   // Ahead of the part's own listener on the title, which opens the menu.
@@ -163,11 +174,6 @@ export async function startDetailsRows(): Promise<void> {
     },
     { capture: true },
   );
-
-  const show = document.createElement("div");
-  show.className = "pult-details-show";
-  layout.mainContainer.append(show);
-  createRoot(show).render(<Toggle open={false} />);
 
   const follow = () => {
     const details =

@@ -13,8 +13,7 @@
   display: none;
 }
 
-/* The selection's mark or icon and its name, then the toggle, its glyph where the closed
-   toggle's sits (`.pult-details-show`), so it never moves. */
+/* The selection's mark or icon and its name, then Hide Details. */
 .pult-details-header {
   display: flex;
   flex: 1;
@@ -64,24 +63,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Show Details, while the column is closed, at the window's top-right where the title row's
-   toggle sits, over the room the top-right editor group's tabs row leaves it (src/style.css). */
-.pult-details-show {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  height: 35px;
-  padding-right: calc(var(--pult-panel-inset) - 5px);
-  color: var(--vscode-foreground);
-}
-
-.monaco-workbench:not(.noauxiliarybar) > .pult-details-show {
-  display: none;
 }
 
 .pult-details {
