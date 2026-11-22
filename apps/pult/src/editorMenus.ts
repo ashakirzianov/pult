@@ -1,8 +1,9 @@
 import {
+  type IMenuItem,
+  type ISubmenuItem,
   MenuId,
   MenuRegistry,
   isIMenuItem,
-  isISubmenuItem,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import {
   ContextKeyExpr,
@@ -42,32 +43,69 @@ const VSCODE_MODE_SUBMENUS = new Set([
 const MENUS = [MenuId.EditorTabsBarContext, MenuId.EditorTitleContext, MenuId.CommandPalette];
 
 /**
+ * The stock buttons of a tab bar's actions that Pult's mode leaves out, each
+ * a command, kept in the palette, Open With and the tab's context menu:
+ * Split Editor (Right, or Down while splits go down), and the Markdown
+ * extension's Open Preview to the Side and Open as Preview, the reader's
+ * Show Preview being a Markdown file's one preview button (`src/reader/`).
+ * The Markdown ones are registered once the extension's contributions are
+ * read, after the workbench starts.
+ */
+const VSCODE_MODE_TITLE_COMMANDS = new Set([
+  "workbench.action.splitEditor",
+  "markdown.showPreviewToSide",
+  "markdown.reopenAsPreview",
+]);
+
+const amended = new WeakSet<object>();
+
+/** Has the registered items of `menu` that `gate` names take `pult.vscodeMode` into their `when`, once each; answers the keys of those it names. */
+function gateItems(menu: MenuId, gate: (item: IMenuItem | ISubmenuItem) => string | undefined) {
+  const keys = new Set<string>();
+  for (const item of MenuRegistry.getMenuItems(menu)) {
+    const key = gate(item);
+    if (key === undefined) continue;
+    keys.add(key);
+    if (amended.has(item)) continue;
+    const gated: { when?: ContextKeyExpression } = item;
+    gated.when = ContextKeyExpr.and(gated.when, VSCodeModeContext);
+    amended.add(item);
+  }
+  return keys;
+}
+
+const gateEditorMenu = (item: IMenuItem | ISubmenuItem) =>
+  isIMenuItem(item)
+    ? VSCODE_MODE_COMMANDS.has(item.command.id)
+      ? item.command.id
+      : undefined
+    : VSCODE_MODE_SUBMENUS.has(item.submenu)
+      ? item.submenu.id
+      : undefined;
+
+const gateTitle = (item: IMenuItem | ISubmenuItem) =>
+  isIMenuItem(item) && VSCODE_MODE_TITLE_COMMANDS.has(item.command.id)
+    ? item.command.id
+    : undefined;
+
+/**
  * Shows those entries in VS Code mode alone: their registered items take
  * `pult.vscodeMode` into their `when`. Called before the workbench starts,
- * after the workbench's contributions have registered them; a command a
- * VS Code bump renames is reported, not fatal.
+ * after the workbench's contributions have registered them, and the tab
+ * bar's buttons again as items are added to it; a command a VS Code bump
+ * renames is reported, not fatal (a Markdown button's shows again instead).
  */
 export function gateEditorMenus(): void {
-  const gated = new Set<string>();
-  for (const menu of MENUS) {
-    for (const item of MenuRegistry.getMenuItems(menu)) {
-      const key = isIMenuItem(item)
-        ? item.command.id
-        : isISubmenuItem(item)
-          ? item.submenu.id
-          : undefined;
-      const gate = isIMenuItem(item)
-        ? VSCODE_MODE_COMMANDS.has(item.command.id)
-        : isISubmenuItem(item) && VSCODE_MODE_SUBMENUS.has(item.submenu);
-      if (!gate || key === undefined) continue;
-      const amended: { when?: ContextKeyExpression } = item;
-      amended.when = ContextKeyExpr.and(amended.when, VSCodeModeContext);
-      gated.add(key);
-    }
-  }
+  const gated = new Set(MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu)]));
+  for (const key of gateItems(MenuId.EditorTitle, gateTitle)) gated.add(key);
+  // Ahead of a menu's rebuild, which waits for the changes' debounce.
+  MenuRegistry.onDidChangeMenu((event) => {
+    if (event.has(MenuId.EditorTitle)) gateItems(MenuId.EditorTitle, gateTitle);
+  });
   const missing = [
     ...VSCODE_MODE_COMMANDS,
     ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id),
+    "workbench.action.splitEditor",
   ].filter((id) => !gated.has(id));
   if (missing.length > 0) console.warn("[pult-shell] menu entries not found to gate:", missing);
 }
