@@ -19,6 +19,7 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
+import { isCodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
 import { basename, isEqual } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import {
@@ -341,6 +342,16 @@ class ReaderPane extends SimpleEditorPane {
     this.notice.replaceChildren(text, open, close);
   }
 
+  /** The source line at the top of the page shown, none before it renders (`ReaderFrame.topLine`). */
+  topLine(): number | undefined {
+    return this.version === undefined ? undefined : this.frame.topLine();
+  }
+
+  /** Brings the page shown to the text of the source's `line` (`ReaderFrame.reveal`). */
+  reveal(line: number): void {
+    this.frame.reveal(line);
+  }
+
   override focus(): void {
     this.frame.element.contentWindow?.focus();
   }
@@ -442,6 +453,11 @@ export function registerReader(): void {
         const { group, editor } = await activeEditor(context);
         const resource = editor?.resource;
         if (editor === null || resource === undefined) return;
+        // The page opens at the text editor's top line.
+        const control = group.activeEditorPane?.getControl();
+        const top = isCodeEditor(control)
+          ? control.getVisibleRanges()[0]?.startLineNumber
+          : undefined;
         await editors.replaceEditors(
           [
             {
@@ -453,6 +469,10 @@ export function registerReader(): void {
           ],
           group,
         );
+        // The group may show another tab by the time the reader has rendered.
+        const reader = group.activeEditorPane;
+        const shows = reader?.input instanceof ReaderInput && isEqual(reader.input.file, resource);
+        if (top !== undefined && reader instanceof ReaderPane && shows) reader.reveal(top);
       }
     },
   );
@@ -474,6 +494,9 @@ export function registerReader(): void {
         const editors = accessor.get(IEditorService);
         const { group, editor } = await activeEditor(context);
         if (!(editor instanceof ReaderInput)) return;
+        // The text editor opens at the page's top line.
+        const reader = group.activeEditorPane;
+        const top = reader instanceof ReaderPane ? reader.topLine() : undefined;
         await editors.replaceEditors(
           [
             {
@@ -488,6 +511,10 @@ export function registerReader(): void {
           ],
           group,
         );
+        const control = group.activeEditorPane?.getControl();
+        const shows = isEqual(group.activeEditor?.resource, editor.file);
+        if (top !== undefined && isCodeEditor(control) && shows)
+          control.setScrollTop(control.getTopForLineNumber(top));
       }
     },
   );

@@ -158,6 +158,40 @@ export interface ReaderFrame {
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
   selection(): Passage | undefined;
+  /**
+   * The source line at the top of the reader's view: the first text there,
+   * the line of it showing for a literal one, or for text made of no source
+   * the nearest earlier text's; none above any, or before a render.
+   */
+  topLine(): number | undefined;
+  /** Scrolls the page so the text of the source's `line`, else the nearest earlier text, is at the top of the view: the page shown, or the next one rendered while the frame loads. */
+  reveal(line: number): void;
+}
+
+/** The page's rendered text nodes, in document order, each with where it came from, if anywhere. */
+function* placedText(doc: Document, origins: WeakMap<Text, SourceText>) {
+  const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const text = node as Text;
+    if (text.data.trim() === "" || text.parentElement?.checkVisibility() !== true) continue;
+    yield { text, origin: origins.get(text) };
+  }
+}
+
+const LINE_BREAK = /\r\n?|\n/g;
+
+/** Where each line of a text node's data starts. */
+const lineStarts = (data: string) => [
+  0,
+  ...[...data.matchAll(LINE_BREAK)].map((m) => m.index + m[0].length),
+];
+
+/** The box of the text node's characters from `from` to `to`. */
+function boxOf(text: Text, from: number, to: number): DOMRect {
+  const range = text.ownerDocument.createRange();
+  range.setStart(text, from);
+  range.setEnd(text, to);
+  return range.getBoundingClientRect();
 }
 
 /**
@@ -184,6 +218,37 @@ export function createReaderFrame(options?: {
   let position = { top: 0, left: 0 };
   let shown: Document | undefined;
   const origins = new WeakMap<Text, SourceText>();
+  // A line to bring the page shown to once it renders.
+  let revealing: number | undefined;
+
+  /** Brings the page shown to the line `reveal` asked for. */
+  const revealShown = () => {
+    const line = revealing!;
+    revealing = undefined;
+    let target: { text: Text; offset: number; line: number } | undefined;
+    // A line of markup with no text of its own (a fence, `$$`, a tag) opens the text right after it.
+    let covered = false;
+    let next: Text | undefined;
+    for (const { text, origin } of placedText(shown!, origins)) {
+      if (origin === undefined) continue;
+      const end = origin.line + (origin.source.match(LINE_BREAK)?.length ?? 0);
+      covered ||= origin.line <= line && line <= end;
+      if (origin.line === line + 1) next ??= text;
+      if (origin.line > line || origin.line <= (target?.line ?? -1)) continue;
+      const starts = origin.literal ? lineStarts(text.data) : [0];
+      const offset = starts[Math.min(line - origin.line, starts.length - 1)]!;
+      target = { text, offset, line: origin.line };
+    }
+    const written = last?.source.split(LINE_BREAK)[line - 1]?.trim() ?? "";
+    if (!covered && written !== "" && next !== undefined)
+      target = { text: next, offset: 0, line: line + 1 };
+    const scroller = shown!.scrollingElement;
+    if (target === undefined || scroller === null) return;
+    const { text, offset } = target;
+    scroller.scrollTop =
+      boxOf(text, offset, Math.min(offset + 1, text.length)).top + scroller.scrollTop;
+    position = { top: scroller.scrollTop, left: scroller.scrollLeft };
+  };
 
   // Each load of the frame's document is guarded and followed for the
   // reader's place: its first, and any the browser makes again, as for a
@@ -247,12 +312,40 @@ export function createReaderFrame(options?: {
       const { top, left } = position;
       doc.replaceChild(root, doc.documentElement);
       doc.scrollingElement?.scrollTo(left, top);
+      if (revealing !== undefined) revealShown();
       return built;
     },
     selection() {
       return shown === undefined || shown !== element.contentDocument
         ? undefined
         : selectedPassage(shown, origins);
+    },
+    topLine() {
+      if (shown === undefined || shown !== element.contentDocument) return undefined;
+      let earlier: number | undefined;
+      for (const { text, origin } of placedText(shown, origins)) {
+        const box = boxOf(text, 0, text.length);
+        if (box.bottom <= 0) {
+          earlier = origin?.line ?? earlier;
+          continue;
+        }
+        // Text below the whole view leaves it to what came before, generated content filling it.
+        if (origin === undefined || box.top >= (shown.defaultView?.innerHeight ?? Infinity))
+          return earlier;
+        if (!origin.literal) return origin.line;
+        const starts = lineStarts(text.data);
+        const showing = starts.findIndex((start, index) => {
+          const end = index + 1 < starts.length ? starts[index + 1]! - 1 : text.length;
+          return boxOf(text, start, Math.max(start, end)).bottom > 0;
+        });
+        return origin.line + Math.max(showing, 0);
+      }
+      return earlier;
+    },
+    reveal(line) {
+      // A frame the workbench has just put in the page loads and renders again first.
+      revealing = line;
+      if (shown !== undefined && shown === element.contentDocument) revealShown();
     },
   };
   return frame;

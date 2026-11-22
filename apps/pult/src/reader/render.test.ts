@@ -508,4 +508,29 @@ NodeTest.describe("the reader's frame", () => {
       });
     },
   );
+  NodeTest.it("opens at a source line, and tells the line at the top of the view", async () => {
+    // Paragraph k on line 2k - 1, to line 79; lines 81 to 102 a fence of one text node, its code on 82 to 101.
+    const source = [
+      ...Array.from({ length: 40 }, (_, index) => [`Paragraph ${index + 1}`, ""]).flat(),
+      "```nolang",
+      ...Array.from({ length: 20 }, (_, index) => `code ${index + 82}`),
+      "```",
+    ].join("\n");
+    const lines = await page.evaluate(async (source) => {
+      const frame = window.reader.createReaderFrame();
+      document.body.append(frame.element);
+      await frame.show(source, { markdown: true });
+      const at = (line: number) => (frame.reveal(line), frame.topLine());
+      const result = {
+        top: frame.topLine(),
+        paragraph: at(41),
+        blank: at(42),
+        fence: at(81),
+        code: at(90),
+      };
+      frame.element.remove();
+      return result;
+    }, source);
+    NodeAssert.deepEqual(lines, { top: 1, paragraph: 41, blank: 41, fence: 82, code: 90 });
+  });
 });
