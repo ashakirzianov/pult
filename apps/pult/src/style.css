@@ -248,29 +248,75 @@ body.pult-dragging .pult-browser-host webview {
   pointer-events: none;
 }
 
-/* The active tab's top bar (`tab.activeBorderTop`) and its inset shadow
-   (`--vscode-shadow-active-tab`, a faint darkening at its top): the tab's
-   colour already tells it apart. The selectors mirror the workbench's own,
-   one step more specific. */
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.editor
-  > .content
-  .editor-group-container
-  > .title
-  .tabs-container
-  > .tab.active.tab-border-top
-  > .tab-border-top-container,
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.editor
-  > .content
-  .editor-group-container
-  > .title
-  .tabs-container
-  > .tab.selected.tab-border-top
-  > .tab-border-top-container {
-  display: none;
+/* The tabs' row merges with the view under it: the row, its tabs and its
+   actions' area all in the editor's background, the theme's own, so it holds
+   in any theme; no separators between tabs and no line under the row; the
+   selected tab marked by its top border alone. The tabs' backgrounds are the
+   workbench's theme variables, redefined for the row; the row's background
+   and the tabs' right borders are inline styles the workbench sets from the
+   theme, hence the `!important`. Hover stays the theme's: its rules are
+   `!important` and more specific. */
+.monaco-workbench:not(.pult-mode-vscode) .part.editor > .content .editor-group-container > .title {
+  background-color: var(--vscode-editor-background) !important;
+  --vscode-tab-activeBackground: var(--vscode-editor-background);
+  --vscode-tab-inactiveBackground: var(--vscode-editor-background);
+  --vscode-tab-unfocusedActiveBackground: var(--vscode-editor-background);
+  --vscode-tab-unfocusedInactiveBackground: var(--vscode-editor-background);
+  --vscode-tab-selectedBackground: var(--vscode-editor-background);
 }
 
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab {
+  border-right: none !important;
+}
+
+/* The selected tab's top border: `tab.activeBorderTop`, or the focus border
+   in a theme with none; in a split, the unfocused group's is
+   `tab.unfocusedActiveBorderTop`, or the focus border at half strength. The
+   workbench draws the bar only where the theme names a colour, and in an
+   unfocused group falls back to the full focus border, hence a rule of our
+   own on its element. A modified tab's own top border, when the setting
+   highlights them, stays the workbench's. */
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab:is(.active, .selected):not(.dirty-border-top)
+  > .tab-border-top-container {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+  background-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+}
+
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container:not(.active)
+  > .title
+  .tabs-container
+  > .tab:is(.active, .selected):not(.dirty-border-top)
+  > .tab-border-top-container {
+  background-color: var(
+    --vscode-tab-unfocusedActiveBorderTop,
+    color-mix(in srgb, var(--vscode-focusBorder) 50%, transparent)
+  );
+}
+
+/* The active tab's inset shadow (`--vscode-shadow-active-tab`, a faint
+   darkening at its top): the top border alone marks it. */
 .monaco-workbench:not(.pult-mode-vscode)
   .part.editor
   > .content
@@ -287,21 +333,13 @@ body.pult-dragging .pult-browser-host webview {
   > .content
   .editor-group-container
   > .title
-  > .tabs-and-actions-container.tabs-border-bottom::after {
-  display: none;
-}
-
-/* While a thread's or draft's tab is a group's only tab, its tabs' row is
-   the tab's colour, the editor's, with no border at the tab's right, so
-   the tab and the thread's canvas read as one. The row's background and the tab's
-   right border are inline styles the workbench sets from the theme, hence
-   the `!important`. */
+  > .tabs-and-actions-container.tabs-border-bottom::after,
 .monaco-workbench:not(.pult-mode-vscode)
   .part.editor
   > .content
   .editor-group-container
-  > .title:has(.tabs-container > .tab:only-child > .tab-label.pult-thread-tab) {
-  background-color: var(--vscode-editor-background) !important;
+  > .title.title-border-bottom::after {
+  display: none;
 }
 
 /* The active tab's bottom line (`tab.activeBorder`, light grey in the light
@@ -317,16 +355,6 @@ body.pult-dragging .pult-browser-host webview {
   > .tab.active.tab-border-bottom
   > .tab-border-bottom-container {
   display: none;
-}
-
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.editor
-  > .content
-  .editor-group-container
-  > .title
-  .tabs-container
-  > .tab:only-child:has(> .tab-label.pult-thread-tab) {
-  border-right: none !important;
 }
 
 /* The Explorer tab's title, the workspace's name while the file view is the
