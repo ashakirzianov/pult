@@ -29,6 +29,7 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
+import type { IEditorOptions } from "@codingame/monaco-vscode-api/vscode/vs/platform/editor/common/editor";
 import type { ServicesAccessor } from "@codingame/monaco-vscode-api/vscode/vs/platform/instantiation/common/instantiation";
 import {
   DEFAULT_EDITOR_ASSOCIATION,
@@ -139,7 +140,14 @@ class ReaderInput extends SimpleEditorInput {
   /** Whether the scripts notice was closed in this tab. */
   noticeClosed = false;
 
-  constructor(readonly file: URI) {
+  /**
+   * `sourceIfEmpty`: an ordinary open's, whose pane hands an empty file, one
+   * about to be written, to Source the first time it has the file's text.
+   */
+  constructor(
+    readonly file: URI,
+    public sourceIfEmpty = false,
+  ) {
     super(file);
     this.markdown = /\.md$/i.test(file.path);
     this.setName(basename(file));
@@ -227,10 +235,32 @@ class ReaderPane extends SimpleEditorPane {
     return element;
   }
 
-  async renderInput(input: EditorInput) {
+  async renderInput(input: EditorInput, options?: IEditorOptions) {
     if (!(input instanceof ReaderInput)) return { dispose: () => {} };
     const model = await input.textModel();
     if (this.input !== input) return { dispose: () => {} };
+    const sourceIfEmpty = input.sourceIfEmpty;
+    input.sourceIfEmpty = false;
+    if (sourceIfEmpty && model.getValueLength() === 0) {
+      void StandaloneServices.get(IEditorService).replaceEditors(
+        [
+          {
+            editor: input,
+            replacement: {
+              resource: input.file,
+              options: {
+                override: DEFAULT_EDITOR_ASSOCIATION.id,
+                pinned: this.group.isPinned(input),
+                preserveFocus: options?.preserveFocus,
+              },
+            },
+            forceReplaceDirty: input.isDirty(),
+          },
+        ],
+        this.group,
+      );
+      return { dispose: () => {} };
+    }
     this.model = model;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const render = async () => {
@@ -414,10 +444,12 @@ function tabOf(group: IEditorGroup, file: URI) {
  * Open With, Show Preview and a reopened tab name by id, and, under the same
  * id so Open With lists one Preview, the default per extension, what an open
  * naming no editor gets. That one sends an open with a selection (a line
- * link, a search result, a jump) to Source and shows a tab the group already
- * holds of the file, so a tab left in Source stays the file's view there.
- * Show Preview and Show Source switch the tab in place, each a title action
- * and in the palette. Registered before the workbench starts.
+ * link, a search result, a jump) to Source, shows a tab the group already
+ * holds of the file, so a tab left in Source stays the file's view there, and
+ * opens the reader at once otherwise, which hands an empty file to Source
+ * (`sourceIfEmpty`). Show Preview and Show Source switch the tab in place,
+ * each a title action and in the palette. Registered before the workbench
+ * starts.
  */
 export function registerReader(): void {
   registerEditorPane(READER_ID, "Pult Preview", ReaderPane, [ReaderInput]);
@@ -470,7 +502,7 @@ export function registerReader(): void {
           editor:
             options !== undefined && "selection" in options && options.selection !== undefined
               ? StandaloneServices.get(ITextEditorService).createTextEditor({ resource })
-              : (tabOf(group, resource) ?? new ReaderInput(resource)),
+              : (tabOf(group, resource) ?? new ReaderInput(resource, true)),
         }),
       },
     );
