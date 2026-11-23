@@ -31,6 +31,8 @@ export interface ShellThread {
   /** The project's chosen favicon file, relative to its root; null for the one the server finds. */
   readonly projectFaviconPath: string | null;
   readonly title: string;
+  /** The provider instance its model runs on; a built-in provider's is its driver's name. */
+  readonly providerInstanceId: string;
   /** Its tags, as its server keeps them; none from a server without tags. A Star's channel is one (`src/stars/stars.ts`, `channelOf`). */
   readonly tags: ReadonlyArray<string>;
   readonly branch: string | null;

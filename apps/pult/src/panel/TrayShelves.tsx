@@ -13,16 +13,7 @@ import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
-import {
-  draftCards,
-  draftKey,
-  groupOf,
-  inboxRows,
-  keyOf,
-  type PanelShelf,
-  type ShelfGroup,
-  starKey,
-} from "./order.ts";
+import { draftCards, draftKey, inboxRows, keyOf, type PanelShelf, starKey } from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
 import { setLimitsShowAll } from "../limits/shelf.ts";
 import {
@@ -49,13 +40,12 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * A group's closed shelves' icons, the top group's in the Pult tab's header
- * (`rows.tsx`), the bottom group's at the tray's left end, in the order they
- * were closed, the last closed rightmost (`shelfOrder`), the Stars' none
- * while Show Star is off; a click opens the shelf at the end of its group
- * in the Pult tab (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
+ * The closed shelves' icons at the tray's left end (`rows.tsx`), in the order
+ * they were closed, the last closed rightmost (`shelfOrder`), the Stars' none
+ * while Show Star is off; a click opens the shelf at the end of the Pult tab
+ * (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
- * a badge in the accent colour, as Source Control's tab does (Inbox's
+ * an outlined badge in the icon’s colour, as Source Control's tab does (Inbox's
  * counting its rows, the secrets and posted asks among them), but Stars, whose asks
  * Inbox counts, Settled, whose count is in its tooltip, and Limits,
  * whose badge is the count of warning windows, none while nothing warns;
@@ -63,11 +53,11 @@ const threadsSnapshot = () => threadStore.get();
  * open tab is while the shelf holds the selected card, the Stars' while a
  * Star is selected, the Explorer shelf's while the Explorer workspace is.
  * An icon dragged moves it in the run, or into the panel, opening its shelf
- * where it drops within its group; while a shelf of the group is dragged the
- * run takes its row's free room, shown even with no icon, so a shelf's header
- * dropped there closes it. Empty and with no such drag, it draws nothing.
+ * where it drops; while a shelf is dragged the run takes its row's free room,
+ * shown even with no icon, so a shelf's header dropped there closes it. Empty
+ * and with no drag, it draws nothing.
  */
-export function TrayShelves({ group }: { group: ShelfGroup }) {
+export function TrayShelves() {
   const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
@@ -77,9 +67,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
     starsShown,
   );
   // The Stars' shelf is no shelf at all while Show Star is off.
-  const closed = closedShelves.filter(
-    (shelf) => groupOf(shelf) === group && (shelf !== "stars" || starsShown),
-  );
+  const closed = closedShelves.filter((shelf) => shelf !== "stars" || starsShown);
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
@@ -87,8 +75,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
   const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const now = useMinuteClock();
   const remembered = useSyncExternalStore(projectDrafts.subscribe, projectDrafts.get);
-  const dragged = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get)?.shelf;
-  const dragging = dragged !== undefined && groupOf(dragged) === group;
+  const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
   // Empty, the run shows only while a shelf is dragged, a place to drop it.
   if (closed.length === 0 && !dragging) return null;
   // Read on the selection's change, which re-renders the tray.
@@ -177,9 +164,9 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
   return (
     <div
       className={`pult-panel-tabs pult-tray-shelves${dragging ? " pult-tray-shelves-dropping" : ""}`}
-      aria-label={group === "top" ? "Closed top shelves" : "Closed shelves"}
+      aria-label="Closed shelves"
       // Closing Limits by its drop drops its Show all, as its Close does.
-      {...shelfDropHandlers(group, (shelf) => {
+      {...shelfDropHandlers("tray", (shelf) => {
         if (shelf === "limits") setLimitsShowAll(false);
       })}
     >
@@ -205,7 +192,7 @@ export function TrayShelves({ group }: { group: ShelfGroup }) {
           </button>
         );
       })}
-      <ShelfDropLine place={group} />
+      <ShelfDropLine place="tray" />
     </div>
   );
 }

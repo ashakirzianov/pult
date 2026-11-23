@@ -43,15 +43,10 @@ export function LimitsShelf({ now }: { now: number }) {
   if (shelf === null) return null;
   const several = limits.checks.length > 1;
   return (
-    <li
-      ref={element}
-      className="pult-shelf pult-shelf-limits pult-shelf-lower"
-      data-shelf={"limits"}
-    >
+    <li ref={element} className="pult-shelf pult-shelf-limits" data-shelf="limits">
       <ShelfHeader
         shelf="limits"
         label="Limits"
-        count={shelf.warnings > 0 ? shelf.warnings : undefined}
         title={headerTooltip(limits, now)}
         menu={[refreshAction]}
         onClose={() => {

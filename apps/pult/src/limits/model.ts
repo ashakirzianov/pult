@@ -67,6 +67,10 @@ class LimitsModel {
   private readonly listeners = new Set<() => void>();
 
   readonly get = () => this.state;
+  readonly providerDriver = (environmentId: string, instanceId: string) =>
+    this.followed
+      .get(environmentId)
+      ?.config?.providers.find((provider) => provider.instanceId === instanceId)?.driver;
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -166,7 +170,11 @@ class LimitsModel {
 const model = new LimitsModel();
 
 /** The usage limits, for `useSyncExternalStore`. */
-export const limitsStore = { get: model.get, subscribe: model.subscribe };
+export const limitsStore = {
+  get: model.get,
+  subscribe: model.subscribe,
+  providerDriver: model.providerDriver,
+};
 
 /** Starts the limits model on the page's connection; before the workbench, as the thread model is. */
 export function startLimitsModel(): void {

@@ -8,64 +8,43 @@ export const PANEL_SHELVES = [
   "inbox",
   "working",
   "snoozed",
-  "settled",
   "limits",
+  "settled",
 ] as const;
 
 export type PanelShelf = (typeof PANEL_SHELVES)[number];
 
 /**
- * The two groups a shelf belongs to, for good: the top shelves stick to the
- * panel's top and close into the tray in the Pult tab's header, the bottom
- * ones stick to its bottom and close into the tray under the panel.
+ * Where each shelf of a panel is: among its open shelves, top to bottom, or
+ * its tray's closed ones, left to right; each shelf in exactly one. Closing a
+ * shelf appends it to the closed ones' end, opening one puts it at the end of
+ * the open ones (`openIn`, `closeIn`).
  */
-export type ShelfGroup = "top" | "bottom";
-
-const TOP_SHELVES: ReadonlySet<PanelShelf> = new Set(["stars", "explorer", "inbox"]);
-
-export const groupOf = (shelf: PanelShelf): ShelfGroup =>
-  TOP_SHELVES.has(shelf) ? "top" : "bottom";
-
-/**
- * Where each shelf is: in the panel's open shelves, top to bottom, the top
- * group's before the bottom group's, or the trays' closed ones, left to
- * right, each tray showing its group's; each shelf in exactly one. Closing a
- * shelf appends it to the closed ones' end, opening one puts it at the end
- * of its group in the panel (`openIn`, `closeIn`).
- */
-export interface ShelfOrder {
-  readonly open: ReadonlyArray<PanelShelf>;
-  readonly closed: ReadonlyArray<PanelShelf>;
+export interface ShelfOrder<Name extends string = PanelShelf> {
+  readonly open: ReadonlyArray<Name>;
+  readonly closed: ReadonlyArray<Name>;
 }
 
 export const DEFAULT_SHELF_ORDER: ShelfOrder = { open: PANEL_SHELVES, closed: [] };
 
-/** The open shelves with `shelf` put at `at`, moved within its group's run where `at` lies outside it. */
-function placeOpen(
-  open: ReadonlyArray<PanelShelf>,
-  shelf: PanelShelf,
-  at: number,
-): ReadonlyArray<PanelShelf> {
-  const tops = open.filter((each) => groupOf(each) === "top").length;
-  const [start, end] = groupOf(shelf) === "top" ? [0, tops] : [tops, open.length];
-  return open.toSpliced(Math.min(Math.max(at, start), end), 0, shelf);
-}
-
-/** The order with `shelf` opened at the end of its group in the panel; an open one stays where it is. */
-export function openIn(order: ShelfOrder, shelf: PanelShelf): ShelfOrder {
+/** The order with `shelf` opened at the end of the panel; an open one stays where it is. */
+export function openIn<Name extends string>(
+  order: ShelfOrder<Name>,
+  shelf: Name,
+): ShelfOrder<Name> {
   if (order.open.includes(shelf)) return order;
   return {
-    open: placeOpen(order.open, shelf, order.open.length),
+    open: [...order.open, shelf],
     closed: order.closed.filter((each) => each !== shelf),
   };
 }
 
 /** The order with `shelf` closed, at the tray's end, or at `at` among the closed; a closed one stays where it is. */
-export function closeIn(
-  order: ShelfOrder,
-  shelf: PanelShelf,
+export function closeIn<Name extends string>(
+  order: ShelfOrder<Name>,
+  shelf: Name,
   at: number = order.closed.length,
-): ShelfOrder {
+): ShelfOrder<Name> {
   if (order.closed.includes(shelf)) return order;
   return {
     open: order.open.filter((each) => each !== shelf),
@@ -75,15 +54,14 @@ export function closeIn(
 
 /**
  * The order with `shelf` dragged into `list`, just before `before`, or at its
- * end while `before` is null, among the open ones kept within its group's run
- * (`placeOpen`); the order itself when that is where it already is.
+ * end while `before` is null; the order itself when that is where it already is.
  */
-export function moveIn(
-  order: ShelfOrder,
-  shelf: PanelShelf,
-  list: keyof ShelfOrder,
-  before: PanelShelf | null,
-): ShelfOrder {
+export function moveIn<Name extends string>(
+  order: ShelfOrder<Name>,
+  shelf: Name,
+  list: keyof ShelfOrder<Name>,
+  before: Name | null,
+): ShelfOrder<Name> {
   if (before === shelf) return order;
   const rest = {
     open: order.open.filter((each) => each !== shelf),
@@ -91,36 +69,23 @@ export function moveIn(
   };
   const found = before === null ? -1 : rest[list].indexOf(before);
   const at = found === -1 ? rest[list].length : found;
-  const next = {
-    ...rest,
-    [list]: list === "open" ? placeOpen(rest.open, shelf, at) : rest.closed.toSpliced(at, 0, shelf),
-  };
-  const same = (a: ReadonlyArray<PanelShelf>, b: ReadonlyArray<PanelShelf>) =>
+  const next = { ...rest, [list]: rest[list].toSpliced(at, 0, shelf) };
+  const same = (a: ReadonlyArray<Name>, b: ReadonlyArray<Name>) =>
     a.length === b.length && a.every((each, index) => each === b[index]);
   return same(next.open, order.open) && same(next.closed, order.closed) ? order : next;
 }
 
-/**
- * A stored order, or null when it is not one: every shelf exactly once
- * across the two lists. The open ones come back top group first, as an order
- * stored before the groups were fixed may not have them.
- */
-export function parseShelfOrder(stored: unknown): ShelfOrder | null {
+/** A stored order of `names`, or null when it is not one: every shelf exactly once across the two lists. */
+export function parseShelfOrder<Name extends string>(
+  stored: unknown,
+  names: ReadonlyArray<Name>,
+): ShelfOrder<Name> | null {
   if (typeof stored !== "object" || stored === null) return null;
   const { open, closed } = stored as Record<string, unknown>;
   if (!Array.isArray(open) || !Array.isArray(closed)) return null;
   const all: unknown[] = [...open, ...closed];
-  const complete =
-    all.length === PANEL_SHELVES.length && PANEL_SHELVES.every((shelf) => all.includes(shelf));
-  if (!complete) return null;
-  const shelves = open as PanelShelf[];
-  return {
-    open: [
-      ...shelves.filter((shelf) => groupOf(shelf) === "top"),
-      ...shelves.filter((shelf) => groupOf(shelf) === "bottom"),
-    ],
-    closed: closed as PanelShelf[],
-  };
+  const complete = all.length === names.length && names.every((name) => all.includes(name));
+  return complete ? { open: open as Name[], closed: closed as Name[] } : null;
 }
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */

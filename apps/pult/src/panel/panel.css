@@ -2,6 +2,7 @@
    the header's first and last. The buttons around them reach 5px past the glyph (26px around 16px). */
 .monaco-workbench {
   --pult-panel-inset: 12px;
+  --pult-shelf-inset: 8px;
 }
 
 /* The left panel (src/panel), themed on the workbench's sidebar colours. Its own box model, as the shell's UI
@@ -30,11 +31,12 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 0 1 auto;
+  box-sizing: border-box;
   min-height: 0;
   overflow-y: auto;
-  margin: 0;
-  padding: 4px 8px;
+  margin: 0 var(--pult-shelf-inset) 4px;
+  padding: 0;
   list-style: none;
 }
 
@@ -323,12 +325,6 @@
   right: 2px;
 }
 
-/* A Star's state in its details (src/details/StarDetails.tsx). */
-.pult-star-awake {
-  color: var(--vscode-foreground);
-  font-weight: 500;
-}
-
 .pult-star-asleep {
   opacity: 0.75;
 }
@@ -360,21 +356,9 @@
   cursor: default;
 }
 
-/* A shelf (Stars, Explorer, Inbox, Working, Snoozed, Settled, Limits): its header, label, count and Close, then its rows. */
-.pult-shelf {
+/* A shelf, in either panel: its header, label, count and Close, then its content. */
+.pult-shelf + .pult-shelf {
   margin-top: 6px;
-}
-
-.pult-panel-cards > .pult-shelf:first-child {
-  margin-top: 0;
-}
-
-/* The bottom group's first shelf shown (`groupOf`, src/panel/order.ts)
-   takes the room the top group leaves, as upstream's lower shelves sit at its sidebar's bottom; the rest
-   follow it. An empty one is left out, so the next takes it. */
-.pult-panel-cards > .pult-shelf-lower:not(.pult-shelf-lower ~ *) {
-  margin-top: auto;
-  padding-top: 6px;
 }
 
 .pult-shelf-header {
@@ -582,6 +566,28 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* A channel's icon, the Star's mark in that channel's look (src/details/StarDetails.tsx). */
+.pult-channel-mark {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* A thread's provider's logo under its channel, a codicon's size. */
+.pult-thread-provider {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+}
+
+.pult-thread-provider svg {
+  width: 100%;
+  height: 100%;
+}
+
 .pult-subagent-title {
   flex: 1;
   min-width: 0;
@@ -603,37 +609,12 @@
   list-style: none;
 }
 
-/* A selected Star's channel rows (src/details/StarDetails.tsx): a sleeping one's opens nothing; a channel's children sit indented under it. */
-.pult-subagent-asleep,
-.pult-subagent-asleep:hover {
-  background: none;
-  cursor: default;
-}
-
 .pult-card-children {
   padding-left: 16px;
 }
 
-/* The Channels header in a selected Star's details: the subagents' header. */
-.pult-card-channels .pult-shelf-header {
-  height: 22px;
-  padding: 0 4px;
-  font-size: 11px;
-}
-
-/* A selected Star's schedules (src/panel/StarSchedules.tsx): the subagents' header and rows, a row two lines. */
-.pult-card-schedules {
-  margin: 0 0 8px;
-}
-
-.pult-card-schedules .pult-shelf-header {
-  height: 22px;
-  padding: 0 4px;
-  font-size: 11px;
-}
-
-.pult-card-schedules-warning .pult-shelf-label,
-.pult-card-schedules-warning .pult-shelf-count {
+/* A selected Star's schedules (src/panel/StarSchedules.tsx): a row two lines, the shelf's label in the warning colour while one failed. */
+.pult-card-schedules-warning .pult-shelf-label {
   color: var(--vscode-editorWarning-foreground);
 }
 
@@ -692,11 +673,6 @@
   min-width: 0;
 }
 
-.pult-schedule-head .codicon {
-  flex: none;
-  color: var(--vscode-descriptionForeground);
-}
-
 .pult-schedule-name {
   flex: 1;
   min-width: 0;
@@ -710,9 +686,7 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* The second line sits under the name, past the clock's slot. */
 .pult-schedule-line {
-  padding-left: 18px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -1074,8 +1048,7 @@
   margin-right: 2px;
 }
 
-/* A group's closed shelves' icons (src/panel/TrayShelves.tsx), the top group's in the header after the logo,
-   the bottom group's at the tray's left end; dimmed while the shelf holds nothing. */
+/* The closed shelves' icons (src/panel/TrayShelves.tsx) at the tray's left end; dimmed while the shelf holds nothing. */
 
 .pult-tray-shelf-empty {
   opacity: 0.5;
@@ -1086,12 +1059,6 @@
   position: relative;
   align-self: stretch;
   align-items: center;
-}
-
-/* In the header, after the logo; its drop room no window drag, which would take the shelf's drag. */
-.pult-panel-header > .pult-tray-shelves {
-  margin-left: 6px;
-  -webkit-app-region: no-drag;
 }
 
 .pult-tray-shelves-dropping {
@@ -1123,14 +1090,15 @@
   position: absolute;
   top: -4px;
   right: -4px;
+  box-sizing: border-box;
   min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 7px;
-  background: var(--vscode-activityBarBadge-background);
-  color: var(--vscode-activityBarBadge-foreground);
+  padding-inline: 2px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: var(--vscode-editor-background);
+  color: inherit;
   font-size: 9px;
-  line-height: 14px;
+  line-height: 12px;
   text-align: center;
 }
 

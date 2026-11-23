@@ -46,7 +46,6 @@ import {
   askKey,
   draftCards as draftCardsOf,
   draftKey,
-  groupOf,
   inboxRows,
   keyOf,
   type PanelShelf,
@@ -147,11 +146,9 @@ export function subagentsByRoot(
 /**
  * The Pult tab's view, under the sidebar's title row: its shelves in the
  * order they were opened (`shelfOrder`, `shelves.tsx`), each left out while
- * it holds nothing and, closed, its icon in its group's tray
- * (`TrayShelves.tsx`). The top group (Stars, Explorer, Inbox) sticks to
- * the panel's top, its tray in the Pult tab's header, and the bottom group
- * (Working, Snoozed, Settled, Limits) to its bottom, its tray under the
- * panel (`groupOf`), the panel's notice, Not connected or No threads, between. The Stars' shelf holds the
+ * it holds nothing and, closed, its icon in the tray (`TrayShelves.tsx`),
+ * one bordered element of shelves stacked from the top, a divider between
+ * them, the panel's notice, Not connected or No threads, after them. The Stars' shelf holds the
  * Stars' squares, wrapping, while Show Star is on (`StarCard.tsx`, `src/stars/`); a
  * Star's threads have no card of their own. The Explorer shelf is the
  * Explorer workspace (`ExplorerShelf.tsx`). Every held environment's threads
@@ -318,7 +315,7 @@ export function PanelView() {
         const shelved = asksOn(asks, name);
         const count = threads.length + shelved.length;
         return (
-          <Shelf key={name} name={name} count={count} empty={count === 0}>
+          <Shelf key={name} name={name} empty={count === 0}>
             {shelved.map(askCard)}
             {threads.map(card)}
           </Shelf>
@@ -329,7 +326,6 @@ export function PanelView() {
           <Shelf
             key={name}
             name={name}
-            count={state.settled.count + asksOn(asks, "settled").length}
             empty={
               settled.length === 0 &&
               state.settled.count === 0 &&
@@ -367,12 +363,11 @@ export function PanelView() {
         No threads in {state.environments.map((environment) => environment.label).join(", ")}.
       </li>
     ) : null;
-  const top = shown.filter((name) => groupOf(name) === "top").length;
   return (
     <div className="pult-panel">
       <ul className="pult-panel-cards" {...shelfDropHandlers("open")}>
-        {/* One keyed list, the top group's shelves before the notice and the bottom group's after it. */}
-        {[...shown.slice(0, top).map(shelf), notice, ...shown.slice(top).map(shelf)]}
+        {shown.map(shelf)}
+        {notice}
         <ShelfDropLine place="open" />
       </ul>
     </div>
@@ -380,23 +375,19 @@ export function PanelView() {
 }
 
 /**
- * Stars, Inbox, Working, Snoozed or Settled under its header with its count
- * (`count`, none for Stars and Inbox, Settled's every settled thread, where it holds
- * more than it lists), Inbox's draft cards first among its
+ * Stars, Inbox, Working, Snoozed or Settled under its header, Inbox's draft cards first among its
  * cards (`children`) always all shown; closed, it leaves the panel, its icon
- * in its group's tray (`TrayShelves.tsx`), which is highlighted while the shelf
+ * in the tray (`TrayShelves.tsx`), which is highlighted while the shelf
  * holds the selected card. Where it is persists in localStorage
  * (`shelves.tsx`). `actions` sit in its header before Close.
  */
 function Shelf({
   name,
-  count,
   empty,
   actions,
   children,
 }: {
   name: "stars" | "inbox" | "working" | "snoozed" | "settled";
-  count?: number;
   empty: boolean;
   actions?: React.ReactNode;
   children: React.ReactNode;
@@ -406,12 +397,8 @@ function Shelf({
   useReveal(name, element);
   if (empty) return null;
   return (
-    <li
-      ref={element}
-      className={`pult-shelf pult-shelf-${name}${groupOf(name) === "bottom" ? " pult-shelf-lower" : ""}`}
-      data-shelf={name}
-    >
-      <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} count={count} actions={actions} />
+    <li ref={element} className={`pult-shelf pult-shelf-${name}`} data-shelf={name}>
+      <ShelfHeader shelf={name} label={SHELF_ICONS[name].label} actions={actions} />
       <ul className="pult-shelf-cards">{children}</ul>
     </li>
   );
@@ -594,7 +581,7 @@ function ThreadCard({
  * its title, then its status, a working one's being its elapsed time alone.
  * Active ones first; the selected one shown even while collapsed.
  */
-export function Subagents({
+function Subagents({
   subagents,
   activities,
   selection,
@@ -606,37 +593,9 @@ export function Subagents({
   now: number;
 }) {
   const [expanded, setExpanded] = useExpanded("pult-shell.panel.subagents-expanded");
-  const activity = (subagent: ShellThread) => activities.get(keyOf(subagent)) ?? null;
-  const working = subagents.filter((subagent) => activity(subagent) === "working");
-  // The longest elapsed time is the earliest start.
-  const since = working
-    .map((subagent) => subagent.workingSince)
-    .filter((start) => start !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
   const shown = expanded
     ? subagents
     : subagents.filter((subagent) => keyOf(subagent) === selection);
-  const row = (subagent: ShellThread) => (
-    <li key={keyOf(subagent)}>
-      <button
-        type="button"
-        className={`pult-subagent${keyOf(subagent) === selection ? " pult-subagent-selected" : ""}`}
-        aria-current={keyOf(subagent) === selection || undefined}
-        title={subagent.title}
-        onClick={() => run("pult-shell.selectThread", subagent.environmentId, subagent.id)}
-      >
-        <i className="codicon codicon-hubot" aria-hidden />
-        <span className="pult-subagent-title">{subagent.title}</span>
-        {activity(subagent) === "working" && subagent.workingSince !== null ? (
-          <span className="pult-card-status pult-card-status-working">
-            <Elapsed since={subagent.workingSince} />
-          </span>
-        ) : (
-          <Status thread={subagent} activity={activity(subagent)} now={now} />
-        )}
-      </button>
-    </li>
-  );
   return (
     <div className="pult-card-subagents">
       <CollapsibleHeader
@@ -644,20 +603,74 @@ export function Subagents({
         count={subagents.length}
         expanded={expanded}
         onToggle={() => setExpanded(!expanded)}
-        status={
-          working.length === 0 ? null : (
-            <span className="pult-card-status pult-card-status-working">
-              Working{since === undefined ? null : <Elapsed since={since} />}
-            </span>
-          )
-        }
+        status={<SubagentsWorking subagents={subagents} activities={activities} />}
       />
       {shown.length > 0 ? (
-        <ul className="pult-subagents-list" aria-label="Subagents">
-          {shown.map(row)}
-        </ul>
+        <SubagentList subagents={shown} activities={activities} selection={selection} now={now} />
       ) : null}
     </div>
+  );
+}
+
+/** Working with the longest elapsed time while any subagent works; nothing otherwise. */
+function SubagentsWorking({
+  subagents,
+  activities,
+}: {
+  subagents: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+}) {
+  const working = subagents.filter((subagent) => activities.get(keyOf(subagent)) === "working");
+  if (working.length === 0) return null;
+  // The longest elapsed time is the earliest start.
+  const since = working
+    .map((subagent) => subagent.workingSince)
+    .filter((start) => start !== null)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  return (
+    <span className="pult-card-status pult-card-status-working">
+      Working{since === undefined ? null : <Elapsed since={since} />}
+    </span>
+  );
+}
+
+/** The subagents' rows, each selecting its thread: its title, then its status, a working one's being its elapsed time alone. */
+function SubagentList({
+  subagents,
+  activities,
+  selection,
+  now,
+}: {
+  subagents: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+  selection: string | undefined;
+  now: number;
+}) {
+  const activity = (subagent: ShellThread) => activities.get(keyOf(subagent)) ?? null;
+  return (
+    <ul className="pult-subagents-list" aria-label="Subagents">
+      {subagents.map((subagent) => (
+        <li key={keyOf(subagent)}>
+          <button
+            type="button"
+            className={`pult-subagent${keyOf(subagent) === selection ? " pult-subagent-selected" : ""}`}
+            aria-current={keyOf(subagent) === selection || undefined}
+            title={subagent.title}
+            onClick={() => run("pult-shell.selectThread", subagent.environmentId, subagent.id)}
+          >
+            <i className="codicon codicon-hubot" aria-hidden />
+            <span className="pult-subagent-title">{subagent.title}</span>
+            {activity(subagent) === "working" && subagent.workingSince !== null ? (
+              <span className="pult-card-status pult-card-status-working">
+                <Elapsed since={subagent.workingSince} />
+              </span>
+            ) : (
+              <Status thread={subagent} activity={activity(subagent)} now={now} />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -835,7 +848,7 @@ export function age(iso: string, now: number): string {
  * The time since `since`, ticking each second, in upstream's subagent form:
  * `45s`, `3m 05s`, `1h 02m`. Its own clock, so a tick re-renders only it.
  */
-export function Elapsed({ since }: { since: string }) {
+function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
