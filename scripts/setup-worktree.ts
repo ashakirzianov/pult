@@ -126,3 +126,17 @@ if (!skillsExisting) {
 } else if (!skillsExisting.isSymbolicLink() || NodeFS.readlinkSync(skillsLink) !== skillsTarget) {
   throw new Error(`${skillsLink} exists and is not a link to ${skillsTarget}.`);
 }
+
+// The mobile speech module's link to the engine it shares with desktop, kept out of the
+// tree for the same reason.
+const speechLink = NodePath.join(
+  worktree,
+  "apps/mobile/modules/t3-voice-transcription/ios/AppleSpeechEngine.swift",
+);
+const speechTarget = NodePath.join("../../../../../native/apple-speech/AppleSpeechEngine.swift");
+const speechExisting = NodeFS.lstatSync(speechLink, { throwIfNoEntry: false });
+if (!speechExisting) {
+  NodeFS.symlinkSync(speechTarget, speechLink);
+} else if (!speechExisting.isSymbolicLink() || NodeFS.readlinkSync(speechLink) !== speechTarget) {
+  throw new Error(`${speechLink} exists and is not a link to ${speechTarget}.`);
+}

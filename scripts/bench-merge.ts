@@ -31,7 +31,11 @@ interface State {
   readonly step: Step;
 }
 
-const STRIPPED = [".repos", ".claude/skills"];
+const STRIPPED = [
+  ".repos",
+  ".claude/skills",
+  "apps/mobile/modules/t3-voice-transcription/ios/AppleSpeechEngine.swift",
+];
 const TYPECHECKED = ["apps/pult", "apps/web", "apps/server", "plugins/pult"];
 
 class Stop extends Error {}

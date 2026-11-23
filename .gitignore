@@ -18,9 +18,10 @@ release-mock/
 .t3
 .pult
 # Kept out of the tree for xaxis, which holds no symlinks: the reference repositories
-# come from `node scripts/sync-reference-repos.ts`, the skills link from setup.
+# come from `node scripts/sync-reference-repos.ts`, the skills and speech links from setup.
 /.repos/
 /.claude/skills
+/apps/mobile/modules/t3-voice-transcription/ios/AppleSpeechEngine.swift
 .idea/
 apps/web/.playwright
 apps/web/playwright-report
