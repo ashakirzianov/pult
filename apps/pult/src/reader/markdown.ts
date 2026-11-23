@@ -245,7 +245,7 @@ const THEME = [
  */
 const STYLE = `
 html { background: var(--vscode-editor-background); }
-body.pult-thread-view { display: block; width: auto; height: auto; min-height: 100%; margin: 0; padding-block: 1rem 2rem; overflow: visible; }
+body.pult-thread-view { display: block; width: auto; height: auto; box-sizing: border-box; min-height: 100vh; margin: 0; padding-block: 1rem 2rem; overflow: visible; }
 .chat-markdown-table-container { overflow-x: auto; }
 .math-display { margin: 0.65rem 0; overflow-x: auto; overflow-y: hidden; }
 .math-display > .katex-display { margin: 0; }
