@@ -329,6 +329,20 @@ body.pult-dragging .pult-browser-host webview {
   box-shadow: none;
 }
 
+/* The left panel blends with the thread view: the editor's background and no border. The
+   variables reach its rows (`.pult-panel-tray`); the part's own are inline styles the workbench
+   sets from the theme, hence the `!important`. */
+.monaco-workbench:not(.pult-mode-vscode) {
+  --vscode-sideBar-background: var(--vscode-editor-background);
+  --vscode-sideBar-border: transparent;
+  --vscode-sideBarTitle-background: var(--vscode-editor-background);
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar {
+  background-color: var(--vscode-editor-background) !important;
+  border-color: transparent !important;
+}
+
 /* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the blank band is the seam. */
 .monaco-workbench:not(.pult-mode-vscode)
   .part.editor
