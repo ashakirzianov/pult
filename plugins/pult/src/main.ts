@@ -33,6 +33,7 @@ const features: ReadonlyArray<string> = [
   "star-sleep",
   "asks",
   "star-channel-models",
+  "star-channel-history",
   "usage-limits",
   "xaxis-kept",
 ];

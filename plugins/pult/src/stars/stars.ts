@@ -32,7 +32,7 @@ import {
 import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { wakeChannelModel } from "./channelModels.ts";
-import { type Channel, taggedChannel, USER_CHANNEL } from "./channels.ts";
+import { type Channel, isChannel, taggedChannel, USER_CHANNEL } from "./channels.ts";
 import {
   AGENTS_FILE,
   CHANNELS_DIRECTORY,
@@ -116,6 +116,10 @@ export interface StarsView {
       readonly asleepSince: string;
       /** The model a wake into `user` takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
       readonly model: ModelSelection | null;
+      readonly histories: ReadonlyArray<{
+        readonly slug: string;
+        readonly names: ReadonlyArray<string>;
+      }>;
       readonly conversations: ReadonlyArray<string>;
     }
   >;
@@ -175,6 +179,7 @@ export interface Stars {
   readonly transcript: (
     star: Star,
     name: string,
+    channel?: Channel,
   ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
   /** The transcript of `user`'s whose front matter names the thread, with its name; a defect where two do. */
   readonly transcriptOfThread: (
@@ -634,10 +639,28 @@ export const make = Effect.gen(function* () {
     return star === undefined ? undefined : { star, channel: channelOf(shell) };
   });
 
-  /** The names of `user`'s transcripts, which the fold draws. */
-  const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (star: Star) {
-    const folder = path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL));
-    if (!(yield* fs.exists(folder))) return [];
+  /** A channel archive can contain links from its synced repository. Read only paths inside this Star. */
+  const archivePath = Effect.fn("Stars.archivePath")(function* (star: Star, relative: string) {
+    const candidate = path.join(star.root, relative);
+    if (!(yield* fs.exists(candidate))) return undefined;
+    const root = yield* fs.realPath(star.root);
+    const resolved = yield* fs.realPath(candidate);
+    const inside = path.relative(root, resolved);
+    return inside === "" ||
+      inside === ".." ||
+      inside.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(inside)
+      ? undefined
+      : resolved;
+  });
+
+  /** The names of one channel's transcripts, which the fold draws. */
+  const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (
+    star: Star,
+    channel = USER_CHANNEL,
+  ) {
+    const folder = yield* archivePath(star, transcriptsFolder(environmentId, channel));
+    if (folder === undefined) return [];
     return (yield* fs.readDirectory(folder)).filter(isTranscriptName).toSorted();
   });
 
@@ -682,8 +705,16 @@ export const make = Effect.gen(function* () {
             : yield* wakeChannelModel(star, USER_CHANNEL, newest.runtimeMode).pipe(
                 Effect.provide(resolving),
               );
+        const directory = yield* archivePath(star, CHANNELS_DIRECTORY);
+        const histories = [];
+        for (const slug of directory !== undefined ? yield* fs.readDirectory(directory) : []) {
+          if (slug === USER_CHANNEL || !isChannel(slug)) continue;
+          const names = yield* transcriptNames(star, slug);
+          if (names.length > 0) histories.push({ slug, names });
+        }
         return {
           ...star,
+          histories,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
           channels,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
@@ -699,11 +730,13 @@ export const make = Effect.gen(function* () {
   );
 
   const transcript = Effect.fn("Stars.transcript")(
-    function* (star: Star, name: string) {
-      if (!isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
-      const text = yield* readOptional(
-        path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL), name),
+    function* (star: Star, name: string, channel = USER_CHANNEL) {
+      if (!isChannel(channel) || !isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
+      const file = yield* archivePath(
+        star,
+        path.join(transcriptsFolder(environmentId, channel), name),
       );
+      const text = file === undefined ? undefined : yield* readOptional(file);
       return text === undefined ? undefined : parseTranscript(text);
     },
     (effect, star) =>
@@ -715,15 +748,13 @@ export const make = Effect.gen(function* () {
 
   const transcriptOfThread = Effect.fn("Stars.transcriptOfThread")(
     function* (star: Star, threadId: string) {
-      const folder = path.join(star.root, transcriptsFolder(environmentId, USER_CHANNEL));
       const found: Array<Transcript & { readonly name: string }> = [];
       // Only listed names are read: the thread's id never becomes a path.
       for (const name of (yield* transcriptNames(star)).filter((each) =>
         mayNameThread(each, threadId),
       )) {
-        const text = yield* readOptional(path.join(folder, name));
-        const transcript = text === undefined ? undefined : parseTranscript(text);
-        if (transcript?.threadId === threadId) found.push({ ...transcript, name });
+        const entry = yield* transcript(star, name);
+        if (entry?.threadId === threadId) found.push({ ...entry, name });
       }
       if (found.length > 1)
         // The writer names one file per thread: two are a bug, loud in the server's log.

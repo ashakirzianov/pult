@@ -231,6 +231,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep",
           "asks",
           "star-channel-models",
+          "star-channel-history",
           "usage-limits",
           "xaxis-kept",
           "keep-awake",
@@ -459,6 +460,32 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       `${star.root}/.pult/channels/work/conversations/env-1/2026-11-11T10-00-00Z-thread-3.md`,
       "thread-3",
     );
+    const workName = "2026-11-11T10-00-00Z-thread-3.md";
+    expect((yield* send("GET", "/stars", "reader")).body.stars[0].histories).toEqual([
+      { slug: "work", names: [workName] },
+    ]);
+    expect(
+      (yield* send("GET", `/stars/${star.id}/channels/work/conversations/${workName}`, "reader"))
+        .body.threadId,
+    ).toBe("thread-3");
+    const outside = yield* fs.makeTempDirectoryScoped();
+    const outsideFolder = `${outside}/conversations/env-1`;
+    yield* fs.makeDirectory(outsideFolder, { recursive: true });
+    yield* write(`${outsideFolder}/${name}`, "outside");
+    yield* fs.symlink(outside, `${star.root}/.pult/channels/linked`);
+    expect((yield* send("GET", "/stars", "reader")).body.stars[0].histories).toEqual([
+      { slug: "work", names: [workName] },
+    ]);
+    yield* fs.symlink(
+      `${outsideFolder}/${name}`,
+      `${star.root}/.pult/channels/work/conversations/env-1/${name}`,
+    );
+    for (const slug of ["linked", "work"]) {
+      expect(
+        (yield* send("GET", `/stars/${star.id}/channels/${slug}/conversations/${name}`, "reader"))
+          .status,
+      ).toBe(404);
+    }
     expect((yield* byThread("thread-3")).status).toBe(404);
     expect((yield* byThread("thread-4")).status).toBe(404);
     expect((yield* send("GET", `/stars/${star.id}/conversations/by-thread`, "reader")).status).toBe(

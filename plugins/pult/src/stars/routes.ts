@@ -103,10 +103,14 @@ export const starsRoute = (
         return json({ model: yield* pageWakeModel(star, body.value.runtimeMode, channel) });
       }),
     );
+  const channel =
+    segments.length === 6 && sub === "channels" && segments[4] === "conversations"
+      ? name
+      : undefined;
   if (
-    segments.length === 4 &&
+    ((channel !== undefined && isChannel(channel)) ||
+      (segments.length === 4 && sub === "conversations")) &&
     id !== undefined &&
-    sub === "conversations" &&
     name !== undefined &&
     method === "GET"
   )
@@ -116,14 +120,14 @@ export const starsRoute = (
         if (star === undefined) return notFound;
         // `by-thread` is no transcript's name: the lookup of the one whose conversation the thread was, with its name.
         const threadId =
-          name === BY_THREAD
+          channel === undefined && name === BY_THREAD
             ? new URL(request.url, "http://plugin").searchParams.get("threadId")
             : undefined;
         if (threadId === null)
           return json({ error: "A lookup by thread names it: ?threadId=<id>." }, 400);
         const transcript =
           threadId === undefined
-            ? yield* stars.transcript(star, name)
+            ? yield* stars.transcript(star, segments[5] ?? name, channel)
             : yield* stars.transcriptOfThread(star, threadId);
         return transcript === undefined
           ? json({ error: "The Star has no such transcript on this server." }, 404)
