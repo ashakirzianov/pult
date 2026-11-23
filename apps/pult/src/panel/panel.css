@@ -53,7 +53,7 @@
 
 .pult-card {
   margin: 2px 0;
-  border-radius: 8px;
+  border-radius: var(--pult-radius);
   border: 1px solid transparent;
 }
 
@@ -386,7 +386,7 @@
   /* Its icon at the panel's inset, past the cards' 8px. */
   padding: 0 8px 0 calc(var(--pult-panel-inset) - 8px);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--pult-radius);
   background: none;
   color: var(--vscode-descriptionForeground);
   font: inherit;
@@ -771,7 +771,7 @@
 .pult-view-card {
   display: block;
   padding: 7px 10px 8px;
-  border-radius: 8px;
+  border-radius: var(--pult-radius);
   font-size: 13px;
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
   background: var(
@@ -849,7 +849,7 @@
   height: 24px;
   padding: 0 8px 0 calc(var(--pult-panel-inset) - 8px);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--pult-radius);
   color: inherit;
   font: inherit;
   font-size: 12px;

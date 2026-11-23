@@ -506,20 +506,25 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 .pult-thread-view [data-slot="composer-host"],
 .pult-thread-view [data-chat-composer-main-surface="true"],
 .pult-thread-view [data-chat-composer-surface="true"] {
-  border-radius: 8px;
+  border-radius: var(--pult-radius);
 }
 
 .pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full,
 .pult-thread-view [data-chat-composer-mobile-pending-actions="true"] .rounded-full {
-  border-radius: 8px;
+  border-radius: var(--pult-radius);
 }
 
 .pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full.rounded-r-none {
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--pult-radius) 0 0 var(--pult-radius);
 }
 
 .pult-composer-bar > [data-chat-composer-slot-item="actions"] .rounded-full.rounded-l-none {
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--pult-radius) var(--pult-radius) 0;
+}
+
+/* A thread's details card, upstream's `rounded-2xl` in the shell's one radius. */
+.pult-thread-view [data-thread-details-card] {
+  border-radius: var(--pult-radius);
 }
 
 /* A draft's composer: three lines tall. */

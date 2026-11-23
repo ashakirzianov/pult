@@ -13,12 +13,12 @@
   line-height: normal;
 }
 
-/* Upstream's `dropdown-glass rounded-2xl` (apps/web/src/index.css). */
+/* Upstream's `dropdown-glass` (apps/web/src/index.css), in the shell's one radius. */
 .pult-details-card {
   box-sizing: border-box;
   padding: 6px;
   border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
-  border-radius: 16px;
+  border-radius: var(--pult-radius);
   background: color-mix(
     in srgb,
     var(--popover) 18%,

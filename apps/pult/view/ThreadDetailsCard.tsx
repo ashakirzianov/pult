@@ -167,7 +167,7 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
       ) : (
         // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
         <div
-          className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl"
+          className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
           onContextMenu={onContextMenu}
           data-thread-details-card
         >
