@@ -14,6 +14,7 @@ import {
   setTheme,
 } from "~/hooks/useTheme";
 import { setServerRuntimeOffPrimary } from "~/browser/previewRuntime";
+import { getClientSettings, subscribeClientSettings } from "~/hooks/useSettings";
 import { startI18n } from "~/i18n/runtime";
 import { subscribeDraftThreadPromotion } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
@@ -91,6 +92,10 @@ export interface ThreadViewMounts {
    * `tabId` a placeholder for a new one (`PreviewMount.tsx`), for the shell's
    * preview tab; the host's `openPreview` names what to mount.
    */
+  /** The chat's line wrap for code, which the reader's code follows. */
+  codeWrap(): boolean;
+  /** Calls `listener` when `codeWrap` changes; returns its removal. */
+  onDidChangeCodeWrap(listener: () => void): () => void;
   mountPreview(
     element: HTMLElement,
     environmentId: string,
@@ -170,6 +175,15 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     draftCreates: (draftEnvironmentId, projectId, environmentId, threadId) =>
       isPromotion({ environmentId: draftEnvironmentId, projectId }, environmentId, threadId),
     mountPreview,
+    codeWrap: () => getClientSettings().wordWrap,
+    onDidChangeCodeWrap: (listener) => {
+      let wrap = getClientSettings().wordWrap;
+      return subscribeClientSettings(() => {
+        if (getClientSettings().wordWrap === wrap) return;
+        wrap = getClientSettings().wordWrap;
+        listener();
+      });
+    },
     previewSessions,
     followPreviewSessions,
     closePreviewSession,

@@ -154,7 +154,12 @@ export interface ReaderFrame {
    */
   show(
     source: string,
-    options?: { readonly fresh?: boolean; readonly markdown?: boolean },
+    options?: {
+      readonly fresh?: boolean;
+      readonly markdown?: boolean;
+      /** A Markdown file's code wraps its lines, the chat's setting. */
+      readonly wrapCode?: boolean;
+    },
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
   selection(): Passage | undefined;
@@ -213,7 +218,7 @@ export function createReaderFrame(options?: {
   let current: Document | undefined;
   let loading: Array<(doc: Document) => void> = [];
   let latest = 0;
-  let last: { source: string; markdown: boolean } | undefined;
+  let last: { source: string; markdown: boolean; wrapCode: boolean } | undefined;
   // Where the reader is in the page, kept across the document's reloads.
   let position = { top: 0, left: 0 };
   let shown: Document | undefined;
@@ -284,9 +289,10 @@ export function createReaderFrame(options?: {
     async show(source, options) {
       const revision = ++latest;
       const markdown = options?.markdown === true;
-      last = { source, markdown };
+      const wrapCode = options?.wrapCode === true;
+      last = { source, markdown, wrapCode };
       const tree = markdown
-        ? await markdownTree(source, element)
+        ? await markdownTree(source, element, wrapCode)
         : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
       const doc = await frameDocument();
       if (revision !== latest) return undefined;

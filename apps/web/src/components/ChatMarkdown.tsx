@@ -233,6 +233,11 @@ import {
   nodeToPlainText,
 } from "./chat/MarkdownCodeBlock.logic";
 import { reportMarkdownActionFailure } from "./chat/markdownActionFailure";
+import {
+  CHAT_MARKDOWN_CLASS,
+  CHAT_MARKDOWN_PROSE_CLASS,
+  orderedListGutterStyle,
+} from "./chatMarkdownClass";
 
 const isAssetNotFoundError = Schema.is(AssetWorkspaceAssetNotFoundError);
 
@@ -345,23 +350,6 @@ function CodexArtifactTemplateCard(props: {
 }
 
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
-
-function orderedListGutterStyle(
-  itemValues: ReadonlyArray<unknown>,
-  start: unknown,
-): { "--list-gutter": string } | undefined {
-  const parsedStart = Number.parseInt(String(start ?? 1), 10);
-  let number = Number.isNaN(parsedStart) ? 1 : parsedStart;
-  let markerWidth = String(number).length;
-  for (const value of itemValues) {
-    const written = Number.parseInt(String(value ?? ""), 10);
-    if (!Number.isNaN(written)) number = written;
-    markerWidth = Math.max(markerWidth, String(number).length);
-    number += 1;
-  }
-  if (markerWidth <= 1) return undefined;
-  return { "--list-gutter": `${markerWidth + 2}ch` };
-}
 
 const GITHUB_ALERT_PRESENTATIONS: Record<
   string,
@@ -2087,12 +2075,7 @@ function ChatMarkdown({
   return (
     <Root
       ref={bindMarkdownRef}
-      className={cn(
-        "chat-markdown w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word]",
-        !inline &&
-          "text-sm leading-relaxed text-foreground/[calc(90%+var(--appearance-contrast-boost)/10)]",
-        className,
-      )}
+      className={cn(CHAT_MARKDOWN_CLASS, !inline && CHAT_MARKDOWN_PROSE_CLASS, className)}
       data-streaming={componentState.isStreaming ? "" : undefined}
       onCopy={handleCopy}
     >

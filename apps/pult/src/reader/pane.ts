@@ -238,6 +238,8 @@ class ReaderPane extends SimpleEditorPane {
   async renderInput(input: EditorInput, options?: IEditorOptions) {
     if (!(input instanceof ReaderInput)) return { dispose: () => {} };
     const model = await input.textModel();
+    // A Markdown file is drawn by the thread view's stylesheets, which come with the view.
+    const view = input.markdown ? await threadView() : undefined;
     if (this.input !== input) return { dispose: () => {} };
     const sourceIfEmpty = input.sourceIfEmpty;
     input.sourceIfEmpty = false;
@@ -268,7 +270,11 @@ class ReaderPane extends SimpleEditorPane {
       const fresh = !isEqual(this.shown, input.file);
       this.shown = input.file;
       const version = model.getVersionId();
-      const shown = await this.frame.show(model.getValue(), { fresh, markdown: input.markdown });
+      const shown = await this.frame.show(model.getValue(), {
+        fresh,
+        markdown: input.markdown,
+        wrapCode: view?.codeWrap() ?? false,
+      });
       if (shown === undefined || this.input !== input) return;
       this.version = version;
       // A Markdown file's raw HTML is no page a browser tab would run.
@@ -281,6 +287,7 @@ class ReaderPane extends SimpleEditorPane {
       else timer = setTimeout(() => void render(), 150);
     };
     const changes = model.onDidChangeContent(changed);
+    const stopWrap = view?.onDidChangeCodeWrap(changed);
     const themes = input.markdown
       ? StandaloneServices.get(IThemeService).onDidColorThemeChange(changed)
       : undefined;
@@ -289,6 +296,7 @@ class ReaderPane extends SimpleEditorPane {
       dispose: () => {
         clearTimeout(timer);
         changes.dispose();
+        stopWrap?.();
         themes?.dispose();
         this.refresh = undefined;
         this.model = undefined;

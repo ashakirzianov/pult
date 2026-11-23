@@ -21,6 +21,12 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
+import {
+  CHAT_MARKDOWN_CLASS,
+  CHAT_MARKDOWN_CODE_BLOCK_CLASS,
+  CHAT_MARKDOWN_PROSE_CLASS,
+  orderedListGutterStyle,
+} from "../../view/chatMarkdownClass.ts";
 import type { SourceText } from "./selection.ts";
 
 /** Where parse5 found a node in the source. */
@@ -222,80 +228,26 @@ async function typesetMath(doc: DefaultTreeAdapterTypes.Document): Promise<strin
   return typesetAny ? MATH_STYLE : undefined;
 }
 
-/** The workbench's colours and fonts the reader's styles read, copied into the frame, which inherits none. */
+/** The workbench's colours and fonts the thread view's and the reader's styles read, copied into the frame, which inherits none. */
 const THEME = [
   "--vscode-editor-background",
   "--vscode-editor-foreground",
-  "--vscode-font-family",
-  "--vscode-editor-font-family",
-  "--vscode-textLink-foreground",
-  "--vscode-textLink-activeForeground",
-  "--vscode-textCodeBlock-background",
-  "--vscode-textBlockQuote-background",
-  "--vscode-textBlockQuote-border",
-  "--vscode-textSeparator-foreground",
-  "--vscode-editorGroup-border",
   "--vscode-scrollbarSlider-background",
   "--vscode-scrollbarSlider-hoverBackground",
   "--vscode-scrollbarSlider-activeBackground",
 ];
 
-/** The reader's look for a Markdown file, after the stock preview's, in the workbench's colours. */
+/**
+ * What the reader adds to the thread view's stylesheets: the body, which
+ * takes the thread view's root class for their rules, is a page that scrolls
+ * rather than a pane that clips; a wide table or formula scrolls in its own
+ * box; the document's scrollbars, which the view's scope does not reach.
+ */
 const STYLE = `
-body {
-  margin: 0 auto;
-  padding: 0 26px 26px;
-  max-width: 882px;
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--vscode-editor-foreground);
-  background: var(--vscode-editor-background);
-  overflow-wrap: break-word;
-}
-h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin: 24px 0 16px; }
-h1 { font-size: 2em; }
-h2 { font-size: 1.5em; }
-h3 { font-size: 1.25em; }
-h5 { font-size: 0.875em; }
-h6 { font-size: 0.85em; }
-h1, h2 { padding-bottom: 0.3em; border-bottom: 1px solid var(--vscode-textSeparator-foreground, #8884); }
-p, ul, ol, blockquote, pre, table { margin: 0 0 16px; }
-ul, ol { padding-left: 2em; }
-li > p { margin-bottom: 0; }
-li + li { margin-top: 0.25em; }
-li:has(> input[type="checkbox"]) { list-style: none; }
-li > input[type="checkbox"] { margin: 0 0.3em 0.2em -1.4em; vertical-align: middle; }
-a { color: var(--vscode-textLink-foreground, #3794ff); text-decoration: none; }
-a:hover { color: var(--vscode-textLink-activeForeground, #3794ff); text-decoration: underline; }
-code { font-family: var(--vscode-editor-font-family, ui-monospace, monospace); font-size: 0.9em; }
-:not(pre) > code {
-  padding: 0.1em 0.3em;
-  border-radius: 3px;
-  background: var(--vscode-textCodeBlock-background, #8882);
-}
-pre {
-  padding: 16px;
-  border-radius: 3px;
-  overflow: auto;
-  line-height: 1.45;
-  background: var(--vscode-textCodeBlock-background, #8882);
-}
-pre code { font-size: 0.9em; tab-size: 4; }
-blockquote {
-  margin-left: 0;
-  padding: 2px 16px 2px 10px;
-  border-left: 5px solid var(--vscode-textBlockQuote-border, #8888);
-  border-radius: 2px;
-  background: var(--vscode-textBlockQuote-background, transparent);
-}
-blockquote > :last-child { margin-bottom: 0; }
-table { border-collapse: collapse; display: block; overflow: auto; }
-th { text-align: left; }
-th, td { padding: 5px 10px; border: 1px solid var(--vscode-editorGroup-border, #8884); }
-hr { height: 1px; margin: 24px 0; border: 0; background: var(--vscode-textSeparator-foreground, #8884); }
-img { max-width: 100%; }
-.math-display { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; }
+html { background: var(--vscode-editor-background); }
+body.pult-thread-view { display: block; width: auto; height: auto; min-height: 100%; margin: 0; padding-block: 1rem 2rem; overflow: visible; }
+.chat-markdown-table-container { overflow-x: auto; }
+.math-display { margin: 0.65rem 0; overflow-x: auto; overflow-y: hidden; }
 .math-display > .katex-display { margin: 0; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--vscode-editor-background); }
@@ -304,20 +256,91 @@ img { max-width: 100%; }
 ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground); }
 `;
 
+/** Each page stylesheet's text, read once: `""` for one that styles no chat Markdown. */
+const sheetTexts = new WeakMap<CSSStyleSheet, string>();
+
 /**
- * The reader's Markdown document: its styles, with the workbench's colours
- * and colour scheme as `themed` inherits them, and the rendered file as its
- * body, each node with where in `source` it came from.
+ * The thread view's stylesheets as text, so the reader's prose is drawn by
+ * the very rules the thread's is, its fonts left out, since the frame loads
+ * none. The view is loaded before a Markdown file renders (`pane.ts`).
+ */
+function viewStyles(page: Document): string {
+  const texts = [...page.styleSheets].map((sheet) => {
+    const known = sheetTexts.get(sheet);
+    if (known !== undefined) return known;
+    if (sheet.href !== null && new URL(sheet.href).origin !== page.location.origin) return "";
+    const rules = [...sheet.cssRules].filter((rule) => !(rule instanceof CSSFontFaceRule));
+    const text = rules.map((rule) => rule.cssText).join("\n");
+    const styles = text.includes(".chat-markdown") ? text : "";
+    sheetTexts.set(sheet, styles);
+    return styles;
+  });
+  const styles = texts.filter((text) => text !== "").join("\n");
+  if (styles === "") throw new Error("the thread view's stylesheet is not on the page");
+  return styles;
+}
+
+/** Whether `pre` holds a display formula, which KaTeX replaces (`typesetMath`), so it is no code block. */
+const holdsMath = (pre: Element) => {
+  const [code] = pre.children;
+  const classes = code?.type === "element" ? code.properties.className : undefined;
+  return Array.isArray(classes) && classes.includes("math-display");
+};
+
+/**
+ * The thread's own markup for its blocks under `node`: the box around each
+ * `table`, which scrolls it, and each `pre`, its surface, wrapping its lines
+ * by the chat's setting (`wrapCode`), and an ordered list's marker gutter.
+ */
+function boxBlocks(node: Root | Element, wrapCode: boolean): void {
+  node.children = node.children.map((child) => {
+    if (child.type !== "element") return child;
+    if (child.tagName === "ol") {
+      const values = child.children.flatMap((item) =>
+        item.type === "element" && item.tagName === "li" ? [item.properties.value] : [],
+      );
+      const gutter = orderedListGutterStyle(values, child.properties.start);
+      if (gutter !== undefined) {
+        const authored = typeof child.properties.style === "string" ? child.properties.style : "";
+        child.properties.style = `${authored}${authored ? ";" : ""}--list-gutter:${gutter["--list-gutter"]}`;
+      }
+    }
+    if (child.tagName !== "table" && (child.tagName !== "pre" || holdsMath(child))) {
+      boxBlocks(child, wrapCode);
+      return child;
+    }
+    const properties =
+      child.tagName === "table"
+        ? { className: ["chat-markdown-table-container"] }
+        : {
+            className: CHAT_MARKDOWN_CODE_BLOCK_CLASS.split(" "),
+            dataWrap: wrapCode ? "true" : "false",
+          };
+    return { type: "element", tagName: "div", properties, children: [child] };
+  }) as typeof node.children;
+}
+
+/**
+ * The reader's Markdown document, drawn as the thread draws its messages: the
+ * thread view's stylesheets, its theme and text scale, and its column and
+ * prose classes around the rendered file, each node with where in `source`
+ * it came from. `themed` inherits the workbench's colours; `wrapCode` is the
+ * chat's line wrap for code.
  */
 export async function markdownTree(
   source: string,
   themed: globalThis.Element,
+  wrapCode: boolean,
 ): Promise<DefaultTreeAdapterTypes.Document> {
   const computed = getComputedStyle(themed);
   const theme = THEME.map((name) => [name, computed.getPropertyValue(name).trim()] as const)
     .filter(([, value]) => value !== "")
     .map(([name, value]) => `${name}: ${value};`)
     .join(" ");
+  const page = themed.ownerDocument;
+  const pageRoot = page.documentElement;
+  // The frame's own element is `color-scheme: normal`, for a page's sake; the shell's root follows the workbench theme.
+  const { colorScheme: scheme, fontSize } = getComputedStyle(pageRoot);
   const style = (text: string): Element => ({
     type: "element",
     tagName: "style",
@@ -328,23 +351,59 @@ export async function markdownTree(
     type: "element",
     tagName: "head",
     properties: {},
-    children: [style(`:root { ${theme} }${STYLE}`)],
+    children: [
+      style(viewStyles(page)),
+      // The thread view inherits its sans font from the workbench, as the frame's element does.
+      style(
+        `:root { ${theme} color-scheme: ${scheme}; font-size: ${fontSize}; font-family: ${computed.fontFamily}; }${STYLE}`,
+      ),
+    ],
   };
   const body = processor.runSync(processor.parse(source), source);
-  // The frame's own element is `color-scheme: normal`, for a page's sake; the shell's root follows the workbench theme.
-  const scheme = getComputedStyle(themed.ownerDocument.documentElement).colorScheme;
   await colourCode(body, scheme.includes("dark") ? "dark" : "light");
+  boxBlocks(body, wrapCode);
+  const themeId = pageRoot.getAttribute("data-theme-id");
   const html: Element = {
     type: "element",
     tagName: "html",
-    properties: {},
+    properties: {
+      // The view's dark variants and theme rules read these on the document's root; its appearance tokens are inline there.
+      className: [...pageRoot.classList],
+      ...(themeId === null ? {} : { dataThemeId: themeId }),
+      style: pageRoot.style.cssText,
+    },
     children: [
       head,
       {
         type: "element",
         tagName: "body",
-        properties: {},
-        children: body.children as ElementContent[],
+        // The thread view's root, and the side gutters its timeline and composer share.
+        properties: { className: ["pult-thread-view", "chat-composer-lane"] },
+        children: [
+          {
+            type: "element",
+            tagName: "div",
+            properties: { className: ["chat-content-lane"] },
+            children: [
+              {
+                // An assistant row's own box in the timeline (`TimelineAssistantRows.tsx`).
+                type: "element",
+                tagName: "div",
+                properties: { className: ["min-w-0", "px-1", "py-0.5"] },
+                children: [
+                  {
+                    type: "element",
+                    tagName: "div",
+                    properties: {
+                      className: `${CHAT_MARKDOWN_CLASS} ${CHAT_MARKDOWN_PROSE_CLASS}`.split(" "),
+                    },
+                    children: body.children as ElementContent[],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
     ],
   };

@@ -114,7 +114,8 @@ NodeTest.describe("the reader's frame", () => {
       if (url === `${ORIGIN}/`)
         return route.fulfill({
           contentType: "text/html",
-          body: `<!doctype html><p id="host">The shell</p><script>window.ran = [];</script><script src="/reader.js"></script>`,
+          // The thread view's stylesheet, as far as a Markdown file reads it.
+          body: `<!doctype html><style>.chat-markdown p { word-spacing: 3px; } .chat-content-lane { max-width: 300px; }</style><p id="host">The shell</p><script>window.ran = [];</script><script src="/reader.js"></script>`,
         });
       if (url === `${ORIGIN}/reader.js`)
         return route.fulfill({ contentType: "text/javascript; charset=utf-8", body: script });
@@ -405,13 +406,38 @@ NodeTest.describe("the reader's frame", () => {
       await frame.show(source, { markdown: true });
       const dark = keyword();
       document.documentElement.style.colorScheme = "";
+      const thread = {
+        wordSpacing: getComputedStyle(doc.querySelector(".chat-markdown p")!).wordSpacing,
+        laneWidth: getComputedStyle(doc.querySelector(".chat-content-lane")!).maxWidth,
+      };
       frame.element.remove();
+      // The thread's markup for an ordered list's gutter and for code, which a formula's block is not.
+      const blocks = window.reader.createReaderFrame();
+      document.body.append(blocks.element);
+      await blocks.show("100. hundred\n\n```ts\nconst x = 1;\n```\n\n$$\nx\n$$\n", {
+        markdown: true,
+        wrapCode: true,
+      });
+      const blocksDoc = blocks.element.contentDocument!;
+      const marked = {
+        gutter: blocksDoc.querySelector<HTMLElement>("ol")!.style.getPropertyValue("--list-gutter"),
+        codeWrap: blocksDoc.querySelector(".chat-markdown-codeblock")!.getAttribute("data-wrap"),
+        boxes: blocksDoc.querySelectorAll(".chat-markdown-codeblock").length,
+        formulaInBox:
+          blocksDoc.querySelector(".math-display")!.closest(".chat-markdown-codeblock") !== null,
+      };
+      blocks.element.remove();
       return {
         scripts,
+        marked,
+        thread,
         schemes: light === dark ? [light] : [],
         coloured: runs("code.language-ts"),
         uncoloured: runs("code.language-nolang"),
-        tags: [...doc.body.children].map((element) => element.tagName.toLowerCase()),
+        // A table and a code block each in the thread's box for one.
+        tags: [...doc.querySelector(".chat-markdown")!.children].map((element) =>
+          (element.querySelector(":scope > table, :scope > pre") ?? element).tagName.toLowerCase(),
+        ),
         passages,
       };
     }, source);
@@ -419,6 +445,13 @@ NodeTest.describe("the reader's frame", () => {
     NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
     NodeAssert.deepEqual(await page.evaluate(() => window.ran), []);
     NodeAssert.equal(cited.scripts, true);
+    NodeAssert.deepEqual(cited.thread, { wordSpacing: "3px", laneWidth: "300px" });
+    NodeAssert.deepEqual(cited.marked, {
+      gutter: "5ch",
+      codeWrap: "true",
+      boxes: 1,
+      formulaInBox: false,
+    });
     NodeAssert.deepEqual(cited.tags, [
       "h1",
       "p",
