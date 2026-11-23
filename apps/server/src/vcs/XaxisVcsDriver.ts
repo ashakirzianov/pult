@@ -247,7 +247,9 @@ export const makeVcsDriver = Effect.gen(function* () {
       );
     }),
     checkpoints: {
+      resolveCleanHead: noCheckpoints,
       captureCheckpoint: noCheckpoints,
+      captureHeadCheckpoint: noCheckpoints,
       hasCheckpointRef: noCheckpoints,
       restoreCheckpoint: noCheckpoints,
       diffCheckpoints: noCheckpoints,

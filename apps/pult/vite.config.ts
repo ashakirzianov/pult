@@ -367,7 +367,18 @@ export default defineConfig({
   },
   resolve: {
     // `apps/web`'s imports of its own `src/`.
-    alias: [{ find: /^~\//, replacement: webSource + "/" }],
+    alias: [
+      { find: /^~\//, replacement: webSource + "/" },
+      // Words' parts `apps/web` reaches through its tsconfig's `paths`; the package exports neither.
+      {
+        find: /^@pierre\/words\/core$/,
+        replacement: NodePath.join(webSource, "../node_modules/@pierre/words/dist/core.js"),
+      },
+      {
+        find: /^@pierre\/words\/wasm$/,
+        replacement: NodePath.join(webSource, "../node_modules/@pierre/words/dist/words.wasm.mjs"),
+      },
+    ],
     // One copy of each in the page: the workbench's singletons, and the client runtime and router the view and the shell share.
     dedupe: [
       "vscode",

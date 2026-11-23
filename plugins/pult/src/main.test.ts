@@ -14,6 +14,7 @@ import {
   type ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -27,6 +28,7 @@ import * as GitVcsDriver from "../../../apps/server/src/vcs/GitVcsDriver.ts";
 import * as GitWorkflow from "../../../apps/server/src/git/GitWorkflowService.ts";
 import * as ManagedPolicy from "../../../apps/server/src/policy/ManagedPolicy.ts";
 import * as McpSessions from "../../../apps/server/src/mcp/McpSessionRegistry.testkit.ts";
+import * as ModelManifest from "../../../apps/server/src/provider/ModelManifest.ts";
 import * as PreviewManager from "../../../apps/server/src/preview/Manager.ts";
 import * as ProjectCloneTracker from "../../../apps/server/src/project/ProjectCloneTracker.ts";
 import * as ProjectEnrichmentService from "../../../apps/server/src/project/ProjectEnrichmentService.ts";
@@ -36,9 +38,11 @@ import * as ProviderRegistry from "../../../apps/server/src/provider/ProviderReg
 import * as SecretResolver from "../../../apps/server/src/secrets/SecretResolver.ts";
 import * as ServerSecretStore from "../../../apps/server/src/auth/ServerSecretStore.ts";
 import * as SourceControlProviderRegistry from "../../../apps/server/src/sourceControl/SourceControlProviderRegistry.ts";
+import * as TaskFolders from "../../../apps/server/src/workspace/TaskFolders.ts";
 import * as TerminalManager from "../../../apps/server/src/terminal/Manager.ts";
 import * as TextGeneration from "../../../apps/server/src/textGeneration/TextGeneration.ts";
 import * as VcsStatusBroadcaster from "../../../apps/server/src/vcs/VcsStatusBroadcaster.ts";
+import * as WorkflowForge from "../../../apps/server/src/workflows/WorkflowForge.ts";
 import * as WorkspacePaths from "../../../apps/server/src/workspace/WorkspacePaths.ts";
 import * as WorktreeSetupTracker from "../../../apps/server/src/project/WorktreeSetupTracker.ts";
 import * as XaxisVcsDriver from "../../../apps/server/src/vcs/XaxisVcsDriver.ts";
@@ -125,9 +129,11 @@ it.effect("the plugin activates over the production orchestration services", () 
           Layer.mock(ManagedEndpoint.CloudManagedEndpointRuntime)({}),
           Layer.mock(GitVcsDriver.GitVcsDriver)({}),
           Layer.mock(GitWorkflow.GitWorkflowService)({}),
+          FetchHttpClient.layer,
           ManagedPolicy.layerTest(),
           McpSessions.layer,
           McpProviderSessions.layer,
+          Layer.mock(ModelManifest.ModelManifest)({}),
           Layer.mock(PreviewManager.PreviewManager)({}),
           Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
           Layer.mock(ProjectEnrichmentService.ProjectEnrichmentService)({}),
@@ -139,9 +145,14 @@ it.effect("the plugin activates over the production orchestration services", () 
           Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
             resolveLink: () => Effect.die("unused source control link"),
           }),
+          Layer.mock(TaskFolders.TaskFolders)({}),
           Layer.mock(TerminalManager.TerminalManager)({}),
           Layer.mock(TextGeneration.TextGeneration)({}),
           Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+          Layer.mock(WorkflowForge.WorkflowForge)({
+            issues: {} as never,
+            pullRequests: {} as never,
+          }),
           WorkspacePaths.layer,
           Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
         ),
