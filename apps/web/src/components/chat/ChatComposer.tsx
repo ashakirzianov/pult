@@ -89,6 +89,7 @@ import {
   replaceTextRange,
 } from "../../composer-logic";
 import { DEFAULT_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import { ComposerReplySuggestions } from "./ComposerReplySuggestions";
 import { useShellPlaceholder } from "./ShellComposerOptions";
 import { useComposerScheduledSend } from "./ComposerScheduledSend";
 import { deriveComposerSendState, getAntigravitySendBlockReason } from "../ChatView.logic";
@@ -3958,6 +3959,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {composerAttachmentMediaRow}
 
               {composerAttachmentFileList}
+
+              {/* Pult: the replies an ask's poster suggests; a click fills the message, unsent. */}
+              {!activePendingProgress && !isComposerApprovalState && !isEditingQueuedMessage ? (
+                <ComposerReplySuggestions
+                  onPick={(text) => {
+                    applyPromptReplacementStable(0, promptRef.current.length, text);
+                  }}
+                />
+              ) : null}
 
               <div
                 className={cn(

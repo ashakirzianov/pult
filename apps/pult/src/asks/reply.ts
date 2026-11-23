@@ -103,6 +103,19 @@ async function replied(ask: PageAsk, environmentId: string): Promise<void> {
   await actOnPageAsk(ask, { kind: "replied" });
 }
 
+const NO_SUGGESTIONS: ReadonlyArray<string> = [];
+
+/** The options its poster suggests, while the posting this composer answers is neither replied to nor settled. */
+const replySuggestions = (ask: PageAsk) => ({
+  get: () => {
+    const now = askById(ask.environmentId, ask.id);
+    return now?.posted === ask.posted && now.replied === null && now.settled === null
+      ? now.replies
+      : NO_SUGGESTIONS;
+  },
+  subscribe: askStore.subscribe,
+});
+
 /**
  * The composer a reply to the ask is written in: a thread's own; a Star's
  * posting channel's conversation on the ask's environment, or while that
@@ -184,7 +197,11 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
     options = {
       ...found.options,
       placeholder: { get: () => `Reply to ${posterOf(ask)}`, subscribe: starStore.subscribe },
-      reply: { prefix: ask.prefix, sent: (sentOn) => void replied(ask, sentOn) },
+      reply: {
+        prefix: ask.prefix,
+        suggestions: replySuggestions(ask),
+        sent: (sentOn) => void replied(ask, sentOn),
+      },
     };
     kept.clear();
     kept.set(key, options);

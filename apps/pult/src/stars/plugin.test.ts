@@ -456,6 +456,7 @@ NodeTest.describe("the Stars' routes", () => {
         replied: null,
         snoozedUntil: null,
         settled: null,
+        replies: ["Postgres", "SQLite"],
       };
       const prefix = '[In reply to your ask a1b2c3d4 "Which backend?", to your channel ask-model]';
       const read = await askOver(
@@ -475,7 +476,8 @@ NodeTest.describe("the Stars' routes", () => {
       NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
       const snoozed = { ...thread, status: "snoozed", snoozedUntil: "2026-11-22T09:00:00.000Z" };
       const acted = await askOver(
-        () => json(snoozed),
+        // A plugin older than the replies serves none.
+        () => json({ ...snoozed, replies: undefined }),
         () => actOnAsk(credential, "a1b2c3d4", { kind: "snooze", until: snoozed.snoozedUntil }),
       );
       NodeAssert.deepEqual(
@@ -488,7 +490,7 @@ NodeTest.describe("the Stars' routes", () => {
           ],
         ],
       );
-      NodeAssert.deepEqual(acted.result, snoozed);
+      NodeAssert.deepEqual(acted.result, { ...snoozed, replies: [] });
       const failed = await askOver(
         () =>
           json(

@@ -487,6 +487,7 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
     },
   );
   const sent = vi.fn();
+  const suggestions = ["Yes", "Not yet"];
   const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
   await router.load();
   await using _app = await render(
@@ -495,7 +496,11 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
         draftHero: true,
         placeholder: null,
         creationTags: ["pult:channel:review"],
-        reply: { prefix: '[In reply to your ask a1 "Ship it?"]', sent },
+        reply: {
+          prefix: '[In reply to your ask a1 "Ship it?"]',
+          suggestions: { get: () => suggestions, subscribe: () => () => {} },
+          sent,
+        },
       }}
     >
       <AppRoot router={router} />
@@ -508,8 +513,19 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
   // The send needs the project, which arrives with the shell snapshot.
   await expect.element(page.getByText("render", { exact: true }).first()).toBeVisible();
 
+  // A suggested reply fills the message over a draft, which Undo brings back, and sends nothing.
   await userEvent.click(editor);
-  await insertText("Yes");
+  await insertText("My own draft");
+  await page.getByRole("button", { name: "Not yet" }).click();
+  await expect.element(editor).toHaveTextContent("Not yet");
+  await vi.waitFor(() => expect(document.activeElement).toBe(editor.element()));
+  expect(sent).not.toHaveBeenCalled();
+  expect(launches).toHaveLength(0);
+  await userEvent.keyboard("{ControlOrMeta>}z{/ControlOrMeta}");
+  await expect.element(editor).toHaveTextContent("My own draft");
+
+  await page.getByRole("button", { name: "Yes" }).click();
+  await expect.element(editor).toHaveTextContent("Yes");
   await userEvent.keyboard("{Enter}");
 
   await vi.waitFor(() => expect(sent).toHaveBeenCalledWith(ENVIRONMENT_ID, threadId));

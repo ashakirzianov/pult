@@ -201,6 +201,8 @@ export interface RouteAsk {
   readonly replied: string | null;
   readonly snoozedUntil: string | null;
   readonly settled: string | null;
+  /** The reply options its poster suggests. */
+  readonly replies: ReadonlyArray<string>;
 }
 
 /** What `GET asks` answers: the asks folder (a host path) and its hidden project, null before its first Markdown, and every ask by `posted`, each with the line its reply opens with. */
@@ -415,6 +417,10 @@ const poster: Decode<RoutePoster> = (value, at) => {
   return fail(at, "{ star, channel } or { thread }");
 };
 
+/** A plugin older than the replies serves none: absent reads as none, any other shape fails. */
+const askReplies: Decode<ReadonlyArray<string>> = (value, at) =>
+  value === undefined ? [] : arrayOf(string)(value, at);
+
 const routeAsk = struct<RouteAsk>({
   id: string,
   title: string,
@@ -425,6 +431,7 @@ const routeAsk = struct<RouteAsk>({
   replied: nullable(string),
   snoozedUntil: nullable(string),
   settled: nullable(string),
+  replies: askReplies,
 });
 
 const asksAnswer = struct<AsksAnswer>({

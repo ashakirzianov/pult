@@ -24,6 +24,8 @@ export interface ShellComposerOptions {
 export interface ShellReply {
   /** The line the sent message opens with, above what the user wrote. */
   readonly prefix: string;
+  /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
+  readonly suggestions: ShellValue<ReadonlyArray<string>>;
   /** Told once a send was accepted, with the thread it went to, a draft's new one included. */
   readonly sent: (environmentId: string, threadId: string) => void;
 }
@@ -37,6 +39,18 @@ export const ShellComposerOptions = createContext<ShellComposerOptions>({
 });
 
 const NO_PLACEHOLDER: ShellValue<string | null> = { get: () => null, subscribe: () => () => {} };
+
+const NONE: ReadonlyArray<string> = [];
+const NO_SUGGESTIONS: ShellValue<ReadonlyArray<string>> = {
+  get: () => NONE,
+  subscribe: () => () => {},
+};
+
+/** The replies the app suggests for this composer's message; none outside a reply. */
+export function useShellReplySuggestions(): ReadonlyArray<string> {
+  const source = use(ShellComposerOptions).reply?.suggestions ?? NO_SUGGESTIONS;
+  return useSyncExternalStore(source.subscribe, source.get);
+}
 
 /** The app's placeholder for the composer, or null for upstream's. */
 export function useShellPlaceholder(): string | null {
