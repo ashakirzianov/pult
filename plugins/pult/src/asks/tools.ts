@@ -42,6 +42,12 @@ const AskTool = Tool.make("pult_ask", {
     id: Schema.optional(
       Schema.String.annotate({ description: "One of your own asks, to ask it again." }),
     ),
+    replies: Schema.optional(
+      Schema.Array(Schema.String).annotate({
+        description:
+          "1 to 4 reply options, each a distinct single line of at most 200 characters, offered beside the reply input. A click fills the input, the user may edit it before sending, and the reply arrives as any reply does: nothing tells you which option was clicked. Asking again replaces them; left out, the ask has none.",
+      }),
+    ),
   }),
   success: Schema.Struct({ id: Schema.String, status: Schema.Literals(["posted"]) }),
   failure: OrchestratorMcpFailure,

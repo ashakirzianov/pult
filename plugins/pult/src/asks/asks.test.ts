@@ -167,7 +167,10 @@ it.effect(
       const work = as("worker");
 
       // A Star posts Markdown Pult keeps, in the asks folder, registered as a hidden project.
-      const posted = yield* star.ask({ text: "# Which crate?\n\nserde or miniserde." });
+      const posted = yield* star.ask({
+        text: "# Which crate?\n\nserde or miniserde.",
+        replies: [" serde ", "miniserde"],
+      });
       expect(posted).toEqual({ id: expect.stringMatching(/^[0-9a-f]{8}$/), status: "posted" });
       const kept = path.join(server.tmp, ".pult", "asks", `${posted.id}.md`);
       expect(yield* fs.readFileString(kept)).toBe("# Which crate?\n\nserde or miniserde.");
@@ -176,7 +179,9 @@ it.effect(
       // A thread names a file of its worktree; the same file again is the same open ask.
       yield* TestClock.adjust(1000);
       const filed = yield* work.ask({ file: "notes/q.md" });
-      expect(yield* work.ask({ file: `${tree}/notes/q.md`, title: "Ship it?" })).toEqual(filed);
+      expect(
+        yield* work.ask({ file: `${tree}/notes/q.md`, title: "Ship it?", replies: ["Ship it"] }),
+      ).toEqual(filed);
       expect(yield* page).toEqual({
         folder: path.join(server.tmp, ".pult", "asks"),
         projectId: folder?.id,
@@ -191,6 +196,7 @@ it.effect(
             replied: null,
             snoozedUntil: null,
             settled: null,
+            replies: ["serde", "miniserde"],
             prefix: `[In reply to your ask ${posted.id} "Which crate?", to your channel user]`,
           },
           expect.objectContaining({
@@ -198,6 +204,7 @@ it.effect(
             title: "Ship it?",
             file: `${tree}/notes/q.md`,
             poster: { thread: "worker" },
+            replies: ["Ship it"],
             prefix: `[In reply to your ask ${filed.id} "Ship it?"]`,
           }),
         ],
@@ -221,6 +228,22 @@ it.effect(
         Array(refusals.length).fill("invalid_request"),
       );
       expect(refusals[5].message).toContain("expired 7 days after its settle");
+      // Reply options break a rule whole: none is dropped or cut.
+      const brokenReplies = [
+        [[], "pass 1 to 4"],
+        [["a", "b", "c", "d", "e"], "pass 1 to 4"],
+        [["a", "  "], "option 2 is empty"],
+        [["a\nb"], "single line"],
+        [[`${"x".repeat(200)} `], "at most 200"],
+        [["a", " a "], "option 2 repeats option 1"],
+      ] as const;
+      for (const [replies, rule] of brokenReplies) {
+        const answer = yield* work.ask({ text: "Options", replies });
+        expect(answer).toMatchObject({
+          refused: "invalid_request",
+          message: expect.stringContaining(rule),
+        });
+      }
 
       // Lists: by default the caller's own, a Star's every channel; another's by name.
       expect((yield* star.list()).asks.map((each: { id: string }) => each.id)).toEqual([posted.id]);
@@ -278,7 +301,7 @@ it.effect(
       expect((yield* work.settle(posted.id)).refused).toBe("invalid_request");
       expect(yield* star.ask({ id: posted.id, text: "# Which crate, now?" })).toEqual(posted);
       expect((yield* star.list()).asks).toMatchObject([
-        { id: posted.id, title: "Which crate, now?", status: "posted", replied: null },
+        { id: posted.id, title: "Which crate, now?", status: "posted", replied: null, replies: [] },
       ]);
       expect(yield* fs.readFileString(kept)).toBe("# Which crate, now?");
 

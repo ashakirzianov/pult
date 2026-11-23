@@ -56,6 +56,8 @@ const AskRecord = Schema.Struct({
   replied: Schema.NullOr(Schema.String),
   snoozedUntil: Schema.NullOr(Schema.String),
   settled: Schema.NullOr(Schema.String),
+  /** The reply options its poster suggests; a record from before them has none. */
+  replies: Schema.optional(Schema.Array(Schema.String)),
 });
 type AskRecord = typeof AskRecord.Type;
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(AskRecord));
@@ -75,6 +77,7 @@ export const Ask = Schema.Struct({
   replied: Schema.NullOr(Schema.String),
   snoozedUntil: Schema.NullOr(Schema.String),
   settled: Schema.NullOr(Schema.String),
+  replies: Schema.Array(Schema.String),
 });
 export type Ask = typeof Ask.Type;
 
@@ -101,6 +104,31 @@ const oneLine = (text: string) => text.replace(/\s+/gu, " ").trim();
 const refused = (message: string) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message });
 
+const MAX_REPLIES = 4;
+const MAX_REPLY_LENGTH = 200;
+
+/** A post's reply options, trimmed, or what rule they break, in the words of the refusal. */
+function checkReplies(replies: ReadonlyArray<string>): ReadonlyArray<string> | { broken: string } {
+  if (replies.length < 1 || replies.length > MAX_REPLIES)
+    return {
+      broken: `\`replies\` holds ${replies.length} options: pass 1 to ${MAX_REPLIES}, or leave it out.`,
+    };
+  const trimmed = replies.map((reply) => reply.trim());
+  for (const [index, reply] of replies.entries()) {
+    const option = `\`replies\` option ${index + 1}`;
+    const text = trimmed[index] ?? "";
+    if (text === "") return { broken: `${option} is empty.` };
+    if (/[\n\r\v\f\u0085\u2028\u2029]/u.test(reply))
+      return { broken: `${option} has a line break: each is a single line.` };
+    const length = [...reply].length;
+    if (length > MAX_REPLY_LENGTH)
+      return { broken: `${option} is ${length} characters: at most ${MAX_REPLY_LENGTH}.` };
+    const first = trimmed.indexOf(text);
+    if (first < index) return { broken: `${option} repeats option ${first + 1}.` };
+  }
+  return trimmed;
+}
+
 const unknownAsk = (id: string) =>
   refused(
     `No ask has the id "${id}" on this server: it was never posted here, or it expired 7 days after its settle.`,
@@ -123,6 +151,7 @@ export interface PostInput {
   readonly file?: string | undefined;
   readonly text?: string | undefined;
   readonly id?: string | undefined;
+  readonly replies?: ReadonlyArray<string> | undefined;
 }
 
 export interface ListFilter {
@@ -245,6 +274,7 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
       replied: record.replied,
       snoozedUntil: record.snoozedUntil,
       settled,
+      replies: record.replies ?? [],
     } satisfies Ask;
   });
 
@@ -327,6 +357,8 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
         const title = input.title === undefined ? undefined : oneLine(input.title);
         if (title === "")
           return yield* refused("`title` is empty: leave it out to take the context's first line.");
+        const replies = input.replies === undefined ? undefined : checkReplies(input.replies);
+        if (replies !== undefined && "broken" in replies) return yield* refused(replies.broken);
         if (input.file !== undefined && root === undefined)
           return yield* refused(
             "This thread has no folder, so it cannot name a `file`: pass `text`.",
@@ -400,6 +432,7 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
             replied: null,
             snoozedUntil: null,
             settled: null,
+            replies,
           }).pipe(Effect.mapError(unavailable));
           return { id: record.id, status: "posted" as const };
         }
@@ -418,6 +451,7 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
           replied: null,
           snoozedUntil: null,
           settled: null,
+          replies,
         }).pipe(Effect.mapError(unavailable));
         return { id, status: "posted" as const };
       }),
