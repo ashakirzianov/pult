@@ -29,6 +29,10 @@ export interface StarHome {
   /** Since when `user` sleeps here: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
   /** The names of `user`'s transcripts of this environment, oldest first. */
+  readonly histories?: ReadonlyArray<{
+    readonly slug: string;
+    readonly names: ReadonlyArray<string>;
+  }>;
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules as this environment's plugin read them (`schedules.ts`). */
   readonly schedules: ReadonlyArray<RouteSchedule>;
@@ -198,6 +202,7 @@ export function starsOf<Thread extends StarThread>(
         channels: star.channels,
         model: star.model,
         asleepSince: star.asleepSince,
+        ...(star.histories && { histories: star.histories }),
         conversations: star.conversations,
         schedules: star.schedules,
         ...(origin === undefined ? {} : { origin }),
@@ -254,44 +259,6 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
     star.awakeOn,
   ]);
 
-/**
- * The rows of a selected Star's details: one per open channel but `user`,
- * whose conversation is the Star's tab, by slug.
- */
-export function channelRows<Thread extends StarThread>(
-  star: Pick<Star<Thread>, "channels">,
-): ReadonlyArray<StarChannel<Thread>> {
-  return star.channels.filter(({ slug }) => slug !== USER_CHANNEL);
-}
-
-/**
- * Of the tabs among the selected Star's (`StarThreadInput`), the one that
- * opening the channel `slug` on `current`, its open conversation, replaces:
- * none while a tab shows `current`, which is shown as it is; else a tab of
- * that channel on a conversation the page holds settled, a rotation having
- * left it behind, so the channel never has two tabs of one label (Anton's
- * ruling, 2026-11-12). A child's tab has no slug and is never one.
- */
-export function rotatedChannelTab<
-  Tab extends {
-    readonly environmentId: string;
-    readonly threadId: string;
-    readonly slug: string | null;
-  },
->(
-  tabs: ReadonlyArray<Tab>,
-  slug: string,
-  current: { readonly environmentId: string; readonly id: string },
-  threads: ReadonlyArray<Pick<StarThread, "environmentId" | "id" | "settled">>,
-): Tab | undefined {
-  const shows = (tab: Tab, thread: { readonly environmentId: string; readonly id: string }) =>
-    tab.environmentId === thread.environmentId && tab.threadId === thread.id;
-  if (tabs.some((tab) => shows(tab, current))) return undefined;
-  return tabs.find(
-    (tab) => tab.slug === slug && threads.some((thread) => thread.settled && shows(tab, thread)),
-  );
-}
-
 /** The tag a Star gives every thread it launches, its child, before the Star's id (`star-launched-threads`). */
 const CHILD_TAG = "pult:child:star:";
 /** The channel a child's messages land in where it names none (`star-channels`). */
@@ -304,9 +271,8 @@ export interface ChannelRow<Thread> {
   readonly children: ReadonlyArray<Thread>;
 }
 
-/** What a selected Star's details list: `user`'s children, directly under it, then its channel rows. */
+/** What a selected Star's details list: its channel rows, `user`'s first. */
 export interface CardRows<Thread> {
-  readonly children: ReadonlyArray<Thread>;
   readonly channels: ReadonlyArray<ChannelRow<Thread>>;
 }
 
@@ -315,9 +281,9 @@ export interface CardRows<Thread> {
  * (the Stars' model tells only a change of conversation or of its run): its
  * children, the unsettled threads tagged `pult:child:star:<id>` but its own
  * conversations, each under the row of its channel, its channel tag, `work`
- * with none, in the order they were created, `user`'s directly under the
- * card; and a row per open channel but `user`, its conversation's live row,
- * and per channel asleep with a child, reading Asleep, by slug.
+ * with none, in the order they were created; `user`'s row, always there, its
+ * conversation's live row or asleep; then a row per other open channel and
+ * per sleeping channel with an unsettled child, by slug.
  */
 export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   star: Pick<Star<Thread>, "id" | "homes" | "channels">,
@@ -333,7 +299,7 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   const childrenOf = (slug: string) =>
     children.filter((child) => (channelTag(child) ?? WORK_CHANNEL) === slug);
   const open = new Map(
-    channelRows(star).map(({ slug, thread }) => {
+    star.channels.map(({ slug, thread }) => {
       const live = threads.find(
         (each) => each.environmentId === thread.environmentId && each.id === thread.id,
       );
@@ -345,19 +311,17 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
     ...children.map((child) => channelTag(child) ?? WORK_CHANNEL),
   ]);
   slugs.delete(USER_CHANNEL);
+  const row = (slug: string) => ({
+    slug,
+    thread: open.get(slug) ?? null,
+    children: childrenOf(slug),
+  });
   return {
-    children: childrenOf(USER_CHANNEL),
-    channels: [...slugs]
-      .toSorted((left, right) => left.localeCompare(right))
-      .map((slug) => ({ slug, thread: open.get(slug) ?? null, children: childrenOf(slug) })),
+    channels: [
+      row(USER_CHANNEL),
+      ...[...slugs].toSorted((left, right) => left.localeCompare(right)).map(row),
+    ],
   };
-}
-
-/** The threads a card's Channels node holds, whose activity its row shows while collapsed: each open channel's conversation, then its children. */
-export function channelThreads<Thread>(rows: CardRows<Thread>): Thread[] {
-  return rows.channels.flatMap(({ thread, children }) =>
-    thread === null ? children : [thread, ...children],
-  );
 }
 
 /** The threads below a conversation, its subagents' and theirs, as the store has them. */

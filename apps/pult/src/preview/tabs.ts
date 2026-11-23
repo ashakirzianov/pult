@@ -91,7 +91,7 @@ function starTabs(
     .getGroups(GroupsOrder.GRID_APPEARANCE)
     .flatMap((group) =>
       group.editors.flatMap((editor) =>
-        editor instanceof StarThreadInput
+        editor instanceof StarThreadInput && editor.threadId !== ""
           ? [{ environmentId: editor.environmentId, threadId: editor.threadId, group, editor }]
           : [],
       ),
@@ -534,7 +534,9 @@ export function registerPreviewTabs(): void {
 async function commandThread(): Promise<ThreadSelection | undefined> {
   const active = (await getService(IEditorService)).activeEditor;
   return active instanceof StarThreadInput
-    ? { environmentId: active.environmentId, threadId: active.threadId }
+    ? active.threadId
+      ? { environmentId: active.environmentId, threadId: active.threadId }
+      : undefined
     : targetThread();
 }
 
@@ -592,16 +594,16 @@ export async function startPreviewTabs(): Promise<void> {
     void enqueue(closeForeignTabs);
     void openTargetRemembered();
   });
-  // A selected Star's conversation is the selection's thread, and it changes as the Stars do.
-  let starTarget = targetThread();
+  const groups = await getService(IEditorGroupsService);
+  const targets = () =>
+    JSON.stringify(
+      shownThreads(groups).map(({ environmentId, threadId }) => [environmentId, threadId]),
+    );
+  let followedTargets = targets();
   starStore.subscribe(() => {
-    const next = targetThread();
-    if (
-      next?.environmentId === starTarget?.environmentId &&
-      next?.threadId === starTarget?.threadId
-    )
-      return;
-    starTarget = next;
+    const next = targets();
+    if (next === followedTargets) return;
+    followedTargets = next;
     selectionChanged();
   });
   selectionChanged();

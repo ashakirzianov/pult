@@ -57,9 +57,7 @@ const RETRY_DELAY_MS = 30_000;
 const RETIRED_TRANSCRIPTS_KEY = "pult.stars.transcripts";
 
 /** What the Star's tab mounts, in its environment: its current conversation, or while it sleeps its project's draft. */
-export type StarTarget =
-  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+export type StarTarget = import("../../view/main.tsx").ViewTarget;
 
 /** Transcripts that appeared in a home since the page's earlier answer for it. */
 export interface FoundTranscripts {
@@ -441,9 +439,10 @@ class StarsModel {
             if (rewritesUserTranscripts(event))
               for (const star of reading.answer?.stars ?? [])
                 refreshTranscripts(environmentId, star.id);
-            // Another channel's transcript, which no answer names, is told as it lands.
+            // A channel transcript can be rewritten under the same name.
             const starIds =
               reading.answer === undefined ? [] : channelTranscriptStars(event, reading.answer);
+            for (const id of starIds) refreshTranscripts(environmentId, id);
             if (starIds.length > 0)
               for (const listener of this.channelTranscriptListeners)
                 listener({ environmentId, starIds });
@@ -675,7 +674,24 @@ const held = (environmentId: string) => connection.environment(environmentId) !=
  * its project's draft in the home it wakes in (`wakeHome`); undefined while
  * none of its homes is on a held environment.
  */
-export function starTarget(star: Star): StarTarget | undefined {
+export interface ChannelTab {
+  readonly environmentId: string;
+  readonly slug: string;
+}
+export function starTarget(star: Star, channel?: ChannelTab): StarTarget | undefined {
+  if (channel) {
+    const home = star.homes.find((each) => each.environmentId === channel.environmentId);
+    if (!home) return undefined;
+    const open = home.channels.find((each) => each.slug === channel.slug);
+    return open
+      ? { kind: "thread", environmentId: home.environmentId, threadId: open.threadId }
+      : {
+          kind: "draft",
+          environmentId: home.environmentId,
+          projectId: home.projectId,
+          tags: [`pult:channel:${channel.slug}`],
+        };
+  }
   if (star.current !== null)
     return { kind: "thread", environmentId: star.current.environmentId, threadId: star.current.id };
   const home = wakeHome(star, held);
@@ -704,4 +720,21 @@ export function starOfThread(
 /** The Star whose home `projectId` is. */
 export function starOfProject(environmentId: string, projectId: string): Star | undefined {
   return findStarOfProject(model.get(), environmentId, projectId);
+}
+
+/** The model a sleeping channel's draft wakes it at, read from its home's plugin (`POST stars/<id>/model`) each time its ask is opened; null until read, and for the page's own. */
+export function channelModel(starId: string, environmentId: string, channel: string) {
+  let value: RouteModel | null = null;
+  const listeners = new Set<() => void>();
+  void starWakeModel(starId, environmentId, "full-access", channel).then((model) => {
+    value = model;
+    for (const listener of listeners) listener();
+  });
+  return {
+    get: () => value,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
 }

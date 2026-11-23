@@ -70,8 +70,7 @@ export interface ThreadViewMounts {
    */
   mountDraft(
     element: HTMLElement,
-    environmentId: string,
-    projectId: string,
+    target: Extract<ViewTarget, { kind: "draft" }>,
     onPromoted: (environmentId: string, threadId: string) => void,
     options?: MountOptions,
   ): MountedView;
@@ -83,8 +82,7 @@ export interface ThreadViewMounts {
    * for that draft has been promoted to it (`mountDraft`'s `onPromoted`).
    */
   draftCreates(
-    draftEnvironmentId: string,
-    projectId: string,
+    draft: Extract<ViewTarget, { kind: "draft" }>,
     environmentId: string,
     threadId: string,
   ): boolean;
@@ -175,8 +173,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     mount: mountThreadView,
     mountDraft: mountDraftView,
     mountComposer: mountComposerView,
-    draftCreates: (draftEnvironmentId, projectId, environmentId, threadId) =>
-      isPromotion({ environmentId: draftEnvironmentId, projectId }, environmentId, threadId),
+    draftCreates: isPromotion,
     mountPreview,
     mountReaderSelection,
     codeWrap: () => getClientSettings().wordWrap,

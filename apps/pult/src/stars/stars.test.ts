@@ -5,16 +5,13 @@ import * as NodeTest from "node:test";
 import type { RouteStar, StarsAnswer } from "./plugin.ts";
 import {
   cardRows,
-  channelThreads,
   channelOf,
-  channelRows,
   creationTarget,
   drawnHome,
   type EnvironmentReading,
   findStarOfThread,
   isEarlierConversation,
   newTranscripts,
-  rotatedChannelTab,
   starsOf,
   starsSignature,
   wakeHome,
@@ -247,88 +244,6 @@ NodeTest.describe("starsSignature", () => {
   );
 });
 
-NodeTest.describe("channelRows", () => {
-  NodeTest.test("lists every open channel but `user`, by slug", () => {
-    const [star] = starsOf(
-      [
-        {
-          environmentId: "a",
-          answer: answer([
-            routeStar("one", {
-              channels: [open("work", "w"), open("user", "u"), open("build-unit-4", "b")],
-            }),
-          ]),
-        },
-      ],
-      [thread("a", "u", CREATED), thread("a", "w", CREATED), thread("a", "b", CREATED)],
-    );
-    NodeAssert.deepEqual(star && channelRows(star).map(({ slug, thread }) => [slug, thread.id]), [
-      ["build-unit-4", "b"],
-      ["work", "w"],
-    ]);
-  });
-
-  NodeTest.test(
-    "lists none while only `user` is open, nor a channel the page has seen settle",
-    () => {
-      const [star] = starsOf(
-        [
-          {
-            environmentId: "a",
-            answer: answer([
-              routeStar("one", { channels: [open("user", "u"), open("work", "w")] }),
-            ]),
-          },
-        ],
-        [thread("a", "u", CREATED), thread("a", "w", CREATED, { settled: true })],
-      );
-      NodeAssert.deepEqual(star && channelRows(star), []);
-    },
-  );
-});
-
-NodeTest.describe("rotatedChannelTab", () => {
-  const tab = (threadId: string, slug: string | null) => ({ environmentId: "a", threadId, slug });
-  const threads = [
-    thread("a", "work-old", CREATED, { settled: true }),
-    thread("a", "work-new", CREATED),
-    thread("a", "child", CREATED, { settled: true }),
-  ];
-  const current = { environmentId: "a", id: "work-new" };
-
-  NodeTest.test(
-    "is the channel's tab on a settled conversation, which its current one replaces",
-    () => {
-      const old = tab("work-old", "work");
-      NodeAssert.equal(rotatedChannelTab([tab("child", null), old], "work", current, threads), old);
-    },
-  );
-
-  NodeTest.test("is none while a tab shows the current conversation, which is focused", () => {
-    NodeAssert.equal(
-      rotatedChannelTab(
-        [tab("work-old", "work"), tab("work-new", "work")],
-        "work",
-        current,
-        threads,
-      ),
-      undefined,
-    );
-  });
-
-  NodeTest.test("is never another channel's tab, a child's, or one on an open thread", () => {
-    NodeAssert.equal(
-      rotatedChannelTab(
-        [tab("work-old", "build"), tab("child", null), tab("open-elsewhere", "work")],
-        "work",
-        current,
-        [...threads, thread("a", "open-elsewhere", CREATED)],
-      ),
-      undefined,
-    );
-  });
-});
-
 NodeTest.describe("cardRows", () => {
   const child = (id: string, createdAt: string, tags: ReadonlyArray<string>, settled = false) =>
     thread("a", id, createdAt, {
@@ -345,7 +260,6 @@ NodeTest.describe("cardRows", () => {
     return star;
   };
   const shape = (rows: ReturnType<typeof cardRows<ReturnType<typeof thread>>>) => ({
-    children: rows.children.map(({ id }) => id),
     channels: rows.channels.map(({ slug, thread, children }) => [
       slug,
       thread?.id ?? null,
@@ -354,12 +268,13 @@ NodeTest.describe("cardRows", () => {
   });
 
   NodeTest.test(
-    "lists each child under its channel's row, `work` with none, `user`'s under the card, oldest first, the Channels node holding all but `user`'s",
+    "lists each child under its channel's row, `work` with none, `user`'s row first, oldest first, the Channels node holding all but `user`'s",
     () => {
       const threads = [
         thread("a", "u", CREATED),
         thread("a", "w", CREATED),
         thread("a", "b", CREATED),
+        thread("a", "archived", CREATED, { tags: ["pult:channel:archived"], settled: true }),
         child("late", "2026-11-03T00:00:00.000Z", ["pult:channel:build"]),
         child("early", "2026-11-02T00:00:00.000Z", ["pult:channel:build"]),
         child("untagged", "2026-11-02T00:00:00.000Z", []),
@@ -370,16 +285,12 @@ NodeTest.describe("cardRows", () => {
       ];
       const star = starWith([open("user", "u"), open("work", "w"), open("build", "b")], threads);
       NodeAssert.deepEqual(shape(cardRows(star, threads)), {
-        children: ["with-user"],
         channels: [
+          ["user", "u", ["with-user"]],
           ["build", "b", ["early", "late"]],
           ["work", "w", ["untagged"]],
         ],
       });
-      NodeAssert.deepEqual(
-        channelThreads(cardRows(star, threads)).map(({ id }) => id),
-        ["b", "early", "late", "w", "untagged"],
-      );
     },
   );
 
@@ -392,16 +303,17 @@ NodeTest.describe("cardRows", () => {
       ];
       const asleep = starWith([open("user", "u")], unsettled);
       NodeAssert.deepEqual(shape(cardRows(asleep, unsettled)), {
-        children: [],
-        channels: [["review", null, ["builder"]]],
+        channels: [
+          ["user", "u", []],
+          ["review", null, ["builder"]],
+        ],
       });
       const settled = [
         thread("a", "u", CREATED),
         child("builder", CREATED, ["pult:channel:review"], true),
       ];
       NodeAssert.deepEqual(shape(cardRows(starWith([open("user", "u")], settled), settled)), {
-        children: [],
-        channels: [],
+        channels: [["user", "u", []]],
       });
     },
   );
@@ -415,8 +327,10 @@ NodeTest.describe("cardRows", () => {
         child("done-user", CREATED, ["pult:channel:user"], true),
       ];
       NodeAssert.deepEqual(shape(cardRows(starWith([open("work", "w")], threads), threads)), {
-        children: [],
-        channels: [["work", "w", []]],
+        channels: [
+          ["user", null, []],
+          ["work", "w", []],
+        ],
       });
     },
   );
@@ -432,8 +346,10 @@ NodeTest.describe("cardRows", () => {
       ];
       const star = starWith([open("work", "w")], [thread("a", "w", CREATED)]);
       NodeAssert.deepEqual(shape(cardRows(star, threads)), {
-        children: [],
-        channels: [["work", null, ["builder"]]],
+        channels: [
+          ["user", null, []],
+          ["work", null, ["builder"]],
+        ],
       });
     },
   );

@@ -822,18 +822,11 @@ export function mountThreadView(
  */
 export function mountDraftView(
   element: HTMLElement,
-  environmentId: string,
-  projectId: string,
+  target: Extract<ViewTarget, { kind: "draft" }>,
   onPromoted: (environmentId: string, threadId: string) => void,
   options: MountOptions = {},
 ): MountedView {
-  return mountView(
-    element,
-    { kind: "draft", environmentId, projectId },
-    onPromoted,
-    false,
-    options,
-  );
+  return mountView(element, target, onPromoted, false, options);
 }
 
 /**

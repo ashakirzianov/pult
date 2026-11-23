@@ -130,7 +130,12 @@ function still(color: string, error: string, look: StarLook): string {
   return url;
 }
 
+/** The still of `look` in `tint` and the theme's colours: a channel's row's (`src/details/StarDetails.tsx`). */
+export function lookStillUrl(tint: string, look: StarLook, current: StarMarks = marks): string {
+  return still(tintColor(tint, current.scheme), current.error, look);
+}
+
 /** The still `star` shows now in the tab, by `starMarks`' latest: its look in its tint and the theme's colours. */
 export function starStillUrl(star: Pick<Star, "id" | "tint">, current: StarMarks = marks): string {
-  return still(tintColor(star.tint, current.scheme), current.error, starLookOf(star, current));
+  return lookStillUrl(star.tint, starLookOf(star, current), current);
 }

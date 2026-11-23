@@ -173,6 +173,7 @@ const star = {
     model: "claude-opus-5-5",
     options: [{ id: "effort", value: "high" }],
   },
+  histories: [{ slug: "demo", names: ["2026-11-01T10-00-00Z-t0.md"] }],
   conversations: ["2026-11-01T10-00-00Z-t0.md"],
   schedules: [
     {

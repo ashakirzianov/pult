@@ -1,7 +1,7 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { request } from "@t3tools/client-runtime/rpc";
 import { type AssistantCitation, ORCHESTRATION_V2_WS_METHODS, ThreadId } from "@t3tools/contracts";
-import { lazy, Suspense, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { connection } from "../connection/index.ts";
@@ -10,7 +10,15 @@ import { draftCreates, type PaneTarget, ThreadContent } from "../threads/pane.ts
 import { threadStore } from "../threads/store.ts";
 import { keptCitation } from "./citation.ts";
 import { revealInFold } from "./foldState.ts";
-import { starById, starStore, type StarTarget, starTarget, starWakeModel } from "./model.ts";
+import {
+  type ChannelTab,
+  channelModel,
+  starById,
+  starStore,
+  type StarTarget,
+  starTarget,
+  starWakeModel,
+} from "./model.ts";
 import { starName } from "./stars.ts";
 import "./stars.css";
 
@@ -102,15 +110,22 @@ export function starComposerOptions(starId: string) {
  * rather than wait to go there itself. Any other change of what the Star
  * shows (it falls asleep, another page woke it) mounts the view again on it.
  */
-export function StarContent({ starId }: { starId: string }) {
+export function StarContent({
+  starId,
+  channel,
+}: {
+  starId: string;
+  channel?: ChannelTab | undefined;
+}) {
   const star = useSyncExternalStore(starStore.subscribe, () => starById(starId));
   // Where a sleeping Star wakes depends on which environments the page holds.
   useSyncExternalStore(subscribeToConnection, environmentsSnapshot);
-  const target = star === undefined ? undefined : starTarget(star);
+  const target = star === undefined ? undefined : starTarget(star, channel);
   const [options] = useState(() => ({
     ...starComposerOptions(starId),
     // Its earlier conversations have no route: a citation of one stays in the tab, its passage brought into view in the fold.
     consumesCitation: async (citation: AssistantCitation) => {
+      if (channel) return undefined;
       const kept = await keptCitation(starId, citation);
       if (kept === undefined) return undefined;
       return (signal: AbortSignal) =>
@@ -122,11 +137,23 @@ export function StarContent({ starId }: { starId: string }) {
       element: document.createElement("div"),
       content: (
         <Suspense fallback={null}>
-          <StarFold starId={starId} />
+          <StarFold starId={starId} channel={channel} />
         </Suspense>
       ),
     },
   }));
+  const asleep = target?.kind === "draft";
+  const draftOptions = useMemo(
+    () =>
+      channel && asleep
+        ? {
+            draftModel: channelModel(starId, channel.environmentId, channel.slug),
+            draftSent: (environmentId: string, threadId: string) =>
+              void afterDraftWake(starId, environmentId, threadId, channel.slug),
+          }
+        : undefined,
+    [asleep, starId, channel],
+  );
   // The view's mount: a new generation for a new target, but for the thread the draft became, which the view shows already.
   const mount = useRef<{
     target: StarTarget | undefined;
@@ -163,7 +190,7 @@ export function StarContent({ starId }: { starId: string }) {
       onPromoted={(environmentId, threadId) => {
         mount.current.promoted = { environmentId, threadId };
       }}
-      options={options}
+      options={{ ...options, ...draftOptions }}
       // oxlint-disable-next-line react/no-unstable-nested-components -- a render prop the pane calls with the bar's element, not a component type.
       barEntries={(bar) => <StarBarEntries bar={bar} target={target} />}
     />

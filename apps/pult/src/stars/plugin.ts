@@ -16,6 +16,8 @@ export const SLEEP_FEATURE = "star-sleep";
 
 /** The plugin's feature of a Star's model per channel (`.pult/channel-models.json`): `POST stars/<id>/model`, asked only where `about` lists it. */
 export const CHANNEL_MODELS_FEATURE = "star-channel-models";
+/** The channel histories in the Stars view and their transcript route. */
+export const CHANNEL_HISTORY_FEATURE = "star-channel-history";
 
 /** The plugin's feature of keeping its Mac awake while agents work, a switch read and set through `keep-awake`; listed on darwin alone. */
 export const KEEP_AWAKE_FEATURE = "keep-awake";
@@ -228,6 +230,10 @@ export interface RouteStar extends WrittenStar {
   /** The model its next conversation with the user takes, the one a wake by message into `user` takes; null before its first, and from a plugin older than the field. */
   readonly model: RouteModel | null;
   /** The names of `user`'s transcripts on this environment, oldest first. */
+  readonly histories?: ReadonlyArray<{
+    readonly slug: string;
+    readonly names: ReadonlyArray<string>;
+  }>;
   readonly conversations: ReadonlyArray<string>;
   /** Its schedules' files, by name; none from a plugin older than the schedules. */
   readonly schedules: ReadonlyArray<RouteSchedule>;
@@ -375,6 +381,15 @@ const routeStar = struct<RouteStar>({
   channels,
   asleepSince: string,
   model,
+  histories: (value, at) =>
+    value === undefined
+      ? undefined
+      : arrayOf(
+          struct<{ slug: string; names: ReadonlyArray<string> }>({
+            slug: string,
+            names: arrayOf(string),
+          }),
+        )(value, at),
   conversations: arrayOf(string),
   schedules,
 });
@@ -550,11 +565,16 @@ export const readWakeModel = (
   });
 
 /** One transcript of the Star on this environment, parsed. */
-export const readStarTranscript = (credential: Credential, id: string, name: string) =>
+export const readStarTranscript = (
+  credential: Credential,
+  id: string,
+  name: string,
+  channel?: string,
+) =>
   ask(
     credential,
     "GET",
-    `${starPath(id)}/conversations/${encodeURIComponent(name)}`,
+    `${starPath(id)}${channel === undefined ? "" : "/channels/" + encodeURIComponent(channel)}/conversations/${encodeURIComponent(name)}`,
     decodeTranscript,
   );
 

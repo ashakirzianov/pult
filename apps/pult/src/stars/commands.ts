@@ -32,7 +32,7 @@ import {
   starById,
   starStore,
 } from "./model.ts";
-import { channelRows, drawnHome, rotatedChannelTab, type Star, starName } from "./stars.ts";
+import { cardRows, drawnHome, type Star, starName } from "./stars.ts";
 import { syncStar } from "./syncing.ts";
 
 /** Whether the page holds a Star: Open Star, Edit Star Instructions, Open Star Folder and Open Star Schedule are offered then. */
@@ -125,20 +125,16 @@ async function openStarSchedule(
   });
 }
 
-/**
- * An open channel's conversation of the Star's, but `user`'s, which is its
- * tab, as a thread's tab among the Star's (`StarThreadInput`), as its card
- * lists them: `slug`'s, or one picked among them; the Star selected first,
- * and the channel's tab left on an ended conversation by a rotation shown on
- * its current one in place (`rotatedChannelTab`).
- */
+/** Opens the channel's tab among its Star's, on the home that holds its conversation or history. */
 async function openStarChannel(
   quickInput: IQuickInputService,
   star: Star,
   slug: unknown,
 ): Promise<void> {
   const notifications = await getService(INotificationService);
-  const rows = channelRows(star);
+  const rows = cardRows(star, threadStore.get().threads).channels.filter(
+    (row) => row.slug !== "user",
+  );
   if (typeof slug !== "string" && rows.length === 0)
     return notifications.info(`${starName(star)} has no channel open but yours.`);
   const channel =
@@ -160,45 +156,31 @@ async function openStarChannel(
   await commands.executeCommand("pult-shell.selectStar", star.id);
   // A switch cancelled over a modified file leaves the selection as it was, so the channel is not opened among its tabs.
   if (selectedStar() !== star.id) return;
-  const { environmentId, id } = channel.thread;
-  // A tab the channel's rotation left on its ended conversation becomes its current one, in place.
-  const groups = await getService(IEditorGroupsService);
-  const tabs = groups.groups.flatMap((group) =>
-    group.editors.flatMap((editor) =>
-      editor instanceof StarThreadInput ? [{ group, editor }] : [],
-    ),
-  );
-  const rotated = rotatedChannelTab(
-    tabs.map(({ editor }) => editor),
+  const environmentId = channel.thread?.environmentId ?? channel.children[0]?.environmentId;
+  if (environmentId === undefined) return;
+  const input = (await getService(IInstantiationService)).createInstance(
+    StarThreadInput,
+    environmentId,
+    channel.thread?.id ?? "",
     channel.slug,
-    channel.thread,
-    threadStore.get().threads,
+    star.id,
   );
-  const replaced = tabs.find(({ editor }) => editor === rotated);
-  if (replaced !== undefined) {
-    const replacement = (await getService(IInstantiationService)).createInstance(
-      StarThreadInput,
-      environmentId,
-      id,
-      channel.slug,
+  // Upgrade a saved thread-bound channel tab in its group.
+  const groups = await getService(IEditorGroupsService);
+  for (const group of groups.groups) {
+    const old = group.editors.find(
+      (editor) =>
+        editor instanceof StarThreadInput &&
+        editor.starId === undefined &&
+        editor.slug === channel.slug &&
+        editor.environmentId === environmentId,
     );
-    await replaced.group.replaceEditors([
-      { editor: replaced.editor, replacement, options: { pinned: true } },
-    ]);
-    await replaced.group.openEditor(replacement, { pinned: true });
+    if (!old) continue;
+    await group.replaceEditors([{ editor: old, replacement: input, options: { pinned: true } }]);
+    await group.openEditor(input, { pinned: true });
     return;
   }
-  await (
-    await getService(IEditorService)
-  ).openEditor(
-    (await getService(IInstantiationService)).createInstance(
-      StarThreadInput,
-      environmentId,
-      id,
-      channel.slug,
-    ),
-    { pinned: true },
-  );
+  await (await getService(IEditorService)).openEditor(input, { pinned: true });
 }
 
 /**

@@ -20,7 +20,9 @@ import {
   showOlder,
   transcriptReading,
 } from "./foldState.ts";
-import { starById, starStore } from "./model.ts";
+import { pluginFeatures } from "./about.ts";
+import { CHANNEL_HISTORY_FEATURE } from "./plugin.ts";
+import { type ChannelTab, starById, starStore } from "./model.ts";
 import { drawnHome, type StarHome } from "./stars.ts";
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
@@ -122,16 +124,18 @@ function Conversation({
   starId,
   home,
   name,
+  channel,
   environmentName,
   target,
 }: {
   starId: string;
   home: StarHome;
   name: string;
+  channel?: string | undefined;
   environmentName: string | undefined;
   target: RevealTarget | undefined;
 }) {
-  const reading = transcriptReading(home.environmentId, starId, name);
+  const reading = transcriptReading(home.environmentId, starId, name, channel);
   if (reading === undefined || reading.status === "loading")
     return <p className="pult-star-fold-note">Reading the conversation…</p>;
   if (reading.status === "failed")
@@ -176,29 +180,43 @@ function Conversation({
  * the next older one at a time. The fold's state is kept apart from the
  * view, which mounts again as the conversation changes (`foldState.ts`).
  */
-export default function StarFold({ starId }: { starId: string }) {
+export default function StarFold({
+  starId,
+  channel,
+}: {
+  starId: string;
+  channel?: ChannelTab | undefined;
+}) {
   const star = useSyncExternalStore(starStore.subscribe, () => starById(starId));
   useSyncExternalStore(foldStore.subscribe, foldStore.version);
   const [element, setElement] = useState<HTMLElement | null>(null);
   useAnchoredHeight(element);
-  const home = star === undefined ? undefined : drawnHome(star);
+  const home = channel
+    ? star?.homes.find((each) => each.environmentId === channel.environmentId)
+    : star && drawnHome(star);
+  const key = channel ? JSON.stringify([starId, channel.environmentId, channel.slug]) : starId;
   // Named while the page holds several environments.
   const environmentName = useSyncExternalStore(subscribeToThreads, () =>
     home === undefined ? undefined : threadStore.distinguishing(home.environmentId),
   );
-  const names = home?.conversations ?? [];
-  const view = foldView(starId);
+  const names =
+    channel && !pluginFeatures(channel.environmentId)?.has(CHANNEL_HISTORY_FEATURE)
+      ? []
+      : channel
+        ? (home?.histories?.find((each) => each.slug === channel.slug)?.names ?? [])
+        : (home?.conversations ?? []);
+  const view = foldView(key);
   // Oldest first, the newest right above the live view.
   const shown = view.open ? names.slice(-view.shown) : [];
   useEffect(() => {
     if (home !== undefined)
-      for (const name of shown) readTranscript(home.environmentId, starId, name);
+      for (const name of shown) readTranscript(home.environmentId, starId, name, channel?.slug);
   });
   useEffect(() => {
     if (element === null) return;
     // Where the reader is, back once the fold has shrunk back and its anchoring has moved the
     // scroller, unless the reader takes it over meanwhile.
-    keepFoldPlace(starId, () => {
+    keepFoldPlace(key, () => {
       const scroller = scrollerOf(element);
       if (scroller === null) return () => {};
       const top = scroller.scrollTop;
@@ -215,9 +233,9 @@ export default function StarFold({ starId }: { starId: string }) {
         );
       };
     });
-    return () => keepFoldPlace(starId, undefined);
-  }, [element, starId]);
-  const reveal = pendingReveal(starId);
+    return () => keepFoldPlace(key, undefined);
+  }, [element, key]);
+  const reveal = pendingReveal(key);
   const body = useRef<HTMLElement | null>(null);
   const target: RevealTarget | undefined =
     reveal === undefined
@@ -237,7 +255,7 @@ export default function StarFold({ starId }: { starId: string }) {
       ready: () => {
         const now = starById(starId);
         const home = now === undefined ? undefined : drawnHome(now);
-        const { open, shown } = foldView(starId);
+        const { open, shown } = foldView(key);
         return (
           home !== undefined &&
           open &&
@@ -253,7 +271,7 @@ export default function StarFold({ starId }: { starId: string }) {
       if (!gone.signal.aborted) reveal.finish(outcome);
     });
     return () => gone.abort();
-  }, [reveal, element, starId]);
+  }, [reveal, element, starId, key]);
   if (home === undefined || names.length === 0) return null;
   return (
     <div ref={setElement} className="pult-star-fold" data-open={view.open || undefined}>
@@ -261,7 +279,7 @@ export default function StarFold({ starId }: { starId: string }) {
         type="button"
         className="pult-star-fold-toggle"
         aria-expanded={view.open}
-        onClick={() => setFoldOpen(starId, !view.open)}
+        onClick={() => setFoldOpen(key, !view.open)}
       >
         <span className="pult-star-fold-rule" aria-hidden />
         <span className="pult-star-fold-label">
@@ -271,7 +289,7 @@ export default function StarFold({ starId }: { starId: string }) {
         <span className="pult-star-fold-rule" aria-hidden />
       </button>
       {view.open && shown.length < names.length ? (
-        <button type="button" className="pult-star-fold-more" onClick={() => showOlder(starId)}>
+        <button type="button" className="pult-star-fold-more" onClick={() => showOlder(key)}>
           Show more
         </button>
       ) : null}
@@ -281,6 +299,7 @@ export default function StarFold({ starId }: { starId: string }) {
           starId={starId}
           home={home}
           name={name}
+          channel={channel?.slug}
           environmentName={environmentName}
           target={reveal?.name === name ? target : undefined}
         />

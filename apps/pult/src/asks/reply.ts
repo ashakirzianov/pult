@@ -20,8 +20,8 @@ import type { MountOptions, ViewTarget } from "../../view/main.tsx";
 import { connection } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { starById, starStore, starWakeModel } from "../stars/model.ts";
-import type { RouteModel } from "../stars/plugin.ts";
+import { starById, starStore } from "../stars/model.ts";
+import { channelModel } from "../stars/model.ts";
 import { USER_CHANNEL } from "../stars/plugin.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { starName } from "../stars/stars.ts";
@@ -30,9 +30,6 @@ import { selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { type PageAsk, posterName, shownAsks } from "./asks.ts";
 import { actOnPageAsk, askById, askStore } from "./model.ts";
-
-/** The runtime mode a channel's draft asks its model at before it is sent, upstream's default. */
-const DRAFT_RUNTIME_MODE = "full-access";
 
 /** The ask being replied to: its file, a `pult:` resource, while its row last opened it, and how many times rows were opened, which a new composer is mounted for. */
 let replying:
@@ -56,23 +53,6 @@ export interface ReplyComposer {
 
 /** Each reply's options, kept so a mount sees the same ones for the same ask and target. */
 const kept = new Map<string, MountOptions>();
-/** The model a sleeping channel's draft wakes it at, read from its home's plugin (`POST stars/<id>/model`) each time its ask is opened; null until read, and for the page's own. */
-function channelModel(starId: string, environmentId: string, channel: string) {
-  let value: RouteModel | null = null;
-  const listeners = new Set<() => void>();
-  void starWakeModel(starId, environmentId, DRAFT_RUNTIME_MODE, channel).then((model) => {
-    value = model;
-    for (const listener of listeners) listener();
-  });
-  return {
-    get: () => value,
-    subscribe: (listener: () => void) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
-}
-
 const posterOf = (ask: PageAsk) =>
   posterName(
     ask,

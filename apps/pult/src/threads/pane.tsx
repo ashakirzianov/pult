@@ -31,7 +31,7 @@ import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { isSettingsTab, type SettingsInput } from "../settings/pane.tsx";
 import { DEFAULT_TINT, starMarks, starStillUrl } from "../stars/mark.ts";
-import { starById, starStore } from "../stars/model.ts";
+import { starById, starStore, starTarget } from "../stars/model.ts";
 import { starName } from "../stars/stars.ts";
 import { StarContent } from "../stars/tab.tsx";
 import { workbenchColorScheme } from "../theme.ts";
@@ -53,9 +53,7 @@ let started: Promise<ThreadViewMounts> | undefined;
 let loaded: ThreadViewMounts | undefined;
 
 /** What a pane shows, in its environment: a thread, or a project's draft of a new thread. */
-export type PaneTarget =
-  | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+export type PaneTarget = import("../../view/main.tsx").ViewTarget;
 
 type PromotionListener = (
   draft: { readonly environmentId: string; readonly projectId: string },
@@ -146,13 +144,11 @@ export function threadView() {
  * while no view has started, when no draft is mounted either.
  */
 export function draftCreates(
-  draft: { readonly environmentId: string; readonly projectId: string },
+  draft: Extract<PaneTarget, { kind: "draft" }>,
   environmentId: string,
   threadId: string,
 ): boolean {
-  return (
-    loaded?.draftCreates(draft.environmentId, draft.projectId, environmentId, threadId) ?? false
-  );
+  return loaded?.draftCreates(draft, environmentId, threadId) ?? false;
 }
 
 /**
@@ -205,8 +201,7 @@ export function ThreadContent({
             ? mounts.mount(host, environmentId, shown.threadId, options)
             : mounts.mountDraft(
                 host,
-                environmentId,
-                shown.projectId,
+                shown,
                 (promotedIn, threadId) => latest.current.onPromoted(promotedIn, threadId),
                 options,
               );
@@ -295,12 +290,24 @@ class ThreadPane extends SimpleEditorPane {
    * follows its conversation itself (`StarContent`).
    */
   async renderInput(input: EditorInput) {
-    if (input instanceof StarInput) {
+    if (
+      input instanceof StarInput ||
+      (input instanceof StarThreadInput && input.starId !== undefined && input.slug !== null)
+    ) {
       this.root?.unmount();
       this.root = createRoot(this.container);
       const shown = { input };
       this.shown = shown;
-      this.root.render(<StarContent starId={input.starId} />);
+      this.root.render(
+        <StarContent
+          starId={input.starId!}
+          channel={
+            input instanceof StarThreadInput
+              ? { environmentId: input.environmentId, slug: input.slug! }
+              : undefined
+          }
+        />,
+      );
       return {
         dispose: () => {
           if (this.shown === shown) this.release();
@@ -619,9 +626,8 @@ export class StarInput extends SimpleEditorInput {
  * `slug` null, labelled by the thread's title; an ordinary thread's tab, in
  * the same pane, which mounts the thread's view, composer included, its
  * project as its description. Unlike a lead tab it closes and is not kept
- * leftmost; it is a singleton, so a second click shows the one open. It
- * shows the thread it was opened on, which stays there once a channel falls
- * asleep. Its browsers open beside it (`src/preview/tabs.ts`).
+ * leftmost; it is a singleton, so a second click shows the one open. A channel tab follows that channel on its home, including its draft
+ * while asleep. A child and an older saved tab keep their original thread. Its browsers open beside it (`src/preview/tabs.ts`).
  */
 export class StarThreadInput extends SimpleEditorInput {
   private labelKey: string | undefined;
@@ -629,16 +635,32 @@ export class StarThreadInput extends SimpleEditorInput {
 
   constructor(
     readonly environmentId: string,
-    readonly threadId: string,
+    private readonly openedThreadId: string,
     readonly slug: string | null,
+    readonly starId?: string,
   ) {
     super(undefined);
     this.addCapability(
       EditorInputCapabilities.Singleton | EditorInputCapabilities.ForceDescription,
     );
     this.updateLabel();
+    if (starId !== undefined)
+      this._register({ dispose: starStore.subscribe(() => this.updateLabel()) });
     this._register({ dispose: threadStore.subscribe(() => this.updateLabel()) });
     this._register({ dispose: projectIcons.onDidChange(() => this.updateLabel()) });
+  }
+
+  channelTarget() {
+    const star = this.starId === undefined ? undefined : starById(this.starId);
+    return star && this.slug !== null
+      ? starTarget(star, { environmentId: this.environmentId, slug: this.slug })
+      : undefined;
+  }
+
+  get threadId(): string {
+    if (this.starId === undefined) return this.openedThreadId;
+    const target = this.channelTarget();
+    return target?.kind === "thread" ? target.threadId : "";
   }
 
   private thread(): ShellThread | undefined {
@@ -688,7 +710,9 @@ export class StarThreadInput extends SimpleEditorInput {
   override matches(other: unknown): boolean {
     return (
       other instanceof StarThreadInput &&
-      other.threadId === this.threadId &&
+      (this.starId !== undefined
+        ? other.starId === this.starId && other.slug === this.slug
+        : other.starId === undefined && other.threadId === this.threadId) &&
       other.environmentId === this.environmentId
     );
   }
@@ -711,6 +735,7 @@ interface SerializedStarInput {
 
 /** A Star's thread's tab; one saved as a child's before it was this input, under a type of its own, is dropped. */
 interface SerializedStarThreadInput {
+  readonly starId?: string;
   readonly environmentId: string;
   readonly threadId: string;
   readonly slug: string | null;
@@ -802,16 +827,17 @@ export function registerThreadPane(): void {
           environmentId: editor.environmentId,
           threadId: editor.threadId,
           slug: editor.slug,
+          ...(editor.starId && { starId: editor.starId }),
         } satisfies SerializedStarThreadInput);
       }
       deserialize(
         instantiation: IInstantiationService,
         serialized: string,
       ): EditorInput | undefined {
-        const { environmentId, threadId, slug } = JSON.parse(
+        const { environmentId, threadId, slug, starId } = JSON.parse(
           serialized,
         ) as SerializedStarThreadInput;
-        return instantiation.createInstance(StarThreadInput, environmentId, threadId, slug);
+        return instantiation.createInstance(StarThreadInput, environmentId, threadId, slug, starId);
       }
     },
   );

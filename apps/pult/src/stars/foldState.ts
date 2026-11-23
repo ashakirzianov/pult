@@ -2,6 +2,8 @@ import type { AssistantCitation } from "@t3tools/contracts";
 
 import type { RevealOutcome } from "../../view/passageReveal.ts";
 import { connection } from "../connection/index.ts";
+import { pluginFeatures } from "./about.ts";
+import { CHANNEL_HISTORY_FEATURE } from "./plugin.ts";
 import { starById } from "./model.ts";
 import { readStarTranscript, readStarTranscriptOfThread, type Transcript } from "./plugin.ts";
 import { drawnHome } from "./stars.ts";
@@ -69,11 +71,15 @@ export function showOlder(starId: string): void {
   changed();
 }
 
-const keyOf = (environmentId: string, starId: string, name: string) =>
-  JSON.stringify([environmentId, starId, name]);
+const keyOf = (environmentId: string, starId: string, name: string, channel?: string) =>
+  JSON.stringify([environmentId, starId, name, channel ?? null]);
 
-export const transcriptReading = (environmentId: string, starId: string, name: string) =>
-  readings.get(keyOf(environmentId, starId, name));
+export const transcriptReading = (
+  environmentId: string,
+  starId: string,
+  name: string,
+  channel?: string,
+) => readings.get(keyOf(environmentId, starId, name, channel));
 
 /** A transcript of the Star the fold has read, and its name. */
 export interface NamedReading {
@@ -88,10 +94,16 @@ export function heldTranscriptOf(
   threadId: string,
 ): NamedReading | undefined {
   for (const [key, reading] of readings) {
-    const [environment, star, name] = JSON.parse(key) as [string, string, string];
+    const [environment, star, name, channel] = JSON.parse(key) as [
+      string,
+      string,
+      string,
+      string | null,
+    ];
     if (
       environment === environmentId &&
       star === starId &&
+      channel === null &&
       reading.status === "ready" &&
       reading.transcript.threadId === threadId
     )
@@ -207,23 +219,32 @@ async function read(
   environmentId: string,
   starId: string,
   name: string,
+  channel?: string,
 ): Promise<TranscriptReading> {
   try {
     const credential = connection.credential(environmentId);
     if (credential === undefined) throw new Error("the page holds no bearer for its environment");
-    return { status: "ready", transcript: await readStarTranscript(credential, starId, name) };
+    return {
+      status: "ready",
+      transcript: await readStarTranscript(credential, starId, name, channel),
+    };
   } catch (error) {
     return { status: "failed", message: errorMessage(error) };
   }
 }
 
 /** Reads the transcript `name` of the Star on `environmentId`, once. */
-export function readTranscript(environmentId: string, starId: string, name: string): void {
-  const key = keyOf(environmentId, starId, name);
+export function readTranscript(
+  environmentId: string,
+  starId: string,
+  name: string,
+  channel?: string,
+): void {
+  const key = keyOf(environmentId, starId, name, channel);
   if (readings.has(key)) return;
   readings.set(key, { status: "loading" });
   changed();
-  void read(environmentId, starId, name).then((reading) => {
+  void read(environmentId, starId, name, channel ?? undefined).then((reading) => {
     readings.set(key, reading);
     changed();
   });
@@ -232,9 +253,15 @@ export function readTranscript(environmentId: string, starId: string, name: stri
 /** Reads again every transcript of the Star on `environmentId` the fold has read, as one may have been rewritten; the old ones shown meanwhile. */
 export function refreshTranscripts(environmentId: string, starId: string): void {
   for (const [key, reading] of readings) {
-    const [environment, star, name] = JSON.parse(key) as [string, string, string];
+    const [environment, star, name, channel] = JSON.parse(key) as [
+      string,
+      string,
+      string,
+      string | null,
+    ];
     if (environment !== environmentId || star !== starId || reading.status !== "ready") continue;
-    void read(environmentId, starId, name).then((next) => {
+    if (channel !== null && !pluginFeatures(environmentId)?.has(CHANNEL_HISTORY_FEATURE)) continue;
+    void read(environmentId, starId, name, channel ?? undefined).then((next) => {
       if (next.status !== "ready") return;
       readings.set(key, next);
       changed();
