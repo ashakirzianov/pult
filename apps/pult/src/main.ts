@@ -38,6 +38,7 @@ import { installDesktopTitleBar } from "./desktop/titleBar.ts";
 import { recordLongFrames } from "./desktop/longFrames.ts";
 import { registerMode, startMode } from "./mode.ts";
 import { gateEditorMenus } from "./editorMenus.ts";
+import { startLoneTab } from "./loneTab.ts";
 import { registerPultFiles } from "./files/index.ts";
 import { registerGrammars } from "./grammars/index.ts";
 import { registerLimits } from "./limits/index.ts";
@@ -173,6 +174,7 @@ await initialize(workbenchServices(), container, options, {
 
 await syncColorScheme();
 await startMode();
+await startLoneTab();
 await starSettings;
 await startStatusBar();
 await startComposerStrip();

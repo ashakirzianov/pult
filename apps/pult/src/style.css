@@ -329,6 +329,18 @@ body.pult-dragging .pult-browser-host webview {
   box-shadow: none;
 }
 
+/* A lone tab, the only one across the editor's groups and rows (`src/loneTab.ts`), carries no selected mark: there is nothing to tell it from. */
+.monaco-workbench.pult-lone-tab:not(.pult-mode-vscode)
+  .part.editor
+  > .content
+  .editor-group-container
+  > .title
+  .tabs-container
+  > .tab:is(.active, .selected):not(.dirty-border-top)
+  > .tab-border-top-container {
+  display: none;
+}
+
 /* The left panel blends with the thread view: the editor's background and no border. The
    variables reach its rows (`.pult-panel-tray`); the part's own are inline styles the workbench
    sets from the theme, hence the `!important`. */
