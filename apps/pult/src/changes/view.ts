@@ -64,6 +64,7 @@ import type {
   ISCMResourceDecorations,
   ISCMResourceGroup,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
+import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { HISTORY_VIEW_PANE_ID } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
 import {
   ProjectId,
@@ -1127,8 +1128,12 @@ class ChangesView {
     );
   }
 
+  /** A conflicted file, in Source whatever its default, since its markers are resolved there. */
   private async openFile(uri: URI, preserveFocus: boolean): Promise<void> {
-    await this.services.editors.openEditor({ resource: uri, options: { preserveFocus } });
+    await this.services.editors.openEditor({
+      resource: uri,
+      options: { preserveFocus, override: DEFAULT_EDITOR_ASSOCIATION.id },
+    });
   }
 
   /** The filter's thread's turn, when loaded and read under the thread's checkout. */

@@ -34,6 +34,8 @@ import {
   DEFAULT_EDITOR_ASSOCIATION,
   type IRevertOptions,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
+import { FILE_EDITOR_INPUT_ID } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/files/common/files";
+import { ITextEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/textfile/common/textEditorService.service";
 import type { ITextFileSaveOptions } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/textfile/common/textfiles";
 import {
   type EditorInput,
@@ -395,13 +397,27 @@ async function activeEditor(context: unknown) {
   return { group, editor: group.activeEditor };
 }
 
+/** The tab `group` holds of `file` in the reader or in Source, the active one first. */
+function tabOf(group: IEditorGroup, file: URI) {
+  const tabs = group.editors.filter(
+    (tab) =>
+      isEqual(tab.resource, file) &&
+      (tab instanceof ReaderInput || tab.typeId === FILE_EDITOR_INPUT_ID),
+  );
+  return tabs.find((tab) => tab === group.activeEditor) ?? tabs[0];
+}
+
 /**
  * The reader's pane and input, its serialiser, so a working set restores a
- * reader tab, and its place among the editors a `.html`, `.htm` or `.md`
- * project file opens in, an option under Open With, never the default (a
- * Markdown file's stock preview stays another); and Show
- * Preview and Show Source, which switch the tab in place, each a title
- * action and in the palette. Registered before the workbench starts.
+ * reader tab as it restores a Source one, and its two places among the
+ * editors a `.html`, `.htm` or `.md` project file opens in: an option, what
+ * Open With, Show Preview and a reopened tab name by id, and, under the same
+ * id so Open With lists one Preview, the default per extension, what an open
+ * naming no editor gets. That one sends an open with a selection (a line
+ * link, a search result, a jump) to Source and shows a tab the group already
+ * holds of the file, so a tab left in Source stays the file's view there.
+ * Show Preview and Show Source switch the tab in place, each a title action
+ * and in the palette. Registered before the workbench starts.
  */
 export function registerReader(): void {
   registerEditorPane(READER_ID, "Pult Preview", ReaderPane, [ReaderInput]);
@@ -433,6 +449,31 @@ export function registerReader(): void {
     { singlePerResource: true, canSupportResource: (resource) => resource.scheme === "pult" },
     { createEditorInput: ({ resource }) => ({ editor: new ReaderInput(resource) }) },
   );
+  // An open naming the id takes the first registration of it, so these stay after the option
+  // on globs of their own: `*.md` is the stock preview's, which can register before the reader.
+  // One per extension, so Configure Default Editor writes the one file type it was asked for.
+  for (const glob of ["**/*.html", "**/*.htm", "**/*.md"])
+    registerEditor(
+      glob,
+      {
+        id: READER_ID,
+        label: "Preview",
+        priority: {
+          editor: RegisteredEditorPriority.default,
+          diff: RegisteredEditorPriority.option,
+          merge: RegisteredEditorPriority.option,
+        },
+      },
+      { canSupportResource: (resource) => resource.scheme === "pult" },
+      {
+        createEditorInput: ({ resource, options }, group) => ({
+          editor:
+            options !== undefined && "selection" in options && options.selection !== undefined
+              ? StandaloneServices.get(ITextEditorService).createTextEditor({ resource })
+              : (tabOf(group, resource) ?? new ReaderInput(resource)),
+        }),
+      },
+    );
   registerAction2(
     class extends Action2 {
       constructor() {

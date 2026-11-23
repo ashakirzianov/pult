@@ -18,6 +18,7 @@ import type {
   IQuickPickItem,
   IQuickPickSeparator,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/quickinput/common/quickInput";
+import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { buildProjectCreateCommand } from "@t3tools/client-runtime/operations/projects";
 import { request } from "@t3tools/client-runtime/rpc";
 import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
@@ -124,6 +125,8 @@ async function searchInFiles(accessor: ServicesAccessor): Promise<void> {
       editors.openEditor({
         resource: item.resource,
         options: {
+          // In Source whatever the file's default, which may be a preview with no lines to select.
+          override: DEFAULT_EDITOR_ASSOCIATION.id,
           selection: {
             startLineNumber: item.line,
             startColumn: item.start + 1,

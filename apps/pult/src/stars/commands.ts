@@ -14,6 +14,7 @@ import {
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
@@ -72,7 +73,8 @@ async function editStarInstructions(star: Star): Promise<void> {
     await getService(IEditorService)
   ).openEditor({
     resource: pultResource(home.environmentId, toUriPath(home.instructions)),
-    options: { pinned: true },
+    // Edit Star Instructions edits, so Source rather than the reader a Markdown file opens in.
+    options: { pinned: true, override: DEFAULT_EDITOR_ASSOCIATION.id },
   });
 }
 
