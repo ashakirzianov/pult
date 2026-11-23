@@ -4,8 +4,8 @@ import { DETAILS_CARD_CLEARANCE } from "./chatCanvasLayout";
 export const THREAD_DETAILS_CARD_GAP = 12;
 // Keep in sync with --thread-details-panel-width.
 export const THREAD_DETAILS_CARD_WIDTH = 280;
-// Pult: the narrowest the user can drag the card, and the narrowest a dragged card gives way to.
-export const THREAD_DETAILS_CARD_MIN_WIDTH = 240;
+// Pult: the sidebar part's 170px minimum includes the outer inset; the card's width excludes it.
+export const THREAD_DETAILS_CARD_MIN_WIDTH = 170 - THREAD_DETAILS_CARD_GAP;
 
 export function resolveThreadDetailsCardDensity(
   height: number,

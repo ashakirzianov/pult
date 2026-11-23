@@ -1,4 +1,5 @@
 import {
+  THREAD_DETAILS_CARD_GAP,
   THREAD_DETAILS_CARD_MIN_WIDTH,
   THREAD_DETAILS_CARD_WIDTH,
 } from "~/components/chat/threadDetailsCardLayout";
@@ -19,6 +20,9 @@ const listeners = new Set<() => void>();
 
 /** The right panel's width: one for the whole app, followed live by every view, kept for the page's next start once a drag ends. */
 export const detailsCardWidth = {
+  inset: THREAD_DETAILS_CARD_GAP,
+  minimum: THREAD_DETAILS_CARD_MIN_WIDTH,
+  maximum: MAX_WIDTH,
   get: () => width,
   subscribe(listener: () => void) {
     listeners.add(listener);

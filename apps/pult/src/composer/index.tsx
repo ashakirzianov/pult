@@ -24,6 +24,7 @@ import { createRoot } from "react-dom/client";
 import type { MountedView, MountOptions, ViewTarget } from "../../view/main.tsx";
 import { askStore } from "../asks/model.ts";
 import { onDidChangeReply, replyComposer } from "../asks/reply.ts";
+import { detailsCards } from "../details/cards.ts";
 import { connection } from "../connection/connection.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { BarTip } from "../threads/barEntries.tsx";
@@ -106,7 +107,7 @@ function followFilled(): void {
 }
 
 /** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
-function selectedTarget(): ViewTarget | null {
+export function selectedTarget(): ViewTarget | null {
   const target = selectionTarget();
   const environmentId = connection.environment(target?.environmentId ?? "")?.environmentId;
   if (target === undefined || environmentId === undefined) return null;
@@ -248,10 +249,13 @@ export async function startComposerStrip(): Promise<void> {
     const key = reply?.key ?? JSON.stringify(target);
     hasComposerKey.set(target !== null);
     const visible = open && target !== null && active !== undefined && !isShellTab(active);
-    if (visible && mounted?.key !== key)
+    // A file's upstream detail rows keep this view's providers even with its composer closed.
+    const cards = detailsCards.get();
+    const needsRows = cards?.fileRows !== undefined && cards.subject.kind !== "star";
+    if (target !== null && (visible || needsRows) && mounted?.key !== key)
       mount(key, target, reply?.options ?? selectedStarComposer());
     // A selection the strip no longer shows lets its composer go; the next one mounts when shown.
-    if (mounted?.key !== key) unmount();
+    if ((!visible && !needsRows) || mounted?.key !== key) unmount();
     workbenchGrid.setViewVisible(strip.view, visible);
     setState({ available: target !== null, shown: visible });
   };
@@ -261,6 +265,7 @@ export async function startComposerStrip(): Promise<void> {
   starStore.subscribe(update);
   askStore.subscribe(update);
   onDidChangeReply(update);
+  detailsCards.subscribe(update);
   onDidChangeState.event(update);
   connection.onDidChange(update);
   update();

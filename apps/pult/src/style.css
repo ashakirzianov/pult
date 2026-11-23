@@ -341,18 +341,48 @@ body.pult-dragging .pult-browser-host webview {
   display: none;
 }
 
-/* The left panel blends with the thread view: the editor's background and no border. The
-   variables reach its rows (`.pult-panel-tray`); the part's own are inline styles the workbench
-   sets from the theme, hence the `!important`. */
+/* Match the composer host's 1px outline (ComposerSurface.tsx) across the
+   workbench, including when a file takes the place of the composer. */
+:root {
+  --pult-composer-outline: rgb(0 0 0 / 8%);
+}
+:root.dark {
+  --pult-composer-outline: color-mix(in srgb, white 5%, transparent);
+}
+html[data-theme-id] {
+  --pult-composer-outline: var(--app-theme-toolbar-border);
+}
+html.dark[data-theme-id] {
+  --pult-composer-outline: color-mix(in srgb, var(--app-theme-input) 30%, var(--background));
+}
+html.dark[data-theme-id="t3-chat"] {
+  --pult-composer-outline: #241e28;
+}
+
 .monaco-workbench:not(.pult-mode-vscode) {
   --vscode-sideBar-background: var(--vscode-editor-background);
-  --vscode-sideBar-border: transparent;
   --vscode-sideBarTitle-background: var(--vscode-editor-background);
 }
 
 .monaco-workbench:not(.pult-mode-vscode) .part.sidebar {
   background-color: var(--vscode-editor-background) !important;
-  border-color: transparent !important;
+}
+
+/* The sidebar and tray share one full-height workbench sash. */
+.monaco-workbench:not(.pult-mode-vscode) :is(.part.sidebar, .pult-panel-tray) {
+  border-right-color: transparent !important;
+}
+
+.monaco-workbench:not(.pult-mode-vscode)
+  .monaco-sash.vertical:is(.primary-sidebar-sash, .pult-file-details-sash)::before {
+  left: 50%;
+  width: 0;
+  background: none;
+}
+
+.monaco-workbench:not(.pult-mode-vscode)
+  :is(.primary-sidebar-sash, .pult-file-details-sash):not(.disabled):is(:hover, .active)::before {
+  border-left: 1px solid var(--pult-composer-outline);
 }
 
 /* The line under the tabs' row (`editorGroupHeader.tabsBorder`): the blank band is the seam. */

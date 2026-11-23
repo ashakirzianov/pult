@@ -1,7 +1,7 @@
 // Stands in for `apps/web`'s `src/components/chat/ThreadDetailsCard.tsx` (`./stubs.ts`), the
 // frame of upstream's thread details: the shell's details cards (`src/details/`) float where
 // upstream's inline card would, over the chat's top-right corner, from the pane's view alone and
-// only while that view is the active editor's. A thread's or a draft's details are upstream's rows
+// while that view is the active editor's. Files host the same rows through a portal from the composer strip. A thread's or a draft's details are upstream's rows
 // (`ThreadDetailsPanel.tsx`, with its own "Choose what to show" and defaults) in one card of
 // upstream's look; a Star's are the shell's cards, which it renders into an element of ours. The
 // canvas clears its lane of them as of upstream's card, and where it has no room for one they do
@@ -20,12 +20,13 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { createPortal } from "react-dom";
+
 import { useChatCanvas } from "~/components/chat/ChatCanvasContext";
 import type * as Upstream from "~/components/chat/ThreadDetailsCard";
 import type { PopoverCreateHandle } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { type DraftId, type DraftSessionState, useComposerDraftStore } from "~/composerDraftStore";
-import { observeResize } from "~/lib/observeResize";
 import { selectThreadPanelOpen, useRightPanelStore } from "~/rightPanelStore";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { draftKey, isDraftOf } from "./drafts.ts";
@@ -33,7 +34,9 @@ import { type DetailsCards, type DetailsCardsTarget, threadViewHost } from "./ho
 import { setThreadPanelInline } from "./rightPanel.ts";
 import type { ViewTarget } from "./ThreadView.tsx";
 
-/** The target of the pane's view rendering the frame; null in the composer strip's view, which renders no details. */
+/** The file's composer can portal its thread rows into the workbench beside the file. */
+export const DetailsInFile = createContext(false);
+
 export const DetailsTarget = createContext<ViewTarget | null>(null);
 
 /** Upstream's frame's props, which the stub owns. */
@@ -55,7 +58,7 @@ type Exactly<A, B> =
 // A merge that changes upstream's frame's props fails the typecheck here, so the stub is read again.
 true satisfies Exactly<ThreadDetailsCardProps, ComponentProps<typeof Upstream.ThreadDetailsCard>>;
 
-/** Whether the view's target is `shown`; a Star's channel's draft (`tags`) is never a view the cards float over. */
+/** Whether the view shows this thread or draft, including the channel tag that identifies a draft within a project. */
 function isTarget(target: ViewTarget, shown: DetailsCardsTarget): boolean {
   if (shown.kind === "thread")
     return (
@@ -65,7 +68,7 @@ function isTarget(target: ViewTarget, shown: DetailsCardsTarget): boolean {
     );
   return (
     target.kind === "draft" &&
-    target.tags === undefined &&
+    JSON.stringify(target.tags) === JSON.stringify(shown.tags) &&
     target.environmentId === shown.environmentId &&
     target.projectId === shown.projectId
   );
@@ -98,12 +101,20 @@ function showsCards(
     draft !== null &&
     // The pane's own draft, though its composer may have moved it to another environment's project (`ThreadView.tsx`).
     (isDraftOf(target, draft.session) ||
-      localStorage.getItem(draftKey(target.environmentId, target.projectId)) === draft.id)
+      localStorage.getItem(draftKey(target.environmentId, target.projectId, target.tags)) ===
+        draft.id)
   );
 }
 
 /** The cards' left edge, an invisible handle dragging the panel's width, the same for every view. */
-function DetailsCardResizer({ width }: { readonly width: number }) {
+function DetailsCardResizer({
+  width,
+  right,
+}: {
+  readonly width: number;
+  /** From the canvas's right edge, centred on the panel's left edge. */
+  readonly right: number;
+}) {
   const drag = useRef<{
     readonly pointerId: number;
     readonly x: number;
@@ -127,6 +138,7 @@ function DetailsCardResizer({ width }: { readonly width: number }) {
     <div
       aria-hidden
       className="pult-details-resizer"
+      style={{ right }}
       onPointerDown={(event) => {
         if (event.button !== 0 || drag.current !== null) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -146,8 +158,22 @@ function DetailsCardResizer({ width }: { readonly width: number }) {
   );
 }
 
+/** The element the shell renders the right panel's tray into, on the composer buttons' row, as wide as the panel. */
+function DetailsTrayHost({ width }: { readonly width: number }) {
+  const { detailsCards } = threadViewHost();
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (element === null) return;
+    return detailsCards.renderTray(element);
+  }, [element, detailsCards]);
+  return (
+    <div ref={setElement} className="pult-details-island pult-details-tray" style={{ width }} />
+  );
+}
+
 export function ThreadDetailsCard({ threadRef, onContextMenu, children }: ThreadDetailsCardProps) {
   const target = use(DetailsTarget);
+  const inFile = use(DetailsInFile);
   const { detailsCards } = threadViewHost();
   const cards = useSyncExternalStore(detailsCards.subscribe, detailsCards.get);
   const canvas = useChatCanvas();
@@ -157,74 +183,82 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
   );
   const draft = draftId === null || session === null ? null : { id: draftId, session };
   const shown =
-    target !== null && cards !== null && showsCards(target, threadRef, draft, cards) ? cards : null;
+    target !== null &&
+    cards !== null &&
+    inFile === (cards.fileRows !== undefined) &&
+    showsCards(target, threadRef, draft, cards)
+      ? cards
+      : null;
   const inlineOpen = useRightPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "inline"),
   );
-  const open = shown !== null;
+  const open = shown !== null && !inFile;
   // The canvas reads the card as open from the panel store, whose own toggles do nothing in the
   // shell (`rightPanel.ts`), so the pane's view writes it as the cards show; the composer strip's,
   // of the same thread, leaves it to the pane's.
   useLayoutEffect(() => {
-    if (target !== null && inlineOpen !== open) setThreadPanelInline(threadRef, open);
-  }, [target, inlineOpen, open, threadRef]);
-  const [content, setContent] = useState<HTMLElement | null>(null);
+    if (!inFile && target !== null && inlineOpen !== open) setThreadPanelInline(threadRef, open);
+  }, [inFile, target, inlineOpen, open, threadRef]);
   const [island, setIsland] = useState<HTMLElement | null>(null);
   const star = shown?.subject.kind === "star";
-  const measured = star ? island : content;
   const measureDetailsCard = canvas?.measureDetailsCard;
   const width = canvas?.preferredDetailsCard?.width;
   const { environmentId, threadId } = threadRef;
-  // Only the laid-out cards know their height, which the canvas keeps its lane and preview clear of.
+  // The panel occupies its column even when all of its shelves are in the tray.
+  const height = canvas?.preferredDetailsCard?.height;
   useLayoutEffect(() => {
-    if (measured === null || width === undefined || measureDetailsCard === undefined) return;
-    // A thread's card adds its border to its rows'.
-    const border = star ? 0 : 2;
-    const measure = () =>
-      measureDetailsCard({
-        threadRef: { environmentId, threadId },
-        width,
-        fullContentHeight: measured.offsetHeight + border,
-      });
-    measure();
-    return observeResize(measured, measure);
-  }, [measured, star, width, measureDetailsCard, environmentId, threadId]);
+    if (!open || width === undefined || height === undefined) return;
+    measureDetailsCard?.({
+      threadRef: { environmentId, threadId },
+      width,
+      fullContentHeight: height,
+    });
+  }, [open, width, height, measureDetailsCard, environmentId, threadId]);
   useLayoutEffect(() => {
     if (island === null || !star) return;
     return detailsCards.renderStar(island);
   }, [island, star, detailsCards]);
+  const rows =
+    shown === null || star ? null : (
+      <div
+        className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
+        onContextMenu={onContextMenu}
+        data-thread-details-card
+      >
+        <ScrollArea scrollFade className="min-h-0">
+          {children("full")}
+        </ScrollArea>
+      </div>
+    );
+  if (shown?.fileRows !== undefined) return rows && createPortal(rows, shown.fileRows);
   const placement = canvas?.detailsCardPlacement ?? null;
   // Where the canvas has no room for a card beside its lane, the cards do not show.
   if (shown === null || placement === null) return null;
   return (
-    <aside
-      className="absolute z-20 flex flex-col"
-      style={{
-        right: placement.right,
-        top: placement.y,
-        width: placement.width,
-        maxHeight: placement.height,
-      }}
-      data-thread-details-panel="inline"
-    >
-      <div className="flex min-h-0 flex-col overflow-y-auto">
-        {star ? (
-          // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
-          <div ref={setIsland} className="pult-details-island" />
-        ) : (
-          // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
-          <div
-            className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-            onContextMenu={onContextMenu}
-            data-thread-details-card
-          >
-            <ScrollArea scrollFade className="min-h-0">
-              <div ref={setContent}>{children("full")}</div>
-            </ScrollArea>
-          </div>
-        )}
-      </div>
-      <DetailsCardResizer width={placement.width} />
-    </aside>
+    <>
+      <aside
+        className="absolute z-22 flex flex-col"
+        style={{
+          right: placement.right,
+          top: placement.y,
+          width: placement.width,
+          // Above the tray, on the composer buttons' row.
+          maxHeight: `calc(${placement.height}px - var(--pult-bar-height))`,
+        }}
+        data-thread-details-panel="inline"
+      >
+        <div className="flex min-h-0 flex-col">
+          {star ? (
+            // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
+            <div ref={setIsland} className="pult-details-island pult-details-panel" />
+          ) : (
+            // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
+            rows
+          )}
+        </div>
+      </aside>
+      <DetailsCardResizer width={placement.width} right={placement.right + placement.width - 3} />
+      <DetailsTrayHost width={placement.width} />
+    </>
   );
 }

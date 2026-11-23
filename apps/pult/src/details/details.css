@@ -4,65 +4,125 @@
    upstream's card look from the view's tokens, which reach it as custom properties. */
 
 .pult-details-island {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   color: var(--foreground);
   font-family: var(--vscode-font-family);
   font-size: 13px;
   line-height: normal;
 }
 
-/* Upstream's `dropdown-glass` (apps/web/src/index.css), in the shell's one radius. */
-.pult-details-card {
+/* The left panel's box model (src/panel/panel.css), which the shared shelves are drawn for. */
+.pult-details-panel,
+.pult-details-panel *,
+.pult-details-panel *::before,
+.pult-details-panel *::after {
   box-sizing: border-box;
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
-  border-radius: var(--pult-radius);
-  background: color-mix(
-    in srgb,
-    var(--popover) 18%,
-    color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
-  );
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
 
-/* The panel's left edge, on the cards' left borders: invisible, dragging its width (`view/ThreadDetailsCard.tsx`). */
+/* A Star's panel: its shelves, scrolling inside. */
+.pult-details-panel {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pult-details-shelves {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* While a shelf is dragged, a place to drop it even with none open. */
+.pult-details-shelves-dropping {
+  min-height: 28px;
+}
+
+/* The rows of a shelf's content, with room to read. */
+.pult-details-shelf .pult-subagents-list,
+.pult-details-shelf .pult-schedules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pult-details-shelf .pult-subagent,
+.pult-details-shelf .pult-schedule {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.pult-details-shelf .pult-subagent {
+  gap: 8px;
+}
+
+.pult-details-shelf .pult-schedule {
+  gap: 3px;
+}
+
+/* The panel's tray, on the composer buttons' row, its right end on the panel's (`DetailsTray.tsx`). */
+.pult-details-tray {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: var(--pult-bar-height);
+}
+
+.pult-details-tray * {
+  box-sizing: border-box;
+}
+
+/* The first closed shelf sits at the right edge. */
+.pult-details-tray .pult-tray-shelves {
+  width: 100%;
+  flex-direction: row-reverse;
+}
+
+/* The full-height edge stays draggable. */
 .pult-details-resizer {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -3px;
-  z-index: 1;
+  z-index: 23;
   width: 6px;
-  cursor: ew-resize;
+  cursor: col-resize;
   touch-action: none;
   user-select: none;
 }
 
-/* A section with nothing to list is no card. */
-.pult-details-card:empty {
-  display: none;
+.pult-details-resizer:is(:hover, :active)::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  border-left: 1px solid var(--pult-composer-outline);
+  pointer-events: none;
 }
 
-/* A Star's state in words with its time, over the environment it is drawn on. */
-.pult-details-state {
+/* The workbench lays out the file, its status or composer, and this column side by side. */
+.pult-thread-view.pult-file-details {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 2px 4px;
-  font-size: 12px;
+  box-sizing: border-box;
+  padding: calc(var(--editor-group-tab-height, 35px) + 12px) 12px var(--pult-bar-height)
+    var(--pult-shelf-inset);
 }
 
-.pult-details-environment {
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
+.pult-file-details-rows {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.pult-details-card .pult-shelf-header {
-  height: 22px;
-  padding: 0 4px;
-  font-size: 11px;
+.pult-file-details > .pult-details-tray {
+  left: 0;
 }

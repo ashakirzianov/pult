@@ -65,7 +65,7 @@ import {
 } from "./drafts.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
-import { DetailsTarget } from "./ThreadDetailsCard.tsx";
+import { DetailsInFile, DetailsTarget } from "./ThreadDetailsCard.tsx";
 import { threadViewHost } from "./host.ts";
 
 /**
@@ -403,10 +403,11 @@ function makeRoot(mount: Mount, bar: HTMLElement, composerOnly: boolean, arrived
             <CustomSnoozeDialogHost />
             {/* Keyed: a view moved to a new element with its target unchanged mounts its content again, since a moved scroller forgets where it stood. */}
             <SidebarProvider key={again} defaultOpen={false}>
-              {/* The pane's view renders the details cards over its target; the composer strip's renders none. */}
-              <DetailsTarget value={composerOnly || target.kind === "none" ? null : target}>
-                <Outlet />
-              </DetailsTarget>
+              <DetailsInFile value={composerOnly}>
+                <DetailsTarget value={target.kind === "none" ? null : target}>
+                  <Outlet />
+                </DetailsTarget>
+              </DetailsInFile>
             </SidebarProvider>
             {/* Into the element the timeline's header places, which keeps it across the list's own remounts. */}
             {header === undefined ? null : createPortal(header.content, header.element)}
@@ -784,6 +785,28 @@ function mountView(
   element.classList.toggle("pult-composer-only", composerOnly);
   element.addEventListener("keydown", yieldSaveAsChord, true);
   element.addEventListener("keydown", stopHandledKey);
+  let scrolling: HTMLElement | undefined;
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const hideScrollbar = () => {
+    scrolling?.removeAttribute("data-pult-scrolling");
+    scrolling = undefined;
+  };
+  const onScroll = (event: Event) => {
+    const scroller = event.target;
+    if (
+      !(scroller instanceof HTMLElement) ||
+      !scroller.matches(".messages-timeline-scroll, .messages-timeline-row-frame.overflow-y-auto")
+    )
+      return;
+    if (scrolling !== scroller) {
+      hideScrollbar();
+      scrolling = scroller;
+      scrolling.setAttribute("data-pult-scrolling", "");
+    }
+    clearTimeout(idle);
+    idle = setTimeout(hideScrollbar, 650);
+  };
+  element.addEventListener("scroll", onScroll, true);
   view.enter(element, target, onPromoted, options);
   let disposed = false;
   return {
@@ -796,6 +819,9 @@ function mountView(
       disposed = true;
       element.removeEventListener("keydown", yieldSaveAsChord, true);
       element.removeEventListener("keydown", stopHandledKey);
+      element.removeEventListener("scroll", onScroll, true);
+      clearTimeout(idle);
+      hideScrollbar();
       view.leave();
       if (atRest[kind] === undefined) atRest[kind] = view;
       else view.discard();

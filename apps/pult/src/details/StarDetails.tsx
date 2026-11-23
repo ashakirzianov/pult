@@ -1,88 +1,102 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
+import { limitsStore } from "../limits/model.ts";
 import { useSyncExternalStore } from "react";
 
 import { askStore } from "../asks/model.ts";
-import { CollapsibleHeader, useExpanded } from "../panel/collapsible.tsx";
 import { keyOf } from "../panel/order.ts";
-import { type Activity, age, Elapsed, Status, Subagents } from "../panel/PanelView.tsx";
+import { type Activity, age, Status } from "../panel/PanelView.tsx";
 import { StarSchedules } from "../panel/StarSchedules.tsx";
-import { LOOK_WORDS, type StarLook } from "../stars/look.ts";
-import { starLookOf, starMarks } from "../stars/mark.ts";
-import { type CardRows, channelThreads, type Star } from "../stars/stars.ts";
+import { starLook } from "../stars/look.ts";
+import { lookStillUrl, starMarks } from "../stars/mark.ts";
+import { USER_CHANNEL } from "../stars/plugin.ts";
+import type { CardRows, Star } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
+import { hasUsageProviderIcon, UsageProviderIcon } from "../../view/usageProviders.tsx";
+import { detailsCards } from "./cards.ts";
+import { DetailsShelf, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
 }
 
 /**
- * A selected Star's details as cards (`pult/decisions`, `star-card`,
- * `view-right-panel`), one per collapsible section: its look in words with
- * its time, over the environment it is drawn on and `user`'s children; its
- * posted asks (`StarAsks`); its channels (`StarChannels`); its current
- * conversation's subagents, as a thread's card lists its own; then its
- * schedules (`StarSchedules.tsx`). A card is left out while its list is
- * empty (`details.css`).
+ * A selected Star's details (`pult/decisions`, `star-card`,
+ * `view-right-panel`): its shelves, in their order (`detailsShelves`), each
+ * closing into the tray and left out while it holds nothing: its posted asks
+ * (`StarAsks`), its channels with their threads (`StarChannels`) and its
+ * schedules (`StarSchedules.tsx`).
  */
 export function StarDetails({
   star,
-  environment,
   rows,
-  subagents,
+  subagentsOf,
+  threads,
   activities,
-  selection,
   now,
 }: {
   star: Star;
-  /** The name of the environment it is drawn on, if the page holds it. */
-  environment: string | undefined;
-  /** Its children and its channels' rows, as the page's threads have them (`cardRows`). */
+  /** Its channels' rows, as the page's threads have them (`cardRows`). */
   rows: CardRows<ShellThread>;
-  subagents: ReadonlyArray<ShellThread>;
+  /** The subagents under each conversation, by its key. */
+  subagentsOf: ReadonlyMap<string, ReadonlyArray<ShellThread>>;
+  /** The store's live rows, which a channel's look is read from. */
+  threads: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
-  selection: string | undefined;
   now: number;
 }) {
-  return (
-    <>
-      <section className="pult-details-card">
-        <div className="pult-details-state">
-          <StarStatus star={star} now={now} />
-          {environment === undefined ? null : (
-            <span className="pult-details-environment">on {environment}</span>
-          )}
-        </div>
-        {rows.children.length > 0 ? (
-          <ul className="pult-subagents-list" aria-label="Children">
-            <Children starId={star.id} threads={rows.children} activities={activities} now={now} />
-          </ul>
-        ) : null}
-      </section>
-      <section className="pult-details-card">
-        <StarAsks star={star} now={now} />
-      </section>
-      <section className="pult-details-card">
-        <StarChannels starId={star.id} rows={rows} activities={activities} now={now} />
-      </section>
-      {subagents.length > 0 ? (
-        <section className="pult-details-card">
-          <Subagents
-            subagents={subagents}
+  const { open } = useSyncExternalStore(
+    detailsShelves.shelfOrder.subscribe,
+    detailsShelves.shelfOrder.get,
+  );
+  const dragging =
+    useSyncExternalStore(detailsShelves.shelfDrag.subscribe, detailsShelves.shelfDrag.get) !== null;
+  const shelf = (name: DetailsShelfName): React.ReactNode => {
+    switch (name) {
+      case "asks":
+        return <StarAsks key={name} star={star} now={now} />;
+      case "channels":
+        return (
+          <StarChannels
+            key={name}
+            star={star}
+            rows={rows}
+            subagentsOf={subagentsOf}
+            threads={threads}
             activities={activities}
-            selection={selection}
             now={now}
           />
-        </section>
-      ) : null}
-      <section className="pult-details-card">
-        <StarSchedules star={star} now={now} />
-      </section>
-    </>
+        );
+      case "schedules":
+        return <StarSchedules key={name} star={star} now={now} />;
+    }
+  };
+  return (
+    <ul
+      className={`pult-details-shelves${dragging ? " pult-details-shelves-dropping" : ""}`}
+      {...detailsShelves.shelfDropHandlers("open")}
+    >
+      {open.map(shelf)}
+      <detailsShelves.ShelfDropLine place="open" />
+    </ul>
   );
 }
 
-/** A Star's children's rows, in the subagents' look, its title and its status, a click opening it as a thread's tab among the Star's (`pult-shell.openStarChild`). */
-function Children({
+/** A thread's icon under its channel: its provider's logo, the generic agent's for a provider the page has no logo of. */
+function ThreadIcon({ thread }: { thread: ShellThread }) {
+  const driver = useSyncExternalStore(limitsStore.subscribe, () =>
+    limitsStore.providerDriver(thread.environmentId, thread.providerInstanceId),
+  );
+  return driver !== undefined && hasUsageProviderIcon(driver) ? (
+    <span className="pult-thread-provider" aria-hidden>
+      <UsageProviderIcon driver={driver} />
+    </span>
+  ) : (
+    <i className="codicon codicon-hubot" aria-hidden />
+  );
+}
+
+/** The threads under a channel, the ones it launched and its conversation's subagents, each opening as a thread's tab among the Star's (`pult-shell.openStarChild`). */
+function ChannelThreads({
   starId,
   threads,
   activities,
@@ -101,7 +115,7 @@ function Children({
         title={child.title}
         onClick={() => run("pult-shell.openStarChild", starId, child.environmentId, child.id)}
       >
-        <i className="codicon codicon-hubot" aria-hidden />
+        <ThreadIcon thread={child} />
         <span className="pult-subagent-title">{child.title}</span>
         <Status thread={child} activity={activities.get(keyOf(child)) ?? null} now={now} />
       </button>
@@ -109,175 +123,152 @@ function Children({
   ));
 }
 
-/**
- * A Star's posted asks, across its environments, under a collapsible "Asks"
- * with their count, open until closed: a row each in the subagents' look,
- * its title and its age, opening it as its Inbox row does
- * (`pult-shell.openAsk`). Hidden with none.
- */
-function StarAsks({ star, now }: { star: Star; now: number }) {
-  const [expanded, setExpanded] = useExpanded("pult-shell.details.asks-expanded", true);
-  const asks = useSyncExternalStore(askStore.subscribe, askStore.get).filter(
-    (ask) => ask.status === "posted" && "star" in ask.poster && ask.poster.star === star.id,
-  );
-  if (asks.length === 0) return null;
-  return (
-    <div>
-      <CollapsibleHeader
-        label="Asks"
-        count={asks.length}
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-      />
-      {expanded ? (
-        <ul className="pult-subagents-list" aria-label="Asks">
-          {asks.map((ask) => (
-            <li key={`${ask.environmentId}:${ask.id}`}>
-              <button
-                type="button"
-                className="pult-subagent"
-                title={ask.title}
-                onClick={() => run("pult-shell.openAsk", ask.environmentId, ask.id)}
-              >
-                <i className="codicon codicon-comment-unresolved" aria-hidden />
-                <span className="pult-subagent-title">{ask.title}</span>
-                <span className="pult-card-status">{age(ask.posted, now)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
+/** A Star's posted asks, across its environments. */
+export function starAsks<Ask extends { status: string; poster: object }>(
+  asks: ReadonlyArray<Ask>,
+  starId: string,
+): Ask[] {
+  return asks.filter(
+    (ask) => ask.status === "posted" && "star" in ask.poster && ask.poster.star === starId,
   );
 }
 
 /**
- * A selected Star's channels: a collapsible "Channels" with their count,
- * collapsed until opened and remembered per Star, its header reading
- * Waiting while a thread in it waits, else Working with the longest elapsed
- * time while one works; open, a row per channel but `user`, labelled by its
- * slug, each over its own children (`cardRows`), every row in the
- * subagents' look, its status Working with its elapsed time, Waiting, or
- * the time since its last turn. A click on an open channel's row opens its
- * conversation as a thread's tab among the Star's
- * (`pult-shell.openStarChannel`); a sleeping channel's row, there while a
- * child of it is unsettled, reads Asleep and opens nothing. Hidden with none.
+ * A Star's posted asks on their shelf: a row each in the subagents' look, its
+ * title and its age, opening it as its Inbox row does (`pult-shell.openAsk`).
+ * Hidden with none.
+ */
+function StarAsks({ star, now }: { star: Star; now: number }) {
+  const asks = starAsks(useSyncExternalStore(askStore.subscribe, askStore.get), star.id);
+  if (asks.length === 0) return null;
+  return (
+    <DetailsShelf name="asks">
+      <ul className="pult-subagents-list" aria-label="Asks">
+        {asks.map((ask) => (
+          <li key={`${ask.environmentId}:${ask.id}`}>
+            <button
+              type="button"
+              className="pult-subagent"
+              title={ask.title}
+              onClick={() => run("pult-shell.openAsk", ask.environmentId, ask.id)}
+            >
+              <i className="codicon codicon-comment-unresolved" aria-hidden />
+              <span className="pult-subagent-title">{ask.title}</span>
+              <span className="pult-card-status">{age(ask.posted, now)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </DetailsShelf>
+  );
+}
+
+/** A channel's row's icon: the Star's mark, still, in the look its conversation alone would give the Star, asleep without one. */
+function ChannelMark({
+  star,
+  thread,
+  threads,
+}: {
+  star: Star;
+  thread: ShellThread | null;
+  threads: ReadonlyArray<ShellThread>;
+}) {
+  const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
+  const look = thread === null ? "asleep" : starLook({ channels: [{ thread }] }, threads);
+  return (
+    <img
+      className="pult-channel-mark"
+      src={lookStillUrl(star.tint, look, marks)}
+      alt=""
+      draggable={false}
+    />
+  );
+}
+
+/**
+ * A selected Star's channels on their shelf, `user` first: a row each, the
+ * Star's mark in that channel's look, its slug and its status, Working with
+ * its elapsed time, Waiting, the time since its last turn, or Asleep, over
+ * the threads it launched and its conversation's subagents (`ChannelThreads`).
+ * `user`'s row selects the Star, whose tab is that channel's, awake or asleep;
+ * another open channel's opens its conversation as a thread's tab among the
+ * Star's (`pult-shell.openStarChannel`); an asleep channel opens its draft.
  */
 function StarChannels({
-  starId,
+  star,
   rows,
+  subagentsOf,
+  threads,
   activities,
   now,
 }: {
-  starId: string;
+  star: Star;
   rows: CardRows<ShellThread>;
+  subagentsOf: ReadonlyMap<string, ReadonlyArray<ShellThread>>;
+  threads: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
   now: number;
 }) {
-  const [expanded, setExpanded] = useExpanded(`pult-shell.panel.channels-expanded:${starId}`);
-  if (rows.channels.length === 0) return null;
+  const starId = star.id;
+  const subject = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.subject;
+  const selected = subject?.kind === "star" ? subject.channel : null;
   return (
-    <div className="pult-card-channels">
-      <CollapsibleHeader
-        label="Channels"
-        count={rows.channels.length}
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-        status={<ChannelsStatus threads={channelThreads(rows)} activities={activities} />}
-      />
-      {expanded ? (
-        <ul className="pult-subagents-list" aria-label="Channels">
-          {rows.channels.map(({ slug, thread, children: below }) => (
-            <li key={`channel:${slug}`}>
+    <DetailsShelf name="channels">
+      <ul className="pult-subagents-list" aria-label="Channels">
+        {rows.channels.map(({ slug, thread, children }) => {
+          const below = [
+            ...children,
+            ...(thread === null ? [] : (subagentsOf.get(keyOf(thread)) ?? [])),
+          ];
+          const content = (
+            <>
+              <ChannelMark star={star} thread={thread} threads={threads} />
+              <span className="pult-subagent-title">{slug}</span>
               {thread === null ? (
-                <div
-                  className="pult-subagent pult-subagent-asleep"
-                  title={`Channel ${slug}, asleep`}
-                >
-                  <i className="codicon codicon-comment-discussion" aria-hidden />
-                  <span className="pult-subagent-title">{slug}</span>
-                  <span className="pult-card-status pult-star-asleep">Asleep</span>
-                </div>
+                <span className="pult-card-status pult-star-asleep">Asleep</span>
               ) : (
-                <button
-                  type="button"
-                  className="pult-subagent"
-                  title={`Channel ${slug}`}
-                  onClick={() => run("pult-shell.openStarChannel", starId, slug)}
-                >
-                  <i className="codicon codicon-comment-discussion" aria-hidden />
-                  <span className="pult-subagent-title">{slug}</span>
-                  <Status
-                    thread={thread}
-                    activity={activities.get(keyOf(thread)) ?? null}
-                    now={now}
-                  />
-                </button>
+                <Status
+                  thread={thread}
+                  activity={activities.get(keyOf(thread)) ?? null}
+                  now={now}
+                />
               )}
+            </>
+          );
+          const open =
+            slug === USER_CHANNEL
+              ? () => run("pult-shell.selectStar", starId)
+              : () => run("pult-shell.openStarChannel", starId, slug);
+          return (
+            <li key={`channel:${slug}`}>
+              <button
+                type="button"
+                aria-current={slug === selected ? "true" : undefined}
+                className={
+                  slug === selected ? "pult-subagent pult-subagent-selected" : "pult-subagent"
+                }
+                title={`Channel ${slug}`}
+                onClick={open}
+              >
+                {content}
+              </button>
               {below.length > 0 ? (
                 <ul
                   className="pult-subagents-list pult-card-children"
-                  aria-label={`Children of ${slug}`}
+                  aria-label={`Threads of ${slug}`}
                 >
-                  <Children starId={starId} threads={below} activities={activities} now={now} />
+                  <ChannelThreads
+                    starId={starId}
+                    threads={below}
+                    activities={activities}
+                    now={now}
+                  />
                 </ul>
               ) : null}
             </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-/** The Channels header's status: Waiting while a thread in it waits, else Working with the longest elapsed time while one works, else none. */
-function ChannelsStatus({
-  threads,
-  activities,
-}: {
-  threads: ReadonlyArray<ShellThread>;
-  activities: Map<string, Activity>;
-}) {
-  const activity = (thread: ShellThread) => activities.get(keyOf(thread)) ?? null;
-  if (threads.some((thread) => activity(thread) === "waiting"))
-    return <span className="pult-card-status pult-card-status-waiting">Waiting</span>;
-  const working = threads.filter((thread) => activity(thread) === "working");
-  if (working.length === 0) return null;
-  // The longest elapsed time is the earliest start.
-  const since = working
-    .flatMap(({ workingSince }) => (workingSince === null ? [] : [workingSince]))
-    .toSorted((a, b) => Date.parse(a) - Date.parse(b))[0];
-  return (
-    <span className="pult-card-status pult-card-status-working">
-      Working{since === undefined ? null : <Elapsed since={since} />}
-    </span>
-  );
-}
-
-/** The look's colour on the state line. */
-const LOOK_CLASSES: Readonly<Record<StarLook, string>> = {
-  troubled: "pult-card-status-failed",
-  waiting: "pult-card-status-waiting",
-  working: "pult-card-status-working",
-  awake: "pult-star-awake",
-  asleep: "pult-star-asleep",
-};
-
-/** The Star's state line in its details: its look in words (`LOOK_WORDS`), Working with the longest elapsed time of its working conversations, Asleep with how long `user` has slept. */
-function StarStatus({ star, now }: { star: Star; now: number }) {
-  const look = starLookOf(star, useSyncExternalStore(starMarks.subscribe, starMarks.get));
-  // The longest elapsed time is the earliest start.
-  const since = star.channels
-    .flatMap(({ thread }) =>
-      thread.working && thread.workingSince !== null ? [thread.workingSince] : [],
-    )
-    .toSorted((a, b) => Date.parse(a) - Date.parse(b))[0];
-  const asleepFor = age(star.asleepSince, now);
-  return (
-    <span className={`pult-card-status ${LOOK_CLASSES[look]}`}>
-      {LOOK_WORDS[look]}
-      {look === "working" && since !== undefined ? <Elapsed since={since} /> : null}
-      {look === "asleep" && asleepFor !== "" ? ` · ${asleepFor}` : null}
-    </span>
+          );
+        })}
+      </ul>
+    </DetailsShelf>
   );
 }

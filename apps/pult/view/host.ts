@@ -113,14 +113,21 @@ export interface ThreadViewHost {
 /** A thread view's target, as the details cards name it: a thread, or a project's draft. */
 export type DetailsCardsTarget =
   | { readonly kind: "thread"; readonly environmentId: string; readonly threadId: string }
-  | { readonly kind: "draft"; readonly environmentId: string; readonly projectId: string };
+  | {
+      readonly kind: "draft";
+      readonly environmentId: string;
+      readonly projectId: string;
+      readonly tags?: ReadonlyArray<string>;
+    };
 
 /** The details cards while they show: the view they float over, and what they show. */
 export interface DetailsCards {
   /** The active editor's thread view's target: a thread's, a draft's, a Star's conversation or draft, a Star's channel's or child's. */
   readonly view: DetailsCardsTarget;
+  /** Beside a file, the grid cell that hosts the selected thread's rows. */
+  readonly fileRows?: HTMLElement;
   /** The selected thread's or draft's details, upstream's rows, or the selected Star's, which the shell renders (`renderStar`). */
-  readonly subject: DetailsCardsTarget | { readonly kind: "star" };
+  readonly subject: DetailsCardsTarget | { readonly kind: "star"; readonly channel: string | null };
 }
 
 /** The details cards live, and the shell's renderer of a Star's. */
@@ -129,6 +136,8 @@ export interface DetailsCardsValue {
   subscribe(listener: () => void): () => void;
   /** Renders the selected Star's cards into `element`, an element of the view's the shell owns from then on; returns their removal. */
   renderStar(element: HTMLElement): () => void;
+  /** Renders the right panel's tray into `element`, on the composer buttons' row; returns its removal. */
+  renderTray(element: HTMLElement): () => void;
 }
 
 /**

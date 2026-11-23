@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from "react";
 
 import { selectionSnapshot } from "../panel/jump.ts";
-import { keyOf } from "../panel/order.ts";
 import { subagentsByRoot, threadActivities, useMinuteClock } from "../panel/PanelView.tsx";
 import { starStore } from "../stars/model.ts";
-import { cardRows, drawnHome, type Star } from "../stars/stars.ts";
+import { cardRows, type Star } from "../stars/stars.ts";
 import {
   explorerSelected,
   onDidSelectThread,
@@ -60,36 +59,33 @@ export function detailsSubject(): Subject {
   return { kind: "thread", thread };
 }
 
-/**
- * The selected Star's details cards (`StarDetails.tsx`), from the same rows
- * its card held, rendered by the shell into the element the thread view
- * floats them in (`index.tsx`); nothing while the selection is no Star.
- */
-export function StarCards() {
-  const { threads, environments } = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
+/** What the selected Star's details and tray draw from, the same rows its card held; null while the selection is no Star. */
+export function useStarDetails() {
+  const { threads } = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   useSyncExternalStore(starStore.subscribe, starStore.get);
   const now = useMinuteClock();
-  const selection = useSyncExternalStore(onDidSelectThread, selectionSnapshot);
+  // Read through `detailsSubject`, which a change of selection changes.
+  useSyncExternalStore(onDidSelectThread, selectionSnapshot);
   const subject = detailsSubject();
   if (subject.kind !== "star") return null;
   const { star } = subject;
   const activities = threadActivities(threads);
-  const conversation = star.current === null ? undefined : keyOf(star.current);
-  const subagents =
-    conversation === undefined
-      ? []
-      : (subagentsByRoot(threads, activities).get(conversation) ?? []);
-  const environmentId = drawnHome(star)?.environmentId;
-  return (
-    <StarDetails
-      key={star.id}
-      star={star}
-      environment={environments.find((environment) => environment.id === environmentId)?.name}
-      rows={cardRows(star, threads)}
-      subagents={subagents}
-      activities={activities}
-      selection={selection}
-      now={now}
-    />
-  );
+  return {
+    star,
+    rows: cardRows(star, threads),
+    subagentsOf: subagentsByRoot(threads, activities),
+    threads,
+    activities,
+    now,
+  };
+}
+
+/**
+ * The selected Star's details (`StarDetails.tsx`), rendered by the shell into
+ * the element the thread view floats them in (`index.tsx`); nothing while the
+ * selection is no Star.
+ */
+export function StarCards() {
+  const details = useStarDetails();
+  return details === null ? null : <StarDetails key={details.star.id} {...details} />;
 }
