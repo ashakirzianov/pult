@@ -31,6 +31,7 @@ import {
   type ThreadPreviewSessions,
 } from "./preview.ts";
 import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./PreviewMount.tsx";
+import { mountReaderSelection } from "./ReaderSelection.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
 import { toggleTerminal } from "./terminal.ts";
 import {
@@ -92,6 +93,8 @@ export interface ThreadViewMounts {
    * `tabId` a placeholder for a new one (`PreviewMount.tsx`), for the shell's
    * preview tab; the host's `openPreview` names what to mount.
    */
+  /** The thread's selection action on a reader's page (`ReaderSelection.tsx`). */
+  mountReaderSelection: typeof mountReaderSelection;
   /** The chat's line wrap for code, which the reader's code follows. */
   codeWrap(): boolean;
   /** Calls `listener` when `codeWrap` changes; returns its removal. */
@@ -175,6 +178,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     draftCreates: (draftEnvironmentId, projectId, environmentId, threadId) =>
       isPromotion({ environmentId: draftEnvironmentId, projectId }, environmentId, threadId),
     mountPreview,
+    mountReaderSelection,
     codeWrap: () => getClientSettings().wordWrap,
     onDidChangeCodeWrap: (listener) => {
       let wrap = getClientSettings().wordWrap;

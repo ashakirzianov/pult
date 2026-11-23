@@ -44,6 +44,8 @@ export interface Passage {
   readonly startLine: number;
   readonly endLine: number;
   readonly text: string;
+  /** What the citation's comment starts with: the key typed on the selection ("Type to cite"). */
+  readonly comment?: string;
 }
 
 /**
@@ -58,7 +60,7 @@ export function citePassage(target: ComposerTarget, passage: Passage): boolean {
       filePath: passage.path,
       startLine: passage.startLine,
       endLine: passage.endLine,
-      text: "",
+      text: passage.comment ?? "",
       contents: "",
     }),
     sectionTitle: "Preview selection",

@@ -40,11 +40,62 @@ export function isSelectionRectVisible(rect: SelectionRect, clips: readonly Sele
 }
 
 /**
+ * Whether any selected text shows inside `viewport`, whose box is `viewportRect`, past every
+ * clipping ancestor. Pult: here so the shell's reader tells the same, in a frame's document.
+ */
+export function isSelectionTextVisible(
+  range: Range,
+  viewport: HTMLElement,
+  viewportRect: SelectionRect,
+): boolean {
+  const owner = viewport.ownerDocument;
+  const styleOf = (element: Element) => owner.defaultView!.getComputedStyle(element);
+  // A selection can cross blocks with different clipping ancestors.
+  const common = range.commonAncestorContainer;
+  const walker = owner.createTreeWalker(common, NodeFilter.SHOW_TEXT);
+  let node = common.nodeType === Node.TEXT_NODE ? common : walker.nextNode();
+  for (; node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node)) continue;
+    if (node.parentElement && styleOf(node.parentElement).userSelect === "none") continue;
+    const fragment = owner.createRange();
+    fragment.selectNodeContents(node);
+    if (node === range.startContainer) fragment.setStart(node, range.startOffset);
+    if (node === range.endContainer) fragment.setEnd(node, range.endOffset);
+    if (!fragment.toString().trim()) continue;
+    const lines = Array.from(fragment.getClientRects());
+    if (!lines.some((line) => isSelectionRectVisible(line, [viewportRect]))) continue;
+    const clips: SelectionRect[] = [viewportRect];
+    for (
+      let element = node.parentElement;
+      element && element !== viewport;
+      element = element.parentElement
+    ) {
+      const style = styleOf(element);
+      const clipX = style.overflowX !== "visible";
+      const clipY = style.overflowY !== "visible";
+      if (!clipX && !clipY) continue;
+      const bounds = element.getBoundingClientRect();
+      const left = bounds.left + element.clientLeft;
+      const top = bounds.top + element.clientTop;
+      clips.push({
+        left: clipX ? left : -Infinity,
+        right: clipX ? left + element.clientWidth : Infinity,
+        top: clipY ? top : -Infinity,
+        bottom: clipY ? top + element.clientHeight : Infinity,
+      });
+    }
+    if (lines.some((line) => isSelectionRectVisible(line, clips))) return true;
+  }
+  return false;
+}
+
+/**
  * Interactive popovers pass getActionElement to keep editing their fields from replacing the
  * captured source selection.
  */
 export function observeSelectionActions({
   element,
+  scrollTarget = element,
   getActionElement,
   restoreAfterScroll = false,
   immediateMultiClick = false,
@@ -52,6 +103,8 @@ export function observeSelectionActions({
   onDismiss,
 }: {
   element: HTMLElement;
+  /** Pult: where its scrolling is heard when that is not `element`: a reader frame's document. */
+  scrollTarget?: EventTarget;
   getActionElement?: () => HTMLElement | null;
   restoreAfterScroll?: boolean;
   /**
@@ -77,8 +130,8 @@ export function observeSelectionActions({
     target !== null && (getActionElement?.()?.contains(target as Node) ?? false);
 
   const cancelPending = () => {
-    if (timer !== null) view.clearTimeout(timer);
-    if (frame !== null) view.cancelAnimationFrame(frame);
+    if (timer !== null) window.clearTimeout(timer);
+    if (frame !== null) window.cancelAnimationFrame(frame);
     timer = frame = null;
   };
   const cancel = () => {
@@ -99,9 +152,10 @@ export function observeSelectionActions({
   const schedule = (delay: number) => {
     restorable = true;
     cancelPending();
-    timer = view.setTimeout(() => {
+    // Pult: the page's timers, since a reader's sandboxed frame runs none of its own.
+    timer = window.setTimeout(() => {
       timer = null;
-      frame = view.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
         frame = null;
         onSelection(pointer);
       });
@@ -177,7 +231,7 @@ export function observeSelectionActions({
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("focusin", onFocusIn);
   element.addEventListener("contextmenu", onContextMenu, true);
-  element.addEventListener("scroll", onScroll, true);
+  scrollTarget.addEventListener("scroll", onScroll, true);
   view.addEventListener("blur", dismiss);
   view.addEventListener("resize", dismiss);
 
@@ -204,7 +258,7 @@ export function observeSelectionActions({
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("focusin", onFocusIn);
       element.removeEventListener("contextmenu", onContextMenu, true);
-      element.removeEventListener("scroll", onScroll, true);
+      scrollTarget.removeEventListener("scroll", onScroll, true);
       view.removeEventListener("blur", dismiss);
       view.removeEventListener("resize", dismiss);
     },

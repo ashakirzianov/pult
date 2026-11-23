@@ -65,6 +65,19 @@ it("keeps focus in a region with its own keys on window return", async () => {
   );
 });
 
+it("leaves the keyboard on a selection's cite action on window return", () => {
+  const action = document.createElement("button");
+  action.dataset.assistantSelectionToolbar = "";
+  document.body.append(action);
+  using _action = { [Symbol.dispose]: () => action.remove() };
+
+  action.focus();
+  expect(document.activeElement).toBe(action);
+  expect(shouldRefocusComposerOnWindowFocus(document.activeElement, document.getSelection())).toBe(
+    false,
+  );
+});
+
 it("refocuses the composer on window return from a clicked area after a bare key press", async () => {
   const controller = createWorkspaceFocusController(document);
   const root = document.createElement("div");

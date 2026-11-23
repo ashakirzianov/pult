@@ -107,8 +107,12 @@ export function registerCiteCommand(): void {
         });
       }
 
-      /** `captured`: the reader's context menu's capture (`src/reader/pane.ts`). */
-      async run(accessor: Parameters<Action2["run"]>[0], captured?: unknown): Promise<void> {
+      /** `captured`: the capture of the reader's context menu or selection action, and `comment` the key typed on it (`src/reader/pane.ts`). */
+      async run(
+        accessor: Parameters<Action2["run"]>[0],
+        captured?: unknown,
+        comment?: string,
+      ): Promise<void> {
         const editors = accessor.get(ICodeEditorService);
         const editorPanes = accessor.get(IEditorService);
         // The view's module first, so what is cited is read and written with no wait between.
@@ -134,6 +138,7 @@ export function registerCiteCommand(): void {
             startLine: passage.startLine,
             endLine: passage.endLine,
             text: passage.text,
+            ...(comment === undefined ? {} : { comment }),
           });
           if (!cited)
             return void (await notify("The composer is not ready yet. Try again in a moment."));

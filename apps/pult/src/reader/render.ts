@@ -209,6 +209,8 @@ function boxOf(text: Text, from: number, to: number): DOMRect {
 export function createReaderFrame(options?: {
   /** Each document the frame loads, guarded already, for the reader's own listeners on it. */
   readonly onDocument?: (doc: Document) => void;
+  /** Each render into the frame's document, whose root it replaces. */
+  readonly onRendered?: (doc: Document) => void;
 }): ReaderFrame {
   const element = document.createElement("iframe");
   element.className = "pult-reader-frame";
@@ -219,6 +221,8 @@ export function createReaderFrame(options?: {
   let loading: Array<(doc: Document) => void> = [];
   let latest = 0;
   let last: { source: string; markdown: boolean; wrapCode: boolean } | undefined;
+  // Renders still parsing, not yet in a document.
+  let rendering = 0;
   // Where the reader is in the page, kept across the document's reloads.
   let position = { top: 0, left: 0 };
   let shown: Document | undefined;
@@ -272,7 +276,9 @@ export function createReaderFrame(options?: {
     const waiting = loading;
     loading = [];
     for (const resolve of waiting) resolve(doc);
-    if (waiting.length === 0 && last !== undefined) void frame.show(last.source, last);
+    // A render under way lands in this document, and whoever asked for it is told so.
+    if (waiting.length === 0 && rendering === 0 && last !== undefined)
+      void frame.show(last.source, last);
   });
 
   /** The frame's document once loaded, waited for while the browser loads it (again). */
@@ -284,6 +290,7 @@ export function createReaderFrame(options?: {
   // Its base URL would be the shell's: its own makes a fragment the page's, and no other relative URL resolves.
   element.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}"><base href="about:srcdoc">`;
 
+  const frameOptions = options;
   const frame: ReaderFrame = {
     element,
     async show(source, options) {
@@ -291,10 +298,17 @@ export function createReaderFrame(options?: {
       const markdown = options?.markdown === true;
       const wrapCode = options?.wrapCode === true;
       last = { source, markdown, wrapCode };
-      const tree = markdown
-        ? await markdownTree(source, element, wrapCode)
-        : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
-      const doc = await frameDocument();
+      rendering++;
+      let tree: DefaultTreeAdapterTypes.Document;
+      let doc: Document;
+      try {
+        tree = markdown
+          ? await markdownTree(source, element, wrapCode)
+          : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
+        doc = await frameDocument();
+      } finally {
+        rendering--;
+      }
       if (revision !== latest) return undefined;
       const origin = (markdown ? markdownOrigins : htmlOrigins)(source);
       const built: Built = { scripts: false, origins, origin };
@@ -319,6 +333,7 @@ export function createReaderFrame(options?: {
       doc.replaceChild(root, doc.documentElement);
       doc.scrollingElement?.scrollTo(left, top);
       if (revealing !== undefined) revealShown();
+      frameOptions?.onRendered?.(doc);
       return built;
     },
     selection() {

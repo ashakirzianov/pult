@@ -6,7 +6,15 @@ import {
 } from "@t3tools/contracts";
 import { useGT } from "gt-react";
 import { QuoteIcon } from "lucide-react";
-import { use, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  use,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   captureAssistantTextSelection,
@@ -14,6 +22,7 @@ import {
 } from "~/lib/assistantTextSelection";
 import {
   isSelectionRectVisible,
+  isSelectionTextVisible,
   observeSelectionActions,
   resolveSelectionActionPosition,
   type SelectionActionPoint,
@@ -38,16 +47,6 @@ export function AssistantSelectionToolbar({
   const toolbarRef = useRef<HTMLButtonElement>(null);
   const actionsRef = useRef<ReturnType<typeof observeSelectionActions> | null>(null);
   const backgroundThread = use(BackgroundThreadContext);
-  const gt = useGT();
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the toolbar DOM node and clamps its position inside the window before paint
-  useLayoutEffect(() => {
-    const toolbar = toolbarRef.current;
-    if (!toolbar || !selection) return;
-    const rect = toolbar.getBoundingClientRect();
-    toolbar.style.left = `${Math.max(8, Math.min(selection.position.x, window.innerWidth - rect.width - 8))}px`;
-    toolbar.style.top = `${Math.max(8, Math.min(selection.position.y, window.innerHeight - rect.height - 8))}px`;
-  }, [selection]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to document selectionchange and keydown to track text selections in the viewport
   useEffect(() => {
@@ -67,49 +66,7 @@ export function AssistantSelectionToolbar({
         clear();
         return;
       }
-      // A selection can cross blocks with different clipping ancestors.
-      const common = captured.range.commonAncestorContainer;
-      const walker = document.createTreeWalker(common, NodeFilter.SHOW_TEXT);
-      let node = common.nodeType === Node.TEXT_NODE ? common : walker.nextNode();
-      let visible = false;
-      for (; node && !visible; node = walker.nextNode()) {
-        if (!captured.range.intersectsNode(node)) continue;
-        if (node.parentElement && getComputedStyle(node.parentElement).userSelect === "none")
-          continue;
-        const fragment = document.createRange();
-        fragment.selectNodeContents(node);
-        if (node === captured.range.startContainer) {
-          fragment.setStart(node, captured.range.startOffset);
-        }
-        if (node === captured.range.endContainer) {
-          fragment.setEnd(node, captured.range.endOffset);
-        }
-        if (!fragment.toString().trim()) continue;
-        const lines = Array.from(fragment.getClientRects());
-        if (!lines.some((line) => isSelectionRectVisible(line, [viewportRect]))) continue;
-        const clips: Pick<DOMRect, "left" | "right" | "top" | "bottom">[] = [viewportRect];
-        for (
-          let element = node.parentElement;
-          element && element !== viewport;
-          element = element.parentElement
-        ) {
-          const style = getComputedStyle(element);
-          const clipX = style.overflowX !== "visible";
-          const clipY = style.overflowY !== "visible";
-          if (!clipX && !clipY) continue;
-          const bounds = element.getBoundingClientRect();
-          const left = bounds.left + element.clientLeft;
-          const top = bounds.top + element.clientTop;
-          clips.push({
-            left: clipX ? left : -Infinity,
-            right: clipX ? left + element.clientWidth : Infinity,
-            top: clipY ? top : -Infinity,
-            bottom: clipY ? top + element.clientHeight : Infinity,
-          });
-        }
-        visible = lines.some((line) => isSelectionRectVisible(line, clips));
-      }
-      if (!visible) {
+      if (!isSelectionTextVisible(captured.range, viewport, viewportRect)) {
         clear();
         return;
       }
@@ -196,17 +153,7 @@ export function AssistantSelectionToolbar({
   };
   // Pult: typing while the toolbar shows cites the selection ("Type to cite").
   const citeTyped = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      event.defaultPrevented ||
-      event.isComposing ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.key.length !== 1 ||
-      event.key.trim() === ""
-    ) {
-      return;
-    }
+    if (!isCitationKey(event)) return;
     const active = document.activeElement;
     if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
     const anchor = window.getSelection()?.anchorNode ?? null;
@@ -228,9 +175,62 @@ export function AssistantSelectionToolbar({
   }, [backgroundThread, shown]);
 
   if (!selection) return null;
+  return (
+    <SelectionCiteButton
+      buttonRef={toolbarRef}
+      position={selection.position}
+      tooLong={tooLong}
+      onCite={() => cite()}
+      onDismiss={dismiss}
+    />
+  );
+}
+
+/** Pult: a key that starts a citation's comment: one printable character with no chord. */
+export function isCitationKey(event: KeyboardEvent): boolean {
+  return (
+    !event.defaultPrevented &&
+    !event.isComposing &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    event.key.length === 1 &&
+    event.key.trim() !== ""
+  );
+}
+
+/**
+ * The action on a selection, "Type to cite", at `position` in the window.
+ * Pult: apart from the toolbar so the shell's reader shows the same one
+ * (`apps/pult/view/ReaderSelection.tsx`).
+ */
+export function SelectionCiteButton({
+  buttonRef,
+  position,
+  tooLong,
+  onCite,
+  onDismiss,
+}: {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  position: SelectionActionPoint;
+  tooLong: boolean;
+  onCite: () => void;
+  onDismiss: () => void;
+}) {
+  const gt = useGT();
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the toolbar DOM node and clamps its position inside the window before paint
+  useLayoutEffect(() => {
+    const toolbar = buttonRef.current;
+    if (!toolbar) return;
+    const rect = toolbar.getBoundingClientRect();
+    toolbar.style.left = `${Math.max(8, Math.min(position.x, window.innerWidth - rect.width - 8))}px`;
+    toolbar.style.top = `${Math.max(8, Math.min(position.y, window.innerHeight - rect.height - 8))}px`;
+  }, [buttonRef, position]);
+
   return createPortal(
     <Button
-      ref={toolbarRef}
+      ref={buttonRef}
       type="button"
       size="xs"
       variant="glass"
@@ -238,14 +238,16 @@ export function AssistantSelectionToolbar({
       aria-label={tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")}
       data-assistant-selection-toolbar=""
       className="fixed z-50 max-w-[calc(100vw-1rem)]"
-      style={{ left: selection.position.x, top: selection.position.y }}
+      style={{ left: position.x, top: position.y }}
       onPointerDown={(event) => event.preventDefault()}
-      onClick={() => cite()}
+      // Pult: a click leaves the keyboard where it is, in a reader's frame too, whose blur would dismiss this.
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onCite}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Escape" && !event.nativeEvent.isComposing) {
           event.preventDefault();
-          dismiss();
+          onDismiss();
         }
       }}
     >

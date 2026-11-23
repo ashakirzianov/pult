@@ -1167,9 +1167,10 @@ export function shouldRefocusComposerOnWindowFocus(
   ) {
     return false;
   }
+  // Pult: Tab from a reader's frame moves the keyboard to its selection action, which is a window focus here.
   return (
     activeElement.closest(
-      '[data-workspace-keyboard-focus], [data-sidebar-row]:focus-visible, [role="dialog"], [role="alertdialog"], [role="application"], [role="menu"], [role="listbox"], [data-slot$="-popup"], [data-terminal-owner], [aria-keyshortcuts]',
+      '[data-workspace-keyboard-focus], [data-sidebar-row]:focus-visible, [role="dialog"], [role="alertdialog"], [role="application"], [role="menu"], [role="listbox"], [data-slot$="-popup"], [data-terminal-owner], [aria-keyshortcuts], [data-assistant-selection-toolbar]',
     ) === null
   );
 }

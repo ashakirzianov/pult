@@ -49,6 +49,10 @@ import {
   SimpleEditorPane,
 } from "@codingame/monaco-vscode-workbench-service-override/common";
 
+import { COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS } from "@t3tools/contracts";
+
+import type { MountedReaderSelection } from "../../view/ReaderSelection.tsx";
+import { stripTarget } from "../composer/index.tsx";
 import { toHostPath } from "../files/paths.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
@@ -77,8 +81,8 @@ const modelReference = async (file: URI) =>
 
 type TextModel = Awaited<ReturnType<ReaderInput["textModel"]>>;
 
-/** The selection's composer as a capture compares it. */
-const targetKey = () => JSON.stringify(selectionTarget() ?? null);
+/** The composer Cite would cite `file` into (`stripTarget`), as a capture compares it. */
+const targetKey = (file: URI) => JSON.stringify(stripTarget(file.toString()));
 
 /**
  * A reader's selection as Cite takes it, read against the tab it was made
@@ -213,7 +217,12 @@ class ReaderPane extends SimpleEditorPane {
         StandaloneServices.get(IEditorGroupsService).activateGroup(this.group),
       );
     },
+    onRendered: (doc) => this.followSelection(doc),
   });
+  /** The thread's selection action on the frame's document, mounted on its first render. */
+  private selectionAction:
+    | { readonly doc: Document; readonly mounted: Promise<MountedReaderSelection> }
+    | undefined;
   private readonly notice = document.createElement("div");
   private shown: URI | undefined;
   private model: TextModel | undefined;
@@ -309,7 +318,13 @@ class ReaderPane extends SimpleEditorPane {
   capture(): ReaderCapture | undefined {
     const input = this.input;
     if (!(input instanceof ReaderInput) || this.version === undefined) return undefined;
-    return new ReaderCapture(this, input, this.version, targetKey(), this.frame.selection());
+    return new ReaderCapture(
+      this,
+      input,
+      this.version,
+      targetKey(input.file),
+      this.frame.selection(),
+    );
   }
 
   /** The captured passage while its tab, its text and the composer are as they were, else why not. */
@@ -318,8 +333,8 @@ class ReaderPane extends SimpleEditorPane {
       return "The preview shows another file now. Select the passage again.";
     if (this.model?.getVersionId() !== capture.version || this.version !== capture.version)
       return "The page changed since the selection. Select the passage again.";
-    if (targetKey() !== capture.target)
-      return "Another thread is selected since the selection. Select the passage again.";
+    if (targetKey(capture.input.file) !== capture.target)
+      return "Another composer is in use since the selection. Select the passage again.";
     const { passage } = capture;
     if (passage === undefined) return "Select text in the preview to cite it.";
     if (passage.lines === undefined) return "The selection holds no text of the file.";
@@ -354,6 +369,42 @@ class ReaderPane extends SimpleEditorPane {
       getAnchor: () => anchor,
       getActions: () => (selectionTarget() === undefined ? [copy] : [cite, copy]),
     });
+  }
+
+  /**
+   * The thread's "Type to cite" on the page's selection: it offers what Cite
+   * would take, captured as it shows, while a composer is there to take it,
+   * and cites through Cite, a typed key starting the comment.
+   */
+  private followSelection(doc: Document): void {
+    if (this.selectionAction?.doc !== doc) {
+      void this.selectionAction?.mounted.then((action) => action.dispose());
+      const mounted = threadView().then((view) =>
+        view.mountReaderSelection(this.frame.element, doc, {
+          capture: () => {
+            const capture = this.capture();
+            const passage = capture?.passage;
+            if (capture === undefined || passage?.lines === undefined) return undefined;
+            if (stripTarget(capture.input.file.toString()) === null) return undefined;
+            const tooLong = passage.text.length > COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS;
+            return { capture, tooLong };
+          },
+          cite: (capture, comment) =>
+            void StandaloneServices.get(ICommandService).executeCommand(
+              CITE_SELECTION,
+              capture,
+              comment,
+            ),
+        }),
+      );
+      this.selectionAction = { doc, mounted };
+    }
+    void this.selectionAction.mounted.then((action) => action.update());
+  }
+
+  override dispose(): void {
+    void this.selectionAction?.mounted.then((action) => action.dispose());
+    super.dispose();
   }
 
   /** Scripts are off here: the notice says so and opens the page in a browser tab, where they run, until closed. */
