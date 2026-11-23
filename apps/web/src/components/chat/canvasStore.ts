@@ -22,6 +22,8 @@ export interface ChatCanvasMeasurements {
   readonly timelineGutter: number;
   /** The find bar's box in canvas coordinates while it is shown. */
   readonly findBar: CanvasEdges | null;
+  /** Pult: the width the user dragged the details card to; upstream's app sets none. */
+  readonly detailsCardWidth?: number;
 }
 
 interface ChatCanvasStoreState {
@@ -55,6 +57,7 @@ const sameMeasurements = (a: ChatCanvasMeasurements, b: ChatCanvasMeasurements) 
   a.minChatWidth === b.minChatWidth &&
   a.composerHeight === b.composerHeight &&
   a.timelineGutter === b.timelineGutter &&
+  a.detailsCardWidth === b.detailsCardWidth &&
   sameEdges(a.findBar, b.findBar);
 
 /**
@@ -107,6 +110,9 @@ export function resolveChatCanvasModel({
     lane,
     frame: null,
     topInset: detailsCardTopInset,
+    ...(measurements.detailsCardWidth === undefined
+      ? {}
+      : { preferredWidth: measurements.detailsCardWidth }),
   });
   // The canvas outlives thread switches, so a measurement only counts for the
   // thread whose card is shown now.
@@ -147,6 +153,9 @@ export function resolveChatCanvasModel({
     frame: layout.frame,
     overlapsDetailsCard: layout.overlapsDetailsCard,
     topInset: detailsCardTopInset,
+    ...(measurements.detailsCardWidth === undefined
+      ? {}
+      : { preferredWidth: measurements.detailsCardWidth }),
   });
   const detailsCardMode: ThreadPanelPresentation = detailsCardPlacement ? "inline" : "popover";
   return {

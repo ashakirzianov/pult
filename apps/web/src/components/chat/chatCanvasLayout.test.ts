@@ -371,4 +371,23 @@ describe("workspace card beside chat", () => {
     // A window resize mid-animation leaves the sampled ends wider than the canvas.
     expect(place(900, 1344)).toBeNull();
   });
+  it("takes a preferred width, giving way to the lane down to the narrowest", () => {
+    const place = (width: number, preferredWidth: number) =>
+      resolveThreadDetailsCardLayout({
+        container: { width, height: 900 },
+        lane: { padding: 48, minChatWidth: 640 },
+        frame: null,
+        preferredWidth,
+      });
+    expect(place(1344, 400)).toMatchObject({ width: 400, x: 932 });
+    expect(place(1344, 240)).toMatchObject({ width: 240, x: 1092 });
+    // 1100 leaves 368 beside the lane.
+    expect(place(1100, 500)).toMatchObject({ width: 368, x: 720 });
+    // 982 leaves 250: a width past it stays at it, so a drag there stays reversible.
+    expect(place(982, 251)).toMatchObject({ width: 250 });
+    expect(place(982, 500)).toMatchObject({ width: 250 });
+    expect(place(982, 240)).toMatchObject({ width: 240 });
+    // Under the narrowest width: no card, however wide it was dragged.
+    expect(place(971, 500)).toBeNull();
+  });
 });

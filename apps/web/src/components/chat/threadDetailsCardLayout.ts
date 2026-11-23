@@ -3,7 +3,9 @@ import { DETAILS_CARD_CLEARANCE } from "./chatCanvasLayout";
 
 export const THREAD_DETAILS_CARD_GAP = 12;
 // Keep in sync with --thread-details-panel-width.
-const THREAD_DETAILS_CARD_WIDTH = 280;
+export const THREAD_DETAILS_CARD_WIDTH = 280;
+// Pult: the narrowest the user can drag the card, and the narrowest a dragged card gives way to.
+export const THREAD_DETAILS_CARD_MIN_WIDTH = 240;
 
 export function resolveThreadDetailsCardDensity(
   height: number,
@@ -21,6 +23,7 @@ export function resolveThreadDetailsCardLayout({
   frame,
   overlapsDetailsCard = false,
   topInset = 0,
+  preferredWidth,
 }: {
   container: { width: number; height: number };
   // While a panel animates the container, the card fits only if it fits at both ends.
@@ -29,15 +32,21 @@ export function resolveThreadDetailsCardLayout({
   frame: PreviewMiniPlayerFrame | null;
   overlapsDetailsCard?: boolean;
   topInset?: number;
+  /** Pult: the width the user dragged the card to (`ShellDetailsCardWidth`); upstream's app sets none. */
+  preferredWidth?: number;
 }) {
   const gap = THREAD_DETAILS_CARD_GAP;
-  const width = THREAD_DETAILS_CARD_WIDTH;
-  const x = container.width - width - gap;
   // The transition ends are sampled once, so a resize mid-animation can leave them
   // wider than the container is now.
   const fitWidth = Math.min(narrowestWidth, container.width);
-  if (fitWidth - width - gap - DETAILS_CARD_CLEARANCE - lane.padding < lane.minChatWidth)
-    return null;
+  const room = fitWidth - gap - DETAILS_CARD_CLEARANCE - lane.padding - lane.minChatWidth;
+  // Pult: a card of a dragged width gives way to the chat's lane, down to the narrowest it drags to.
+  const width =
+    preferredWidth === undefined
+      ? THREAD_DETAILS_CARD_WIDTH
+      : Math.min(preferredWidth, Math.max(room, THREAD_DETAILS_CARD_MIN_WIDTH));
+  if (room < width) return null;
+  const x = container.width - width - gap;
   const y = gap + topInset;
   const height =
     overlapsDetailsCard && frame && frame.x + frame.width > x - gap && frame.x < x + width + gap

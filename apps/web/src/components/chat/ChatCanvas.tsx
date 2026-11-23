@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { ChatCanvasContext } from "./ChatCanvasContext";
 import type { ChatCanvasPreview } from "./chatCanvasLayout";
 import { resolveChatCanvasModel, type ChatCanvasStore } from "./canvasStore";
+import { useShellDetailsCardWidth } from "./ShellDetailsCardWidth";
 import { selectThreadPanelOpen, useRightPanelStore } from "../../rightPanelStore";
 import { observeResize } from "../../lib/observeResize";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -64,6 +65,7 @@ export function ChatCanvas({
   const [timelineElement, registerTimeline] = useState<HTMLElement | null>(null);
   const measurements = useStore(store, (state) => state.measurements);
   const detailsCardMeasurement = useStore(store, (state) => state.detailsCardMeasurement);
+  const detailsCardWidth = useShellDetailsCardWidth();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- observes canvas, find bar and timeline resizes and writes the measurements to the canvas store
   useLayoutEffect(() => {
     const element = elementRef.current;
@@ -121,6 +123,7 @@ export function ChatCanvas({
         timelineGutter: timelineElement
           ? (timelineElement.offsetWidth - timelineElement.clientWidth) / 2
           : 0,
+        ...(detailsCardWidth === undefined ? {} : { detailsCardWidth }),
       });
     };
     measure();
@@ -133,7 +136,7 @@ export function ChatCanvas({
       disposed = true;
       stopObserving();
     };
-  }, [store, composerOverlayElement, timelineElement, detailsCardTopInset]);
+  }, [store, composerOverlayElement, timelineElement, detailsCardTopInset, detailsCardWidth]);
   const detailsCardInlineOpen = useRightPanelStore((state) =>
     threadRef === null
       ? false

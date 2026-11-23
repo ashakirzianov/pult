@@ -15,6 +15,7 @@ import {
   type RefObject,
   use,
   useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -26,6 +27,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { type DraftId, type DraftSessionState, useComposerDraftStore } from "~/composerDraftStore";
 import { observeResize } from "~/lib/observeResize";
 import { selectThreadPanelOpen, useRightPanelStore } from "~/rightPanelStore";
+import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { draftKey, isDraftOf } from "./drafts.ts";
 import { type DetailsCards, type DetailsCardsTarget, threadViewHost } from "./host.ts";
 import { setThreadPanelInline } from "./rightPanel.ts";
@@ -100,6 +102,50 @@ function showsCards(
   );
 }
 
+/** The cards' left edge, an invisible handle dragging the panel's width, the same for every view. */
+function DetailsCardResizer({ width }: { readonly width: number }) {
+  const drag = useRef<{
+    readonly pointerId: number;
+    readonly x: number;
+    readonly width: number;
+    /** The last width the panel showed at. */
+    readonly fits: number;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (drag.current !== null) drag.current = { ...drag.current, fits: width };
+  }, [width]);
+  // A move the canvas has no place for unmounts this handle and its capture: the drag ends at the last width that showed.
+  useLayoutEffect(
+    () => () => {
+      if (drag.current === null) return;
+      detailsCardWidth.set(drag.current.fits);
+      detailsCardWidth.keep();
+    },
+    [],
+  );
+  return (
+    <div
+      aria-hidden
+      className="pult-details-resizer"
+      onPointerDown={(event) => {
+        if (event.button !== 0 || drag.current !== null) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { pointerId: event.pointerId, x: event.clientX, width, fits: width };
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (current?.pointerId !== event.pointerId) return;
+        detailsCardWidth.set(current.width + current.x - event.clientX);
+      }}
+      onLostPointerCapture={(event) => {
+        if (drag.current?.pointerId !== event.pointerId) return;
+        drag.current = null;
+        detailsCardWidth.keep();
+      }}
+    />
+  );
+}
+
 export function ThreadDetailsCard({ threadRef, onContextMenu, children }: ThreadDetailsCardProps) {
   const target = use(DetailsTarget);
   const { detailsCards } = threadViewHost();
@@ -152,7 +198,7 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
   if (shown === null || placement === null) return null;
   return (
     <aside
-      className="absolute z-20 flex flex-col overflow-y-auto"
+      className="absolute z-20 flex flex-col"
       style={{
         right: placement.right,
         top: placement.y,
@@ -161,21 +207,24 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
       }}
       data-thread-details-panel="inline"
     >
-      {star ? (
-        // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
-        <div ref={setIsland} className="pult-details-island" />
-      ) : (
-        // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
-        <div
-          className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-          onContextMenu={onContextMenu}
-          data-thread-details-card
-        >
-          <ScrollArea scrollFade className="min-h-0">
-            <div ref={setContent}>{children("full")}</div>
-          </ScrollArea>
-        </div>
-      )}
+      <div className="flex min-h-0 flex-col overflow-y-auto">
+        {star ? (
+          // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
+          <div ref={setIsland} className="pult-details-island" />
+        ) : (
+          // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
+          <div
+            className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
+            onContextMenu={onContextMenu}
+            data-thread-details-card
+          >
+            <ScrollArea scrollFade className="min-h-0">
+              <div ref={setContent}>{children("full")}</div>
+            </ScrollArea>
+          </div>
+        )}
+      </div>
+      <DetailsCardResizer width={placement.width} />
     </aside>
   );
 }

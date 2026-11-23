@@ -28,6 +28,19 @@
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 }
 
+/* The panel's left edge, on the cards' left borders: invisible, dragging its width (`view/ThreadDetailsCard.tsx`). */
+.pult-details-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 1;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+}
+
 /* A section with nothing to list is no card. */
 .pult-details-card:empty {
   display: none;

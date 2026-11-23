@@ -39,6 +39,7 @@ import {
   type ShellReply,
   type ShellValue,
 } from "~/components/chat/ShellComposerOptions";
+import { ShellDetailsCardWidth } from "~/components/chat/ShellDetailsCardWidth";
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
@@ -63,6 +64,7 @@ import {
   startTaggedDraft,
 } from "./drafts.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
+import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { DetailsTarget } from "./ThreadDetailsCard.tsx";
 import { threadViewHost } from "./host.ts";
 
@@ -554,9 +556,11 @@ function ViewProviders({
       <ComposerControlsSlot value={bar}>
         <ComposerControlsSlotEntries value={composerBarEntries}>
           <ShellComposerOptions value={additions.composer}>
-            <TimelineHeaderSlot value={additions.header?.element ?? null}>
-              <RouterProvider router={router} />
-            </TimelineHeaderSlot>
+            <ShellDetailsCardWidth value={detailsCardWidth}>
+              <TimelineHeaderSlot value={additions.header?.element ?? null}>
+                <RouterProvider router={router} />
+              </TimelineHeaderSlot>
+            </ShellDetailsCardWidth>
           </ShellComposerOptions>
         </ComposerControlsSlotEntries>
       </ComposerControlsSlot>
