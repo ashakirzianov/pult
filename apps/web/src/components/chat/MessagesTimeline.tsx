@@ -1454,8 +1454,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
     return (
       <>
         {activityAnnouncer}
+        {/* Pult's slot: with no scroller to pad it, it takes the composer's lane, clear of the details cards. */}
         <TimelineHeaderSlotOutlet
-          className="absolute inset-x-0 top-0 overflow-y-auto overscroll-y-contain bg-background pt-3 sm:pt-4"
+          className="chat-composer-lane absolute inset-x-0 top-0 overflow-y-auto overscroll-y-contain bg-background pt-3 sm:pt-4"
           style={{ maxHeight: `calc(100% - ${emptyPlaceholderInset}px)` }}
         />
         <div
