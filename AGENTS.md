@@ -1,6 +1,6 @@
 ---
 track: pult
-label: repo:pult
+codebase-url: https://github.com/ashakirzianov/pult
 ---
 
 # Pult
@@ -26,7 +26,7 @@ This repository is the **Pult track**'s (xaxis `pult/about`), beside `../pult-st
 - **Plugins are code the server trusts completely.** A plugin runs in-process with the server's services, with no manifest, capabilities or consent, and contributes no UI (`pult/decisions`, `plugins-in-process`). Pult's own, `plugins/pult`, is compiled into the server, so it changes only with the server's build and is never installed or reloaded. An installed plugin imports only `@t3code/plugin-host`, the server bundle's stable entry; the loader refuses a build using another copy of Effect or built for another server build, and swaps builds only on an explicit admin request. When a plugin needs something the host does not expose, re-export the server module from `src/pluginHost.ts` in the commit of the feature that first uses it, or add a hook point, with a test (`pult/decisions`, `plugin-host-entry`).
 - **Builds.** `node_modules/.bin/vp` if `vp` is not on PATH; unset `ELECTRON_RUN_AS_NODE` before a desktop build. Finished artifacts stay in the repository's `release/` (gitignored), built from a commit on `main`, beside the `COMMIT` note `pnpm desktop:package` writes naming it; Anton installs them. An unsigned macOS build is signed ad hoc, and a build names an update feed, Pult's own, only on `pnpm desktop:package --feed` (`pult/decisions`, `ad-hoc-signing`, `update-feed`).
 - Commits are small and semantically scoped, one logical unit each. **Agents push on their own** (`axis/decisions`, `push-gate`): a push publishes, since the repository is public, and deploys nothing. `origin` is `github.com/ashakirzianov/pult`, a GitHub fork of upstream (renamed from `t3code-extensible` on 2026-11-04). Never commit secrets, tokens, `.env` files or data copied from `~/.t3`.
-- Tasks live in xaxis under the Pult track, `pult/tasks/<slug>.task` (its `project-root` is `/ashakirzianov/pult/`), tagged `repo:pult` in `tag-list` (the frontmatter's `label` above). A standing note about the code belongs in `docs/` or beside the code, never the tracker; a design, direction or decision, of use without the repository, lives in xaxis under `pult/`.
+- Tasks live in xaxis under the Pult track, `pult/tasks/<slug>.task` (its `project-root` is `/ashakirzianov/pult/`), each carrying the frontmatter's `codebase-url` above. A standing note about the code belongs in `docs/` or beside the code, never the tracker; a design, direction or decision, of use without the repository, lives in xaxis under `pult/`.
 - Licence: upstream's MIT text stays.
 
 ## The ways to hurt yourself
