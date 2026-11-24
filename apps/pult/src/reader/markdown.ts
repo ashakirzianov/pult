@@ -39,6 +39,7 @@ const processor = unified()
   .use(remarkMath)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(() => (tree: Root, file) => placeText(tree, String(file.value)))
+  .use(() => (tree: Root) => markInlineCode(tree))
   .use(rehypeRaw);
 
 const LINE_BREAK = /\r\n?|\n/g;
@@ -87,6 +88,21 @@ function placeText(node: Root | Element, source: string): void {
       start: { line, column: 1, offset },
       end: { line: line + lines, column: 1, offset },
     };
+  }
+}
+
+/**
+ * Marks the file's inline code spans, but math's, `data-pult-inline-code`,
+ * which a `<code>` of its raw HTML never carries: the reader may draw a file
+ * chip in one's place (`render.ts`, `chips`).
+ */
+function markInlineCode(node: Root | Element): void {
+  for (const child of node.children) {
+    if (child.type !== "element" || child.tagName === "pre") continue;
+    const classes = child.properties.className;
+    if (child.tagName !== "code") markInlineCode(child);
+    else if (!(Array.isArray(classes) && classes.includes("math-inline")))
+      child.properties.dataPultInlineCode = "";
   }
 }
 

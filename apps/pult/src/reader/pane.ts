@@ -50,10 +50,17 @@ import {
 } from "@codingame/monaco-vscode-workbench-service-override/common";
 
 import { COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS } from "@t3tools/contracts";
+import {
+  buildFileLinkParentSuffixByPath,
+  fileLinkLabel,
+  splitFilePathPosition,
+} from "@t3tools/shared/fileLinks";
+import { inlineCodeFilePathCandidate } from "@t3tools/shared/markdownLinks";
 
 import type { MountedReaderSelection } from "../../view/ReaderSelection.tsx";
 import { stripTarget } from "../composer/index.tsx";
 import { toHostPath } from "../files/paths.ts";
+import { documentFileLinks, openDocumentFile, openedDocument } from "../threads/files.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
@@ -227,6 +234,7 @@ class ReaderPane extends SimpleEditorPane {
   private readonly frame: ReaderFrame = createReaderFrame({
     onDocument: (doc) => {
       doc.addEventListener("contextmenu", (event) => this.showContextMenu(event));
+      doc.addEventListener("click", (event) => this.openChip(event));
       // Focus inside the frame never reaches the workbench's own tracking, so its group is
       // activated here, and Cite reads this reader rather than another group's editor.
       doc.defaultView?.addEventListener("focus", () =>
@@ -289,7 +297,43 @@ class ReaderPane extends SimpleEditorPane {
       return { dispose: () => {} };
     }
     this.model = model;
+    if (input.markdown) openedDocument(input.file.authority, input.file.path);
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Each chip's verdict, followed while the tab shows the file: a change renders it again.
+    const following = new Map<string, () => void>();
+    const theme = () =>
+      getComputedStyle(document.documentElement).colorScheme.includes("dark") ? "dark" : "light";
+    const chips = (codes: ReadonlyArray<string>) => {
+      const files = codes.flatMap((code) => {
+        const candidate = inlineCodeFilePathCandidate(code);
+        return candidate === null ? [] : [{ code, position: splitFilePathPosition(candidate) }];
+      });
+      const suffixes = buildFileLinkParentSuffixByPath(files.map(({ position }) => position.path));
+      const drawn = new Map<string, string>();
+      // A path edited out of the file is followed no more.
+      const paths = new Set(files.map(({ position }) => position.path));
+      for (const [path, stop] of following)
+        if (!paths.has(path)) {
+          stop();
+          following.delete(path);
+        }
+      for (const { code, position } of files) {
+        const ref = {
+          environmentId: input.file.authority,
+          threadId: input.file.path,
+          path: position.path,
+        };
+        if (!following.has(ref.path))
+          following.set(ref.path, documentFileLinks.subscribe(ref, changed));
+        documentFileLinks.ask(ref);
+        if (documentFileLinks.verdict(ref) === true)
+          drawn.set(
+            code,
+            view!.readerChip(position.path, fileLinkLabel(position, suffixes), theme()),
+          );
+      }
+      return drawn;
+    };
     const render = async () => {
       this.stale = false;
       const fresh = !isEqual(this.shown, input.file);
@@ -300,6 +344,7 @@ class ReaderPane extends SimpleEditorPane {
         markdown: input.markdown,
         wrapCode: view?.codeWrap() ?? false,
         readImage: (src) => input.readImage(src),
+        ...(view === undefined ? {} : { chips }),
       });
       if (shown === undefined || this.input !== input) return;
       this.version = version;
@@ -321,6 +366,7 @@ class ReaderPane extends SimpleEditorPane {
     return {
       dispose: () => {
         clearTimeout(timer);
+        for (const stop of following.values()) stop();
         changes.dispose();
         stopWrap?.();
         themes?.dispose();
@@ -329,6 +375,24 @@ class ReaderPane extends SimpleEditorPane {
         this.version = undefined;
       },
     };
+  }
+
+  /** A file chip's click (`render.ts`, `chips`): its file opened as the thread view's chip opens one. */
+  private openChip(event: MouseEvent): void {
+    const target = event.target as Element | null;
+    const code = target?.closest?.("[data-pult-file]")?.getAttribute("data-pult-file");
+    const input = this.input;
+    if (code === undefined || code === null || !(input instanceof ReaderInput)) return;
+    const candidate = inlineCodeFilePathCandidate(code);
+    if (candidate === null) return;
+    const { path, line, endLine } = splitFilePathPosition(candidate);
+    void openDocumentFile(
+      input.file.authority,
+      input.file.path,
+      path,
+      line ?? null,
+      endLine ?? null,
+    );
   }
 
   /** The page's selection now, read against the tab, the version shown and the composer; none before the page renders. */

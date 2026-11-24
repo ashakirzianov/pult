@@ -62,17 +62,61 @@ export async function openThreadFile(
     return void (await getService(INotificationService)).info(
       "This citation names a page, not a file.",
     );
+  await whenListed(environmentId);
+  const thread = threadStore.thread(environmentId, threadId);
+  if (thread === undefined) return;
+  const of = threadStore.distinguishing(environmentId);
+  await openPath(
+    environmentId,
+    threadPathInput(environmentId, thread),
+    `${thread.projectName} or any other project${of === undefined ? "" : ` of ${of}`}`,
+    path,
+    line,
+    endLine,
+  );
+}
+
+/**
+ * Opens a file a document the reader shows names, as a thread's file link
+ * opens one (`openThreadFile`), resolved as from the document's own checkout
+ * or project (`documentPathInput`): a file chip's click in the reader.
+ */
+export async function openDocumentFile(
+  environmentId: string,
+  documentPath: string,
+  path: string,
+  line: number | null,
+  endLine: number | null,
+): Promise<void> {
+  await whenListed(environmentId);
+  const of = threadStore.distinguishing(environmentId);
+  await openPath(
+    environmentId,
+    documentPathInput(environmentId, documentPath),
+    `any project${of === undefined ? "" : ` of ${of}`}`,
+    path,
+    line,
+    endLine,
+  );
+}
+
+/** Opens `path` as `input` resolves it, `where` naming in a notice what was searched. */
+async function openPath(
+  environmentId: string,
+  input: Omit<ResolveInput, "path" | "exists">,
+  where: string,
+  path: string,
+  line: number | null,
+  endLine: number | null,
+): Promise<void> {
   const [files, editors, notifications, quickInput] = await Promise.all([
     getService(IFileService),
     getService(IEditorService),
     getService(INotificationService),
     getService(IQuickInputService),
-    whenListed(environmentId),
   ]);
-  const thread = threadStore.thread(environmentId, threadId);
-  if (thread === undefined) return;
   const resolution = await resolveThreadPath({
-    ...threadPathInput(environmentId, thread),
+    ...input,
     path,
     exists: (candidate) => files.exists(pultResource(environmentId, candidate)).catch(() => false),
   });
@@ -83,8 +127,6 @@ export async function openThreadFile(
         `Pult opens files only under the environment's projects: ${path}.`,
       );
     case "missing": {
-      const of = threadStore.distinguishing(environmentId);
-      const where = `${thread.projectName} or any other project${of === undefined ? "" : ` of ${of}`}`;
       const failed =
         resolution.error === undefined ? "" : ` The search failed: ${resolution.error}`;
       return void notifications.warn(`No ${resolution.key} in ${where}.${failed}`);
@@ -178,36 +220,70 @@ function environmentCheckouts(environmentId: string) {
   );
 }
 
-/**
- * Whether the view's file chips open anything (`src/files/linkable.ts`), on
- * the click's inputs, the literal paths through the server's
- * `filesystem.getMetadata`; the view's host serves it as `fileLinks`.
- */
-export const threadFileLinks = makeFileLinks({
+/** What both instances of `makeFileLinks` check with but the inputs. */
+const linkSources = {
   whenListed,
-  input: (environmentId, threadId) => {
-    const thread = threadStore.thread(environmentId, threadId);
-    return thread === undefined ? undefined : threadPathInput(environmentId, thread);
-  },
-  getMetadata: async (environmentId, paths) =>
+  getMetadata: async (environmentId: string, paths: ReadonlyArray<string>) =>
     (
       await connection.run(
         environmentId,
         request(WS_METHODS.filesystemGetMetadata, { paths: [...paths] }),
       )
     ).entries,
-  runEnd: (environmentId, threadId) =>
-    threadStore.thread(environmentId, threadId)?.latestRun?.finishedAt ?? null,
-  // A verdict's swap restyles the whole thread view, some 150 ms in a 300-path thread: a second's worth go at once.
-  publishMs: 1000,
-  roots: (environmentId) =>
+  roots: (environmentId: string) =>
     JSON.stringify([
       environmentCheckouts(environmentId).map((checkout) => checkout.root),
       keptRoot(environmentId),
     ]),
-  onDidChange: (listener) => {
+  onDidChange: (listener: () => void) => {
     threadStore.subscribe(listener);
     onDidChangeKept(listener);
+  },
+};
+
+/**
+ * Whether the view's file chips open anything (`src/files/linkable.ts`), on
+ * the click's inputs, the literal paths through the server's
+ * `filesystem.getMetadata`; the view's host serves it as `fileLinks`.
+ */
+export const threadFileLinks = makeFileLinks({
+  ...linkSources,
+  input: (environmentId, threadId) => {
+    const thread = threadStore.thread(environmentId, threadId);
+    return thread === undefined ? undefined : threadPathInput(environmentId, thread);
+  },
+  runEnd: (environmentId, threadId) =>
+    threadStore.thread(environmentId, threadId)?.latestRun?.finishedAt ?? null,
+  // A verdict's swap restyles the whole thread view, some 150 ms in a 300-path thread: a second's worth go at once.
+  publishMs: 1000,
+});
+
+/** When each document's reader tab last opened it, by environment and `pult:` path: its file chips' `runEnd`. */
+const documentOpenings = new Map<string, string>();
+const documentOpened = new Set<() => void>();
+
+/** A reader tab opens the document: its file chips' `no`s are checked again, as a thread's are after a run. */
+export function openedDocument(environmentId: string, documentPath: string): void {
+  documentOpenings.set(`${environmentId}\0${documentPath}`, new Date().toISOString());
+  for (const listener of documentOpened) listener();
+}
+
+/**
+ * The same for the file chips of a document the reader shows
+ * (`src/reader/pane.ts`), each ref's `threadId` the document's `pult:` path,
+ * as `openDocumentFile` resolves; a document has no runs, so its `no`s are
+ * checked again each time a reader tab opens it (`openedDocument`).
+ */
+export const documentFileLinks = makeFileLinks({
+  ...linkSources,
+  input: (environmentId, documentPath) => documentPathInput(environmentId, documentPath),
+  runEnd: (environmentId, documentPath) =>
+    documentOpenings.get(`${environmentId}\0${documentPath}`) ?? null,
+  // A swap renders the document again.
+  publishMs: 100,
+  onDidChange: (listener) => {
+    linkSources.onDidChange(listener);
+    documentOpened.add(listener);
   },
 });
 

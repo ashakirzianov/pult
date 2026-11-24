@@ -5,8 +5,10 @@
 // so the browser never parses the page's markup nor sees a URL of it. A
 // Markdown file is parsed to the same tree (`markdown.ts`) and built the same.
 // An image a file path names is read by the shell (`images.ts`) and put in the
-// page as a `data:` URL; one that is not shows its alt text and why.
-import { parse, type DefaultTreeAdapterTypes } from "parse5";
+// page as a `data:` URL; one that is not shows its alt text and why. A
+// Markdown file's inline code naming a file a click would open is drawn as the
+// thread view's file chip (`chips`), whose click the pane handles.
+import { parse, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 
 import { markdownTree, type SourceLocation } from "./markdown.ts";
 import { type Passage, selectedPassage, type SourceText } from "./selection.ts";
@@ -78,6 +80,8 @@ const urlText = (value: string) =>
  */
 function kept(element: string, name: string, value: string): string | undefined {
   if (name.startsWith("on")) return undefined;
+  // The pane opens the file a chip names; only a chip the shell drew names one (`chip`).
+  if (name === "data-pult-file") return undefined;
   if (!URL_ATTRIBUTES.has(name)) return value;
   if (name === "ping" || name === "srcdoc") return undefined;
   const url = urlText(value);
@@ -147,8 +151,53 @@ function unshownImage(doc: Document, alt: string, src: string, reason: string): 
   return element;
 }
 
+/** A Markdown file's inline code spans' text (`markdown.ts` marks them), each once. */
+function inlineCodes(nodes: readonly Node[], codes: Set<string>): void {
+  for (const node of nodes) {
+    if (!("tagName" in node)) continue;
+    const text = inlineCodeText(node);
+    if (text !== undefined) codes.add(text.value);
+    else inlineCodes(node.childNodes, codes);
+  }
+}
+
+/** The text of an inline code span of a Markdown file, none for another element. */
+function inlineCodeText(node: DefaultTreeAdapterTypes.Element) {
+  if (node.tagName !== "code" || !node.attrs.some((attr) => attr.name === "data-pult-inline-code"))
+    return undefined;
+  const [text] = node.childNodes;
+  return node.childNodes.length === 1 && text?.nodeName === "#text"
+    ? (text as DefaultTreeAdapterTypes.TextNode)
+    : undefined;
+}
+
+/**
+ * The chip `markup` draws, built by the page's rules, in place of the inline
+ * code `text`: `data-pult-file` the code's text, for the pane's click, and
+ * its label, the `context-chip-label` slot's text, placed where the code was.
+ */
+function chip(
+  doc: Document,
+  markup: string,
+  text: DefaultTreeAdapterTypes.TextNode,
+  built: Built,
+): DocumentFragment {
+  const fragment = doc.createDocumentFragment();
+  build(doc, fragment, parseFragment(markup).childNodes, built);
+  const root = fragment.firstElementChild;
+  if (root === null) return fragment;
+  root.setAttribute("data-pult-file", text.value);
+  const label = root.querySelector('[data-slot="context-chip-label"]')?.firstChild;
+  const at = text.sourceCodeLocation;
+  if (label?.nodeType === doc.TEXT_NODE && at)
+    built.origins.set(label as Text, built.origin(at, (label as Text).data));
+  return fragment;
+}
+
 interface Built {
   scripts: boolean;
+  /** A Markdown file's inline code drawn as a file chip: its markup by the code's text. */
+  readonly chips: ReadonlyMap<string, string>;
   /** The page's images a file path or another URL names, by `src`. */
   readonly images: ReadonlyMap<string, ImageShown>;
   readonly origins: WeakMap<Text, SourceText>;
@@ -184,6 +233,12 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
       name === "img" && node.namespaceURI === HTML_NAMESPACE
         ? node.attrs.find((attr) => attr.name === "src" && attr.namespace === undefined)?.value
         : undefined;
+    const code = built.chips.size === 0 ? undefined : inlineCodeText(node);
+    const chipped = code === undefined ? undefined : built.chips.get(code.value);
+    if (chipped !== undefined) {
+      parent.append(chip(doc, chipped, code!, built));
+      continue;
+    }
     const image = src === undefined ? undefined : built.images.get(src);
     if (image !== undefined && "refused" in image) {
       const alt = node.attrs.find((attr) => attr.name === "alt")?.value ?? "";
@@ -239,6 +294,8 @@ export interface ReaderFrame {
       readonly wrapCode?: boolean;
       /** Reads an image a file path names, as an `img`'s `src` writes it; without it, none is shown. */
       readonly readImage?: (path: string) => Promise<ImageShown>;
+      /** A Markdown file's inline code spans to draw as file chips: of the spans' text, the chip's markup by the text of each drawn. */
+      readonly chips?: (codes: ReadonlyArray<string>) => ReadonlyMap<string, string>;
     },
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
@@ -306,6 +363,7 @@ export function createReaderFrame(options?: {
         markdown: boolean;
         wrapCode: boolean;
         readImage: ((path: string) => Promise<ImageShown>) | undefined;
+        chips: ((codes: ReadonlyArray<string>) => ReadonlyMap<string, string>) | undefined;
       }
     | undefined;
   // Renders still parsing, not yet in a document.
@@ -385,7 +443,8 @@ export function createReaderFrame(options?: {
       const markdown = options?.markdown === true;
       const wrapCode = options?.wrapCode === true;
       const readImage = options?.readImage;
-      last = { source, markdown, wrapCode, readImage };
+      const chipsOf = options?.chips;
+      last = { source, markdown, wrapCode, readImage, chips: chipsOf };
       rendering++;
       let parsed: { tree: DefaultTreeAdapterTypes.Document; origin: Built["origin"] };
       let images: Built["images"];
@@ -404,7 +463,10 @@ export function createReaderFrame(options?: {
       }
       if (revision !== latest) return undefined;
       const { tree, origin } = parsed;
-      const built: Built = { scripts: false, images, origins, origin };
+      const codes = new Set<string>();
+      if (markdown && chipsOf !== undefined) inlineCodes(tree.childNodes, codes);
+      const chips = codes.size === 0 ? new Map<string, string>() : chipsOf!([...codes]);
+      const built: Built = { scripts: false, images, chips, origins, origin };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");

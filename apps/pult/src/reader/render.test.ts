@@ -260,6 +260,72 @@ NodeTest.describe("the reader's frame", () => {
     },
   );
 
+  NodeTest.it(
+    "draws a Markdown file's inline code as a file chip where the shell says, and cites it as the code",
+    async () => {
+      const before = requests.length;
+      const shown = await page.evaluate(async () => {
+        const frame = window.reader.createReaderFrame();
+        document.body.append(frame.element);
+        const asked: string[][] = [];
+        const chips = (codes: ReadonlyArray<string>) => {
+          asked.push([...codes]);
+          return new Map([
+            [
+              "src/a.ts:3",
+              `<a href="#" class="chip" onclick="top.ran.push('chip')"><svg viewBox="0 0 16 16"><path d="M0 0h16v16z"/></svg><span data-slot="context-chip-label">a.ts · L3</span></a>`,
+            ],
+          ]);
+        };
+        const source = [
+          "# Paths",
+          "",
+          "See `src/a.ts:3`, `src/b.ts` and <code>src/a.ts:3</code>.",
+        ].join("\n");
+        await frame.show(source, { markdown: true, chips });
+        const doc = frame.element.contentDocument!;
+        const chip = doc.querySelector<HTMLElement>("[data-pult-file]")!;
+        const range = doc.createRange();
+        range.selectNodeContents(chip.querySelector('[data-slot="context-chip-label"]')!);
+        doc.getSelection()!.removeAllRanges();
+        doc.getSelection()!.addRange(range);
+        const markdown = {
+          asked,
+          file: chip.getAttribute("data-pult-file"),
+          label: chip.textContent,
+          icon: chip.querySelector("svg path") !== null,
+          code: [...doc.querySelectorAll("code")].map((code) => code.textContent),
+          cited: frame.selection(),
+        };
+        // An HTML page's code is never asked, and a page names no file for the pane to open.
+        await frame.show(
+          '<p><code>src/a.ts:3</code> <a href="#top" data-pult-file="src/a.ts">a</a></p>',
+          { chips },
+        );
+        const result = {
+          ...markdown,
+          htmlCode: doc.querySelector("code")?.textContent,
+          htmlChips: doc.querySelectorAll("[data-pult-file]").length,
+        };
+        frame.element.remove();
+        return result;
+      });
+      await page.evaluate(() => fetch("http://leak.test/control").catch(() => undefined));
+      NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
+      NodeAssert.deepEqual(await page.evaluate(() => window.ran), []);
+      NodeAssert.deepEqual(shown, {
+        asked: [["src/a.ts:3", "src/b.ts"]],
+        file: "src/a.ts:3",
+        label: "a.ts · L3",
+        icon: true,
+        code: ["src/b.ts", "src/a.ts:3"],
+        cited: { text: "a.ts · L3", lines: { start: 3, end: 3 } },
+        htmlCode: "src/a.ts:3",
+        htmlChips: 0,
+      });
+    },
+  );
+
   NodeTest.it("tells a page with scripts from one with data blocks", async () => {
     const scripts = await page.evaluate(
       async (sources) => {
