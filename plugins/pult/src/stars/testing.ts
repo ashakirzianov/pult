@@ -1,5 +1,5 @@
-// Fakes of the server's project and thread stores, its launches, startup, environment, scheduler, usage limits,
-// activity, child processes and source control (unused, the kept xaxis checkout's suite bringing the real driver),
+// Fakes of the server's project and thread stores, its launches, startup, environment, scheduler, usage limits
+// and source control (unused, the kept xaxis checkout's suite bringing the real driver),
 // for the Stars' tests and the plugin's: a server whose home is `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
   type CommandId,
@@ -24,8 +24,6 @@ import {
   v2ThreadShell,
 } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import {
-  ChildProcess,
-  ChildProcessSpawner,
   DateTime,
   DispatchModeLimit,
   Effect,
@@ -35,7 +33,6 @@ import {
   ProjectService,
   ProviderRegistry,
   Scheduler,
-  ServerActivity,
   ServerConfig,
   ServerEnvironment,
   ServerRuntimeStartup,
@@ -454,38 +451,8 @@ export const fakeServer = Effect.gen(function* () {
     refreshed: Array<"providers" | "sources">;
     onRefresh: () => void;
   } = { providers: [], sources: [], refreshed: [], onRefresh: () => {} };
-  /** Whether the server is at rest, as `ServerActivity` reads it; busy, as the server starts. */
-  const activity = { atRest: false };
-  /** Each child spawned, in order, with whether it still runs: set `running` false to end it on its own. */
-  const children: Array<{ command: string; args: ReadonlyArray<unknown>; running: boolean }> = [];
   const layer = Layer.mergeAll(
     ServerConfig.layerTest(tmp, path.join(tmp, ".t3")),
-    Layer.succeed(
-      ServerActivity.ServerActivity,
-      ServerActivity.ServerActivity.of({
-        current: Effect.sync(() => ({
-          atRest: activity.atRest,
-          restingSince: activity.atRest ? at("2026-11-10T12:00:00Z") : null,
-        })),
-      }),
-    ),
-    Layer.succeed(
-      ChildProcessSpawner.ChildProcessSpawner,
-      ChildProcessSpawner.make((command) =>
-        Effect.gen(function* () {
-          if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die("a piped command");
-          const child = { command: command.command, args: command.args, running: true };
-          children.push(child);
-          // Closing the spawn's scope ends the child, as the server's spawner does.
-          yield* Effect.addFinalizer(() => Effect.sync(() => (child.running = false)));
-          return ChildProcessSpawner.makeHandle({
-            pid: ChildProcessSpawner.ProcessId(1000 + children.length),
-            isRunning: Effect.sync(() => child.running),
-            kill: () => Effect.sync(() => (child.running = false)),
-          } as unknown as Parameters<typeof ChildProcessSpawner.makeHandle>[0]);
-        }),
-      ),
-    ),
     Layer.succeed(
       ProjectService.ProjectService,
       projects.service as unknown as ProjectService.ProjectService["Service"],
@@ -560,8 +527,6 @@ export const fakeServer = Effect.gen(function* () {
     threads,
     launches,
     limits,
-    activity,
-    children,
     tmp,
     directory,
     runPass,

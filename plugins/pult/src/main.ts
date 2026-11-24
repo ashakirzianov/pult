@@ -9,7 +9,6 @@ import { asksRoute } from "./asks/routes.ts";
 import * as AskTools from "./asks/tools.ts";
 import { Effect, HttpServerResponse, Layer, type PluginHost, ProcessRunner } from "./host.ts";
 import * as InstallAtRest from "./installAtRest/installAtRest.ts";
-import * as KeepAwake from "./keepAwake/keepAwake.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import { runCommand } from "./schedules/command.ts";
 import * as Schedules from "./schedules/schedules.ts";
@@ -25,8 +24,7 @@ import * as XaxisKept from "./xaxis/kept.ts";
 /**
  * What this build does, one name per feature the page relies on; the page
  * reads it on each connect, and anything but this JSON means no plugin.
- * `star-schedules` only where this server fires them, `keep-awake` only on
- * darwin.
+ * `star-schedules` only where this server fires them.
  */
 const features: ReadonlyArray<string> = [
   "stars",
@@ -61,8 +59,6 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   yield* ChildFailures.make(stars, delivering.deliver);
   // Only where the desktop app opts its server in; elsewhere it builds to nothing.
   yield* Layer.build(InstallAtRest.layer);
-  const keepAwake = yield* KeepAwake.make();
-  const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const kept = yield* XaxisKept.make(stars.directory);
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, delivering.deliver),
@@ -75,7 +71,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
     if ((request.method === "GET" || request.method === "HEAD") && path === "/about")
       return Effect.map(schedules.firing, (firing) =>
         HttpServerResponse.jsonUnsafe({
-          features: firing ? [...listed, "star-schedules"] : listed,
+          features: firing ? [...features, "star-schedules"] : features,
         }),
       );
     if ((request.method === "GET" || request.method === "HEAD") && path === "/xaxis/kept")
@@ -88,7 +84,6 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
     return (
       starsRoute(stars, schedules, delivering.pageWakeModel, request, path) ??
       asksRoute(asks, request, path) ??
-      keepAwake.route(request, path) ??
       Effect.succeed(HttpServerResponse.empty({ status: 404 }))
     );
   });

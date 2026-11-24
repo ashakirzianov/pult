@@ -56,7 +56,10 @@ function inhibitorCommand(
     case "darwin":
       return {
         command: "sh",
-        args: ["-c", 'echo && exec caffeinate -i -w "$0"', String(serverPid)],
+        // Pult: -s beside -i. -s is PreventSystemSleep, which macOS honours on AC alone; -i alone, taken
+        // inside a maintenance dark wake, does not hold the Mac (xaxis
+        // `pult/tasks/keep-awake-does-not-hold-a-sleeping-mac.task`).
+        args: ["-c", 'echo && exec caffeinate -s -i -w "$0"', String(serverPid)],
         stdin: "ignore",
       };
     case "linux":

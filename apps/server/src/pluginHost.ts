@@ -7,9 +7,6 @@
 export * as Cause from "effect/Cause";
 // The Pult plugin's install-at-rest: the desktop's opt-in, `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST`.
 export * as Config from "effect/Config";
-// The Pult plugin's keep-awake: the caffeinate child it spawns and ends by its handle.
-export * as ChildProcess from "effect/process/ChildProcess";
-export * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 export * as Context from "effect/Context";
 // The Pult plugin's schedules: a file that is no schedule is told to its Star once per content, keyed by its hash.
 export * as Digest from "effect/crypto/Digest";
@@ -29,7 +26,6 @@ export * as Path from "effect/Path";
 // The Pult plugin's install-at-rest: the last reason it logged, so a quiet night logs it once.
 export * as Ref from "effect/Ref";
 export * as Schema from "effect/Schema";
-export * as Scope from "effect/Scope";
 // The Pult plugin's Stars: a lock per server for creation and upkeep, and one per Star.
 export * as Semaphore from "effect/Semaphore";
 // The Pult plugin's Stars: ids for new Stars, their projects and commands.
@@ -73,7 +69,7 @@ export * as ProjectService from "./project/ProjectService.ts";
 export * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 // The Pult plugin's Stars: the pass that puts conversations to sleep, once a minute.
 export * as Scheduler from "./scheduling/Scheduler.ts";
-// The Pult plugin's keep-awake: it holds the Mac awake while the server is not at rest; its install-at-rest waits for the rest.
+// The Pult plugin's install-at-rest: it installs once the server has been at rest long enough.
 export * as ServerActivity from "./serverActivity.ts";
 // The Pult plugin's install-at-rest: the user's `autoUpdateDesktopApp`.
 export * as ServerSettings from "./serverSettings.ts";

@@ -19,9 +19,6 @@ export const CHANNEL_MODELS_FEATURE = "star-channel-models";
 /** The channel histories in the Stars view and their transcript route. */
 export const CHANNEL_HISTORY_FEATURE = "star-channel-history";
 
-/** The plugin's feature of keeping its Mac awake while agents work, a switch read and set through `keep-awake`; listed on darwin alone. */
-export const KEEP_AWAKE_FEATURE = "keep-awake";
-
 const PLUGIN_PATH = "/api/plugins/pult";
 
 /** How long a read may take before the server reads as having no plugin, or no Stars: the environment's cards wait on both. */
@@ -611,9 +608,6 @@ export const readStarTranscriptOfThread = (credential: Credential, id: string, t
     (body) => namedTranscript(body, "transcript"),
   );
 
-const keepAwakeAnswer = (body: unknown): boolean =>
-  isFields(body) && typeof body.on === "boolean" ? body.on : fail("keep-awake", "{ on }");
-
 /** The server's asks, every one, by `posted`. */
 export const readAsks = (credential: Credential) => ask(credential, "GET", "/asks", decodeAsks);
 
@@ -631,14 +625,6 @@ export const actOnAsk = (credential: Credential, id: string, action: AskAction) 
     decodeAsk,
     action.kind === "snooze" ? { until: action.until } : undefined,
   );
-
-/** Whether the server keeps its Mac awake while agents work. */
-export const readKeepAwake = (credential: Credential) =>
-  ask(credential, "GET", "/keep-awake", keepAwakeAnswer);
-
-/** Turns keeping the Mac awake on or off; answered as `readKeepAwake`. */
-export const writeKeepAwake = (credential: Credential, on: boolean) =>
-  ask(credential, "POST", "/keep-awake", keepAwakeAnswer, { on });
 
 /** The plugin's feature of keeping the xaxis checkout of `/` at main's tip (`pult/decisions`, `xaxis-kept-checkouts`): `GET xaxis/kept`, asked only where `about` lists it. */
 export const XAXIS_KEPT_FEATURE = "xaxis-kept";

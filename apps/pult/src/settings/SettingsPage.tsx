@@ -1,11 +1,14 @@
 import { getService, ICommandService, IContextKeyService } from "@codingame/monaco-vscode-api";
 import { MenuId } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
+import { request } from "@t3tools/client-runtime/rpc";
+import { WS_METHODS } from "@t3tools/contracts";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { type AccessState, followAccess } from "../connection/access.ts";
 import { connection, environmentName, type ShellEnvironment } from "../connection/index.ts";
 import { pairings } from "../connection/pairDevice.ts";
+import { followServerConfig } from "../connection/serverConfig.ts";
 import { localServerEnabled, setLocalServerEnabled } from "../desktop/localServer.ts";
 import { serverExposure, setNetworkAccess } from "../desktop/serverExposure.ts";
 import { environmentVersions } from "../desktop/environmentUpdates.ts";
@@ -13,9 +16,7 @@ import { trayOffer } from "../desktop/updateSteps.ts";
 import { updateOffer } from "../desktop/updates.ts";
 import { DAYS, dayNumber, limitsWeekend, setLimitsWeekend } from "../limits/weekend.ts";
 import { type modeChoice, setMode } from "../mode.ts";
-import { onDidChangePluginFeatures, pluginFeatures } from "../stars/about.ts";
 import { starStore } from "../stars/model.ts";
-import { KEEP_AWAKE_FEATURE, readKeepAwake, writeKeepAwake } from "../stars/plugin.ts";
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 import { AuthorizedClients, PairingCard } from "./EnvironmentAccess.tsx";
@@ -335,40 +336,33 @@ function ReachableRow() {
 }
 
 /**
- * Under an environment's row, where its plugin's `about` lists `keep-awake`
- * (darwin), whether its server holds its Mac awake while agents work, on by
- * default; nothing until the switch is read.
+ * Under an environment's row, once its server's settings are read, upstream's
+ * `keepAwakeWhileAgentsWork`: whether its server holds its machine awake while
+ * a run is active (`apps/server/src/background/KeepAwake.ts`), on by default.
  */
 function KeepAwakeRow({ environmentId }: { environmentId: string }) {
-  const listed = useSyncExternalStore(
-    onDidChangePluginFeatures,
-    () => pluginFeatures(environmentId)?.has(KEEP_AWAKE_FEATURE) === true,
-  );
-  // Keyed by the environment, so another environment's answer never shows here.
+  // Keyed by the environment, so another environment's settings never show here.
   const [read, setRead] = useState<{ environmentId: string; on: boolean }>();
-  const setOn = (on: boolean) => setRead({ environmentId, on });
   const on = read?.environmentId === environmentId ? read.on : undefined;
-  useEffect(() => {
-    const credential = connection.credential(environmentId);
-    if (!listed || credential === undefined) return;
-    let current = true;
-    readKeepAwake(credential).then(
-      (answer) => current && setRead({ environmentId, on: answer }),
-      (error) => console.warn(`[pult-shell] could not read keep-awake: ${String(error)}`),
-    );
-    return () => {
-      current = false;
-    };
-  }, [environmentId, listed]);
-  if (!listed || on === undefined) return null;
+  useEffect(
+    () =>
+      followServerConfig(environmentId, (config) =>
+        setRead({ environmentId, on: config.settings.keepAwakeWhileAgentsWork }),
+      ),
+    [environmentId],
+  );
+  if (on === undefined) return null;
   const label = "Keep this Mac awake while agents work";
-  const change = (next: boolean) => {
-    const credential = connection.credential(environmentId);
-    if (credential === undefined) return;
-    writeKeepAwake(credential, next).then(setOn, (error) =>
-      console.warn(`[pult-shell] could not set keep-awake: ${String(error)}`),
-    );
-  };
+  // The config's change brings the setting back to the switch.
+  const change = (next: boolean) =>
+    void connection
+      .run(
+        environmentId,
+        request(WS_METHODS.serverUpdateSettings, { patch: { keepAwakeWhileAgentsWork: next } }),
+      )
+      .catch((error: unknown) =>
+        console.warn(`[pult-shell] could not set keep-awake: ${String(error)}`),
+      );
   return (
     <div className="pult-settings-row pult-settings-subrow">
       <div className="pult-settings-row-text">
