@@ -25,7 +25,12 @@ import {
   ThreadLaunchService,
   ThreadManagementService,
 } from "../host.ts";
-import { type BrokenFile, CHANNEL_MODELS_FILE, wakeChannelModel } from "./channelModels.ts";
+import {
+  type BrokenFile,
+  SHARED_SETTINGS_FILE,
+  settingsFile,
+  wakeChannelModel,
+} from "./settings.ts";
 import { type Channel, channelTag, isChannel } from "./channels.ts";
 import { RECORD_FILE, starName } from "./record.ts";
 import type { Conversations, Star, Stars } from "./stars.ts";
@@ -110,21 +115,21 @@ export const make = Effect.gen(function* () {
   /** The notices of broken files sent since the server started, `<star>:<key>`; the key keeps them once across restarts. */
   const told = new Set<string>();
 
-  /** Tells the channel whose wake found it once per content what is wrong with the Star's file; a notice that fails is logged, and told again at a later wake. */
-  const tell = Effect.fn("Stars.tellChannelModels")(function* (
+  /** Tells the channel whose wake found it once per content what is wrong with its settings files; a notice that fails is logged, and told again at a later wake. */
+  const tell = Effect.fn("Stars.tellChannelSettings")(function* (
     deliver: Deliver,
     star: Star,
     channel: Channel,
     broken: BrokenFile,
   ) {
-    const key = `channel-models:${broken.hash.slice(0, 16)}`;
+    const key = `channel-settings:${broken.hash.slice(0, 16)}`;
     const id = `${star.id}:${key}`;
     if (told.has(id)) return;
     told.add(id);
     yield* deliver({
       star,
-      text: `\`${CHANNEL_MODELS_FILE}\` cannot be served as written on this environment: ${broken.problems.join("; ")}. A choice this environment cannot serve falls back to \`default\`, then to conversation history, so the wakes go ahead. Fix the file; Pult tells you once per content.`,
-      from: `Pult, about ${CHANNEL_MODELS_FILE}`,
+      text: `The settings of your channel \`${channel}\`, \`${settingsFile(channel)}\` over \`${SHARED_SETTINGS_FILE}\`, cannot be read or served as written on this environment: ${broken.problems.join("; ")}. A choice this environment cannot serve falls back to every channel's file, then to conversation history, and a \`rotate-on-context\` Pult cannot read counts as \`250k\`, so the wakes go ahead. Fix the files; Pult tells you once per content.`,
+      from: "Pult, about your channel settings",
       key,
       to: channel,
       sender: "plugin",
@@ -133,7 +138,7 @@ export const make = Effect.gen(function* () {
       Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
       Effect.onError(() => Effect.sync(() => told.delete(id))),
       Effect.catchCauseIf(notInterrupted, (cause) =>
-        Effect.logWarning("Could not tell a Star its channel models are broken.", {
+        Effect.logWarning("Could not tell a Star its channel settings are broken.", {
           starId: star.id,
           cause,
         }),

@@ -182,5 +182,6 @@ name: ${quoted(record.name)}
 description: ${quoted(record.description)}
 tint: ${quoted(record.tint)}
 created: ${quoted(record.created)}
+default-channel: ${quoted(record.defaultChannel)}
 `;
 }

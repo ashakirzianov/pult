@@ -21,7 +21,7 @@ import { DateTime } from "../host.ts";
 import { v2Projection } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
 import {
   asleepBy,
-  contextFull,
+  contextReached,
   DEFAULT_CACHE_TTL_MS,
   type SleepInput,
   wakefulness,
@@ -311,51 +311,51 @@ describe("wakefulness", () => {
   });
 });
 
-describe("a full context", () => {
+describe("a context's size", () => {
   const ended = "2026-11-03T10:10:00.000Z";
-  const full = (usage: { usedTokens: number; maxTokens?: number | null }) =>
-    contextFull([turn("last", ended, { usage })]);
+  const reached = (usage: { usedTokens: number; maxTokens?: number | null }, tokens = 250_000) =>
+    contextReached([turn("last", ended, { usage })], tokens);
 
-  it("is 250,000 tokens in context, or 75% of the window, whichever comes first", () => {
-    assert.strictEqual(full({ usedTokens: 249_999, maxTokens: 1_000_000 }), false);
-    assert.strictEqual(full({ usedTokens: 250_000, maxTokens: 1_000_000 }), true);
-    assert.strictEqual(full({ usedTokens: 250_000 }), true);
-    assert.strictEqual(full({ usedTokens: 149_999, maxTokens: 200_000 }), false);
-    assert.strictEqual(full({ usedTokens: 150_000, maxTokens: 200_000 }), true);
+  it("reaches the figure in tokens alone, whatever the window", () => {
+    assert.strictEqual(reached({ usedTokens: 249_999, maxTokens: 1_000_000 }), false);
+    assert.strictEqual(reached({ usedTokens: 250_000, maxTokens: 1_000_000 }), true);
+    assert.strictEqual(reached({ usedTokens: 250_000 }), true);
+    // No share of a smaller window ends it before the figure.
+    assert.strictEqual(reached({ usedTokens: 190_000, maxTokens: 200_000 }), false);
+    assert.strictEqual(reached({ usedTokens: 100_000, maxTokens: 200_000 }, 100_000), true);
   });
 
-  it("is not where no turn reported usage, and by tokens alone where the window is unknown", () => {
-    assert.strictEqual(contextFull([]), false);
-    assert.strictEqual(contextFull([turn("bare", ended)]), false);
-    assert.strictEqual(full({ usedTokens: 200_000, maxTokens: null }), false);
-    assert.strictEqual(full({ usedTokens: 200_000, maxTokens: 0 }), false);
+  it("is not reached where no turn reported usage", () => {
+    assert.strictEqual(contextReached([], 1), false);
+    assert.strictEqual(contextReached([turn("bare", ended)], 1), false);
   });
 
   it("reads the newest usage reported, as the context meter does", () => {
     const heavy = turn("heavy", "2026-11-03T10:05:00.000Z", { usage: { usedTokens: 300_000 } });
     const compacted = turn("compacted", ended, { usage: { usedTokens: 20_000 } });
-    assert.strictEqual(contextFull([heavy, compacted]), false);
-    assert.strictEqual(contextFull([compacted, heavy]), false);
-    assert.strictEqual(contextFull([heavy, turn("bare", ended)]), true);
+    assert.strictEqual(contextReached([heavy, compacted], 250_000), false);
+    assert.strictEqual(contextReached([compacted, heavy], 250_000), false);
+    assert.strictEqual(contextReached([heavy, turn("bare", ended)], 250_000), true);
   });
 
   it("takes the deadline as passed for a conversation that rotates on it, every hold applying", () => {
     const providerTurns = [turn("last", ended, { ttl: 3_600_000, usage: { usedTokens: 260_000 } })];
     const expiresAt = at("2026-11-03T11:10:00.000Z");
     const input = conversation({ providerTurns });
-    assert.deepStrictEqual(wakefulness(input, expiresAt, { rotatesWhenFull: true }), {
+    assert.deepStrictEqual(wakefulness(input, expiresAt, { rotateOnContext: 250_000 }), {
       kind: "deadline",
       at: ms(ended),
     });
-    assert.deepStrictEqual(wakefulness(input, null, { rotatesWhenFull: true }), {
+    assert.deepStrictEqual(wakefulness(input, null, { rotateOnContext: 250_000 }), {
       kind: "deadline",
       at: ms(ended),
     });
-    // The conversation with the user never rotates on it.
-    assert.deepStrictEqual(wakefulness(input, expiresAt), {
-      kind: "deadline",
-      at: ms("2026-11-03T11:10:00.000Z"),
-    });
+    // Short of its figure, or set never, it keeps its cache's deadline.
+    for (const rotateOnContext of [300_000, "never"] as const)
+      assert.deepStrictEqual(wakefulness(input, expiresAt, { rotateOnContext }), {
+        kind: "deadline",
+        at: ms("2026-11-03T11:10:00.000Z"),
+      });
     assert.deepStrictEqual(
       wakefulness(
         conversation({
@@ -363,13 +363,13 @@ describe("a full context", () => {
           runs: [run("done", "completed", ended), { ...run("next", "queued"), queueHeld: true }],
         }),
         expiresAt,
-        { rotatesWhenFull: true },
+        { rotateOnContext: 250_000 },
       ),
       { kind: "held", by: "queued" },
     );
     // Background work holds as the server's settle check reads it: awaited, or of a kind that always holds.
     const holding = (pendingBackgroundTasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>) =>
-      wakefulness(input, expiresAt, { rotatesWhenFull: true, pendingBackgroundTasks });
+      wakefulness(input, expiresAt, { rotateOnContext: 250_000, pendingBackgroundTasks });
     const held = { kind: "held", by: "background-work" } as const;
     assert.deepStrictEqual(holding([{ taskId: "compare", kind: "command", awaited: true }]), held);
     assert.deepStrictEqual(holding([{ taskId: "lookup", kind: "background_task" }]), held);
@@ -390,7 +390,7 @@ describe("a full context", () => {
     const woken = { ...v2Projection.thread, unsettledAt: at("2026-11-03T12:00:00.000Z") };
     assert.deepStrictEqual(
       wakefulness(conversation({ thread: woken, providerTurns }), at("2026-11-03T11:10:00.000Z"), {
-        rotatesWhenFull: true,
+        rotateOnContext: 250_000,
       }),
       { kind: "deadline", at: ms("2026-11-03T12:00:00.000Z") + DEFAULT_CACHE_TTL_MS },
     );

@@ -10,6 +10,12 @@ import {
   withRecordFields,
 } from "./record.ts";
 
+/** The changed passages of version 20, word for word as approved (`rename-user-and-work-channels.task/design.md`). */
+const CHANNELS =
+  "You hold one conversation per channel, each a thread of its own. They can run at the same time and share only this folder. A channel is a slug, lowercase letters, digits and hyphens starting with a letter or a digit, up to 51 characters, and naming one makes it: give a piece of work a channel of its own, and its reports gather where its history is. No channel is special by name. `default-channel` in your record names your default channel, `main` where the record has no such line: the one Pult opens for the user as your tab, and where a message or a schedule lands that names no channel, Pult's own among them. The first message of every conversation opens with a bracket line that names the channel you are in: `[To your channel <channel>]` over the user's own message, `[From <sender>, to your channel <channel>]` over a delivered one, `[In reply to your ask ..., to your channel <channel>]` over the user's reply to an ask. The user reads along only in a conversation they are writing in. Elsewhere nobody reads as you write: what a sender needs goes back to the sender, what the user needs is an ask, and what the next turn needs is in this folder before this turn ends, since Pult ends a conversation after any turn once its cache expired or its context reached the channel's `rotate-on-context`. `pult_star_message` with your own `id` and a `channel` hands something to another of your channels. Keep one file per concern, and read a file again before changing it: another channel may have changed it.";
+const SETTINGS =
+  "- `.pult/channels/<channel>/settings.yaml` is yours, one channel's settings, and `.pult/channels/settings.yaml` every channel's; a channel's file wins key by key. Each is plain `key: value` lines. `provider`, `model` and optional `effort` choose the model a fresh conversation of the channel starts with: use the IDs and effort values offered on the environment where you wake, and omit `effort` for the model's default. `rotate-on-context` says when Pult ends a conversation for its size: thousands of tokens written `250k`, the conversation ending after the turn that reaches them; or `never`. Where no file says, the model is your newest conversation's and `rotate-on-context` is `250k`. A choice this environment cannot serve falls back to every channel's file, then to conversation history, and Pult tells the channel that woke, once per content.";
+
 const record = newRecord("5f0c7e1a-2b3c-4d5e-8f90-1a2b3c4d5e6f", "2026-11-03T12:00:00.000Z");
 
 describe("parseRecord", () => {
@@ -126,10 +132,6 @@ describe("AGENTS.md", () => {
       AGENTS_TEXT,
       '`[In reply to your ask <id> "<title>", to your channel <channel>]`',
     );
-    assert.include(
-      AGENTS_TEXT,
-      "or of the user's reply to one of your asks, names the channel you are in",
-    );
     assert.notInclude(AGENTS_TEXT, ".pult/asks");
   });
 
@@ -138,11 +140,27 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "record of the runs in `.pult/runs/`.");
   });
 
-  it("tells the Star of its channels and of their transcripts' folders", () => {
-    assert.include(AGENTS_TEXT, "You hold one conversation per channel, each a thread of its own.");
-    assert.include(AGENTS_TEXT, "a conversation whose messages carry no such line is `user`");
-    assert.include(AGENTS_TEXT, "with your own `id` and a `channel`");
-    assert.include(AGENTS_TEXT, "A schedule lands in `user` unless its file says `to: <slug>`");
+  it("tells the Star its channels, none special by name, and of their transcripts' folders", () => {
+    assert.include(AGENTS_TEXT, `\n\n${CHANNELS}\n\n`);
+    assert.include(
+      AGENTS_TEXT,
+      "`tint` is one of amber, coral, rose, violet, indigo, sky or mint. `default-channel` is the slug of your default channel. Leave `id` and `created` as they are.",
+    );
+    assert.include(AGENTS_TEXT, "those of a thread with no channel tag in your default channel");
+    assert.include(
+      AGENTS_TEXT,
+      "A schedule lands in your default channel unless its file says `to: <slug>`",
+    );
+    assert.include(AGENTS_TEXT, "and Pult tells the schedule's channel when it starts failing.");
+    assert.include(
+      AGENTS_TEXT,
+      "Do it when a unit of work is done and what must outlive it is written in this folder",
+    );
+    assert.include(
+      AGENTS_TEXT,
+      "Never do it in a conversation the user is talking with you in: it leaves their view.\n",
+    );
+    assert.notMatch(AGENTS_TEXT, /`user`|`work`/u);
     assert.match(
       AGENTS_TEXT,
       /^- `\.pult\/channels\/<channel>\/conversations\/<environment>\/` holds/m,
@@ -175,19 +193,17 @@ describe("AGENTS.md", () => {
     assert.include(AGENTS_TEXT, "`t3_thread_update` sets it");
   });
 
-  it("calls .pult/channel-models.json the Star's, and tells its fallback", () => {
-    assert.include(
-      AGENTS_TEXT,
-      "- `.pult/channel-models.json` is yours. Set `default` to an object with `provider`, `model` and optional `effort`. Under `channels`, an exact channel slug can name its own object of the same shape. Use the IDs and effort values offered on the environment where you wake. Omit effort for the model's default. Pult reads the choice when a fresh conversation starts. Without the file, Pult uses conversation history. A choice this environment cannot serve falls back to `default`, then to conversation history, and Pult tells you in `work`.\n",
-    );
+  it("calls the channels' settings files the Star's, and tells their keys and fallback", () => {
+    assert.include(AGENTS_TEXT, `\n${SETTINGS}\n\n`);
+    assert.notInclude(AGENTS_TEXT, "channel-models");
   });
 
   it("is rewritten when missing, of no version or older, never when newer", () => {
     assert.strictEqual(agentsOutdated(undefined), true);
     assert.strictEqual(agentsOutdated(`---\n${recordText(record)}---\n\n# Star\n`), true);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION - 1} -->\n`), true);
-    // Version 17 is the last without the channel models.
-    assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 17 -->\n"), true);
+    // Version 19 is the last with `user` and `work` special.
+    assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 19 -->\n"), true);
     assert.strictEqual(agentsOutdated(AGENTS_TEXT), false);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);
   });

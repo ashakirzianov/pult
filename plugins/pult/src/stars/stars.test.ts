@@ -173,7 +173,16 @@ describe("creation", () => {
         assert.strictEqual(first.name, "");
         assert.strictEqual(yield* h.read(h.path.join(first.root, "AGENTS.md")), AGENTS_TEXT);
         assert.strictEqual(yield* h.read(h.path.join(first.root, "instructions.md")), "");
-        assert.isTrue(yield* h.fs.exists(h.path.join(first.root, ".pult/channels")));
+        // Its record names `main` the default channel, whose settings opt it out of rotation.
+        assert.match(
+          yield* h.read(h.path.join(first.root, ".pult/star.yaml")),
+          /\ndefault-channel: "main"\n$/u,
+        );
+        assert.strictEqual(first.defaultChannel, "main");
+        assert.strictEqual(
+          yield* h.read(h.path.join(first.root, ".pult/channels/main/settings.yaml")),
+          "rotate-on-context: never\n",
+        );
         assert.deepStrictEqual(h.projects.shells[0], {
           ...h.projects.shells[0]!,
           title: "Star",
@@ -288,7 +297,7 @@ describe("upkeep", () => {
       });
       assert.match(
         yield* h.read(file),
-        /^name: "Vega"\ndescription: "Coordinates the fleet"\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
+        /^name: "Vega"\ndescription: "Coordinates the fleet"\ntint: "sky"\ncreated: .*\ndefault-channel: "main"\n# the Star's own line\n$/m,
       );
       assert.strictEqual(h.projects.shells[0]?.title, "Vega");
 
@@ -596,13 +605,21 @@ describe("a full context", () => {
   };
 
   it.effect(
-    "ends an idle conversation of any channel on the next look before its cache expires, and the next message finds none",
+    "ends an idle conversation once its context reaches its channel's rotate-on-context, before its cache expires, and the next message finds none",
     () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
         const h = yield* harness;
         const star = yield* h.stars.create({ ifNone: true });
-        // 75% of a smaller window, short of 250,000 tokens.
+        // Every channel at 120k, which `work` reached; `unit-2` at its own, the default 250k reached.
+        yield* h.write(
+          h.path.join(star.root, ".pult/channels/settings.yaml"),
+          "rotate-on-context: 120k\n",
+        );
+        yield* h.write(
+          h.path.join(star.root, ".pult/channels/unit-2/settings.yaml"),
+          "rotate-on-context: 250k\n",
+        );
         const work = conversation(
           h,
           star,
@@ -620,8 +637,19 @@ describe("a full context", () => {
           turnUsing(250_000, 1_000_000),
         );
 
+        // `main`, which Create Star set `never`, keeps its cache's deadline however full.
+        const main = conversation(
+          h,
+          star,
+          "main",
+          [channelTag("main")],
+          [run("main-run", "completed")],
+          turnUsing(900_000, 1_000_000),
+        );
+
         // Due now, as the route serves it: the end of its last turn.
         assert.deepStrictEqual((yield* h.stars.view).stars[0]?.channels, [
+          { slug: "main", threadId: main.shell.id, sleeps: { at: "2026-11-10T13:30:00.000Z" } },
           { slug: "unit-2", threadId: unit.shell.id, sleeps: { at: "2026-11-10T12:01:00.000Z" } },
           { slug: "work", threadId: work.shell.id, sleeps: { at: "2026-11-10T12:01:00.000Z" } },
         ]);

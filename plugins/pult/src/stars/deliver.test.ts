@@ -11,10 +11,10 @@ import {
 import * as TestClock from "effect/testing/TestClock";
 
 import { DateTime, DispatchModeLimit, Effect, Exit, FileSystem, Layer, Path } from "../host.ts";
-import { CHANNEL_MODELS_FILE } from "./channelModels.ts";
 import { type Channel, channelTag } from "./channels.ts";
 import * as Delivery from "./deliver.ts";
 import { RECORD_FILE } from "./record.ts";
+import { SHARED_SETTINGS_FILE, settingsFile } from "./settings.ts";
 import * as Stars from "./stars.ts";
 import { at, fakeServer, run } from "./testing.ts";
 
@@ -66,6 +66,16 @@ const PROVIDERS = [
     instanceId: ProviderInstanceId.make("codex-narrow"),
   },
 ];
+interface Choice {
+  readonly provider: string;
+  readonly model: string;
+  readonly effort?: string;
+}
+/** A choice as a settings file's lines. */
+const settingsText = (choice: Choice) =>
+  Object.entries(choice)
+    .map(([key, value]) => `${key}: ${value}\n`)
+    .join("");
 const FABLE = { provider: "claudeAgent", model: "claude-fable-5-2", effort: "high" };
 const SOL = { provider: "codex", model: "gpt-6.2-sol", effort: "low" };
 /** The selection a choice of the file launches at. */
@@ -89,18 +99,26 @@ const harness = Effect.gen(function* () {
   server.limits.providers = PROVIDERS;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  /** Writes the Star's channel models, JSON or text as given. */
-  const choose = (file: string | object) =>
-    Effect.flatMap(
-      fs.makeDirectory(path.dirname(path.join(star.root, CHANNEL_MODELS_FILE)), {
-        recursive: true,
-      }),
-      () =>
-        fs.writeFileString(
-          path.join(star.root, CHANNEL_MODELS_FILE),
-          typeof file === "string" ? file : JSON.stringify(file),
-        ),
+  /** Writes a settings file of the Star's, by its path in the folder. */
+  const writeSettings = (file: string, text: string) =>
+    Effect.andThen(
+      fs.makeDirectory(path.dirname(path.join(star.root, file)), { recursive: true }),
+      () => fs.writeFileString(path.join(star.root, file), text),
     );
+  /** Writes the Star's choices: `shared` as every channel's file, each of `channels` as its own; text as the shared file as given. */
+  const choose = (
+    files: string | { readonly shared?: Choice; readonly channels?: Record<string, Choice> },
+  ) =>
+    typeof files === "string"
+      ? writeSettings(SHARED_SETTINGS_FILE, files)
+      : Effect.all([
+          ...(files.shared === undefined
+            ? []
+            : [writeSettings(SHARED_SETTINGS_FILE, settingsText(files.shared))]),
+          ...Object.entries(files.channels ?? {}).map(([channel, choice]) =>
+            writeSettings(settingsFile(channel), settingsText(choice)),
+          ),
+        ]);
   /** A conversation that ended an hour ago; `main`'s, the default channel's, unless `shell` tags it. */
   const ended = (id = "ended", shell: Partial<OrchestrationV2ThreadShell> = {}) =>
     server.threads.add(star.projectId, id, {
@@ -500,7 +518,7 @@ describe("deliver", () => {
       Effect.gen(function* () {
         const h = yield* harness;
         h.ended();
-        yield* h.choose({ default: FABLE, channels: { captures: SOL } });
+        yield* h.choose({ shared: FABLE, channels: { captures: SOL } });
         yield* h.fromPlugin("k1", "File these.", "captures");
         // The launch carries the selection with its first message, the modes still the newest's.
         const [launch] = h.launches.launches;
@@ -516,12 +534,12 @@ describe("deliver", () => {
             initialMessage: '[From schedule "standup", to your channel captures]\n\nFile these.',
           },
         );
-        // An unlisted channel takes the default.
+        // A channel with no file of its own takes every channel's.
         yield* h.fromPlugin("k2", "Hello", "unit-2");
         assert.deepStrictEqual(h.launches.launches[1]?.modelSelection, selected(FABLE));
         // An edit while the conversation is open changes nothing in it.
         const opus = { provider: "claudeAgent", model: "claude-opus-5-5", effort: "low" };
-        yield* h.choose({ default: FABLE, channels: { captures: opus } });
+        yield* h.choose({ shared: FABLE, channels: { captures: opus } });
         assert.strictEqual((yield* h.fromPlugin("k3", "More.", "captures")).outcome, "queued");
         assert.strictEqual(h.launches.launches.length, 2);
         // Asleep, the channel wakes at the edited choice.
@@ -534,7 +552,7 @@ describe("deliver", () => {
         yield* h.fromPlugin("k4", "Again.", "captures");
         assert.deepStrictEqual(h.launches.launches[2]?.modelSelection, selected(opus));
         // Nothing was wrong, so nothing was told.
-        assert.isFalse(h.launches.launches.some((each) => each.tags?.includes(channelTag("work"))));
+        assert.isFalse(h.threads.messages.some((each) => each.text.startsWith("[From Pult")));
       }).pipe(Effect.scoped),
   );
 
@@ -542,13 +560,13 @@ describe("deliver", () => {
     Effect.gen(function* () {
       const h = yield* harness;
       h.ended();
-      yield* h.choose({ default: SOL });
+      yield* h.choose({ shared: SOL });
       h.launches.state.cutNext = true;
       assert.strictEqual(
         failureCode(yield* Effect.exit(h.fromPlugin("wake"))),
         "orchestration_error",
       );
-      yield* h.choose({ default: FABLE });
+      yield* h.choose({ shared: FABLE });
       assert.strictEqual((yield* h.fromPlugin("wake")).outcome, "launched");
       assert.deepStrictEqual(
         h.launches.launches.map((each) => each.modelSelection),
@@ -565,7 +583,7 @@ describe("deliver", () => {
         h.ended();
         // A provider that does not offer the wake's mode, `auto`, cannot serve it.
         yield* h.choose({
-          default: FABLE,
+          shared: FABLE,
           channels: { captures: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
         });
         yield* h.fromPlugin("k1", "File these.", "captures");
@@ -584,10 +602,15 @@ describe("deliver", () => {
         assert.strictEqual(notice?.threadId, ThreadId.make("launched-1"));
         assert.include(
           notice?.text,
-          '`channels.captures.provider` "codex-narrow" does not offer runtime mode "auto"',
+          '`provider` in `.pult/channels/captures/settings.yaml` "codex-narrow" does not offer runtime mode "auto"',
         );
-        // Without the file, the channel wakes at the Star's newest conversation's model.
-        yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        assert.match(
+          notice!.text,
+          /^\[From Pult, about your channel settings, to your channel captures\]\n\nThe settings of your channel `captures`, `\.pult\/channels\/captures\/settings\.yaml` over `\.pult\/channels\/settings\.yaml`, cannot be read or served/u,
+        );
+        // Without the files, the channel wakes at the Star's newest conversation's model.
+        yield* h.fs.remove(h.path.join(h.star.root, SHARED_SETTINGS_FILE));
+        yield* h.fs.remove(h.path.join(h.star.root, settingsFile("captures")));
         for (const id of ["launched-1", "launched-2"]) {
           const each = h.threads.byId(ThreadId.make(id))!;
           each.shell = { ...each.shell, modelSelection: model("history-model") };
@@ -598,12 +621,12 @@ describe("deliver", () => {
   );
 
   it.effect(
-    "wakes work at history where the file does not parse, the notice queued into that conversation",
+    "wakes work at history where the file does not read, the notice queued into that conversation",
     () =>
       Effect.gen(function* () {
         const h = yield* harness;
         const last = h.ended();
-        yield* h.choose('{"default": ');
+        yield* h.choose("provider claudeAgent\n");
         yield* h.fromThread("k1", fullAccess);
         assert.deepStrictEqual(
           h.launches.launches.map((each) => each.modelSelection),
@@ -613,12 +636,15 @@ describe("deliver", () => {
           h.threads.messages.map((each) => each.threadId),
           [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
         );
-        assert.include(h.threads.messages[1]?.text, "it is not JSON");
+        assert.include(
+          h.threads.messages[1]?.text,
+          '`.pult/channels/settings.yaml`\'s line "provider claudeAgent" is not `key: value`',
+        );
         // The notice is Pult's, under no ceiling of the thread whose wake found the file broken.
         assert.strictEqual(h.threads.messages[1]?.limit, undefined);
         // A file that cannot be read is no choice either, and tells nothing.
-        yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
-        yield* h.fs.makeDirectory(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        yield* h.fs.remove(h.path.join(h.star.root, SHARED_SETTINGS_FILE));
+        yield* h.fs.makeDirectory(h.path.join(h.star.root, SHARED_SETTINGS_FILE));
         yield* h.fromPlugin("k2", "Hello", "unit-2");
         assert.deepStrictEqual(h.launches.launches[1]?.modelSelection, last.shell.modelSelection);
         assert.strictEqual(h.threads.messages.length, 3);
@@ -635,14 +661,14 @@ describe("deliver", () => {
         // No file: the page keeps its own, the newest conversation's.
         assert.deepStrictEqual(yield* shown, last.shell.modelSelection);
         assert.strictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), null);
-        yield* h.choose({ default: FABLE, channels: { main: SOL } });
+        yield* h.choose({ shared: FABLE, channels: { main: SOL } });
         assert.deepStrictEqual(yield* shown, selected(SOL));
         assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), selected(SOL));
-        // Another channel's tagged draft takes its own: here the default.
+        // Another channel's tagged draft takes its own: here every channel's.
         assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "review"), selected(FABLE));
-        // At a mode its provider does not offer, the entry falls to the default, and the page's wake tells its channel.
+        // At a mode its provider does not offer, the choice falls to every channel's, and the page's wake tells its channel.
         yield* h.choose({
-          default: FABLE,
+          shared: FABLE,
           channels: { main: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
         });
         assert.deepStrictEqual(yield* shown, selected(FABLE));

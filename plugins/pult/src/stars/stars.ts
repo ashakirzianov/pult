@@ -31,7 +31,6 @@ import {
 } from "../host.ts";
 import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
-import { wakeChannelModel } from "./channelModels.ts";
 import { type Channel, isChannel, taggedChannel } from "./channels.ts";
 import {
   AGENTS_FILE,
@@ -50,7 +49,14 @@ import {
   starName,
   withRecordFields,
 } from "./record.ts";
-import { asleepBy, type SleepInput, type Wakefulness, wakefulness } from "./sleep.ts";
+import { rotateOnContext, settingsFile, wakeChannelModel } from "./settings.ts";
+import {
+  asleepBy,
+  type RotateOnContext,
+  type SleepInput,
+  type Wakefulness,
+  wakefulness,
+} from "./sleep.ts";
 import {
   formatTranscript,
   isTranscriptName,
@@ -254,13 +260,18 @@ const instant = (iso: string | undefined) => {
 };
 
 /**
- * The sleep rule's reading of a conversation: every channel rotates on a full context, and none sleeps while the shell's background work holds it, or while its latest run, which a
+ * The sleep rule's reading of a conversation: it ends once its context reaches its channel's
+ * `rotate-on-context`, and none sleeps while the shell's background work holds it, or while its latest run, which a
  * queued run does not conceal, is stopped by a usage limit; a deliberate settle or archive still
  * ends it.
  */
-const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
+const wakefulnessOf = (
+  records: SleepInput,
+  thread: OrchestrationV2ThreadShell,
+  rotateAt: RotateOnContext,
+) =>
   wakefulness(records, thread.promptCacheExpiresAt, {
-    rotatesWhenFull: true,
+    rotateOnContext: rotateAt,
     pendingBackgroundTasks: thread.pendingBackgroundTasks,
     usageLimited: thread.status === "failed" && thread.lastErrorClass === "usage_limit",
   });
@@ -486,8 +497,15 @@ export const make = Effect.gen(function* () {
       ["runs", "providerTurns", "runtimeRequests", "subagents"],
     );
     const latest = records.runs.toSorted((left, right) => left.ordinal - right.ordinal).at(-1);
+    const rotateAt = yield* rotateOnContext(star, channelOf(thread)).pipe(
+      Effect.provide(resolving),
+    );
     // Read after the records, so a run they show failed on a usage limit holds it.
-    const state = wakefulnessOf(records, (yield* threads.getThreadShell(thread.id)) ?? thread);
+    const state = wakefulnessOf(
+      records,
+      (yield* threads.getThreadShell(thread.id)) ?? thread,
+      rotateAt,
+    );
     const awake: SleepOutcome = { slept: false };
     if (state.kind === "held") return { slept: false, heldBy: state.by } satisfies SleepOutcome;
     if (requested === undefined) {
@@ -694,19 +712,18 @@ export const make = Effect.gen(function* () {
         const channels = yield* Effect.forEach(
           [...current].toSorted(([left], [right]) => left.localeCompare(right)),
           ([slug, thread]) =>
-            Effect.map(
-              threads.getProjectThreadRecords({ projectId: star.projectId, threadId: thread.id }, [
-                "runs",
-                "providerTurns",
-                "runtimeRequests",
-                "subagents",
-              ]),
-              (records): ChannelView => ({
+            Effect.gen(function* () {
+              const records = yield* threads.getProjectThreadRecords(
+                { projectId: star.projectId, threadId: thread.id },
+                ["runs", "providerTurns", "runtimeRequests", "subagents"],
+              );
+              const rotateAt = yield* rotateOnContext(star, slug).pipe(Effect.provide(resolving));
+              return {
                 slug,
                 threadId: thread.id,
-                sleeps: sleepsOf(wakefulnessOf(records, thread)),
-              }),
-            ),
+                sleeps: sleepsOf(wakefulnessOf(records, thread, rotateAt)),
+              } satisfies ChannelView;
+            }),
         );
         const { defaultChannel } = star;
         const last = (yield* settledConversations(star, 1, { channel: defaultChannel }))[0];
@@ -811,7 +828,10 @@ export const make = Effect.gen(function* () {
         workspaceRoot: root,
         createWorkspaceRootIfMissing: true,
       });
-      yield* fs.makeDirectory(path.join(root, CHANNELS_DIRECTORY), { recursive: true });
+      // The default channel is the one the user talks in: it never ends for its size.
+      const settings = path.join(root, settingsFile(record.defaultChannel));
+      yield* fs.makeDirectory(path.dirname(settings), { recursive: true });
+      yield* fs.writeFileString(settings, "rotate-on-context: never\n");
       yield* fs.writeFileString(path.join(root, INSTRUCTIONS_FILE), "");
       yield* fs.writeFileString(path.join(root, AGENTS_FILE), AGENTS_TEXT);
       // Written last: the record is what makes the folder a Star.

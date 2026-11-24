@@ -12,9 +12,8 @@ import { DateTime } from "../host.ts";
 /** How long a conversation stays awake after its last turn where nothing better is known, and after an un-settlement. */
 export const DEFAULT_CACHE_TTL_MS = 10 * 60_000;
 
-/** A context is full from this many tokens in it, or this share of its window, the context meter's orange and red. */
-const FULL_CONTEXT_TOKENS = 250_000;
-const FULL_CONTEXT_SHARE = 0.75;
+/** When a conversation ends for its size: from this many tokens in its context, or never (`settings.ts`, `rotate-on-context`). */
+export type RotateOnContext = number | "never";
 
 /** Held awake by what, or asleep from `at`, in epoch milliseconds. */
 export type Wakefulness =
@@ -34,10 +33,13 @@ const LIVE_RUNS: ReadonlySet<string> = new Set(["preparing", "starting", "runnin
 const LIVE_SUBAGENTS: ReadonlySet<string> = new Set(["pending", "running", "waiting"]);
 
 /**
- * Whether the context is full by the newest token usage a provider turn reported, as the context
- * meter reads it; not full where no turn reported any, and by tokens alone where the window is unknown.
+ * Whether the context reached `tokens` by the newest token usage a provider turn reported, as the
+ * context meter reads it; not where no turn reported any. The figure is absolute, whatever the window.
  */
-export function contextFull(providerTurns: SleepInput["providerTurns"]): boolean {
+export function contextReached(
+  providerTurns: SleepInput["providerTurns"],
+  tokens: number,
+): boolean {
   let usage: OrchestrationV2ProviderTurnTokenUsage | undefined;
   for (const { tokenUsage } of providerTurns) {
     // Ties go to the later entry, as the meter's do.
@@ -47,17 +49,12 @@ export function contextFull(providerTurns: SleepInput["providerTurns"]): boolean
     )
       usage = tokenUsage;
   }
-  if (usage === undefined) return false;
-  const { usedTokens, maxTokens } = usage;
-  return (
-    usedTokens >= FULL_CONTEXT_TOKENS ||
-    (maxTokens != null && maxTokens > 0 && usedTokens >= FULL_CONTEXT_SHARE * maxTokens)
-  );
+  return usage !== undefined && usage.usedTokens >= tokens;
 }
 
 /**
  * Asleep at the prompt cache expiry, else the last turn's end plus its observed TTL (10 minutes
- * where none), at that end itself when full and `rotatesWhenFull`, or 10 minutes after a later
+ * where none), at that end itself once the context reached `rotateOnContext`, or 10 minutes after a later
  * un-settlement; held while a run is on or queued, a subagent works, a request awaits the user,
  * the shell's background work holds as the server's settle check reads it, or `usageLimited`.
  */
@@ -65,7 +62,8 @@ export function wakefulness(
   projection: SleepInput,
   promptCacheExpiresAt?: DateTime.Utc | null,
   options: {
-    readonly rotatesWhenFull?: boolean;
+    /** Absent, the conversation never ends for its size. */
+    readonly rotateOnContext?: RotateOnContext;
     readonly pendingBackgroundTasks?: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
     readonly usageLimited?: boolean;
   } = {},
@@ -81,7 +79,8 @@ export function wakefulness(
   if (options.usageLimited === true) return { kind: "held", by: "usage-limit" };
   const { unsettledAt } = projection.thread;
   // A full context takes the deadline as passed: the last turn's end, every hold still applying.
-  const full = options.rotatesWhenFull === true && contextFull(projection.providerTurns);
+  const rotateAt = options.rotateOnContext ?? "never";
+  const full = rotateAt !== "never" && contextReached(projection.providerTurns, rotateAt);
   if (promptCacheExpiresAt != null && !full) {
     const expiresAt = DateTime.toEpochMillis(promptCacheExpiresAt);
     return {
