@@ -34,6 +34,7 @@ import {
   nextDue,
   type Parsed,
   parseSchedule,
+  type Rule,
   ruleInWords,
   type Schedule,
   SCHEDULES_DIRECTORY,
@@ -53,6 +54,8 @@ export interface ScheduleView {
   readonly title: string | null;
   readonly path: string;
   readonly rule: string | null;
+  /** The rule's kind, which the page draws its icon by; null for a file that is no schedule. */
+  readonly kind: Rule["kind"] | null;
   readonly timezone: string | null;
   /** The next due instant, ISO; null where none is. */
   readonly next: string | null;
@@ -539,6 +542,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           title: null,
           path: file.path,
           rule: null,
+          kind: null,
           timezone: null,
           next: null,
           spent: false,
@@ -557,6 +561,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           schedule.command === undefined
             ? ruleInWords(schedule.rule)
             : `${ruleInWords(schedule.rule)}, runs ${schedule.command}`,
+        kind: schedule.rule.kind,
         timezone: schedule.timezone,
         next: passed !== undefined || next === undefined ? null : iso(next),
         spent:

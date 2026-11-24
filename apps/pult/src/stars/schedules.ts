@@ -3,7 +3,7 @@
 // schedule file and does no rule math: the rule in words, the next due instant and the last run
 // are the plugin's, from the `stars` route; the page formats the instants in its own zone and
 // adds the schedule's city where its zone is another.
-import type { RouteSchedule } from "./plugin.ts";
+import type { RouteSchedule, ScheduleKind } from "./plugin.ts";
 
 /** A schedule's row on the card. */
 export interface ScheduleRow {
@@ -12,6 +12,8 @@ export interface ScheduleRow {
   readonly label: string;
   /** Its hover: a titled row's file, which names it, then any detail; an untitled row's detail, else its file. */
   readonly hover: string;
+  /** The rule's kind, which picks the row's icon; undefined for a file that is no schedule. */
+  readonly kind: ScheduleKind | undefined;
   readonly path: string;
   /** The next run, in the page's zone, `tomorrow 09:00`; undefined where none is. */
   readonly next: string | undefined;
@@ -116,6 +118,7 @@ export function scheduleRows(
     const base = {
       name: schedule.name,
       label: schedule.title ?? schedule.name,
+      kind: schedule.kind ?? undefined,
       path: schedule.path,
       // A next run already past is due, firing on the home's next tick, or not at all where schedules are off.
       next:

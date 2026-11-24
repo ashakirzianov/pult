@@ -195,6 +195,7 @@ const star = {
       title: "Morning brief",
       path: "/Users/a/.pult/stars/star/.pult/schedules/morning.md",
       rule: "weekdays 09:00",
+      kind: "daily",
       timezone: "America/Argentina/Buenos_Aires",
       next: "2026-11-11T12:00:00.000Z",
       spent: false,
@@ -212,6 +213,7 @@ const star = {
       title: null,
       path: "/Users/a/.pult/stars/star/.pult/schedules/typo.md",
       rule: null,
+      kind: null,
       timezone: null,
       next: null,
       spent: false,
@@ -236,10 +238,11 @@ NodeTest.describe("decodeStars", () => {
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
   });
 
-  NodeTest.test("reads a schedule from a plugin older than titles as titled by none", () => {
-    const { title: _, ...older } = star.schedules[0] ?? {};
+  NodeTest.test("reads a schedule from a plugin older than titles and kinds as naming none", () => {
+    const { title: _, kind: __, ...older } = star.schedules[0] ?? {};
     const answer = { ...stars, stars: [{ ...star, schedules: [older] }] };
     NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.title, null);
+    NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.kind, null);
   });
 
   NodeTest.test("reads a plugin older than the model as naming none", () => {
@@ -265,20 +268,28 @@ NodeTest.describe("decodeStars", () => {
     },
   );
 
-  NodeTest.test("takes a run result it does not know, so a newer plugin hides no Star", () => {
-    const newer = {
-      ...stars,
-      stars: [
-        {
-          ...star,
-          schedules: [
-            { ...star.schedules[0], last: { ...star.schedules[0]?.last, result: "claimed" } },
-          ],
-        },
-      ],
-    };
-    NodeAssert.equal(decodeStars(newer).stars[0]?.schedules[0]?.last?.result, "claimed");
-  });
+  NodeTest.test(
+    "takes a run result or a kind it does not know, so a newer plugin hides no Star",
+    () => {
+      const newer = {
+        ...stars,
+        stars: [
+          {
+            ...star,
+            schedules: [
+              { ...star.schedules[0], last: { ...star.schedules[0]?.last, result: "claimed" } },
+            ],
+          },
+        ],
+      };
+      NodeAssert.equal(decodeStars(newer).stars[0]?.schedules[0]?.last?.result, "claimed");
+      const monthly = {
+        ...stars,
+        stars: [{ ...star, schedules: [{ ...star.schedules[0], kind: "monthly" }] }],
+      };
+      NodeAssert.equal(decodeStars(monthly).stars[0]?.schedules[0]?.kind, null);
+    },
+  );
 
   NodeTest.test("fails loudly on any other shape", () => {
     for (const body of [
@@ -296,6 +307,7 @@ NodeTest.describe("decodeStars", () => {
       { ...stars, stars: [{ ...star, schedules: null }] },
       { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[1], spent: "no" }] }] },
       { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[0], title: 1 }] }] },
+      { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[0], kind: 1 }] }] },
       {
         ...stars,
         stars: [

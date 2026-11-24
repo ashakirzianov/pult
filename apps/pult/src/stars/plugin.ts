@@ -187,6 +187,10 @@ export interface RouteRun {
   readonly thread: string | null;
 }
 
+const SCHEDULE_KINDS = ["daily", "once", "every"] as const;
+
+export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
+
 /** A schedule of a Star's, as the plugin parsed its file: the rule in words and the next due instant are the plugin's, the page only draws them. */
 export interface RouteSchedule {
   readonly name: string;
@@ -196,6 +200,8 @@ export interface RouteSchedule {
   readonly path: string;
   /** The rule in words, `weekdays 09:00`; null for a file that is no schedule. */
   readonly rule: string | null;
+  /** The rule's kind, its icon's: `daily` and `every` recur, `once` is a one-off; null for a file that is no schedule, from a plugin older than kinds, or of a kind this page does not know. */
+  readonly kind: ScheduleKind | null;
   /** Its IANA zone; null for a file that is no schedule. */
   readonly timezone: string | null;
   /** The next due instant, ISO; null where none is. */
@@ -358,11 +364,18 @@ const channel = struct<RouteChannel>({ slug: string, threadId: string, sleeps })
 const channels: Decode<ReadonlyArray<RouteChannel>> = (value, at) =>
   value === undefined ? [] : arrayOf(channel)(value, at);
 
+/** A newer plugin's kind reads as none, drawn with no icon, so it hides no Star. */
+const scheduleKind: Decode<ScheduleKind | null> = (value, at) => {
+  const kind = string(value, at);
+  return SCHEDULE_KINDS.find((each) => each === kind) ?? null;
+};
+
 const schedule = struct<RouteSchedule>({
   name: string,
   title: optional(nullable(string)),
   path: string,
   rule: nullable(string),
+  kind: optional(nullable(scheduleKind)),
   timezone: nullable(string),
   next: nullable(string),
   spent: boolean,

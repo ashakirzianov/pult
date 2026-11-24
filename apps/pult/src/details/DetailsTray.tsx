@@ -41,7 +41,7 @@ export function DetailsTray() {
       case "settings":
         return 0;
       case "schedules":
-        return schedules.filter((schedule) => schedule.rule?.startsWith("once, ")).length;
+        return schedules.filter((schedule) => schedule.kind === "once").length;
     }
   };
   return (

@@ -14,6 +14,7 @@ const schedule = (overrides: Partial<RouteSchedule> = {}): RouteSchedule => ({
   title: null,
   path: "/s/.pult/schedules/morning.md",
   rule: "weekdays 09:00",
+  kind: "daily",
   timezone: BUENOS_AIRES,
   next: "2026-11-12T12:00:00.000Z",
   spent: false,
@@ -98,16 +99,27 @@ NodeTest.describe("scheduleRows", () => {
     );
   });
 
-  NodeTest.test("tells a file that is no schedule from one that will not run", () => {
-    const typo = row({ rule: null, timezone: null, next: null, problem: "it has no `timezone`" });
+  NodeTest.test("tells a file that is no schedule, of no kind, from one that will not run", () => {
+    const typo = row({
+      rule: null,
+      kind: null,
+      timezone: null,
+      next: null,
+      problem: "it has no `timezone`",
+    });
     NodeAssert.deepEqual(
-      [typo.rule, typo.last, typo.warning],
-      [undefined, "not a schedule: it has no `timezone`", true],
+      [typo.rule, typo.kind, typo.last, typo.warning],
+      [undefined, undefined, "not a schedule: it has no `timezone`", true],
     );
-    const passed = row({ rule: "once, 1 Nov 09:00", next: null, problem: "it had passed" });
+    const passed = row({
+      rule: "once, 1 Nov 09:00",
+      kind: "once",
+      next: null,
+      problem: "it had passed",
+    });
     NodeAssert.deepEqual(
-      [passed.rule, passed.last, passed.warning],
-      ["once, 1 Nov 09:00", "will not run: it had passed", true],
+      [passed.rule, passed.kind, passed.last, passed.warning],
+      ["once, 1 Nov 09:00", "once", "will not run: it had passed", true],
     );
   });
 

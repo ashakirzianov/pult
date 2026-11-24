@@ -2,7 +2,7 @@ import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useSyncExternalStore } from "react";
 
 import { onDidChangePluginFeatures, pluginFeatures } from "../stars/about.ts";
-import { SCHEDULES_FEATURE } from "../stars/plugin.ts";
+import { SCHEDULES_FEATURE, type ScheduleKind } from "../stars/plugin.ts";
 import { type ScheduleRow, scheduleRows } from "../stars/schedules.ts";
 import { drawnHome, type Star } from "../stars/stars.ts";
 import { DetailsShelf } from "../details/shelves.tsx";
@@ -24,7 +24,7 @@ function useFiring(environmentId: string | undefined): boolean | undefined {
  * that home's plugin serves them on its `stars` route: under a collapsible
  * "Schedules", in the warning colour while any failed or
  * will not run, adding "not run on this environment" where that home's
- * `about` lacks `star-schedules`. A row is its title, else its file's name, and the next run, over
+ * `about` lacks `star-schedules`. A row is its kind's icon (recurring or one-off), its title, else its file's name, and the next run, over
  * the rule in words and the last run, a spent one-off dimmed; a click opens
  * its file as a tab (`pult-shell.openStarSchedule`). Hidden with none.
  */
@@ -67,11 +67,25 @@ export function StarSchedules({ star, now }: { star: Star; now: number }) {
   );
 }
 
+/** A row's codicon by its rule's kind: a recurring schedule's, or a one-off's. */
+const KIND_ICONS: Record<ScheduleKind, string> = {
+  daily: "history",
+  every: "history",
+  once: "clockface",
+};
+
 function ScheduleButton({ row, open }: { row: ScheduleRow; open: () => void }) {
   const className = `pult-schedule${row.spent ? " pult-schedule-spent" : ""}`;
   return (
     <button type="button" className={className} title={row.hover} onClick={open}>
       <span className="pult-schedule-head">
+        {row.kind === undefined ? null : (
+          <i
+            role="img"
+            className={`codicon codicon-${KIND_ICONS[row.kind]} pult-schedule-kind`}
+            aria-label={row.kind === "once" ? "One-off" : "Recurring"}
+          />
+        )}
         <span className="pult-schedule-name">{row.label}</span>
         {row.next === undefined ? null : <span className="pult-schedule-next">{row.next}</span>}
       </span>

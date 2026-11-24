@@ -730,6 +730,12 @@
   white-space: nowrap;
 }
 
+.pult-schedule-kind {
+  flex: none;
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
 .pult-schedule-next {
   flex: none;
   color: var(--vscode-descriptionForeground);

@@ -16,7 +16,7 @@ export const DETAILS_SHELF_ICONS: Record<
 > = {
   asks: { label: "Asks", icon: "comment-unresolved" },
   channels: { label: "Channels", icon: "comment-discussion" },
-  schedules: { label: "Schedules", icon: "history" },
+  schedules: { label: "Schedules", icon: "calendar" },
   settings: { label: "Star Settings", icon: "settings" },
 };
 

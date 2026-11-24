@@ -247,6 +247,7 @@ describe("the pass", () => {
         title: null,
         path: h.scheduleFile("standup"),
         rule: "every day 09:00",
+        kind: "daily",
         timezone: "UTC",
         next: "2026-11-11T09:00:00.000Z",
         spent: false,
@@ -402,7 +403,13 @@ describe("the pass", () => {
       );
       assert.match(told?.key ?? "", /^schedule-problem:standup:[0-9a-f]{16}$/);
       const [standup] = yield* h.view;
-      assert.deepInclude(standup, { rule: null, timezone: null, next: null, spent: false });
+      assert.deepInclude(standup, {
+        rule: null,
+        kind: null,
+        timezone: null,
+        next: null,
+        spent: false,
+      });
       assert.match(standup?.problem ?? "", /`tme` is no key/);
 
       // Another content is told again; the same content again is not.
@@ -518,6 +525,7 @@ describe("the pass", () => {
       assert.deepInclude(spent, {
         title: "Release check",
         rule: "once, 10 Nov 09:00",
+        kind: "once",
         next: null,
         spent: true,
         problem: null,
@@ -603,6 +611,7 @@ describe("the pass", () => {
         const [mail] = yield* h.view;
         assert.deepInclude(mail, {
           rule: "every 15m, runs ./watch.sh",
+          kind: "every",
           last: {
             due: "2026-11-10T08:15:00.000Z",
             fired: "2026-11-10T08:15:30.000Z",
