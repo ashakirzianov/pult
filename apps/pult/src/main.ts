@@ -114,7 +114,7 @@ registerStarSettings();
 registerStarCommands();
 registerAskCommands();
 registerSecretCommands();
-gateEditorMenus();
+gateEditorMenus(window.pultDesktop !== undefined);
 registerStatusCommands();
 registerComposerCommands();
 registerCiteCommand();

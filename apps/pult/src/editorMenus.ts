@@ -18,7 +18,7 @@ import { VSCodeModeContext } from "./mode.ts";
  * the tab bar's modes, since a thread's tab is its header; the editor actions'
  * position, since the title bar they would move to never shows; and the
  * auxiliary windows, which the shell's one selection and editor part do not
- * span and the desktop wrapper does not open. Each a command, wherever it is
+ * span (`AUXILIARY_WINDOW_COMMANDS`). Each a command, wherever it is
  * registered, or a submenu.
  */
 const VSCODE_MODE_COMMANDS = new Set([
@@ -30,6 +30,14 @@ const VSCODE_MODE_COMMANDS = new Set([
   "workbench.action.editorActionsTitleBar",
   "workbench.action.hideEditorActions",
   "workbench.action.showEditorActions",
+]);
+/**
+ * The auxiliary windows' commands, shown in VS Code mode in a browser tab
+ * alone: the desktop app's windows deny the `about:blank` popup the workbench
+ * opens them through, so there they are hidden in both modes
+ * (`pult/tasks/open-in-new-window.task` decides whether they open).
+ */
+const AUXILIARY_WINDOW_COMMANDS = new Set([
   "workbench.action.moveEditorToNewWindow",
   "workbench.action.copyEditorToNewWindow",
   "workbench.action.moveEditorGroupToNewWindow",
@@ -57,8 +65,12 @@ const VSCODE_MODE_TITLE_COMMANDS = new Set([
 
 const amended = new WeakSet<object>();
 
-/** Has the registered items of `menu` that `gate` names take `pult.vscodeMode` into their `when`, once each; answers the keys of those it names. */
-function gateItems(menu: MenuId, gate: (item: IMenuItem | ISubmenuItem) => string | undefined) {
+/** Has the registered items of `menu` that `gate` names take `condition(key)`, `pult.vscodeMode` by default, into their `when`, once each; answers the keys of those it names. */
+function gateItems(
+  menu: MenuId,
+  gate: (item: IMenuItem | ISubmenuItem) => string | undefined,
+  condition: (key: string) => ContextKeyExpression = () => VSCodeModeContext,
+) {
   const keys = new Set<string>();
   for (const item of MenuRegistry.getMenuItems(menu)) {
     const key = gate(item);
@@ -66,7 +78,7 @@ function gateItems(menu: MenuId, gate: (item: IMenuItem | ISubmenuItem) => strin
     keys.add(key);
     if (amended.has(item)) continue;
     const gated: { when?: ContextKeyExpression } = item;
-    gated.when = ContextKeyExpr.and(gated.when, VSCodeModeContext);
+    gated.when = ContextKeyExpr.and(gated.when, condition(key));
     amended.add(item);
   }
   return keys;
@@ -74,7 +86,7 @@ function gateItems(menu: MenuId, gate: (item: IMenuItem | ISubmenuItem) => strin
 
 const gateEditorMenu = (item: IMenuItem | ISubmenuItem) =>
   isIMenuItem(item)
-    ? VSCODE_MODE_COMMANDS.has(item.command.id)
+    ? VSCODE_MODE_COMMANDS.has(item.command.id) || AUXILIARY_WINDOW_COMMANDS.has(item.command.id)
       ? item.command.id
       : undefined
     : VSCODE_MODE_SUBMENUS.has(item.submenu)
@@ -88,13 +100,27 @@ const gateTitle = (item: IMenuItem | ISubmenuItem) =>
 
 /**
  * Shows those entries in VS Code mode alone: their registered items take
- * `pult.vscodeMode` into their `when`. Called before the workbench starts,
+ * `pult.vscodeMode` into their `when`, and in the desktop app (`desktop`,
+ * `window.pultDesktop` present) the auxiliary windows' a false one, hidden
+ * in both modes, an empty group's New Window too. Called before the workbench starts,
  * after the workbench's contributions have registered them, and the tab
  * bar's buttons as items are added to it; a command a VS Code bump renames
  * is reported, not fatal (a Markdown button's shows again instead).
  */
-export function gateEditorMenus(): void {
-  const gated = new Set(MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu)]));
+export function gateEditorMenus(desktop: boolean): void {
+  const condition = (key: string) =>
+    desktop && AUXILIARY_WINDOW_COMMANDS.has(key) ? ContextKeyExpr.false() : VSCodeModeContext;
+  const gated = new Set(MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu, condition)]));
+  // An empty group's menu offers New Empty Editor Window as New Window, in either mode.
+  if (desktop)
+    gateItems(
+      MenuId.EmptyEditorGroupContext,
+      (item) =>
+        isIMenuItem(item) && AUXILIARY_WINDOW_COMMANDS.has(item.command.id)
+          ? item.command.id
+          : undefined,
+      () => ContextKeyExpr.false(),
+    );
   gateItems(MenuId.EditorTitle, gateTitle);
   // Ahead of a menu's rebuild, which waits for the changes' debounce.
   MenuRegistry.onDidChangeMenu((event) => {
@@ -102,6 +128,7 @@ export function gateEditorMenus(): void {
   });
   const missing = [
     ...VSCODE_MODE_COMMANDS,
+    ...AUXILIARY_WINDOW_COMMANDS,
     ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id),
   ].filter((id) => !gated.has(id));
   if (missing.length > 0) console.warn("[pult-shell] menu entries not found to gate:", missing);

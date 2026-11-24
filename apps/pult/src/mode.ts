@@ -40,11 +40,14 @@ export type Mode = (typeof MODES)[number]["mode"];
  * in `style.css` (the "More Actions" of the editor tabs' row); and the
  * settings held in the in-memory configuration layer, the user's own applying
  * in VS Code mode alone, where the stock ways to change them show
- * (`src/editorMenus.ts`).
+ * (`src/editorMenus.ts`), but a dragged-out tab's window, which opens in VS
+ * Code mode in a browser tab alone.
  */
 export const VSCodeModeContext = new RawContextKey<boolean>("pult.vscodeMode", false);
 /** On the workbench's element in VS Code mode, for the rules of `style.css`, and read where a context key cannot be. */
 export const VSCODE_MODE_CLASS = "pult-mode-vscode";
+/** Held in VS Code mode too in the desktop app, whose windows deny the auxiliary window a dragged-out tab opens (`src/editorMenus.ts`). */
+const DESKTOP_HELD_SETTINGS = new Set(["workbench.editor.dragToOpenWindow"]);
 /** What Pult's mode holds: the tab bar on Multiple, since a thread's tab is its header; the editor actions on it, since the title bar never shows; and no window from a tab dragged out, since the shell's selection spans one window. */
 const HELD_SETTINGS = {
   "workbench.editor.showTabs": "multiple",
@@ -120,12 +123,14 @@ export async function startMode(): Promise<void> {
     getService(IConfigurationService),
   ]);
   const key = VSCodeModeContext.bindTo(contextKeys);
+  const desktop = window.pultDesktop !== undefined;
   const apply = () => {
     const vscode = choice.current() === "vscode";
     key.set(vscode);
     document.querySelector(".monaco-workbench")?.classList.toggle(VSCODE_MODE_CLASS, vscode);
     for (const [key, value] of Object.entries(HELD_SETTINGS)) {
-      void configuration.updateValue(key, vscode ? undefined : value, ConfigurationTarget.MEMORY);
+      const held = !vscode || (desktop && DESKTOP_HELD_SETTINGS.has(key));
+      void configuration.updateValue(key, held ? value : undefined, ConfigurationTarget.MEMORY);
     }
   };
   apply();
