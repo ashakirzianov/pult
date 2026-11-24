@@ -5,14 +5,22 @@
 import type { EnvironmentRpcInput } from "@t3tools/client-runtime/rpc";
 import { getProviderClient } from "@t3tools/client-runtime/provider-clients";
 import {
+  ANTIGRAVITY_AUTH_METHODS,
+  type AntigravityAuthMethod,
+  type AntigravitySettings,
   DEFAULT_SERVER_SETTINGS,
+  isSecretReference,
+  isSecretSetting,
+  type ProviderAuthState,
   type ProviderInstallState,
   type ProviderInstanceConfig,
+  type ProviderSettingsFormOption,
   resolveProjectProviderInstanceEnabled,
   type ServerProvider,
   type ServerSettings,
   type WS_METHODS,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 export type UpdateSettingsInput = EnvironmentRpcInput<typeof WS_METHODS.serverUpdateSettings>;
 
@@ -30,6 +38,40 @@ export interface RuntimeRow {
   readonly canRemove: boolean;
 }
 
+/** A field of the driver's settings under the provider: its sign-in method, or a secret. */
+export interface SetupField {
+  readonly key: string;
+  /** The driver's own words, from its settings schema's annotations. */
+  readonly label: string;
+  readonly description: string | undefined;
+  readonly placeholder: string | undefined;
+  readonly control: "select" | "text" | "secret";
+  readonly options: ReadonlyArray<ProviderSettingsFormOption>;
+  /** A select's or text field's saved value; empty for a secret, whose value the page never holds. */
+  readonly value: string;
+  /** A secret's state: none saved, one saved (its redaction marker received), or a secret provider's reference. */
+  readonly secret: "unset" | "saved" | { readonly from: string };
+}
+
+export type AccountAction = "signIn" | "connect" | "retry" | "cancel" | "changeAccount";
+
+/** The Account subrow, where the server can sign in to the provider (`setup.canAuthenticate`). */
+export interface AccountRow {
+  /** A sign-in flow runs: starting, waiting on its interaction, or checking. */
+  readonly active: boolean;
+  readonly description: string;
+  /** The server's message after a failed sign-in, or the terminal sign-in Pult cannot show. */
+  readonly error: string | null;
+  readonly action: AccountAction | null;
+  readonly actionLabel: string;
+  /** Sign In and its kin wait for the provider to be on, its runtime installed and the sign-in's state read. */
+  readonly blocked: boolean;
+  /** Sign Out, beside Change Account. */
+  readonly canSignOut: boolean;
+  /** The server's sign-in methods, where it lists several, for a select before the button. */
+  readonly methods: NonNullable<ProviderAuthState["methods"]>;
+}
+
 export interface ProviderRow {
   readonly name: string;
   /** The instance's own setting, which the switch shows and writes. */
@@ -40,7 +82,26 @@ export interface ProviderRow {
   /** Whether its setup rows open on their own: on, with something owed. */
   readonly opensByDefault: boolean;
   readonly runtime: RuntimeRow | null;
+  /** Antigravity's sign-in method and the fields it reads, else the driver's secret fields. */
+  readonly fields: ReadonlyArray<SetupField>;
+  readonly account: AccountRow | null;
 }
+
+/** Which of Antigravity's fields each sign-in method reads, beside its sign-in method; no annotation says. */
+const ANTIGRAVITY_METHOD_FIELDS: Record<
+  AntigravityAuthMethod,
+  ReadonlyArray<keyof typeof AntigravitySettings.fields>
+> = {
+  "oauth-personal": [],
+  "oauth-business": ["gcpProject", "gcpLocation"],
+  "gemini-api-key": ["apiKey"],
+  "agent-platform": ["apiKey", "gcpProject", "gcpLocation"],
+};
+
+/** The Antigravity sign-in methods that connect with a key or a project rather than an account. */
+const CONNECTING_METHODS = new Set<AntigravityAuthMethod>(["gemini-api-key", "agent-platform"]);
+
+const RUNNING_AUTH = new Set<ProviderAuthState["phase"]>(["starting", "waiting", "verifying"]);
 
 const RUNNING_INSTALL = new Set<ProviderInstallState["phase"]>([
   "downloading",
@@ -70,16 +131,82 @@ function instanceOf(
     : { driver: provider.driver };
 }
 
+function antigravityMethod(config: unknown): AntigravityAuthMethod {
+  const value = isRecord(config) ? config.authMethod : undefined;
+  return (
+    ANTIGRAVITY_AUTH_METHODS.find((method) => method.value === value)?.value ?? "oauth-personal"
+  );
+}
+
+function annotationsOf(schema: Schema.Top) {
+  return Schema.resolveAnnotationsKey(schema) ?? Schema.resolveAnnotations(schema);
+}
+
+/** The driver's settings field, from the registry stock reads; a key it lacks is a bug of ours. */
+function settingsField(driver: ServerProvider["driver"], key: string): Schema.Top {
+  const field = getProviderClient(driver)?.settingsSchema.fields[key];
+  if (field === undefined) throw new Error(`The ${driver} driver has no setting ${key}.`);
+  return field;
+}
+
+function setupFields(provider: ServerProvider, config: unknown): ReadonlyArray<SetupField> {
+  const fields = getProviderClient(provider.driver)?.settingsSchema.fields;
+  if (fields === undefined || provider.setup === undefined) return [];
+  const keys: ReadonlyArray<string> =
+    provider.driver === "antigravity"
+      ? ["authMethod", ...ANTIGRAVITY_METHOD_FIELDS[antigravityMethod(config)]]
+      : Object.keys(fields).filter((key) => isSecretSetting(fields[key]!));
+  return keys.map((key) => {
+    const schema = settingsField(provider.driver, key);
+    const annotations = annotationsOf(schema);
+    const form = annotations?.providerSettingsForm;
+    const saved = isRecord(config) ? config[key] : undefined;
+    const control = isSecretSetting(schema)
+      ? "secret"
+      : form?.control === "select"
+        ? "select"
+        : "text";
+    return {
+      key,
+      label: typeof annotations?.title === "string" ? annotations.title : key,
+      description:
+        typeof annotations?.description === "string" ? annotations.description : undefined,
+      placeholder: form?.placeholder,
+      control,
+      options: form?.options ?? [],
+      value:
+        control === "secret"
+          ? ""
+          : key === "authMethod" && provider.driver === "antigravity"
+            ? antigravityMethod(config)
+            : typeof saved === "string"
+              ? saved
+              : (form?.options?.[0]?.value ?? ""),
+      secret:
+        control !== "secret"
+          ? "unset"
+          : isSecretReference(saved)
+            ? { from: saved.provider }
+            : typeof saved === "string" && saved !== ""
+              ? "saved"
+              : "unset",
+    };
+  });
+}
+
 /**
  * A provider's row, from the server's report of it, its instance's settings and, while its
- * setup rows are open, its install state (undefined until the server sends one).
+ * setup rows are open, its install and sign-in states (undefined until the server sends one).
  */
 export function providerRow(input: {
   readonly provider: ServerProvider;
   readonly settings: Pick<ServerSettings, "providerInstances" | "projectSettingsOverrides">;
   readonly install: ProviderInstallState | undefined;
+  readonly auth: ProviderAuthState | undefined;
+  /** The environment's name, as Sign in on <environment> says it. */
+  readonly environmentName: string;
 }): ProviderRow {
-  const { provider, settings, install } = input;
+  const { provider, settings, install, auth } = input;
   const config = instanceOf(settings, provider).config;
   const on = resolveProjectProviderInstanceEnabled(settings, null, provider.instanceId);
   // The server's reading (`providerInstallation.ts`): a binary path, but Codex's own name for it.
@@ -91,9 +218,23 @@ export function providerRow(input: {
   const installing = install !== undefined && RUNNING_INSTALL.has(install.phase);
   const installed = provider.installed || (!customRuntime && install?.installedVersion != null);
   const unavailable = provider.availability === "unavailable";
+  const signingIn = auth !== undefined && RUNNING_AUTH.has(auth.phase);
   const runtime = provider.setup?.canInstall
     ? runtimeRow(install, { installing, customRuntime })
     : null;
+  const name = provider.displayName ?? getProviderClient(provider.driver)?.label ?? provider.driver;
+  const account = provider.setup?.canAuthenticate
+    ? accountRow({
+        provider,
+        auth,
+        on,
+        installed,
+        connects:
+          provider.driver === "antigravity" && CONNECTING_METHODS.has(antigravityMethod(config)),
+        environmentName: input.environmentName,
+      })
+    : null;
+  const fields = setupFields(provider, config);
   const status = !on
     ? "Off"
     : unavailable
@@ -102,33 +243,122 @@ export function providerRow(input: {
         ? "Installing"
         : !installed
           ? "Not installed"
-          : provider.auth.status === "unauthenticated"
-            ? "Not signed in"
-            : provider.auth.status === "authenticated"
-              ? provider.auth.email === undefined
-                ? "Signed in"
-                : `Signed in as ${provider.auth.email}`
-              : [
-                  STATUS_WORDS[provider.status],
-                  provider.version,
-                  provider.status === "error" || provider.status === "warning"
-                    ? provider.message
-                    : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
+          : signingIn
+            ? "Signing in"
+            : provider.auth.status === "unauthenticated"
+              ? "Not signed in"
+              : provider.auth.status === "authenticated"
+                ? provider.auth.email === undefined
+                  ? "Signed in"
+                  : `Signed in as ${provider.auth.email}`
+                : [
+                    STATUS_WORDS[provider.status],
+                    provider.version,
+                    provider.status === "error" || provider.status === "warning"
+                      ? provider.message
+                      : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
   const owed =
     !installed ||
     provider.auth.status === "unauthenticated" ||
     installing ||
-    install?.phase === "failed";
+    signingIn ||
+    install?.phase === "failed" ||
+    auth?.phase === "failed";
+  const hasSetup = runtime !== null || account !== null || fields.length > 0;
   return {
-    name: provider.displayName ?? getProviderClient(provider.driver)?.label ?? provider.driver,
+    name,
     on,
     status,
     hasSwitch: !unavailable,
-    opensByDefault: on && runtime !== null && owed,
+    opensByDefault: on && hasSetup && owed,
     runtime,
+    fields,
+    account,
+  };
+}
+
+function accountRow(input: {
+  readonly provider: ServerProvider;
+  readonly auth: ProviderAuthState | undefined;
+  readonly on: boolean;
+  readonly installed: boolean;
+  /** Antigravity with a key or a project: Connect, not Sign In. */
+  readonly connects: boolean;
+  readonly environmentName: string;
+}): AccountRow {
+  const { provider, auth, on, installed, connects, environmentName } = input;
+  const active = auth !== undefined && RUNNING_AUTH.has(auth.phase);
+  const interaction = auth?.interaction ?? null;
+  const signedIn =
+    provider.auth.status === "authenticated" ||
+    (provider.auth.status === "unknown" && auth?.phase === "succeeded");
+  const terminal = active && interaction?.type === "terminal";
+  const failed = auth?.phase === "failed" || auth?.phase === "cancelled";
+  const description = active
+    ? auth.phase === "starting"
+      ? (auth.message ?? (connects ? "Connecting…" : "Starting sign-in…"))
+      : auth.phase === "verifying"
+        ? connects
+          ? "Checking credentials…"
+          : "Checking your account…"
+        : interaction?.type === "credentials"
+          ? "Enter your credentials below."
+          : interaction?.type === "deviceCode"
+            ? "Enter the code below in your browser."
+            : terminal
+              ? ""
+              : "Finish signing in in your browser."
+    : signedIn
+      ? provider.auth.email === undefined
+        ? "Signed in"
+        : `Signed in as ${provider.auth.email}`
+      : !on
+        ? "Sign in once the provider is on."
+        : !installed
+          ? "Sign in once the runtime is installed."
+          : connects
+            ? `Connect on ${environmentName} to load models.`
+            : `Sign in on ${environmentName}.`;
+  const action: AccountAction | null = active
+    ? auth.flowId === null
+      ? null
+      : "cancel"
+    : signedIn
+      ? "changeAccount"
+      : failed
+        ? "retry"
+        : connects
+          ? "connect"
+          : "signIn";
+  return {
+    active,
+    description,
+    error: terminal
+      ? "This sign-in needs a terminal, which Pult does not have yet; sign in from T3 Code."
+      : auth?.phase === "failed"
+        ? auth.message
+        : null,
+    action,
+    actionLabel:
+      action === null
+        ? ""
+        : {
+            signIn: "Sign In",
+            connect: "Connect",
+            retry: connects ? "Retry Connection" : "Retry",
+            cancel: "Cancel",
+            changeAccount: "Change Account",
+          }[action],
+    blocked: action !== "cancel" && (!on || !installed || auth === undefined),
+    canSignOut:
+      !active &&
+      signedIn &&
+      (provider.auth.canLogout ?? provider.setup?.canAuthenticate ?? false) &&
+      auth !== undefined,
+    methods: !active && (auth?.methods?.length ?? 0) > 1 ? (auth?.methods ?? []) : [],
   };
 }
 
@@ -193,8 +423,10 @@ function runtimeRow(
   };
 }
 
-/** A change Pult makes to a provider instance. */
-export type InstanceChange = { readonly kind: "enabled"; readonly on: boolean };
+/** A change Pult makes to a provider instance: its switch, or one field of its config, a secret's empty value clearing it. */
+export type InstanceChange =
+  | { readonly kind: "enabled"; readonly on: boolean }
+  | { readonly kind: "field"; readonly key: string; readonly value: string };
 
 /**
  * The `server.updateSettings` input writing `change` to the provider's instance, as the server
@@ -202,7 +434,9 @@ export type InstanceChange = { readonly kind: "enabled"; readonly on: boolean };
  * alone goes back as the redaction marker it arrived as, which the server reads as "keep the
  * saved one". Switching on or off writes the instance's `enabled` and, where its config has one,
  * the config's too, since either being false turns it off; switching off the provider the
- * text-generation selection names resets that selection to the default, as stock does.
+ * text-generation selection names resets that selection to the default, as stock does. A field
+ * writes its value into the config, an empty secret clearing the saved one and an empty plain
+ * field leaving the config where its annotation says to omit it.
  */
 export function instanceWrite(
   settings: Pick<
@@ -215,6 +449,27 @@ export function instanceWrite(
   const { instanceId } = provider;
   const current = instanceOf(settings, provider);
   const { config } = current;
+  if (change.kind === "field") {
+    const schema = settingsField(provider.driver, change.key);
+    const next: Record<string, unknown> = isRecord(config) ? { ...config } : {};
+    if (
+      !isSecretSetting(schema) &&
+      change.value.trim() === "" &&
+      annotationsOf(schema)?.providerSettingsForm?.clearWhenEmpty === "omit"
+    ) {
+      delete next[change.key];
+    } else {
+      next[change.key] = change.value;
+    }
+    return {
+      patch: {},
+      providerInstanceMutation: {
+        operation: "upsert",
+        instanceId,
+        instance: { ...current, config: next },
+      },
+    };
+  }
   const instance: ProviderInstanceConfig = {
     ...current,
     enabled: change.on,

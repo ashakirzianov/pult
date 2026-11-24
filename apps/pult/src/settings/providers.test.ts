@@ -6,6 +6,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProviderAuthState,
   type ProviderInstallState,
   type ProviderInstanceConfig,
   type ServerProvider,
@@ -15,6 +16,8 @@ import {
 import { instanceWrite, providerRow } from "./providers.ts";
 
 const ANTIGRAVITY = ProviderInstanceId.make("antigravity");
+/** The server's redaction marker for a saved secret, `SECRET_REDACTED` in `apps/server/src/settingsSecrets.ts`. */
+const SAVED = "\u2022\u2022\u2022\u2022\u2022\u2022";
 const DRIVER = ProviderDriverKind.make("antigravity");
 
 /** Antigravity as the server reports it: on, set up to install and sign in, its runtime installed, signed out. */
@@ -47,6 +50,18 @@ function settings(
   };
 }
 
+function auth(overrides: Partial<ProviderAuthState> = {}): ProviderAuthState {
+  return {
+    instanceId: ANTIGRAVITY,
+    phase: "idle",
+    flowId: null,
+    authorizationUrl: null,
+    expiresAt: null,
+    message: null,
+    ...overrides,
+  };
+}
+
 function install(overrides: Partial<ProviderInstallState> = {}): ProviderInstallState {
   return {
     driver: DRIVER,
@@ -68,6 +83,8 @@ NodeTest.describe("providerRow", () => {
       provider: provider({ enabled: false, installed: false }),
       settings: settings({ enabled: false }),
       install: undefined,
+      auth: undefined,
+      environmentName: "MacBook",
     });
     NodeAssert.equal(row.on, false);
     NodeAssert.equal(row.status, "Off");
@@ -81,6 +98,8 @@ NodeTest.describe("providerRow", () => {
         provider: provider({ installed: false }),
         settings: settings(),
         install: install({ installedVersion: null, canRemove: false }),
+        auth: undefined,
+        environmentName: "MacBook",
       });
       NodeAssert.equal(row.status, "Not installed");
       NodeAssert.equal(row.opensByDefault, true);
@@ -94,6 +113,8 @@ NodeTest.describe("providerRow", () => {
       provider: provider(),
       settings: settings(),
       install: install({ installedVersion: "1.4.2" }),
+      auth: undefined,
+      environmentName: "MacBook",
     });
     NodeAssert.equal(row.runtime?.description, "Installed · 1.4.2 · 1.5.0 available");
     NodeAssert.equal(row.runtime?.action, "update");
@@ -104,6 +125,8 @@ NodeTest.describe("providerRow", () => {
       provider: provider(),
       settings: settings({ enabled: true, config: { binaryPath: "/opt/agy" } }),
       install: install({ installedVersion: "1.4.2" }),
+      auth: undefined,
+      environmentName: "MacBook",
     });
     NodeAssert.equal(custom.runtime?.description, "Uses a custom runtime");
     NodeAssert.equal(custom.runtime?.action, null);
@@ -120,12 +143,66 @@ NodeTest.describe("providerRow", () => {
         downloadedBytes: 34_100_000,
         installedVersion: null,
       }),
+      auth: undefined,
+      environmentName: "MacBook",
     });
     NodeAssert.equal(row.status, "Installing");
     NodeAssert.equal(row.runtime?.description, "Downloading 34.1 of 81.0 MB");
     NodeAssert.deepEqual(row.runtime?.progress, { value: 34_100_000, max: 81_000_000 });
     NodeAssert.equal(row.runtime?.action, "cancel");
     NodeAssert.equal(row.runtime?.canRemove, false);
+  });
+
+  NodeTest.it("reads Not signed in with Sign In, or Connect for a Gemini API key", () => {
+    const signIn = providerRow({
+      provider: provider(),
+      settings: settings(),
+      install: install(),
+      auth: auth(),
+      environmentName: "MacBook",
+    });
+    NodeAssert.equal(signIn.status, "Not signed in");
+    NodeAssert.equal(signIn.opensByDefault, true);
+    NodeAssert.equal(signIn.account?.description, "Sign in on MacBook.");
+    NodeAssert.equal(signIn.account?.actionLabel, "Sign In");
+    NodeAssert.equal(signIn.account?.blocked, false);
+    NodeAssert.deepEqual(
+      signIn.fields.map((field) => field.key),
+      ["authMethod"],
+    );
+
+    const connect = providerRow({
+      provider: provider(),
+      settings: settings({
+        enabled: true,
+        config: { authMethod: "gemini-api-key", apiKey: SAVED },
+      }),
+      install: install(),
+      auth: auth(),
+      environmentName: "MacBook",
+    });
+    NodeAssert.equal(connect.account?.action, "connect");
+    NodeAssert.equal(connect.account?.actionLabel, "Connect");
+    NodeAssert.equal(connect.account?.description, "Connect on MacBook to load models.");
+    NodeAssert.deepEqual(
+      connect.fields.map((field) => [field.key, field.control, field.secret]),
+      [
+        ["authMethod", "select", "unset"],
+        ["apiKey", "secret", "saved"],
+      ],
+    );
+  });
+
+  NodeTest.it("reads Signed in as the email, with its rows closed", () => {
+    const row = providerRow({
+      provider: provider({ auth: { status: "authenticated", email: "anton@example.com" } }),
+      settings: settings(),
+      install: undefined,
+      auth: undefined,
+      environmentName: "MacBook",
+    });
+    NodeAssert.equal(row.status, "Signed in as anton@example.com");
+    NodeAssert.equal(row.opensByDefault, false);
   });
 });
 
@@ -147,6 +224,48 @@ NodeTest.describe("instanceWrite", () => {
           config: { enabled: true, authMethod: "oauth-personal" },
         },
       },
+    });
+  });
+
+  NodeTest.it("keeps the saved API key's redaction marker when the GCP project changes", () => {
+    const write = instanceWrite(
+      settings({
+        enabled: true,
+        config: { authMethod: "agent-platform", apiKey: SAVED, gcpLocation: "us-central1" },
+      }),
+      provider(),
+      { kind: "field", key: "gcpProject", value: "my-project" },
+    );
+    NodeAssert.deepEqual(write, {
+      patch: {},
+      providerInstanceMutation: {
+        operation: "upsert",
+        instanceId: ANTIGRAVITY,
+        instance: {
+          driver: DRIVER,
+          enabled: true,
+          config: {
+            authMethod: "agent-platform",
+            apiKey: SAVED,
+            gcpLocation: "us-central1",
+            gcpProject: "my-project",
+          },
+        },
+      },
+    });
+  });
+
+  NodeTest.it("writes an empty value to clear a secret", () => {
+    const write = instanceWrite(
+      settings({ enabled: true, config: { authMethod: "gemini-api-key", apiKey: SAVED } }),
+      provider(),
+      { kind: "field", key: "apiKey", value: "" },
+    );
+    const mutation = write.providerInstanceMutation;
+    NodeAssert.equal(mutation?.operation, "upsert");
+    NodeAssert.deepEqual(mutation?.operation === "upsert" ? mutation.instance.config : null, {
+      authMethod: "gemini-api-key",
+      apiKey: "",
     });
   });
 
