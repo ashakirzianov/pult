@@ -1038,9 +1038,14 @@
 }
 
 .pult-panel-row-button:hover,
-.pult-panel-tab:hover,
-.pult-panel-tab-active {
+.pult-panel-tab:hover {
   background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.pult-panel-tab-active,
+.pult-panel-tab-active:hover {
+  background: var(--vscode-list-inactiveSelectionBackground);
   color: var(--vscode-foreground);
 }
 

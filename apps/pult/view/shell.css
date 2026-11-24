@@ -15,6 +15,34 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   --font-sans: initial;
 }
 
+/* The embedded view's picker rows, including menus portaled outside the workbench. */
+:root:has(.monaco-workbench:is(.vs, .vs-dark)) {
+  --pult-picker-hover: light-dark(#0000000a, #ffffff0a);
+  --pult-picker-selected: light-dark(#0000000e, #ffffff0e);
+}
+
+:where(
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [data-slot="select-item"],
+  [data-slot="combobox-item"]
+)[data-highlighted],
+[data-slot="menu-sub-trigger"][data-popup-open],
+[data-slot="combobox-item"]:not([data-disabled]):hover {
+  background-color: var(--pult-picker-hover, revert-layer);
+}
+
+[data-slot="select-item"][data-selected],
+[data-slot="combobox-item"][data-selection-fill][data-selected],
+[role="menuitemradio"][data-checked] {
+  background-color: var(--pult-picker-selected, revert-layer);
+}
+
+:root:has(.monaco-workbench:is(.vs, .vs-dark)) [data-slot="command-item"][data-active] {
+  --accent: var(--pult-picker-selected);
+}
+
 /* Upstream's text scale is rem on a 16px document, and the page's root is
    the workbench's 13px, so the view's steps are pinned here: the body text
    (text-sm) the tab title's 13px, the other steps in Tailwind's ratios. */

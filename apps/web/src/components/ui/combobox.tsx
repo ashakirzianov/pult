@@ -204,6 +204,8 @@ function ComboboxItem({
         className,
       )}
       data-slot="combobox-item"
+      // Pult themes the optional selection fill in its embedded view.
+      data-selection-fill={selectedFill || undefined}
       {...props}
     >
       <div
