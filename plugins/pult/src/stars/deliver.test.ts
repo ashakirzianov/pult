@@ -397,6 +397,15 @@ describe("deliver", () => {
           modelSelection: model("work-model"),
         });
         yield* h.fromPlugin("k1", "To a fresh channel.", "unit-2");
+        // That conversation, the Star's newest, moves on to models and modes of its own.
+        const unit = h.threads.byId(ThreadId.make("launched-1"))!;
+        unit.shell = {
+          ...unit.shell,
+          modelSelection: model("unit-model"),
+          runtimeMode: "auto",
+          interactionMode: "default",
+        };
+        yield* TestClock.adjust("1 minute");
         // The default channel's ended later; work's model and modes are still its own.
         h.ended("main-ended", {
           createdAt: at("2026-11-10T11:30:00.000Z"),
@@ -404,7 +413,7 @@ describe("deliver", () => {
           modelSelection: model("main-model"),
         });
         yield* h.fromPlugin("k2", "To work.", "work");
-        // A fresh channel takes whichever channel ran last, the default channel no first.
+        // A fresh channel takes the Star's newest conversation, work's now, the default channel no first.
         yield* h.fromPlugin("k3", "To another fresh channel.", "unit-3");
         assert.deepStrictEqual(
           h.launches.launches.map((each) => [
@@ -587,13 +596,20 @@ describe("deliver", () => {
           channels: { captures: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
         });
         yield* h.fromPlugin("k1", "File these.", "captures");
-        yield* h.fromPlugin("k2", "Hello", "unit-2");
+        // Asleep again, the channel's next wake reads the same files and tells nothing.
+        const first = h.threads.byId(ThreadId.make("launched-1"))!;
+        first.shell = {
+          ...first.shell,
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T13:00:00.000Z"),
+        };
+        yield* h.fromPlugin("k2", "More.", "captures");
         assert.deepStrictEqual(
           h.launches.launches.map((each) => [each.tags, each.modelSelection]),
           [
-            // The notice queues into the conversation the wake made, after the lock; the second wake tells nothing.
+            // The notice queues into the conversation the wake made, after the lock.
             [["pult:channel:captures"], selected(FABLE)],
-            [["pult:channel:unit-2"], selected(FABLE)],
+            [["pult:channel:captures"], selected(FABLE)],
           ],
         );
         // Three messages: the two wakes' and the one notice.
@@ -673,20 +689,21 @@ describe("deliver", () => {
         });
         assert.deepStrictEqual(yield* shown, selected(FABLE));
         assert.strictEqual(h.launches.launches.length, 0, "showing the choice tells nothing");
+        // Asked while the channel sleeps, its ask opened say, the notice wakes nothing and waits.
         assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), selected(FABLE));
-        // Once the page's own launch is the channel's conversation, the notice queues into it.
+        assert.deepStrictEqual([h.launches.launches.length, h.threads.messages.length], [0, 0]);
+        // Asked again once the page's own launch is the channel's conversation, it queues into it.
         const launched = h.open(undefined, "page-launch");
-        assert.strictEqual(h.threads.messages.length, 0);
-        yield* TestClock.adjust(Delivery.PAGE_LAUNCH_GRACE);
-        yield* h.threads.taken(1);
+        yield* h.pageWakeModel(h.star, "auto", "main");
         assert.strictEqual(h.launches.launches.length, 0);
         assert.strictEqual(h.threads.messages[0]?.threadId, launched.shell.id);
         assert.include(h.threads.messages[0]?.text, '"codex-narrow" does not offer runtime mode');
         // The same content is told once, whichever wake finds it next.
-        yield* h.pageWakeModel(h.star, "auto", "main");
-        yield* TestClock.adjust(Delivery.PAGE_LAUNCH_GRACE);
-        yield* h.fromPlugin("k1", "Hello", "unit-2");
-        assert.strictEqual(h.threads.messages.length, 2);
+        yield* h.fromPlugin("k1", "Hello", "main");
+        assert.deepStrictEqual(
+          h.threads.messages.map((each) => each.threadId),
+          [launched.shell.id, launched.shell.id],
+        );
       }).pipe(Effect.scoped),
   );
 

@@ -134,7 +134,6 @@ function fakeThreads() {
   const threads: FakeThread[] = [];
   const settles: ThreadId[] = [];
   const settleWaiters: Array<{ count: number; resume: () => void }> = [];
-  const messageWaiters: Array<{ count: number; resume: () => void }> = [];
   const receipts = new Set<string>();
   const messages: FakeMessage[] = [];
   const byId = (threadId: ThreadId) => threads.find((each) => each.shell.id === threadId);
@@ -165,8 +164,6 @@ function fakeThreads() {
       threadId: thread.shell.id,
       limit: yield* DispatchModeLimit.DispatchModeLimit,
     });
-    for (const waiter of messageWaiters.filter((each) => messages.length >= each.count))
-      waiter.resume();
     const on = thread.runs.some((each) => each.status === "running");
     const taken = {
       ...run(`${thread.shell.id}-run-${thread.runs.length + 1}`, on ? "queued" : "running"),
@@ -337,13 +334,7 @@ function fakeThreads() {
       if (settles.length >= count) resume(Effect.void);
       else settleWaiters.push({ count, resume: () => resume(Effect.void) });
     });
-  /** Once the store has taken `count` messages in all, for a delivery the plugin forked. */
-  const taken = (count: number) =>
-    Effect.callback<void>((resume) => {
-      if (messages.length >= count) resume(Effect.void);
-      else messageWaiters.push({ count, resume: () => resume(Effect.void) });
-    });
-  return { threads, settles, settled, receipts, messages, taken, add, take, byId, service };
+  return { threads, settles, settled, receipts, messages, add, take, byId, service };
 }
 
 /** The input a launch got, as the fake recorded it. */
