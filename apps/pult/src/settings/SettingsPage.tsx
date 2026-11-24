@@ -19,6 +19,7 @@ import { KEEP_AWAKE_FEATURE, readKeepAwake, writeKeepAwake } from "../stars/plug
 import { setStarEnabled, starEnabled } from "../stars/settings.ts";
 import { COLOR_SCHEMES, type colorSchemeChoice, setColorScheme } from "./colorScheme.ts";
 import { AuthorizedClients, PairingCard } from "./EnvironmentAccess.tsx";
+import { ProvidersSection } from "./ProvidersSection.tsx";
 
 function run(command: string, ...args: unknown[]): void {
   void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
@@ -40,6 +41,7 @@ export function SettingsPage({
   return (
     <div className="pult-settings">
       <EnvironmentsSection />
+      <ProvidersSection />
       <StarSection />
       <LimitsSection />
       <UpdatesSection />

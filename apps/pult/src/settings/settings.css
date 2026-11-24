@@ -495,3 +495,91 @@
   justify-content: flex-start;
   margin-top: 10px;
 }
+
+/* Providers (ProvidersSection.tsx): an environment's name heading its group while the page holds several, as Devices
+   heads its rows. */
+.pult-settings-group-head h3 {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* An environment not ready, or whose settings are still the page's cached copy: its last-known rows, greyed, with no
+   controls. */
+.pult-settings-providers[data-stale="true"] .pult-settings-row-text {
+  opacity: 0.55;
+}
+
+/* A provider switched off reads quieter, as its status says Off. */
+.pult-settings-provider[data-off="true"] .pult-settings-row-label {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* A provider's icon, the Limits shelf's, else its colour as a dot, as the shelf's. */
+.pult-settings-provider-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.pult-settings-provider-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pult-settings-provider-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  /* Upstream's colour, the foreground where it names a variable the page lacks. */
+  background: var(--pult-provider-color, var(--vscode-foreground));
+}
+
+/* A provider's setup rows under it, its chevron pointing up while they show. */
+.pult-settings-chevron .codicon {
+  transition: transform 0.12s;
+}
+
+.pult-settings-chevron[aria-expanded="true"] .codicon {
+  transform: rotate(180deg);
+}
+
+/* A setup row's text runs to its top, beside actions that may wrap. */
+.pult-settings-setup-row {
+  align-items: flex-start;
+}
+
+.pult-settings-setup-row .pult-settings-row-description {
+  margin-top: 2px;
+}
+
+.pult-settings-button:disabled,
+.pult-settings-icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A runtime's download, a thin bar that moves only as bytes arrive. */
+.pult-settings-progress {
+  display: block;
+  width: 100%;
+  height: 3px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 2px;
+  appearance: none;
+  background: var(--pult-settings-control);
+  overflow: hidden;
+}
+
+.pult-settings-progress::-webkit-progress-bar {
+  background: var(--pult-settings-control);
+}
+
+.pult-settings-progress::-webkit-progress-value {
+  background: var(--vscode-button-background);
+}

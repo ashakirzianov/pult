@@ -14,11 +14,12 @@ import { connection, SERVER_CONFIG_OPTIONS } from "./connection.ts";
  * the same subscription the session holds (`SERVER_CONFIG_OPTIONS`), which it replays rather than
  * opening another, until the returned function stops it. Every change to the registry entry
  * restarts `followStream`, and so the config's state, which starts from the page's cache store's
- * copy (`source: "cache"`), when it has one, until the session replays the live one.
+ * copy (`source: "cache"`), when it has one, until the session replays the live one; `live` says
+ * which it is, so a write built on the settings waits for the server's own (`src/settings/`).
  */
 export function followServerConfig(
   environmentId: string,
-  publish: (config: ServerConfig) => void,
+  publish: (config: ServerConfig, live: boolean) => void,
 ): () => void {
   const fiber = connection.runtime.runFork(
     Effect.gen(function* () {
@@ -35,7 +36,7 @@ export function followServerConfig(
         .pipe(
           Stream.runForEach((state) =>
             Effect.sync(() => {
-              if (Option.isSome(state)) publish(state.value.config);
+              if (Option.isSome(state)) publish(state.value.config, state.value.source === "live");
             }),
           ),
         );
