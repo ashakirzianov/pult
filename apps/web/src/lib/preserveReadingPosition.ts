@@ -38,6 +38,8 @@ export function preserveReadingPosition(
       const position = document.caretPositionFromPoint?.(x, y);
       const range = document.createRange();
       if (position) {
+        // Pult: over a form control (the composer's citation comment) the position is the control itself, with an offset into its value.
+        if (position.offsetNode.nodeType !== Node.TEXT_NODE) continue;
         range.setStart(position.offsetNode, position.offset);
       } else {
         const fallback = document.caretRangeFromPoint?.(x, y);

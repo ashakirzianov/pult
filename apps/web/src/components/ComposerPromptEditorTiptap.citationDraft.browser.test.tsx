@@ -33,13 +33,15 @@ function Composer({
   editorRef,
   disabled = false,
   send = "clears",
+  initialPrompt = promptBefore,
 }: {
   question: boolean;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
   disabled?: boolean;
   send?: "clears" | "blocked" | "refusedLater";
+  initialPrompt?: string;
 }) {
-  const [prompt, setPrompt] = useState(promptBefore);
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [answer, setAnswer] = useState("");
   return (
     <>
@@ -183,4 +185,38 @@ it("cancels a new citation while dictation makes the composer read-only", async 
 
   await expect.element(page.getByLabelText("Comment on selected text")).not.toBeInTheDocument();
   expect(screen.container.querySelector("output")?.dataset.prompt).toBe("See ");
+});
+
+// Pult: the composer's reading-position probe lands on our citation block's comment, a textarea with no text node.
+it("types into a citation's comment in a scrolled composer without a page error", async () => {
+  const errors: unknown[] = [];
+  const onError = (event: ErrorEvent) => errors.push(event.error);
+  window.addEventListener("error", onError);
+  try {
+    const editorRef = createRef<ComposerPromptEditorHandle>();
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n");
+    const longPrompt = `${lines}\n${promptBefore}\n${lines}`;
+    await using _screen = await render(
+      <Composer question={false} editorRef={editorRef} initialPrompt={longPrompt} />,
+    );
+
+    const comment = page.getByLabelText("Comment on the quoted text");
+    await expect.element(comment).toBeVisible();
+    // Scrolled so the comment sits under the probe's first point, near the scroller's top.
+    const scroller = page.getByTestId("composer-editor").element() as HTMLElement;
+    // The app's stylesheet caps the composer's height; the tests load none.
+    scroller.style.maxHeight = "120px";
+    scroller.style.overflowY = "auto";
+    const commentTop =
+      comment.element().getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop += commentTop - 16;
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+    await comment.click();
+    await userEvent.keyboard("check this");
+
+    await expect.element(comment).toHaveValue("check this");
+    expect(errors).toEqual([]);
+  } finally {
+    window.removeEventListener("error", onError);
+  }
 });
