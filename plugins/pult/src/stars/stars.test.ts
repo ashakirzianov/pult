@@ -42,7 +42,14 @@ const servedChannel = (view: Stars.StarsView["stars"][number] | undefined, slug:
   view?.channels.find((each) => each.slug === slug);
 
 const record = (id: string, name = "") =>
-  recordText({ id, name, description: "", tint: "amber", created: "2026-11-10T12:00:00.000Z" });
+  recordText({
+    id,
+    name,
+    description: "",
+    tint: "amber",
+    created: "2026-11-10T12:00:00.000Z",
+    defaultChannel: "main",
+  });
 
 describe("starsDirectory", () => {
   it.effect(
@@ -116,6 +123,7 @@ describe("finding", () => {
           description: "",
           tint: "amber",
           created: "2026-11-10T12:00:00.000Z",
+          defaultChannel: "main",
           root,
           projectId: ProjectId.make("p-vega"),
         },
@@ -302,7 +310,7 @@ describe("the pass", () => {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
         const h = yield* harness;
         const star = yield* h.stars.create({ ifNone: true });
-        const folder = h.path.join(star.root, ".pult/channels/user/conversations/env-1");
+        const folder = h.path.join(star.root, ".pult/channels/main/conversations/env-1");
         // Expired an hour ago, its one run finished.
         const due = h.threads.add(
           star.projectId,
@@ -364,7 +372,7 @@ describe("the pass", () => {
 
         const [view] = (yield* h.stars.view).stars;
         assert.deepStrictEqual(view?.channels, [
-          { slug: "user", threadId: held.shell.id, sleeps: { heldBy: "run" } },
+          { slug: "main", threadId: held.shell.id, sleeps: { heldBy: "run" } },
         ]);
         assert.strictEqual(view?.asleepSince, "2026-11-10T13:01:30.000Z");
         assert.deepStrictEqual(view?.conversations, names);
@@ -406,11 +414,11 @@ describe("the pass", () => {
           h.stars.withConversation(star, to, ({ current, newest }) =>
             Effect.succeed([String(current?.id ?? null), String(newest?.id ?? null)]),
           );
-        assert.deepStrictEqual(yield* seen("user"), ["open", "open"]);
+        assert.deepStrictEqual(yield* seen("main"), ["open", "open"]);
         assert.deepStrictEqual(h.threads.settles, [ThreadId.make("due")]);
-        // No work conversation yet: a wake would take user's newest.
+        // No work conversation yet: a wake would take the Star's newest in any channel.
         assert.deepStrictEqual(yield* seen("work"), ["null", "open"]);
-        // One that ended; the user's conversation settled since is not of its channel.
+        // One that ended; main's conversation settled since is not of its channel.
         h.threads.add(star.projectId, "work-ended", {
           createdAt: at("2026-11-10T10:00:00.000Z"),
           settledOverride: "settled",
@@ -424,18 +432,18 @@ describe("the pass", () => {
           tags: [channelTag("work")],
         });
         assert.deepStrictEqual(yield* seen("work"), ["work-open", "work-open"]);
-        assert.deepStrictEqual(yield* seen("user"), ["open", "open"]);
+        assert.deepStrictEqual(yield* seen("main"), ["open", "open"]);
 
-        assert.deepStrictEqual(yield* h.stars.ofThread(open.shell.id), { star, channel: "user" });
+        assert.deepStrictEqual(yield* h.stars.ofThread(open.shell.id), { star, channel: "main" });
         assert.deepStrictEqual(yield* h.stars.ofThread(work.shell.id), { star, channel: "work" });
         assert.strictEqual(yield* h.stars.ofThread(ThreadId.make("fork")), undefined);
 
-        // The view serves each open channel's current conversation, by slug; `asleepSince` is the user's.
+        // The view serves each open channel's current conversation, by slug; `asleepSince` is the default channel's.
         const [view] = (yield* h.stars.view).stars;
         assert.deepStrictEqual(
           view?.channels.map((each) => [each.slug, each.threadId]),
           [
-            ["user", open.shell.id],
+            ["main", open.shell.id],
             ["work", work.shell.id],
           ],
         );
@@ -446,7 +454,7 @@ describe("the pass", () => {
       }).pipe(Effect.scoped),
   );
   it.effect(
-    "serves the model a wake into user takes: user's newest conversation's, else any channel's",
+    "serves the model a wake into the default channel takes: its newest conversation's, else any channel's",
     () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -481,61 +489,81 @@ describe("the pass", () => {
         assert.deepStrictEqual(yield* served, model("newer-model"));
       }).pipe(Effect.scoped),
   );
-  it.effect("leaves alone a root thread a link paired below full access started", () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
-      const h = yield* harness;
-      const star = yield* h.stars.create({ ifNone: true });
-      h.threads.add(star.projectId, "ended", {
-        createdAt: at("2026-11-10T08:00:00.000Z"),
-        settledOverride: "settled",
-        settledAt: at("2026-11-10T09:00:00.000Z"),
-      });
-      // A full-access link is not fenced: its thread is the Star's conversation.
-      const open = h.threads.add(star.projectId, "open", {
-        createdAt: at("2026-11-10T12:00:00.000Z"),
-        promptCacheExpiresAt: at("2026-11-10T13:20:00.000Z"),
-        linkOrigin: { sessionId: "link-full", label: "Desk", access: "full-access" },
-      });
-      // Newer than either, one due and one settled since; an origin stamped before access was recorded stays fenced.
-      const fenced = h.threads.add(
-        star.projectId,
-        "fenced",
-        {
-          createdAt: at("2026-11-10T12:30:00.000Z"),
-          promptCacheExpiresAt: at("2026-11-10T12:40:00.000Z"),
-          linkOrigin: { sessionId: "link-1", label: "Laptop", access: "auto" },
-        },
-        [run("fenced-run", "completed")],
-      );
-      const fencedEnded = h.threads.add(star.projectId, "fenced-ended", {
-        createdAt: at("2026-11-10T10:00:00.000Z"),
-        settledOverride: "settled",
-        settledAt: at("2026-11-10T11:00:00.000Z"),
-        linkOrigin: { sessionId: "link-2", label: "Phone" },
-      });
+  it.effect(
+    "leaves alone a root thread with no channel tag, or one a link paired below full access started",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        h.threads.add(star.projectId, "ended", {
+          createdAt: at("2026-11-10T08:00:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T09:00:00.000Z"),
+        });
+        // A full-access link is not fenced: its thread is the Star's conversation.
+        const open = h.threads.add(star.projectId, "open", {
+          createdAt: at("2026-11-10T12:00:00.000Z"),
+          promptCacheExpiresAt: at("2026-11-10T13:20:00.000Z"),
+          linkOrigin: { sessionId: "link-full", label: "Desk", access: "full-access" },
+        });
+        // Newer than either, one due and one settled since; an origin stamped before access was recorded stays fenced.
+        const fenced = h.threads.add(
+          star.projectId,
+          "fenced",
+          {
+            createdAt: at("2026-11-10T12:30:00.000Z"),
+            promptCacheExpiresAt: at("2026-11-10T12:40:00.000Z"),
+            linkOrigin: { sessionId: "link-1", label: "Laptop", access: "auto" },
+          },
+          [run("fenced-run", "completed")],
+        );
+        const fencedEnded = h.threads.add(star.projectId, "fenced-ended", {
+          createdAt: at("2026-11-10T10:00:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T11:00:00.000Z"),
+          linkOrigin: { sessionId: "link-2", label: "Phone" },
+        });
+        // Untagged, one due and one settled: no conversation of the Star's, whatever a client started it.
+        const untagged = h.threads.add(
+          star.projectId,
+          "untagged",
+          {
+            createdAt: at("2026-11-10T12:45:00.000Z"),
+            promptCacheExpiresAt: at("2026-11-10T12:50:00.000Z"),
+            tags: [],
+          },
+          [run("untagged-run", "completed")],
+        );
+        h.threads.add(star.projectId, "untagged-ended", {
+          createdAt: at("2026-11-10T10:30:00.000Z"),
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T11:30:00.000Z"),
+          tags: ["pult:child:star:x"],
+        });
 
-      yield* h.runPass;
-      assert.deepStrictEqual(h.threads.settles, []);
-      assert.deepStrictEqual(
-        yield* h.fs.readDirectory(
-          h.path.join(star.root, ".pult/channels/user/conversations/env-1"),
-        ),
-        ["2026-11-10T08-00-00Z-ended.md"],
-      );
-      // The fenced threads are newer, yet neither current nor the newest a wake would take.
-      const seen = yield* h.stars.withConversation(star, "work", ({ current, newest }) =>
-        Effect.succeed([String(current?.id ?? null), String(newest?.id)]),
-      );
-      assert.deepStrictEqual(seen, ["null", open.shell.id]);
-      assert.strictEqual((yield* h.stars.ofThread(open.shell.id))?.star.id, star.id);
-      assert.strictEqual(yield* h.stars.ofThread(fenced.shell.id), undefined);
-      assert.strictEqual(yield* h.stars.ofThread(fencedEnded.shell.id), undefined);
-      assert.deepStrictEqual(
-        (yield* h.stars.view).stars[0]?.channels.map((each) => each.threadId),
-        [open.shell.id],
-      );
-    }).pipe(Effect.scoped),
+        yield* h.runPass;
+        assert.deepStrictEqual(h.threads.settles, []);
+        assert.deepStrictEqual(
+          yield* h.fs.readDirectory(
+            h.path.join(star.root, ".pult/channels/main/conversations/env-1"),
+          ),
+          ["2026-11-10T08-00-00Z-ended.md"],
+        );
+        // The fenced and untagged threads are newer, yet neither current nor the newest a wake would take.
+        const seen = yield* h.stars.withConversation(star, "work", ({ current, newest }) =>
+          Effect.succeed([String(current?.id ?? null), String(newest?.id)]),
+        );
+        assert.deepStrictEqual(seen, ["null", open.shell.id]);
+        assert.strictEqual((yield* h.stars.ofThread(open.shell.id))?.star.id, star.id);
+        assert.strictEqual(yield* h.stars.ofThread(fenced.shell.id), undefined);
+        assert.strictEqual(yield* h.stars.ofThread(fencedEnded.shell.id), undefined);
+        assert.strictEqual(yield* h.stars.ofThread(untagged.shell.id), undefined);
+        assert.deepStrictEqual(
+          (yield* h.stars.view).stars[0]?.channels.map((each) => each.threadId),
+          [open.shell.id],
+        );
+      }).pipe(Effect.scoped),
   );
 });
 
@@ -568,7 +596,7 @@ describe("a full context", () => {
   };
 
   it.effect(
-    "ends an idle conversation of any channel but user on the next look before its cache expires, and the next message finds none",
+    "ends an idle conversation of any channel on the next look before its cache expires, and the next message finds none",
     () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -637,7 +665,7 @@ describe("a full context", () => {
         work.shell = { ...work.shell, ...limited };
         const user = h.threads.add(
           star.projectId,
-          "user",
+          "main",
           { ...limited, promptCacheExpiresAt: at("2026-11-10T12:00:00.000Z") },
           [run("user-run", "failed")],
         );
@@ -645,7 +673,7 @@ describe("a full context", () => {
         yield* h.runPass;
         assert.deepStrictEqual(h.threads.settles, []);
         assert.deepStrictEqual((yield* h.stars.view).stars[0]?.channels, [
-          { slug: "user", threadId: user.shell.id, sleeps: { heldBy: "usage-limit" } },
+          { slug: "main", threadId: user.shell.id, sleeps: { heldBy: "usage-limit" } },
           { slug: "work", threadId: work.shell.id, sleeps: { heldBy: "usage-limit" } },
         ]);
         assert.deepStrictEqual(yield* h.stars.sleepByHand(star), {
@@ -739,30 +767,6 @@ describe("a full context", () => {
         assert.deepStrictEqual(h.threads.settles, [work.shell.id]);
       }).pipe(Effect.scoped),
   );
-
-  it.effect("never ends the conversation with the user before its cache expires", () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
-      const h = yield* harness;
-      const star = yield* h.stars.create({ ifNone: true });
-      const user = conversation(
-        h,
-        star,
-        "user",
-        [],
-        [run("user-run", "completed")],
-        turnUsing(900_000, 1_000_000),
-      );
-
-      yield* h.runPass;
-      assert.deepStrictEqual(h.threads.settles, []);
-      assert.deepStrictEqual(servedChannel((yield* h.stars.view).stars[0], "user"), {
-        slug: "user",
-        threadId: user.shell.id,
-        sleeps: { at: "2026-11-10T13:30:00.000Z" },
-      });
-    }).pipe(Effect.scoped),
-  );
 });
 
 describe("a Star's request to sleep", () => {
@@ -801,7 +805,7 @@ describe("a Star's request to sleep", () => {
           yield* h.read(
             h.path.join(
               star.root,
-              ".pult/channels/user/conversations/env-1/2026-11-10T12-50-00Z-asks.md",
+              ".pult/channels/main/conversations/env-1/2026-11-10T12-50-00Z-asks.md",
             ),
           ),
           /^ended: "2026-11-10T13:00:00.000Z"$/m,
@@ -891,7 +895,7 @@ describe("the user's request to sleep", () => {
         yield* h.read(
           h.path.join(
             star.root,
-            ".pult/channels/user/conversations/env-1/2026-11-10T12-50-00Z-current.md",
+            ".pult/channels/main/conversations/env-1/2026-11-10T12-50-00Z-current.md",
           ),
         ),
         /^ended: "2026-11-10T13:00:00.000Z"$/m,
@@ -900,32 +904,36 @@ describe("the user's request to sleep", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("ends user's conversation alone, and never another channel's", () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
-      const h = yield* harness;
-      const star = yield* h.stars.create({ ifNone: true });
-      const work = h.threads.add(
-        star.projectId,
-        "work",
-        {
-          createdAt: at("2026-11-10T12:55:00.000Z"),
-          promptCacheExpiresAt: later,
-          tags: [channelTag("work")],
-        },
-        [run("work-run", "completed")],
-      );
-      assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: false, asleep: true });
-      const user = h.threads.add(
-        star.projectId,
-        "user",
-        { createdAt: at("2026-11-10T12:50:00.000Z"), promptCacheExpiresAt: later },
-        [run("user-run", "completed")],
-      );
-      assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: true });
-      assert.deepStrictEqual(h.threads.settles, [user.shell.id]);
-      assert.strictEqual(work.shell.settledOverride, null);
-    }).pipe(Effect.scoped),
+  it.effect(
+    "ends the named channel's conversation alone, the default channel's where none is named",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
+        const h = yield* harness;
+        const star = yield* h.stars.create({ ifNone: true });
+        const work = h.threads.add(
+          star.projectId,
+          "work",
+          {
+            createdAt: at("2026-11-10T12:55:00.000Z"),
+            promptCacheExpiresAt: later,
+            tags: [channelTag("work")],
+          },
+          [run("work-run", "completed")],
+        );
+        assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: false, asleep: true });
+        const user = h.threads.add(
+          star.projectId,
+          "main",
+          { createdAt: at("2026-11-10T12:50:00.000Z"), promptCacheExpiresAt: later },
+          [run("user-run", "completed")],
+        );
+        assert.deepStrictEqual(yield* h.stars.sleepByHand(star), { slept: true });
+        assert.deepStrictEqual(h.threads.settles, [user.shell.id]);
+        assert.strictEqual(work.shell.settledOverride, null);
+        assert.deepStrictEqual(yield* h.stars.sleepByHand(star, "work"), { slept: true });
+        assert.deepStrictEqual(h.threads.settles, [user.shell.id, work.shell.id]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("refuses naming the hold where something holds the conversation awake", () =>
@@ -948,32 +956,34 @@ describe("the user's request to sleep", () => {
 });
 
 describe("tellRetiredAsks", () => {
-  it.effect("tells each Star with a file left in .pult/asks to post it again, in work", () =>
-    Effect.gen(function* () {
-      const h = yield* harness;
-      const asking = yield* h.stars.create({ ifNone: true });
-      const quiet = yield* h.stars.create({ ifNone: false });
-      yield* h.write(h.path.join(asking.root, ".pult/asks/crate.md"), "# Which crate?\n");
-      yield* h.write(h.path.join(quiet.root, ".pult/asks/notes.txt"), "no ask");
-      const told: Array<Delivery> = [];
-      yield* tellRetiredAsks(h.stars, (delivery) =>
-        Effect.sync(() => {
-          told.push(delivery);
-          return { outcome: "launched" as const, threadId: null };
-        }),
-      ).pipe(Effect.provide(NodeServices.layer));
-      assert.deepStrictEqual(
-        told.map(({ star, text, to, key, sender }) => ({ star: star.id, text, to, key, sender })),
-        [
-          {
-            star: asking.id,
-            text: RETIRED_ASKS_NOTICE,
-            to: "work",
-            key: "asks-retired",
-            sender: "plugin",
-          },
-        ],
-      );
-    }).pipe(Effect.scoped),
+  it.effect(
+    "tells each Star with a file left in .pult/asks to post it again, naming no channel",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const asking = yield* h.stars.create({ ifNone: true });
+        const quiet = yield* h.stars.create({ ifNone: false });
+        yield* h.write(h.path.join(asking.root, ".pult/asks/crate.md"), "# Which crate?\n");
+        yield* h.write(h.path.join(quiet.root, ".pult/asks/notes.txt"), "no ask");
+        const told: Array<Delivery> = [];
+        yield* tellRetiredAsks(h.stars, (delivery) =>
+          Effect.sync(() => {
+            told.push(delivery);
+            return { outcome: "launched" as const, threadId: null };
+          }),
+        ).pipe(Effect.provide(NodeServices.layer));
+        assert.deepStrictEqual(
+          told.map(({ star, text, to, key, sender }) => ({ star: star.id, text, to, key, sender })),
+          [
+            {
+              star: asking.id,
+              text: RETIRED_ASKS_NOTICE,
+              to: undefined,
+              key: "asks-retired",
+              sender: "plugin",
+            },
+          ],
+        );
+      }).pipe(Effect.scoped),
   );
 });

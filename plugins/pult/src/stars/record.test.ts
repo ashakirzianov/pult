@@ -29,7 +29,20 @@ describe("parseRecord", () => {
       description: "",
       tint: "mint",
       created: "2026-11-03",
+      defaultChannel: "main",
     });
+  });
+
+  it("reads default-channel as its slug, and main where it is absent or no slug", () => {
+    const text = (line: string) => `xaxis-kind: star\nid: abc\n${line}`;
+    assert.strictEqual(parseRecord(text("default-channel: user\n"))?.defaultChannel, "user");
+    assert.strictEqual(parseRecord(text('default-channel: "unit-2"\n'))?.defaultChannel, "unit-2");
+    assert.strictEqual(parseRecord(text(""))?.misnamedDefaultChannel, undefined);
+    for (const value of ["User", "", "-work"]) {
+      const read = parseRecord(text(`default-channel: ${value}\n`));
+      assert.strictEqual(read?.defaultChannel, "main", value);
+      assert.strictEqual(read?.misnamedDefaultChannel, value, value);
+    }
   });
 
   it("finds no record in a file of another kind, or without an id", () => {
@@ -52,6 +65,7 @@ describe("withRecordFields", () => {
       description: "",
       tint: "sky",
       created: "x",
+      defaultChannel: "main",
     });
   });
 

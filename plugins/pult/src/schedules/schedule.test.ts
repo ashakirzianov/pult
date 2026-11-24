@@ -44,12 +44,12 @@ describe("parseSchedule", () => {
     });
   });
 
-  it("reads `to` as the channel a run lands in, any channel's slug, `user` where absent", () => {
+  it("reads `to` as the channel a run lands in, any channel's slug, none where absent", () => {
     const to = (matter: string) => {
       const parsed = parseSchedule("standup", file(matter));
       return parsed.ok ? parsed.schedule.to : parsed.problem;
     };
-    assert.strictEqual(to("timezone: UTC\ntime: 09:00"), "user");
+    assert.strictEqual(to("timezone: UTC\ntime: 09:00"), undefined);
     assert.strictEqual(to("timezone: UTC\ntime: 09:00\nto: user"), "user");
     assert.strictEqual(to("timezone: UTC\nevery: 1h\nto: work"), "work");
     assert.strictEqual(to('timezone: UTC\ntime: 09:00\nto: "work"'), "work");

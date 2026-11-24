@@ -1,6 +1,6 @@
 // `pult_star_message` (xaxis `pult/tasks/message-star.task`, `pult/tasks/star-channels.task`): a thread
 // messages a Star by its id, into the call's channel, else its tag's beside the Star's child tag, else
-// `work`, nothing refused. Declared through the server's `McpToolAccess` and `toolkitRegistration`,
+// the Star's default channel, nothing refused. Declared through the server's `McpToolAccess` and `toolkitRegistration`,
 // as the built-in toolkits are, so upstream's access checks run unchanged.
 import {
   type OrchestrationV2ThreadShell,
@@ -23,21 +23,21 @@ import {
   Toolkit,
   toolkitRegistration,
 } from "../host.ts";
-import { CHANNEL_PATTERN, childTag, taggedChannel, WORK_CHANNEL } from "./channels.ts";
+import { CHANNEL_PATTERN, childTag, taggedChannel } from "./channels.ts";
 import type { Deliver } from "./deliver.ts";
 import { starName } from "./record.ts";
 import type { Star, Stars } from "./stars.ts";
 
 const StarMessageTool = Tool.make("pult_star_message", {
   description:
-    "Message a Star, the user's personal agent in Pult, by its `id`. `pult_star_list` lists this server's Stars with their ids. A Star holds one conversation per channel, and the message lands in the `channel` you name; else, from a thread the Star launched (tagged `pult:child:star:<id>`), in the channel its `pult:channel:<slug>` tag names; else in `work`. It is queued into that channel's conversation if one is open, or wakes a fresh one, and the Star answers in its own time: the call does not wait for the answer. A fresh conversation uses the receiving Star's model choice for that channel. The Star sees which thread sent it, and from which of its channels where a Star sent it. The Star's modes cannot be broader than yours. A Star may message its own `id` with a `channel`, to hand something to another of its channels. After an error or lost reply, retry with the same `clientRequestId`; a retry of a send that went through answers `replayed`, and may not name the thread (`threadId` null).",
+    "Message a Star, the user's personal agent in Pult, by its `id`. `pult_star_list` lists this server's Stars with their ids. A Star holds one conversation per channel, and the message lands in the `channel` you name; else, from a thread the Star launched (tagged `pult:child:star:<id>`), in the channel its `pult:channel:<slug>` tag names; else in the Star's default channel, the one the user reads. It is queued into that channel's conversation if one is open, or wakes a fresh one, and the Star answers in its own time: the call does not wait for the answer. A fresh conversation uses the receiving Star's model choice for that channel. The Star sees which thread sent it, and from which of its channels where a Star sent it. The Star's modes cannot be broader than yours. A Star may message its own `id` with a `channel`, to hand something to another of its channels. After an error or lost reply, retry with the same `clientRequestId`; a retry of a send that went through answers `replayed`, and may not name the thread (`threadId` null).",
   parameters: Schema.Struct({
     star: Schema.String.annotate({ description: "The Star's id, as its record names it." }),
     message: Schema.String.check(Schema.isMaxLength(120000)),
     channel: Schema.optional(
       Schema.String.check(Schema.isPattern(CHANNEL_PATTERN)).annotate({
         description:
-          "The Star's channel to land in, a slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. Naming one makes it; `user` is the Star's conversation with the user, `work` the default.",
+          "The Star's channel to land in, a slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. Naming one makes it. Without it the message lands in the channel the caller's tag names, else in the Star's default channel, the one the user reads.",
       }),
     ),
     clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
@@ -106,9 +106,9 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     }
     const shell = yield* threads.getThreadShell(threadId).pipe(Effect.mapError(unavailable));
     const own = yield* stars.ofThread(threadId).pipe(Effect.mapError(unavailable));
-    // A channel tag counts beside this Star's child tag alone, so another Star's builder lands in work.
+    // A channel tag counts beside this Star's child tag alone, so another Star's builder lands in the default channel.
     const tagged = shell?.tags?.includes(childTag(star.id)) ? taggedChannel(shell.tags) : undefined;
-    const channel = input.channel ?? tagged ?? WORK_CHANNEL;
+    const channel = input.channel ?? tagged;
     // Another Star's conversation is named as the Star and its channel: an answer sent to that thread would revive it cold.
     const from =
       own === undefined

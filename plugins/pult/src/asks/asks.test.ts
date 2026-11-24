@@ -191,13 +191,13 @@ it.effect(
             title: "Which crate?",
             status: "posted",
             file: kept,
-            poster: { star: "vega-id", channel: "user" },
+            poster: { star: "vega-id", channel: "main" },
             posted: "2026-11-10T13:00:00.000Z",
             replied: null,
             snoozedUntil: null,
             settled: null,
             replies: ["serde", "miniserde"],
-            prefix: `[In reply to your ask ${posted.id} "Which crate?", to your channel user]`,
+            prefix: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
           },
           expect.objectContaining({
             id: filed.id,
@@ -278,7 +278,7 @@ it.effect(
       });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
-        text: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel user]\n\nThe user settled this ask after replying to it. \`pult_ask\` with its id reopens it for 7 days.`,
+        text: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel main]\n\nThe user settled this ask after replying to it. \`pult_ask\` with its id reopens it for 7 days.`,
         creationSource: "server",
       });
       // Told once: a settle of a settled ask changes nothing.

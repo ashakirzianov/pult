@@ -229,6 +229,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-messages",
           "star-sleep-request",
           "star-sleep",
+          "star-channel-sleep",
           "asks",
           "star-channel-models",
           "star-channel-history",
@@ -303,6 +304,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       stars: [
         {
           id: star.id,
+          defaultChannel: "main",
           instructions: `${star.root}/instructions.md`,
           channels: [],
           conversations: [],
@@ -372,12 +374,16 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     });
     expect((yield* send("POST", `/stars/${star.id}`, "writer", { name: 7 })).status).toBe(400);
 
-    // Refresh Context needs the write scope, and refuses a Star asleep already.
+    // Refresh Context needs the write scope, and refuses a channel asleep already, the default's where the body names none.
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "reader", {})).status).toBe(403);
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", {})).status).toBe(409);
+    const sleeping = { channel: "work" };
+    expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", sleeping)).status).toBe(409);
+    for (const body of [undefined, { channel: "Not A Slug" }])
+      expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", body)).status).toBe(400);
     expect((yield* send("POST", "/stars/nobody/sleep", "writer", {})).status).toBe(404);
 
-    // The model the page wakes `user` at itself: the Star's choice at the page's mode, none without a file.
+    // The model the page wakes a channel at itself, the default where it names none: the Star's choice at the page's mode, none without a file.
     const wake = { runtimeMode: "full-access" };
     expect((yield* send("POST", `/stars/${star.id}/model`, "reader", wake)).status).toBe(403);
     expect((yield* send("POST", `/stars/${star.id}/model`, "writer", {})).status).toBe(400);
@@ -393,8 +399,8 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     // A transcript the folder holds, parsed; an unknown one or an unknown Star is a 404.
     const name = "2026-11-10T12-00-00Z-thread-1.md";
-    const file = `${star.root}/.pult/channels/user/conversations/env-1/${name}`;
-    yield* fs.makeDirectory(`${star.root}/.pult/channels/user/conversations/env-1`, {
+    const file = `${star.root}/.pult/channels/main/conversations/env-1/${name}`;
+    yield* fs.makeDirectory(`${star.root}/.pult/channels/main/conversations/env-1`, {
       recursive: true,
     });
     yield* fs.writeFileString(
@@ -419,7 +425,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     // A file written before headings named their message reads by name as well, its reply named by none.
     const legacy = "2026-11-09T12-00-00Z-thread-0.md";
     yield* fs.writeFileString(
-      `${star.root}/.pult/channels/user/conversations/env-1/${legacy}`,
+      `${star.root}/.pult/channels/main/conversations/env-1/${legacy}`,
       '---\nthread: "thread-0"\nstarted: "a"\nended: "b"\nenvironment: "MacBook"\ntitle: "t"\nturns: 0\n---\n\n### Star · 2026-11-09T12:00:05Z\n\nOld\n',
     );
     expect(
@@ -435,7 +441,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
 
     // By its thread: the file whose front matter names it, unopened before, with its name; a
     // name's lossy segment alone, another channel's file or none is a 404, two files a 500.
-    const folder = `${star.root}/.pult/channels/user/conversations/env-1`;
+    const folder = `${star.root}/.pult/channels/main/conversations/env-1`;
     const write = (file: string, thread: string) =>
       fs.writeFileString(
         file,
@@ -611,8 +617,12 @@ it.effect(
           link: expect.stringContaining("launched-1"),
         },
       });
+      // Naming no channel, from no child of the Star's: the default channel, `main` for a record without the line.
+      expect(server.threads.byId(ThreadId.make("launched-1"))?.shell.tags).toEqual([
+        "pult:channel:main",
+      ]);
       expect(server.threads.messages[0]).toMatchObject({
-        text: '[From thread worker "Worker" in project "Repo", to your channel work]\n\nDone.',
+        text: '[From thread worker "Worker" in project "Repo", to your channel main]\n\nDone.',
         senderThreadId: "worker",
         creationSource: "mcp",
         // The wrapper's limits, the caller's own modes.
@@ -633,24 +643,27 @@ it.effect(
       const unknown = yield* call(scopeOf({ thread: "worker" }), { star: "nobody", message: "x" });
       expect(unknown).toMatchObject({ isError: true, body: { code: "invalid_request" } });
       expect(unknown.body.message).toContain('"Vega" (vega-id)');
-      // The Star's conversation with the user hands something to work, naming no channel.
+      // The Star's conversation in its default channel hands something to work.
       own.shell = { ...own.shell, settledOverride: null, settledAt: null };
-      expect(
-        (yield* call(scopeOf({ thread: "star-thread" }), { star: "vega-id", message: "Build it." }))
-          .body,
-      ).toMatchObject({ outcome: "queued", threadId: "launched-1" });
+      const toWork = { star: "vega-id", message: "Build it.", channel: "work" };
+      expect((yield* call(scopeOf({ thread: "star-thread" }), toWork)).body).toMatchObject({
+        outcome: "launched",
+        threadId: "launched-2",
+      });
       expect(server.threads.messages.at(-1)).toMatchObject({
-        threadId: "launched-1",
-        text: "[From your channel user, to your channel work]\n\nBuild it.",
+        threadId: "launched-2",
+        text: "[From your channel main, to your channel work]\n\nBuild it.",
         senderThreadId: "star-thread",
       });
       // Its work conversation messaging its own channel is refused nothing: it queues itself a turn.
-      const workThread = server.threads.byId(ThreadId.make("launched-1"))!;
+      const workThread = server.threads.byId(ThreadId.make("launched-2"))!;
       expect(workThread.shell.tags).toEqual(["pult:channel:work"]);
       workThread.shell = { ...workThread.shell, activeRunId: RunId.make("work-run") };
-      expect(
-        yield* call(scopeOf({ thread: "launched-1" }), { star: "vega-id", message: "Later." }),
-      ).toMatchObject({ isError: false, body: { outcome: "queued", threadId: "launched-1" } });
+      const later = { star: "vega-id", message: "Later.", channel: "work" };
+      expect(yield* call(scopeOf({ thread: "launched-2" }), later)).toMatchObject({
+        isError: false,
+        body: { outcome: "queued", threadId: "launched-2" },
+      });
       expect(server.threads.messages.at(-1)?.text).toBe(
         "[From your channel work, to your channel work]\n\nLater.",
       );
@@ -689,7 +702,7 @@ it.effect(
 );
 
 it.effect(
-  "pult_star_message lands in the channel the call names, else the caller's tag beside the Star's child tag, else work",
+  "pult_star_message lands in the channel the call names, else the caller's tag beside the Star's child tag, else the default channel",
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -717,14 +730,14 @@ it.effect(
         );
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      /** A Star's folder and project. */
-      const starAt = (folder: string, id: string, name: string) =>
+      /** A Star's folder and project; `lines` end its record. */
+      const starAt = (folder: string, id: string, name: string, lines = "") =>
         Effect.gen(function* () {
           const root = path.join(server.directory, folder);
           yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
           yield* fs.writeFileString(
             path.join(root, ".pult/star.yaml"),
-            `xaxis-kind: star\nid: "${id}"\nname: "${name}"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n`,
+            `xaxis-kind: star\nid: "${id}"\nname: "${name}"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n${lines}`,
           );
           return yield* server.projects.service.create({
             projectId: ProjectId.make(`p-${id}`),
@@ -732,7 +745,8 @@ it.effect(
             workspaceRoot: root,
           });
         });
-      const vega = yield* starAt("star", "vega-id", "Vega");
+      // Its record names `user` its default channel, as the live Stars' do.
+      const vega = yield* starAt("star", "vega-id", "Vega", "default-channel: user\n");
       const deneb = yield* starAt("star-2", "deneb-id", "Deneb");
       /** An open conversation, idle with its cache warm. */
       const conversation = (projectId: ProjectId, id: string, tags: ReadonlyArray<string>) =>
@@ -747,7 +761,7 @@ it.effect(
           },
           [run(`${id}-run`, "completed")],
         );
-      const user = conversation(vega.id, "vega-user", []);
+      const user = conversation(vega.id, "vega-user", ["pult:channel:user"]);
       const work = conversation(vega.id, "vega-work", ["pult:channel:work"]);
       const denebReview = conversation(deneb.id, "deneb-review", ["pult:channel:review"]);
       denebReview.shell = {
@@ -787,20 +801,21 @@ it.effect(
         text: '[From thread builder "builder" in project "Repo", to your channel unit-2]\n\nDone.',
       });
       expect([user.runs.length, work.runs.length]).toEqual([1, 1]);
-      // No channel tag, or another Star's child tag beside one: work.
+      // No channel tag, or another Star's child tag beside one: the record's default channel.
       yield* call("untagged", { star: "vega-id", message: "Done." });
-      expect(landed().thread).toBe(work.shell.id);
+      expect(landed().thread).toBe(user.shell.id);
       yield* call("foreign", { star: "vega-id", message: "Done." });
-      expect(landed().thread).toBe(work.shell.id);
+      expect(landed().thread).toBe(user.shell.id);
+      expect(work.runs.length).toBe(1);
       // The call's channel wins over the tag.
       yield* call("builder", { star: "vega-id", message: "Elsewhere.", channel: "unit-3" });
       expect(landed().tags).toEqual(["pult:channel:unit-3"]);
-      // Another Star names a channel, `user` included, and is named with its own.
-      yield* call("deneb-review", { star: "vega-id", message: "A question.", channel: "user" });
+      // Another Star names a channel and is named with its own.
+      yield* call("deneb-review", { star: "vega-id", message: "A question.", channel: "work" });
       expect(landed()).toEqual({
-        thread: user.shell.id,
-        tags: [],
-        text: '[From Star "Deneb" (deneb-id), its channel review, to your channel user]\n\nA question.',
+        thread: work.shell.id,
+        tags: ["pult:channel:work"],
+        text: '[From Star "Deneb" (deneb-id), its channel review, to your channel work]\n\nA question.',
       });
       // A channel that is no slug is invalid parameters, and nothing lands.
       const count = server.threads.messages.length;

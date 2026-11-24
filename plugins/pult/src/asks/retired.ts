@@ -9,7 +9,7 @@ const RETIRED_DIRECTORY = ".pult/asks";
 
 export const RETIRED_ASKS_NOTICE = `Pult no longer reads \`${RETIRED_DIRECTORY}/\`, so the user no longer sees the asks there. Post each one still open again with \`pult_ask\`, passing its text as \`text\` or naming with \`file\` a file of yours outside \`${RETIRED_DIRECTORY}/\`, from the channel that should get the reply, then delete \`${RETIRED_DIRECTORY}/\`. Your \`AGENTS.md\` says how asks work now.`;
 
-/** Tells each Star with a `.md` file left in `.pult/asks/`, in `work`, once per server: the key replays. */
+/** Tells each Star with a `.md` file left in `.pult/asks/`, in its default channel, once per server: the key replays. */
 export const tellRetiredAsks = Effect.fn("Asks.tellRetired")(function* (
   stars: Stars,
   deliver: Deliver,
@@ -26,7 +26,6 @@ export const tellRetiredAsks = Effect.fn("Asks.tellRetired")(function* (
       star,
       text: RETIRED_ASKS_NOTICE,
       from: "Pult, about your asks",
-      to: "work",
       key: "asks-retired",
       sender: "plugin",
     }).pipe(

@@ -4,7 +4,7 @@ import { RuntimeMode } from "@t3tools/contracts";
 
 import { Effect, HttpServerRequest, HttpServerResponse, Schema } from "../host.ts";
 import type { Schedules } from "../schedules/schedules.ts";
-import { isChannel, USER_CHANNEL } from "./channels.ts";
+import { isChannel } from "./channels.ts";
 import type { PageWakeModel } from "./deliver.ts";
 import type { Stars, StarsError } from "./stars.ts";
 
@@ -20,6 +20,9 @@ const decodeFields = Schema.decodeUnknownEffect(
 );
 const decodeWake = Schema.decodeUnknownEffect(
   Schema.Struct({ runtimeMode: RuntimeMode, channel: Schema.optional(Schema.String) }),
+);
+const decodeSleep = Schema.decodeUnknownEffect(
+  Schema.Struct({ channel: Schema.optional(Schema.String) }),
 );
 
 /** The reserved name of `GET stars/<id>/conversations/<name>` that looks a transcript up by its thread. */
@@ -82,29 +85,35 @@ export const starsRoute = (
         return json(yield* stars.setRecord(star, body.value));
       }),
     );
-  // Refresh Context: the user puts the Star's current conversation in `user` to sleep, unless something holds it.
+  // Refresh Context: the user puts a channel's current conversation to sleep, the default channel's where the body names none, unless something holds it.
   if (segments.length === 3 && id !== undefined && sub === "sleep" && method === "POST")
     return answer(
       Effect.gen(function* () {
+        const body = yield* bodyOf(request, decodeSleep);
+        const named = body._tag === "None" ? undefined : body.value.channel;
+        if (body._tag === "None" || (named !== undefined && !isChannel(named)))
+          return json({ error: "The body must be JSON: { channel? }." }, 400);
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;
-        const outcome = yield* stars.sleepByHand(star);
+        const outcome = yield* stars.sleepByHand(star, named);
         return "asleep" in outcome
-          ? json({ error: "The Star is asleep already: it has no conversation to end." }, 409)
+          ? json({ error: "The channel is asleep already: it has no conversation to end." }, 409)
           : json(outcome);
       }),
     );
-  // The page wakes `user` itself (its draft, a sync's handoff), or another channel (its tagged draft): the model to wake it at, telling `work` of a broken file.
+  // The page wakes a channel itself (its draft, a sync's handoff), the default channel where the body names none: the model to wake it at, telling the channel of a broken file.
   if (segments.length === 3 && id !== undefined && sub === "model" && method === "POST")
     return answer(
       Effect.gen(function* () {
         const body = yield* bodyOf(request, decodeWake);
-        const channel = body._tag === "None" ? undefined : (body.value.channel ?? USER_CHANNEL);
-        if (body._tag === "None" || channel === undefined || !isChannel(channel))
+        const named = body._tag === "None" ? undefined : body.value.channel;
+        if (body._tag === "None" || (named !== undefined && !isChannel(named)))
           return json({ error: "The body must be JSON: { runtimeMode, channel? }." }, 400);
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;
-        return json({ model: yield* pageWakeModel(star, body.value.runtimeMode, channel) });
+        return json({
+          model: yield* pageWakeModel(star, body.value.runtimeMode, named ?? star.defaultChannel),
+        });
       }),
     );
   const channel =

@@ -42,6 +42,7 @@ const harnessWith = (
       description: "",
       tint: "amber",
       created: "2026-11-01T00:00:00.000Z",
+      defaultChannel: "main",
       root,
       projectId: ProjectId.make("project-1"),
     };
@@ -178,7 +179,7 @@ describe("namesSchedules", () => {
 });
 
 describe("the pass", () => {
-  it.effect("delivers a run to the channel its schedule names, `user` where it names none", () =>
+  it.effect("delivers a run to the channel its schedule names, none where it names none", () =>
     Effect.gen(function* () {
       const h = yield* harness;
       yield* h.write("standup", STANDUP, "2026-11-10T08:00:00Z");
@@ -197,7 +198,7 @@ describe("the pass", () => {
       assert.deepStrictEqual(h.deliveries.map((each) => [each.text, each.to]).toSorted(), [
         ["Check the build.", "work"],
         ["Ship it.", "release-42"],
-        ["Time for the standup.", "user"],
+        ["Time for the standup.", undefined],
       ]);
     }).pipe(Effect.scoped),
   );
@@ -217,7 +218,7 @@ describe("the pass", () => {
           text: "Time for the standup.",
           from: "schedule standup, due 2026-11-10 09:00 UTC",
           key: "schedule:standup:2026-11-10T09:00:00.000Z",
-          to: "user",
+          to: undefined,
           sender: "plugin",
         },
       ]);
@@ -392,8 +393,8 @@ describe("the pass", () => {
       assert.strictEqual(h.deliveries.length, 1);
       const [told] = h.deliveries;
       assert.strictEqual(told?.from, "Pult, about schedule standup");
-      // Pult's own notice goes to the work conversation.
-      assert.strictEqual(told?.to, "work");
+      // A file that is no schedule names no channel: it lands in the default channel.
+      assert.strictEqual(told?.to, undefined);
       assert.strictEqual(
         told?.text,
         "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every, to and run. Fix the file or delete it; Pult tells you once per content.",
@@ -630,7 +631,7 @@ describe("the pass", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("records a failed run and tells work once, until a clean run, then again", () =>
+  it.effect("records a failed run and tells its channel once, until a clean run, then again", () =>
     Effect.gen(function* () {
       const h = yield* harness;
       const failed: CommandOutcome = { kind: "failed", error: "exited 2\nno such mailbox" };
@@ -647,12 +648,12 @@ describe("the pass", () => {
       assert.deepStrictEqual(told, [
         [
           "schedule-command-failed:mail:2026-11-10T08:15:00.000Z",
-          "work",
+          "mail",
           "Pult, about schedule mail",
         ],
         [
           "schedule-command-failed:mail:2026-11-10T09:00:00.000Z",
-          "work",
+          "mail",
           "Pult, about schedule mail",
         ],
       ]);

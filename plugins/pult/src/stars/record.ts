@@ -1,6 +1,7 @@
 // A Star's folder and its record in `.pult/star.yaml`: the layout, the parse, the text, and the
 // rewrite that keeps the Star's other lines. Byte for byte the page's format
 // (`apps/pult/src/stars/record.ts`), which a released page still reads and writes.
+import { type Channel, isChannel } from "./channels.ts";
 
 /** Where a server's Stars live, beside its home (`directory.ts`). */
 export const STARS_DIRECTORY = ".pult/stars";
@@ -39,6 +40,9 @@ export const STAR_PROJECT_ICON = { kind: "emoji", emoji: "🌟" } as const;
 /** The tint a record without one reads as. */
 const DEFAULT_TINT = "amber";
 
+/** The default channel of a record without `default-channel`, or whose value is no slug. */
+const MAIN_CHANNEL: Channel = "main";
+
 /**
  * A Star's record: who it is. `name` is empty until the user or the Star names it, `description`
  * until one of them writes what the Star is for (`pult_star_list` lists it).
@@ -49,6 +53,10 @@ export interface StarRecord {
   readonly description: string;
   readonly tint: string;
   readonly created: string;
+  /** `default-channel`, the channel the page opens and where a message naming none lands: `main` where absent or no slug. */
+  readonly defaultChannel: Channel;
+  /** The `default-channel` written that is no slug, which reads as `main` and is told to the Star; undefined where none is. */
+  readonly misnamedDefaultChannel?: string | undefined;
 }
 
 export interface RecordFields {
@@ -132,6 +140,7 @@ export function parseRecord(text: string): StarRecord | undefined {
   const fields = fieldsOf(text.split(/\r?\n/));
   const id = fields.get("id");
   if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
+  const defaultChannel = fields.get("default-channel");
   return {
     id,
     name: fields.get("name") ?? "",
@@ -139,6 +148,11 @@ export function parseRecord(text: string): StarRecord | undefined {
     description: fields.get("description") ?? "",
     tint: fields.get("tint") || DEFAULT_TINT,
     created: fields.get("created") ?? "",
+    defaultChannel:
+      defaultChannel !== undefined && isChannel(defaultChannel) ? defaultChannel : MAIN_CHANNEL,
+    ...(defaultChannel === undefined || isChannel(defaultChannel)
+      ? {}
+      : { misnamedDefaultChannel: defaultChannel }),
   };
 }
 
@@ -158,7 +172,7 @@ export function withRecordFields(text: string, changes: RecordFields): string {
 }
 
 export function newRecord(id: string, created: string, name = ""): StarRecord {
-  return { id, name, description: "", tint: DEFAULT_TINT, created };
+  return { id, name, description: "", tint: DEFAULT_TINT, created, defaultChannel: MAIN_CHANNEL };
 }
 
 export function recordText(record: StarRecord): string {

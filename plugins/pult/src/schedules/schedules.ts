@@ -400,8 +400,7 @@ export const make = Effect.fn("Schedules.make")(function* (
             text: `\`${SCHEDULES_DIRECTORY}/${schedule.name}.md\`'s command failed: ${outcome.error}. Pult tells you again only after it has run cleanly.`,
             from: `Pult, about schedule ${schedule.name}`,
             key: `schedule-command-failed:${schedule.name}:${iso(due)}`,
-            // Pult's own notice, which no user is waiting on.
-            to: "work",
+            to: schedule.to,
             sender: "plugin",
           }).pipe(
             Effect.catchCauseIf(notInterrupted, (cause) =>
@@ -428,8 +427,7 @@ export const make = Effect.fn("Schedules.make")(function* (
       text: `\`${SCHEDULES_DIRECTORY}/${file.name}.md\` will not run: ${why}. Fix the file or delete it; Pult tells you once per content.`,
       from: `Pult, about schedule ${file.name}`,
       key,
-      // Pult's own notice, which no user is waiting on.
-      to: "work",
+      // A file that is no schedule names no channel: the default channel's.
       sender: "plugin",
     }).pipe(
       Effect.catchCauseIf(notInterrupted, (cause) =>

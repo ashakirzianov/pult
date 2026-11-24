@@ -1,10 +1,10 @@
 // A Star's schedule (xaxis `pult/tasks/star-schedules.task`): `.pult/schedules/<name>.md`, a front
 // matter with a required IANA `timezone` and one rule over the message as its body, read strictly.
-// Its `to` is any channel's slug, `user` where absent; a `run` command makes it a watcher
+// Its `to` is any channel's slug, the Star's default channel where absent; a `run` command makes it a watcher
 // (`./command.ts`). Every due time is a function of the file alone.
 import { DateTime, Option } from "../host.ts";
 import { entry, frontMatter, SYSTEM_DIRECTORY } from "../stars/record.ts";
-import { isChannel, USER_CHANNEL, type Channel } from "../stars/channels.ts";
+import { isChannel, type Channel } from "../stars/channels.ts";
 
 export const SCHEDULES_DIRECTORY = `${SYSTEM_DIRECTORY}/schedules`;
 
@@ -61,8 +61,8 @@ export interface Schedule {
   readonly timezone: string;
   readonly zone: DateTime.TimeZone;
   readonly rule: Rule;
-  /** The channel a run is delivered to. */
-  readonly to: Channel;
+  /** The channel a run is delivered to; the Star's default channel, as it is when the run fires, where absent. */
+  readonly to: Channel | undefined;
   /** The message, the body with its surrounding blank lines dropped. */
   readonly text: string;
   /** A watcher's command line, run at each due time; its run is delivered only when it printed. */
@@ -141,8 +141,8 @@ export function parseSchedule(name: string, text: string): Parsed {
   if (Option.isNone(zone)) return problem(`\`timezone\` "${timezone}" is no IANA time zone`);
   const message = text.slice(matter.bodyStart).trim();
   if (message === "") return problem("its message, the text after the front matter, is empty");
-  const to = fields.get("to") ?? USER_CHANNEL;
-  if (!isChannel(to))
+  const to = fields.get("to");
+  if (to !== undefined && !isChannel(to))
     return problem(
       `\`to\` "${to}" is no channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters`,
     );

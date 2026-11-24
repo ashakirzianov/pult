@@ -1,6 +1,6 @@
 // The Stars of this server (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, `pult/tasks/star-channels.task`):
 // found on demand from the store and the record files, kept up in their folders, their conversations,
-// one current per channel, which a `pult:channel:<slug>` tag names and `user` where none does, put to
+// one current per channel, which a `pult:channel:<slug>` tag names (an untagged thread is none), put to
 // sleep and transcribed once a minute and before one is handed to anyone. The plugin persists nothing.
 import {
   CommandId,
@@ -32,7 +32,7 @@ import {
 import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { wakeChannelModel } from "./channelModels.ts";
-import { type Channel, isChannel, taggedChannel, USER_CHANNEL } from "./channels.ts";
+import { type Channel, isChannel, taggedChannel } from "./channels.ts";
 import {
   AGENTS_FILE,
   CHANNELS_DIRECTORY,
@@ -73,9 +73,15 @@ const SETTLED_PAGE = 25;
 /** How many of the project's latest settled threads the search for a wake's model reads at most. */
 const WAKE_SEARCH = 100;
 
-/** A conversation's channel, by its first valid channel tag; `user` with none. */
-const channelOf = (thread: Pick<OrchestrationV2ThreadShell, "tags">): Channel =>
-  taggedChannel(thread.tags) ?? USER_CHANNEL;
+/** A conversation's channel, by its first valid channel tag, which `isConversation` holds it to. */
+const channelOf = (thread: Pick<OrchestrationV2ThreadShell, "id" | "tags">): Channel => {
+  const channel = taggedChannel(thread.tags);
+  if (channel === undefined)
+    throw new Error(
+      `unreachable: the thread ${thread.id} has no channel tag, so it is no conversation`,
+    );
+  return channel;
+};
 
 export interface Star {
   readonly id: string;
@@ -83,6 +89,10 @@ export interface Star {
   readonly description: string;
   readonly tint: string;
   readonly created: string;
+  /** The channel the page opens and where a message naming none lands, as the record read last names it. */
+  readonly defaultChannel: Channel;
+  /** The record's `default-channel` that is no slug, told to the Star (`deliver.ts`); absent where none is. */
+  readonly misnamedDefaultChannel?: string | undefined;
   readonly root: string;
   readonly projectId: ProjectId;
 }
@@ -90,7 +100,7 @@ export interface Star {
 /**
  * What `withConversation` hands its use, for the channel it names: that channel's open conversation
  * created last, and the one a wake takes its model and modes from: the newest of that channel, open
- * or ended, else of `user`, else of any channel.
+ * or ended, else of any channel.
  */
 export interface Conversations {
   readonly current: OrchestrationV2ThreadShell | null;
@@ -111,10 +121,10 @@ export interface StarsView {
   readonly stars: ReadonlyArray<
     Star & {
       readonly instructions: string;
-      /** Every open channel, `user` among them, by slug; `asleepSince`, `model` and `conversations` are `user`'s. */
+      /** Every open channel, the default among them, by slug; `asleepSince`, `model` and `conversations` are `defaultChannel`'s. */
       readonly channels: ReadonlyArray<ChannelView>;
       readonly asleepSince: string;
-      /** The model a wake into `user` takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
+      /** The model a wake into the default channel takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
       readonly model: ModelSelection | null;
       readonly histories: ReadonlyArray<{
         readonly slug: string;
@@ -173,15 +183,15 @@ export interface Stars {
   ) => Effect.Effect<A, E | StarsError, R>;
   /** The look under the Star's lock with that conversation's deadline taken as passed: every hold applies, and the settle expects the request's run as the latest. */
   readonly sleepNow: (star: Star, request: StarSleepRequest) => Effect.Effect<void>;
-  /** The user's request, Refresh Context: the look under the Star's lock with `user`'s current conversation's deadline taken as passed, every hold applying. */
-  readonly sleepByHand: (star: Star) => Effect.Effect<SleepByHand, StarsError>;
+  /** The user's request, Refresh Context: the look under the Star's lock with the channel's current conversation's deadline taken as passed, every hold applying; the default channel where it names none. */
+  readonly sleepByHand: (star: Star, channel?: Channel) => Effect.Effect<SleepByHand, StarsError>;
   readonly view: Effect.Effect<StarsView, StarsError>;
   readonly transcript: (
     star: Star,
     name: string,
     channel?: Channel,
   ) => Effect.Effect<ReturnType<typeof parseTranscript>, StarsError>;
-  /** The transcript of `user`'s whose front matter names the thread, with its name; a defect where two do. */
+  /** The transcript of the default channel's whose front matter names the thread, with its name; a defect where two do. */
   readonly transcriptOfThread: (
     star: Star,
     threadId: string,
@@ -228,12 +238,14 @@ export function starsDirectory(
 const isStarsError = Schema.is(StarsError);
 
 /**
- * A conversation of the Star whose project the thread is in: a root thread no fenced link started.
- * A link paired below full access may launch threads into any project, but it may change only its
- * own work (`McpLinkOrigin`), so such a thread is left alone: never current, settled or transcribed.
+ * A conversation of the Star whose project the thread is in: a root thread tagged with its channel
+ * that no fenced link started; an untagged one is no conversation of the Star. A link paired below
+ * full access may launch threads into any project, but it may change only its own work
+ * (`McpLinkOrigin`), so such a thread is left alone: never current, settled or transcribed.
  */
 const isConversation = (thread: OrchestrationV2ThreadShell) =>
   thread.lineage.parentThreadId === null &&
+  taggedChannel(thread.tags) !== undefined &&
   (thread.linkOrigin === undefined || !linkOriginIsFenced(thread.linkOrigin));
 
 const instant = (iso: string | undefined) => {
@@ -242,14 +254,13 @@ const instant = (iso: string | undefined) => {
 };
 
 /**
- * The sleep rule's reading of a conversation: every channel but `user` rotates on a full context,
- * and none sleeps while the shell's background work holds it, or while its latest run, which a
+ * The sleep rule's reading of a conversation: every channel rotates on a full context, and none sleeps while the shell's background work holds it, or while its latest run, which a
  * queued run does not conceal, is stopped by a usage limit; a deliberate settle or archive still
  * ends it.
  */
 const wakefulnessOf = (records: SleepInput, thread: OrchestrationV2ThreadShell) =>
   wakefulness(records, thread.promptCacheExpiresAt, {
-    rotatesWhenFull: channelOf(thread) !== USER_CHANNEL,
+    rotatesWhenFull: true,
     pendingBackgroundTasks: thread.pendingBackgroundTasks,
     usageLimited: thread.status === "failed" && thread.lastErrorClass === "usage_limit",
   });
@@ -340,6 +351,10 @@ export const make = Effect.gen(function* () {
     description: record.description,
     tint: record.tint,
     created: record.created,
+    defaultChannel: record.defaultChannel,
+    ...(record.misnamedDefaultChannel === undefined
+      ? {}
+      : { misnamedDefaultChannel: record.misnamedDefaultChannel }),
     root,
     projectId,
   });
@@ -580,10 +595,7 @@ export const make = Effect.gen(function* () {
     };
     return {
       current: open.find((thread) => channelOf(thread) === channel) ?? null,
-      newest:
-        (yield* newestOf(channel)) ??
-        (channel === USER_CHANNEL ? null : yield* newestOf(USER_CHANNEL)) ??
-        (yield* newestOf()),
+      newest: (yield* newestOf(channel)) ?? (yield* newestOf()),
     } satisfies Conversations;
   });
 
@@ -608,12 +620,12 @@ export const make = Effect.gen(function* () {
         Effect.withSpan("Stars.sleepNow"),
       );
 
-  const sleepByHand: Stars["sleepByHand"] = (star) =>
+  const sleepByHand: Stars["sleepByHand"] = (star, channel = star.defaultChannel) =>
     lockOf(star)
       .withPermits(1)(
         Effect.gen(function* () {
           const current = (yield* openConversations(star)).find(
-            (thread) => channelOf(thread) === USER_CHANNEL,
+            (thread) => channelOf(thread) === channel,
           );
           if (current === undefined) return { slept: false, asleep: true } as const;
           const outcome = yield* look(star, { threadId: current.id });
@@ -657,7 +669,7 @@ export const make = Effect.gen(function* () {
   /** The names of one channel's transcripts, which the fold draws. */
   const transcriptNames = Effect.fn("Stars.transcriptNames")(function* (
     star: Star,
-    channel = USER_CHANNEL,
+    channel: Channel,
   ) {
     const folder = yield* archivePath(star, transcriptsFolder(environmentId, channel));
     if (folder === undefined) return [];
@@ -673,7 +685,7 @@ export const make = Effect.gen(function* () {
           isStarRoot(project.workspaceRoot) || path.resolve(project.workspaceRoot) === asksFolder,
       )
       .map((project) => project.id);
-    const stars = yield* Effect.forEach(yield* list, (star) =>
+    const stars = yield* Effect.forEach(yield* list, ({ misnamedDefaultChannel: _, ...star }) =>
       Effect.gen(function* () {
         // Newest first, so a channel's first is its current conversation.
         const current = new Map<Channel, OrchestrationV2ThreadShell>();
@@ -696,19 +708,20 @@ export const make = Effect.gen(function* () {
               }),
             ),
         );
-        const last = (yield* settledConversations(star, 1, { channel: USER_CHANNEL }))[0];
-        const { newest } = yield* conversationsOf(star, USER_CHANNEL);
-        // What the page's draft shows and wakes at; the page tells `work` of a broken file as it sends.
+        const { defaultChannel } = star;
+        const last = (yield* settledConversations(star, 1, { channel: defaultChannel }))[0];
+        const { newest } = yield* conversationsOf(star, defaultChannel);
+        // What the page's draft shows and wakes at; the page's wake tells the channel of a broken file.
         const chosen =
           newest === null
             ? null
-            : yield* wakeChannelModel(star, USER_CHANNEL, newest.runtimeMode).pipe(
+            : yield* wakeChannelModel(star, defaultChannel, newest.runtimeMode).pipe(
                 Effect.provide(resolving),
               );
         const directory = yield* archivePath(star, CHANNELS_DIRECTORY);
         const histories = [];
         for (const slug of directory !== undefined ? yield* fs.readDirectory(directory) : []) {
-          if (slug === USER_CHANNEL || !isChannel(slug)) continue;
+          if (slug === defaultChannel || !isChannel(slug)) continue;
           const names = yield* transcriptNames(star, slug);
           if (names.length > 0) histories.push({ slug, names });
         }
@@ -719,7 +732,7 @@ export const make = Effect.gen(function* () {
           channels,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
           model: chosen?.selection ?? newest?.modelSelection ?? null,
-          conversations: yield* transcriptNames(star),
+          conversations: yield* transcriptNames(star, defaultChannel),
         };
       }),
     );
@@ -730,7 +743,7 @@ export const make = Effect.gen(function* () {
   );
 
   const transcript = Effect.fn("Stars.transcript")(
-    function* (star: Star, name: string, channel = USER_CHANNEL) {
+    function* (star: Star, name: string, channel = star.defaultChannel) {
       if (!isChannel(channel) || !isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
       const file = yield* archivePath(
         star,
@@ -750,7 +763,7 @@ export const make = Effect.gen(function* () {
     function* (star: Star, threadId: string) {
       const found: Array<Transcript & { readonly name: string }> = [];
       // Only listed names are read: the thread's id never becomes a path.
-      for (const name of (yield* transcriptNames(star)).filter((each) =>
+      for (const name of (yield* transcriptNames(star, star.defaultChannel)).filter((each) =>
         mayNameThread(each, threadId),
       )) {
         const entry = yield* transcript(star, name);

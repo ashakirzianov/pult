@@ -1,12 +1,9 @@
-// A Star's channels (xaxis `pult/tasks/star-channels.task`): a channel is a slug nothing registers,
-// told on a thread by its tag `pult:channel:<slug>`; `user` is the one with the user, and `work`
-// the one a message lands in that names none.
+// A Star's channels (xaxis `pult/decisions`, `star-channels`): a channel is a slug nothing registers,
+// told on a thread by its tag `pult:channel:<slug>`, and none is special by name: the Star's record
+// names its default channel (`record.ts`).
 
 /** A channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters, which is what a tag's 64 leave. */
 export type Channel = string;
-
-export const USER_CHANNEL: Channel = "user";
-export const WORK_CHANNEL: Channel = "work";
 
 const CHANNEL_TAG_PREFIX = "pult:channel:";
 

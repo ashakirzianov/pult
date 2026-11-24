@@ -1,7 +1,7 @@
-// The one door for every message Pult sends a Star (xaxis `pult/tasks/message-star.task`): under the
-// Star's lock it is queued into its channel's current conversation, else the channel wakes fresh, tagged,
-// at the modes of its newest conversation (else `user`'s, else the Star's newest) and the model the Star
-// chose for it (`pult/tasks/star-channel-model.task`), else that conversation's; the page's wakes ask it too.
+// The one door for every message Pult sends a Star (xaxis `pult/decisions`, `star-delivery`): under the
+// Star's lock it is queued into its channel's current conversation (the default channel where it names
+// none), else the channel wakes fresh, tagged, at the modes of its newest conversation, else the Star's
+// newest, and the model the Star chose for it, else that conversation's.
 import {
   type ModelSelection,
   type RuntimeMode,
@@ -27,7 +27,7 @@ import {
 } from "../host.ts";
 import { type BrokenFile, CHANNEL_MODELS_FILE, wakeChannelModel } from "./channelModels.ts";
 import { type Channel, channelTag, isChannel } from "./channels.ts";
-import { starName } from "./record.ts";
+import { RECORD_FILE, starName } from "./record.ts";
 import type { Conversations, Star, Stars } from "./stars.ts";
 
 /**
@@ -42,8 +42,8 @@ export interface Delivery {
   readonly text: string;
   /** One line naming the sender, written into the stored text as `[From <from>, to your channel <to>]`. */
   readonly from: string;
-  /** The channel it is for, a slug. */
-  readonly to: Channel;
+  /** The channel it is for, a slug; the Star's default channel where it names none. */
+  readonly to?: Channel | undefined;
   /** One per message: a repeat delivers nothing new. */
   readonly key: string;
   readonly sender: Sender;
@@ -58,9 +58,9 @@ export interface Delivered {
 export type Deliver = (delivery: Delivery) => Effect.Effect<Delivered, OrchestratorMcpFailure>;
 
 /**
- * The model a fresh conversation of `channel` the page wakes itself (`user`'s sleeping draft, a sync's
- * handoff, another channel's tagged draft) starts at `runtimeMode`: the Star's choice, else null for the page's own; telling the Star's `work`
- * what is wrong with its file as a wake by message does.
+ * The model a fresh conversation of `channel` the page wakes itself (a channel's sleeping draft, a
+ * sync's handoff) starts at `runtimeMode`: the Star's choice, else null for the page's own; telling
+ * the channel what is wrong with its file as a wake by message does.
  */
 export type PageWakeModel = (
   star: Star,
@@ -72,6 +72,9 @@ export interface Delivering {
   readonly deliver: Deliver;
   readonly pageWakeModel: PageWakeModel;
 }
+
+/** How long after the page asks for a wake's model its notices wait, for the page's launch to be the channel's conversation. */
+export const PAGE_LAUNCH_GRACE = "30 seconds";
 
 /** As the web composer seeds a launch's title before the server regenerates it. */
 const titleSeed = (text: string) => {
@@ -96,6 +99,7 @@ export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
+  const digest = yield* Digest.Digest;
   const resolving = yield* Effect.context<
     | FileSystem.FileSystem
     | Path.Path
@@ -106,10 +110,11 @@ export const make = Effect.gen(function* () {
   /** The notices of broken files sent since the server started, `<star>:<key>`; the key keeps them once across restarts. */
   const told = new Set<string>();
 
-  /** Tells the Star's `work` once per content what is wrong with its file; a notice that fails is logged, and told again at a later wake. */
+  /** Tells the channel whose wake found it once per content what is wrong with the Star's file; a notice that fails is logged, and told again at a later wake. */
   const tell = Effect.fn("Stars.tellChannelModels")(function* (
     deliver: Deliver,
     star: Star,
+    channel: Channel,
     broken: BrokenFile,
   ) {
     const key = `channel-models:${broken.hash.slice(0, 16)}`;
@@ -121,8 +126,7 @@ export const make = Effect.gen(function* () {
       text: `\`${CHANNEL_MODELS_FILE}\` cannot be served as written on this environment: ${broken.problems.join("; ")}. A choice this environment cannot serve falls back to \`default\`, then to conversation history, so the wakes go ahead. Fix the file; Pult tells you once per content.`,
       from: `Pult, about ${CHANNEL_MODELS_FILE}`,
       key,
-      // Pult's own notice, which no user is waiting on.
-      to: "work",
+      to: channel,
       sender: "plugin",
     }).pipe(
       // Pult's own, under no ceiling of the sender whose wake found the file broken.
@@ -130,6 +134,36 @@ export const make = Effect.gen(function* () {
       Effect.onError(() => Effect.sync(() => told.delete(id))),
       Effect.catchCauseIf(notInterrupted, (cause) =>
         Effect.logWarning("Could not tell a Star its channel models are broken.", {
+          starId: star.id,
+          cause,
+        }),
+      ),
+    );
+  });
+
+  /** Tells the Star once per content that its record's `default-channel` is no slug, in its default channel, `main`; logged as `tell` is. */
+  const tellMisnamed = Effect.fn("Stars.tellMisnamedDefault")(function* (
+    deliver: Deliver,
+    star: Star,
+  ) {
+    const written = star.misnamedDefaultChannel;
+    if (written === undefined) return;
+    const hash = yield* digest.digestHex(Digest.sha256, new TextEncoder().encode(written));
+    const key = `default-channel:${hash.slice(0, 16)}`;
+    const id = `${star.id}:${key}`;
+    if (told.has(id)) return;
+    told.add(id);
+    yield* deliver({
+      star,
+      text: `\`default-channel\` in \`${RECORD_FILE}\` is "${written}", which is no channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. Pult reads it as \`${star.defaultChannel}\` until it names one. Pult tells you once per content.`,
+      from: `Pult, about ${RECORD_FILE}`,
+      key,
+      sender: "plugin",
+    }).pipe(
+      Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
+      Effect.onError(() => Effect.sync(() => told.delete(id))),
+      Effect.catchCauseIf(notInterrupted, (cause) =>
+        Effect.logWarning("Could not tell a Star its default channel is no slug.", {
           starId: star.id,
           cause,
         }),
@@ -147,9 +181,10 @@ export const make = Effect.gen(function* () {
       delivery: Delivery,
       telling: boolean,
     ) => Effect.Effect<Delivered, OrchestratorMcpFailure> = Effect.fn("Stars.deliver")(function* (
-      { star, text, from, to, key, sender }: Delivery,
+      { star, text, from, to: named, key, sender }: Delivery,
       telling: boolean,
     ) {
+      const to = named ?? star.defaultChannel;
       if (!isChannel(to)) return yield* Effect.die(new Error(`"${to}" is no channel's slug.`));
       yield* startup.awaitCommandReady.pipe(Effect.mapError(failed));
       const limit = sender === "plugin" ? undefined : yield* DispatchModeLimit.DispatchModeLimit;
@@ -211,7 +246,7 @@ export const make = Effect.gen(function* () {
             runtimeMode: newest.runtimeMode,
             interactionMode: newest.interactionMode,
             workspaceStrategy: { type: "root" },
-            // Created tagged with its channel, `user` too, so it is never read as another's.
+            // Created tagged with its channel: an untagged thread is no conversation.
             tags: [channelTag(to)],
             initialMessage: {
               messageId: wake.messageId,
@@ -264,16 +299,26 @@ export const make = Effect.gen(function* () {
       const delivered = yield* stars
         .withConversation(star, to, deliverNow)
         .pipe(Effect.catchTag("StarsError", (error) => Effect.fail(failed(error))));
-      if (telling && found.broken !== null)
-        yield* tell((notice) => deliver(notice, false), star, found.broken);
+      if (telling) {
+        const notify = (notice: Delivery) => deliver(notice, false);
+        if (found.broken !== null) yield* tell(notify, star, to, found.broken);
+        yield* tellMisnamed(notify, star);
+      }
       return delivered;
     });
     const pageWakeModel: PageWakeModel = Effect.fn("Stars.pageWakeModel")(
       function* (star, runtimeMode, channel) {
         const model = yield* chosenFor(star, channel, runtimeMode);
-        // `tell` logs whatever fails but an interruption, so a failure here is no notice's.
-        if (model?.broken != null)
-          yield* tell((notice) => deliver(notice, false), star, model.broken).pipe(Effect.orDie);
+        const notify = (notice: Delivery) => deliver(notice, false);
+        const broken = model?.broken ?? null;
+        // Told once the page's own launch is the channel's conversation, so the notice queues into
+        // it instead of waking one beside it; `tell` logs whatever fails but an interruption.
+        if (broken !== null || star.misnamedDefaultChannel !== undefined)
+          yield* Effect.sleep(PAGE_LAUNCH_GRACE).pipe(
+            Effect.andThen(broken === null ? Effect.void : tell(notify, star, channel, broken)),
+            Effect.andThen(tellMisnamed(notify, star)),
+            Effect.forkDetach,
+          );
         return model?.selection ?? null;
       },
     );

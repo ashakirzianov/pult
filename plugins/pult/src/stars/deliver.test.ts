@@ -14,6 +14,7 @@ import { DateTime, DispatchModeLimit, Effect, Exit, FileSystem, Layer, Path } fr
 import { CHANNEL_MODELS_FILE } from "./channelModels.ts";
 import { type Channel, channelTag } from "./channels.ts";
 import * as Delivery from "./deliver.ts";
+import { RECORD_FILE } from "./record.ts";
 import * as Stars from "./stars.ts";
 import { at, fakeServer, run } from "./testing.ts";
 
@@ -100,7 +101,7 @@ const harness = Effect.gen(function* () {
           typeof file === "string" ? file : JSON.stringify(file),
         ),
     );
-  /** A conversation that ended an hour ago; `user`'s unless `shell` tags it. */
+  /** A conversation that ended an hour ago; `main`'s, the default channel's, unless `shell` tags it. */
   const ended = (id = "ended", shell: Partial<OrchestrationV2ThreadShell> = {}) =>
     server.threads.add(star.projectId, id, {
       createdAt: at("2026-11-10T11:00:00.000Z"),
@@ -110,7 +111,7 @@ const harness = Effect.gen(function* () {
       interactionMode: "default",
       ...shell,
     });
-  /** An open conversation, its cache warm; `user`'s unless `shell` tags it. */
+  /** An open conversation, its cache warm; `main`'s unless `shell` tags it. */
   const open = (
     runs = [run("open-run", "completed")],
     id = "open",
@@ -127,7 +128,8 @@ const harness = Effect.gen(function* () {
       },
       runs,
     );
-  const fromPlugin = (key: string, text = "Hello", to: Channel = "user") =>
+  /** As the plugin, to the default channel unless it names one. */
+  const fromPlugin = (key: string, text = "Hello", to?: Channel) =>
     deliver({ star, text, from: 'schedule "standup"', to, key, sender: "plugin" });
   /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits; to `work` unless it names another. */
   const fromThread = (
@@ -194,8 +196,8 @@ describe("deliver", () => {
           runtimeMode: "auto",
           interactionMode: "default",
           workspaceStrategy: { type: "root" },
-          // `user`'s conversation too is launched tagged.
-          tags: ["pult:channel:user"],
+          // Naming no channel, it lands in the default channel, `main` for a record without the line, tagged.
+          tags: ["pult:channel:main"],
         },
       );
       // From the plugin: a server message, no sender thread, no ceiling.
@@ -210,13 +212,53 @@ describe("deliver", () => {
         },
         {
           threadId: ThreadId.make("launched-1"),
-          text: '[From schedule "standup", to your channel user]\n\nTime for the standup.',
+          text: '[From schedule "standup", to your channel main]\n\nTime for the standup.',
           senderThreadId: undefined,
           createdBy: "agent",
           creationSource: "server",
         },
       );
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "lands a delivery naming no channel in the record's default-channel, main where it is no slug, told once per content",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.ended();
+        const file = h.path.join(h.star.root, RECORD_FILE);
+        const written = yield* h.fs.readFileString(file);
+        /** The Star as a look reads it, its record ending with `line`. */
+        const recorded = (line: string) =>
+          h.fs.writeFileString(file, `${written}${line}\n`).pipe(
+            Effect.andThen(h.stars.get(h.star.id)),
+            Effect.map((star) => star!),
+          );
+        const send = (star: Stars.Star, key: string) =>
+          h.deliver({ star, text: "Hello", from: "x", key, sender: "plugin" });
+        yield* send(yield* recorded("default-channel: user"), "k1");
+        const misnamed = yield* recorded("default-channel: User");
+        yield* send(misnamed, "k2");
+        yield* send(misnamed, "k3");
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => each.tags),
+          [["pult:channel:user"], ["pult:channel:main"]],
+        );
+        assert.deepStrictEqual(
+          h.threads.messages.map((each) => each.text.split("\n")[0]),
+          [
+            "[From x, to your channel user]",
+            "[From x, to your channel main]",
+            "[From Pult, about .pult/star.yaml, to your channel main]",
+            "[From x, to your channel main]",
+          ],
+        );
+        assert.include(
+          h.threads.messages[2]?.text,
+          '`default-channel` in `.pult/star.yaml` is "User", which is no channel\'s slug',
+        );
+      }).pipe(Effect.scoped),
   );
 
   it.effect("starts an idle conversation's turn and queues behind a running one", () =>
@@ -325,11 +367,11 @@ describe("deliver", () => {
   );
 
   it.effect(
-    "wakes a channel at its newest conversation, else at user's newest, else at the Star's newest in any channel",
+    "wakes a channel at its newest conversation, else at the Star's newest in any channel",
     () =>
       Effect.gen(function* () {
         const h = yield* harness;
-        // Only a work conversation so far: a fresh channel and `user` alike take its model and modes.
+        // Only a work conversation so far: a fresh channel takes its model and modes.
         h.ended("work-ended", {
           ...work,
           runtimeMode: "full-access",
@@ -337,14 +379,14 @@ describe("deliver", () => {
           modelSelection: model("work-model"),
         });
         yield* h.fromPlugin("k1", "To a fresh channel.", "unit-2");
-        // The user's ended later; work's model and modes are still its own.
-        h.ended("user-ended", {
+        // The default channel's ended later; work's model and modes are still its own.
+        h.ended("main-ended", {
           createdAt: at("2026-11-10T11:30:00.000Z"),
           settledAt: at("2026-11-10T12:30:00.000Z"),
-          modelSelection: model("user-model"),
+          modelSelection: model("main-model"),
         });
         yield* h.fromPlugin("k2", "To work.", "work");
-        // A fresh channel takes the model the user set, not whichever channel ran last.
+        // A fresh channel takes whichever channel ran last, the default channel no first.
         yield* h.fromPlugin("k3", "To another fresh channel.", "unit-3");
         assert.deepStrictEqual(
           h.launches.launches.map((each) => [
@@ -356,7 +398,7 @@ describe("deliver", () => {
           [
             ["work-model", "full-access", "plan", ["pult:channel:unit-2"]],
             ["work-model", "full-access", "plan", ["pult:channel:work"]],
-            ["user-model", "auto", "default", ["pult:channel:unit-3"]],
+            ["work-model", "full-access", "plan", ["pult:channel:unit-3"]],
           ],
         );
       }).pipe(Effect.scoped),
@@ -366,7 +408,7 @@ describe("deliver", () => {
     Effect.gen(function* () {
       const h = yield* harness;
       h.ended("work-ended", { ...work, modelSelection: model("work-model") });
-      // A hundred of `user`'s settled after it, so work's newest is out of the search's reach.
+      // A hundred of `main`'s settled after it, so work's newest is out of the search's reach.
       for (let index = 0; index < 100; index += 1)
         h.ended(`user-${index}`, {
           settledAt: DateTime.add(at("2026-11-10T12:10:00.000Z"), { seconds: index }),
@@ -516,11 +558,11 @@ describe("deliver", () => {
   );
 
   it.effect(
-    "wakes on the fallback where the choice cannot be served, telling work once per content",
+    "wakes on the fallback where the choice cannot be served, telling the waking channel once per content",
     () =>
       Effect.gen(function* () {
         const h = yield* harness;
-        const last = h.ended();
+        h.ended();
         // A provider that does not offer the wake's mode, `auto`, cannot serve it.
         yield* h.choose({
           default: FABLE,
@@ -531,24 +573,27 @@ describe("deliver", () => {
         assert.deepStrictEqual(
           h.launches.launches.map((each) => [each.tags, each.modelSelection]),
           [
+            // The notice queues into the conversation the wake made, after the lock; the second wake tells nothing.
             [["pult:channel:captures"], selected(FABLE)],
-            // The notice wakes work, after the lock, on the default too; the second wake tells nothing.
-            [["pult:channel:work"], selected(FABLE)],
             [["pult:channel:unit-2"], selected(FABLE)],
           ],
         );
         // Three messages: the two wakes' and the one notice.
         assert.strictEqual(h.threads.messages.length, 3);
         const notice = h.threads.messages[1];
-        assert.strictEqual(notice?.threadId, ThreadId.make("launched-2"));
+        assert.strictEqual(notice?.threadId, ThreadId.make("launched-1"));
         assert.include(
           notice?.text,
           '`channels.captures.provider` "codex-narrow" does not offer runtime mode "auto"',
         );
-        // Without the file, the channel wakes as before.
+        // Without the file, the channel wakes at the Star's newest conversation's model.
         yield* h.fs.remove(h.path.join(h.star.root, CHANNEL_MODELS_FILE));
+        for (const id of ["launched-1", "launched-2"]) {
+          const each = h.threads.byId(ThreadId.make(id))!;
+          each.shell = { ...each.shell, modelSelection: model("history-model") };
+        }
         yield* h.fromPlugin("k3", "Hello", "unit-3");
-        assert.deepStrictEqual(h.launches.launches[3]?.modelSelection, last.shell.modelSelection);
+        assert.deepStrictEqual(h.launches.launches[2]?.modelSelection, model("history-model"));
       }).pipe(Effect.scoped),
   );
 
@@ -581,7 +626,7 @@ describe("deliver", () => {
   );
 
   it.effect(
-    "shows the page the choice for user and wakes its own launch at it, telling work once with the wakes by message",
+    "shows the page the choice for the default channel and wakes its own launch at it, telling the channel once with the wakes by message",
     () =>
       Effect.gen(function* () {
         const h = yield* harness;
@@ -589,27 +634,31 @@ describe("deliver", () => {
         const shown = Effect.map(h.stars.view, (view) => view.stars[0]?.model);
         // No file: the page keeps its own, the newest conversation's.
         assert.deepStrictEqual(yield* shown, last.shell.modelSelection);
-        assert.strictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), null);
-        yield* h.choose({ default: FABLE, channels: { user: SOL } });
+        assert.strictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), null);
+        yield* h.choose({ default: FABLE, channels: { main: SOL } });
         assert.deepStrictEqual(yield* shown, selected(SOL));
-        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), selected(SOL));
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), selected(SOL));
         // Another channel's tagged draft takes its own: here the default.
         assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "review"), selected(FABLE));
-        // At a mode its provider does not offer, the entry falls to the default, and the page's send tells work.
+        // At a mode its provider does not offer, the entry falls to the default, and the page's wake tells its channel.
         yield* h.choose({
           default: FABLE,
-          channels: { user: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
+          channels: { main: { provider: "codex-narrow", model: "gpt-6.2-sol" } },
         });
         assert.deepStrictEqual(yield* shown, selected(FABLE));
         assert.strictEqual(h.launches.launches.length, 0, "showing the choice tells nothing");
-        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "user"), selected(FABLE));
-        assert.deepStrictEqual(
-          h.launches.launches.map((each) => each.tags),
-          [["pult:channel:work"]],
-        );
+        assert.deepStrictEqual(yield* h.pageWakeModel(h.star, "auto", "main"), selected(FABLE));
+        // Once the page's own launch is the channel's conversation, the notice queues into it.
+        const launched = h.open(undefined, "page-launch");
+        assert.strictEqual(h.threads.messages.length, 0);
+        yield* TestClock.adjust(Delivery.PAGE_LAUNCH_GRACE);
+        yield* h.threads.taken(1);
+        assert.strictEqual(h.launches.launches.length, 0);
+        assert.strictEqual(h.threads.messages[0]?.threadId, launched.shell.id);
         assert.include(h.threads.messages[0]?.text, '"codex-narrow" does not offer runtime mode');
         // The same content is told once, whichever wake finds it next.
-        yield* h.pageWakeModel(h.star, "auto", "user");
+        yield* h.pageWakeModel(h.star, "auto", "main");
+        yield* TestClock.adjust(Delivery.PAGE_LAUNCH_GRACE);
         yield* h.fromPlugin("k1", "Hello", "unit-2");
         assert.strictEqual(h.threads.messages.length, 2);
       }).pipe(Effect.scoped),
