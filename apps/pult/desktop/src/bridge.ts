@@ -7,7 +7,7 @@
  */
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 
-import type { PultDesktop } from "../../src/desktop/api.ts";
+import type { PreviewCite, PultDesktop } from "../../src/desktop/api.ts";
 import { Channel, type Reply } from "./ipc.ts";
 
 async function invoke<T>(channel: string, ...args: string[]): Promise<T> {
@@ -35,6 +35,10 @@ export function exposePultDesktop(version: string): void {
     },
     keepRendering: (keep) => invoke(Channel.windowKeepRendering, keep ? "on" : "off"),
     longFrame: (frame) => invoke(Channel.longFrame, JSON.stringify(frame)),
+    onPreviewCite(listener) {
+      ipcRenderer.on(Channel.previewCite, (_event, cite: PreviewCite) => listener(cite));
+      ipcRenderer.send(Channel.previewCiteSubscribe);
+    },
     spelling: {
       misspelled: (word) => webFrame.isWordMisspelled(word),
       suggestions: (word) => webFrame.getWordSuggestions(word),

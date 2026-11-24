@@ -38,6 +38,8 @@ import {
   PRIMARY_PASTE_DISABLED_ARGUMENT,
 } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
+// Pult: a browser menu's Cite.
+import { pultGuestMenuItems } from "../../../pult/desktop/src/upstreamHost.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
@@ -667,6 +669,8 @@ export const make = Effect.gen(function* () {
         const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
 
         if (isBrowserContents) {
+          // Pult: Cite first in a browser's menu, for its selection.
+          menuTemplate.push(...pultGuestMenuItems(ownerWindow, contents, params));
           menuTemplate.push(
             {
               label: m(msg("Reload")),

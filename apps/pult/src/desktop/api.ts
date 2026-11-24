@@ -44,6 +44,14 @@ export interface PultDesktop {
    */
   longFrame(frame: LongFrame): Promise<void>;
   /**
+   * Pult.app's alone: subscribes the page, for its lifetime, to Cite in a
+   * hosted browser's context menu, which main shows only to a subscribed
+   * page, for selected text (`pultGuestMenuItems`, `desktop/src/upstreamHost.ts`);
+   * `listener` gets the clicked guest and its selection (`src/composer/cite.ts`).
+   * The thin wrapper hosts no browser and ignores it.
+   */
+  onPreviewCite(listener: (cite: PreviewCite) => void): void;
+  /**
    * The OS's spell checker, the one Chromium's text fields use
    * (`src/spelling/index.ts`): `misspelled` and `suggestions` answer at once,
    * each a synchronous call to the browser process; `learn` adds a word to
@@ -54,6 +62,12 @@ export interface PultDesktop {
     suggestions(word: string): string[];
     learn(word: string): Promise<void>;
   };
+}
+
+/** A browser menu's Cite: the guest's web contents, a `<webview>`'s `getWebContentsId()`, and the text selected in the frame clicked, as Electron read it when the menu opened. */
+export interface PreviewCite {
+  readonly webContentsId: number;
+  readonly text: string;
 }
 
 /** A long animation frame as the freeze log keeps it (`longFrame` in `src/desktop/longFrames.ts`). */

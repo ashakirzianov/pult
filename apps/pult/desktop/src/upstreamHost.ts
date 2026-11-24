@@ -9,9 +9,20 @@
  */
 import * as NodePath from "node:path";
 
-import { app, BrowserWindow, ipcMain, webContents, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  webContents,
+  type ContextMenuParams,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from "electron";
 
 import { captureStack, openFreezeLog } from "./freezeLog.ts";
+import type { PreviewCite } from "../../src/desktop/api.ts";
 import { Channel, learnSpelling, titleBarLayout, type Reply } from "./ipc.ts";
 import { openSecretStore } from "./secretStore.ts";
 
@@ -21,7 +32,8 @@ import { openSecretStore } from "./secretStore.ts";
  * bar's layout, the window's full screen, the window kept rendering for a
  * browser's capture, a word the spell checker learns, the page's long frames into the
  * freeze log in `logDir` (`freezeLog.ts`), and the app's version; and on a window's
- * `unresponsive`, once per spell, its page's JS stack into that log. Called after
+ * `unresponsive`, once per spell, its page's JS stack into that log; and the
+ * page's subscription to a browser menu's Cite (`pultGuestMenuItems`). Called after
  * `ready`, once `userData` is set.
  */
 export function installPultDesktop(input: {
@@ -30,7 +42,7 @@ export function installPultDesktop(input: {
 }): void {
   const secrets = openSecretStore(NodePath.join(app.getPath("userData"), "secrets.json"));
   const freezeLog = openFreezeLog(input.logDir);
-  const fromPage = (event: IpcMainInvokeEvent) => {
+  const fromPage = (event: IpcMainEvent | IpcMainInvokeEvent) => {
     const frame = event.senderFrame;
     return frame !== null && frame.parent === null && frame.origin === input.pageOrigin;
   };
@@ -89,6 +101,13 @@ export function installPultDesktop(input: {
   handle(Channel.longFrame, (_event, frame) =>
     freezeLog("long-animation-frame", JSON.parse(frame)),
   );
+  ipcMain.on(Channel.previewCiteSubscribe, (event) => {
+    if (!fromPage(event)) return;
+    const id = event.sender.id;
+    if (citingPages.has(id)) return;
+    citingPages.add(id);
+    event.sender.once("destroyed", () => citingPages.delete(id));
+  });
   ipcMain.on(Channel.version, (event) => {
     event.returnValue = app.getVersion();
   });
@@ -111,4 +130,34 @@ export function installPultDesktop(input: {
       endSpell = undefined;
     });
   });
+}
+
+/** The windows' pages subscribed to a browser menu's Cite (`window.pultDesktop.onPreviewCite`), by web contents. */
+const citingPages = new Set<number>();
+
+/**
+ * Pult's items first in a hosted browser's context menu, which upstream's
+ * `installContextMenu` (`apps/desktop/src/window/DesktopWindow.ts`) builds:
+ * Cite and a separator, while text is selected in the frame clicked and the
+ * owner window's page has subscribed; Cite sends the guest and the text
+ * Electron read as the menu opened to that page, which cites it
+ * (`src/composer/cite.ts`). None otherwise.
+ */
+export function pultGuestMenuItems(
+  ownerWindow: BrowserWindow,
+  contents: WebContents,
+  params: ContextMenuParams,
+): MenuItemConstructorOptions[] {
+  const page = ownerWindow.webContents;
+  if (params.selectionText.trim() === "" || !citingPages.has(page.id)) return [];
+  const cite: PreviewCite = { webContentsId: contents.id, text: params.selectionText };
+  return [
+    {
+      label: "Cite",
+      click: () => {
+        if (!page.isDestroyed()) page.send(Channel.previewCite, cite);
+      },
+    },
+    { type: "separator" },
+  ];
 }

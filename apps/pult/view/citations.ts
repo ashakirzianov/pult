@@ -69,6 +69,35 @@ export function citePassage(target: ComposerTarget, passage: Passage): boolean {
   });
 }
 
+/** A selection in a browser tab to cite: its source, the project file's path as `FileLines` has it or the page's URL (`src/preview/citeSource.ts`), and its text as the page shows it. */
+export interface BrowserSelection {
+  readonly path: string;
+  readonly text: string;
+}
+
+/**
+ * Adds the selection as `citeFileLines` adds lines, as upstream's review
+ * comment of no lines, "Browser selection" over the range "page" (0-0), the
+ * quote its text: the agent reads that it came from a page whose scripts ran
+ * and maps to no source lines. Its block's path opens the file, or refuses a
+ * URL (`src/threads/files.ts`).
+ */
+export function citeBrowserSelection(target: ComposerTarget, selection: BrowserSelection): boolean {
+  return cite(target, {
+    id: nextFileCommentId(),
+    // The record's section id holds 255 characters (`ReviewCommentContextRecord`); a page's URL may hold more.
+    sectionId: `browser:${selection.path}`.slice(0, 255),
+    sectionTitle: "Browser selection",
+    filePath: selection.path,
+    startIndex: 0,
+    endIndex: 0,
+    rangeLabel: "page",
+    text: "",
+    diff: selection.text,
+    fenceLanguage: "text",
+  });
+}
+
 /** A diff's lines to cite: the file's path as the agent should read it, the diff's source as upstream labels it, and the excerpt (`src/composer/diffExcerpt.ts`). */
 export interface DiffLines {
   readonly path: string;

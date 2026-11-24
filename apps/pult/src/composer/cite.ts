@@ -1,4 +1,9 @@
-import { getService, IEditorService, INotificationService } from "@codingame/monaco-vscode-api";
+import {
+  getService,
+  ICommandService,
+  IEditorService,
+  INotificationService,
+} from "@codingame/monaco-vscode-api";
 import {
   Action2,
   MenuId,
@@ -11,7 +16,10 @@ import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/edito
 import type { ICodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
 import { COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS } from "@t3tools/contracts";
 
+import { connection } from "../connection/index.ts";
 import { toHostPath } from "../files/paths.ts";
+import { citeSource } from "../preview/citeSource.ts";
+import { BrowserCapture, browserPassage } from "../preview/pane.tsx";
 import { readerPassage } from "../reader/pane.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
@@ -24,13 +32,14 @@ const CITE_SELECTION = "pult-shell.citeSelection";
 /** The changes view's and the Graph's diff sides (`src/changes/view.ts`), whose query names the change or the commit's file. */
 const DIFF_SCHEME = "pult-diff";
 
-/** Where Cite applies: a `pult:` file, or a side of the changes view's diff, while a thread or a project's draft is selected. */
+/** Where Cite applies: a `pult:` file, a side of the changes view's diff, or a preview tab (`src/preview/pane.tsx`), while a thread or a project's draft is selected. */
 const CITABLE = ContextKeyExpr.and(
   HasComposerContext,
   ContextKeyExpr.or(
     ContextKeyExpr.equals("resourceScheme", "pult"),
     ContextKeyExpr.equals("resourceScheme", DIFF_SCHEME),
     ContextKeyExpr.has("isInDiffEditor"),
+    ContextKeyExpr.equals("activeEditor", "pult.shell.previewPane"),
   ),
 );
 
@@ -91,8 +100,13 @@ function changesDiff(
  * between them (`diffExcerpt.ts`), labelled with the diff's source; and the
  * composer shown under the file. From the reader, the selected passage
  * as it reads, under its source lines (`readerPassage`, `citePassage`), and
- * never another editor's lines. Hidden for a file of the Explorer
- * workspace, which has no thread. Registered before the workbench starts.
+ * never another editor's lines. From a preview tab, before either, the text
+ * its browser's menu captured or the active tab's selection
+ * (`browserPassage`), with no lines, its source the project file behind the
+ * page or its URL (`citeSource.ts`, `citeBrowserSelection`); in Pult.app the
+ * page subscribes to the browser menu's Cite (`window.pultDesktop.onPreviewCite`).
+ * Hidden for a file of the Explorer workspace, which has no thread.
+ * Registered before the workbench starts.
  */
 export function registerCiteCommand(): void {
   registerAction2(
@@ -107,7 +121,7 @@ export function registerCiteCommand(): void {
         });
       }
 
-      /** `captured`: the capture of the reader's context menu or selection action, and `comment` the key typed on it (`src/reader/pane.ts`). */
+      /** `captured`: the capture of the reader's context menu or selection action, and `comment` the key typed on it (`src/reader/pane.ts`), or of a browser's menu (`BrowserCapture`). */
       async run(
         accessor: Parameters<Action2["run"]>[0],
         captured?: unknown,
@@ -117,13 +131,37 @@ export function registerCiteCommand(): void {
         const editorPanes = accessor.get(IEditorService);
         // The view's module first, so what is cited is read and written with no wait between.
         const citations = await import("../../view/citations.ts");
+        const notify = async (message: string) =>
+          (await getService(INotificationService)).info(message);
+        // The composer and its checkout as Cite was asked, before the browser answers.
+        const target = stripTarget(editorPanes.activeEditor?.resource?.toString());
+        const checkout = selectedCheckout();
+        const browser = await browserPassage(editorPanes, captured);
+        if (typeof browser === "string") return void (await notify(browser));
+        if (browser !== undefined) {
+          if (target === null)
+            return void (await notify("Cite cites into the selected thread's composer."));
+          if (browser.text.length > COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS)
+            return void (await notify("The selection is too long to cite. Select less."));
+          const url = browser.input.url;
+          if (url === null) throw new Error("Cite took a selection from a browser with no page.");
+          const environmentId = browser.input.environmentId;
+          const source = citeSource(url, connection.environment(environmentId)?.httpBaseUrl);
+          const cited = citations.citeBrowserSelection(target, {
+            path:
+              source.kind === "url"
+                ? source.url
+                : citedPath(checkout, { environmentId, hostPath: source.hostPath }),
+            text: browser.text,
+          });
+          if (!cited)
+            return void (await notify("The composer is not ready yet. Try again in a moment."));
+          return composerStrip.setOpen(true);
+        }
         const passage = readerPassage(editorPanes, captured);
         const editor = editors.getFocusedCodeEditor() ?? editors.getActiveCodeEditor();
         const model = editor?.getModel();
         const selection = editor?.getSelection();
-        const target = stripTarget(editorPanes.activeEditor?.resource?.toString());
-        const notify = async (message: string) =>
-          (await getService(INotificationService)).info(message);
         if (typeof passage === "string") return void (await notify(passage));
         if (passage !== undefined) {
           if (target === null)
@@ -192,6 +230,12 @@ export function registerCiteCommand(): void {
         composerStrip.setOpen(true);
       }
     },
+  );
+  window.pultDesktop?.onPreviewCite(
+    ({ webContentsId, text }) =>
+      void getService(ICommandService).then((commands) =>
+        commands.executeCommand(CITE_SELECTION, new BrowserCapture(webContentsId, text)),
+      ),
   );
   MenuRegistry.appendMenuItem(MenuId.EditorContext, {
     command: { id: CITE_SELECTION, title: "Cite" },

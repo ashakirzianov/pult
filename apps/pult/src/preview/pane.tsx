@@ -5,6 +5,7 @@ import {
   getService,
   ICommandService,
   type IEditorGroup,
+  type IEditorService,
   IInstantiationService,
 } from "@codingame/monaco-vscode-api";
 import type { Dimension } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/dom";
@@ -22,6 +23,7 @@ import {
 
 import type { MountedPreview, PreviewSessionInfo } from "../../view/main.tsx";
 
+import { namesEnvironment } from "../files/paths.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { threadView } from "../threads/pane.tsx";
@@ -77,6 +79,11 @@ export class PreviewInput extends SimpleEditorInput {
     this.seen = ++seenCounter;
   }
 
+  /** The page's URL as the session's server knows it, null before a page (Cite's source, `citeSource.ts`). */
+  get url(): string | null {
+    return this.session?.url ?? null;
+  }
+
   override getTitle(): string {
     const url = this.session?.url;
     return url === null || url === undefined ? this.getName() : `${this.getName()} (${url})`;
@@ -99,6 +106,96 @@ export class PreviewInput extends SimpleEditorInput {
       other.tabId === this.tabId
     );
   }
+}
+
+/** A hosted browser's `<webview>` (upstream's `HostedBrowserWebview`). */
+interface HostedWebview extends HTMLElement {
+  getWebContentsId(): number;
+  executeJavaScript(code: string): Promise<unknown>;
+}
+
+const hostedWebviews = () => [
+  ...document.querySelectorAll<HostedWebview>("webview[data-preview-tab]"),
+];
+
+/**
+ * Whether `webview` shows the tab's session: upstream names a webview by its
+ * runtime tab, `[environmentId, threadId, serverEpoch, tabId]` as JSON
+ * (`previewRuntimeTabId`), since two environments' servers number their
+ * sessions alike.
+ */
+function shows(webview: HostedWebview, input: PreviewInput): boolean {
+  const [environmentId, threadId, , tabId]: unknown[] = JSON.parse(
+    webview.dataset.previewTab ?? "[]",
+  );
+  return (
+    typeof environmentId === "string" &&
+    namesEnvironment(environmentId, input.environmentId) &&
+    threadId === input.threadId &&
+    tabId === input.tabId
+  );
+}
+
+/** A browser menu's Cite as the page gets it (`window.pultDesktop.onPreviewCite`), handed to Cite's command. */
+export class BrowserCapture {
+  constructor(
+    readonly webContentsId: number,
+    readonly text: string,
+  ) {}
+}
+
+/** A selection in a preview tab to cite: the tab, and the text as the page shows it. */
+export interface BrowserPassage {
+  readonly input: PreviewInput;
+  readonly text: string;
+}
+
+/**
+ * What Cite takes from a browser: the text a browser menu's Cite captured
+ * (`captured`), in the tab whose webview it came from, else, while a preview
+ * tab is active, its page's selection now, the top frame's alone; a refusal
+ * in words when the tab has gone, nothing is selected, or the window hosts
+ * no webview for the tab (a browser streamed from its environment's server,
+ * or the page in a web browser). Undefined when neither is a browser's, so
+ * Cite goes on to the reader and the text editors: a browser never falls
+ * back on another editor's selection.
+ */
+export async function browserPassage(
+  editors: IEditorService,
+  captured: unknown,
+): Promise<BrowserPassage | string | undefined> {
+  if (captured instanceof BrowserCapture) {
+    const webview = hostedWebviews().find((each) => {
+      try {
+        return each.getWebContentsId() === captured.webContentsId;
+      } catch {
+        // A webview not ready yet has no web contents to match.
+        return false;
+      }
+    });
+    const inputs = new Set(
+      webview === undefined
+        ? []
+        : editors.editors.filter(
+            (editor): editor is PreviewInput => isPreviewTab(editor) && shows(webview, editor),
+          ),
+    );
+    if (inputs.size > 1)
+      throw new Error(`Cite found ${inputs.size} browser tabs of ${webview?.dataset.previewTab}.`);
+    const [input] = inputs;
+    return input === undefined ? "The browser tab is gone." : { input, text: captured.text };
+  }
+  const input = editors.activeEditor;
+  if (!(input instanceof PreviewInput)) return undefined;
+  if (input.tabId === null) return "Select text in the browser to cite it.";
+  const hosted = hostedWebviews().filter((webview) => shows(webview, input));
+  if (hosted.length > 1)
+    throw new Error(`Cite found ${hosted.length} browsers of the session ${input.tabId}.`);
+  const [webview] = hosted;
+  if (webview === undefined)
+    return "Cite reads browsers this window hosts; this one streams from its environment.";
+  const text = String(await webview.executeJavaScript("String(getSelection())"));
+  return text.trim() === "" ? "Select text in the browser to cite it." : { input, text };
 }
 
 /** Whether `editor` is a preview tab of the thread, any thread when none is named. */

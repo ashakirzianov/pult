@@ -14,6 +14,10 @@ export const Channel = {
   spellingLearn: "pult-desktop:spelling.learn",
   /** Pult.app's alone (`upstreamHost.ts`): a long animation frame, as JSON, for the freeze log (`freezeLog.ts`). */
   longFrame: "pult-desktop:longFrame",
+  /** Pult.app's alone (`upstreamHost.ts`): the page takes Cite from a browser's context menu (`pultGuestMenuItems`). */
+  previewCiteSubscribe: "pult-desktop:previewCite.subscribe",
+  /** Main to the page, on a browser menu's Cite: `{ webContentsId, text }`, the guest and its selection. */
+  previewCite: "pult-desktop:previewCite",
   /** Synchronous, for upstream's preload (`upstreamPreload.ts`): the app's version. */
   version: "pult-desktop:version",
 } as const;

@@ -45,6 +45,11 @@ export async function openThreadFile(
   endLine: number | null,
 ): Promise<void> {
   if (threadStore.thread(environmentId, threadId) === undefined) return;
+  // A browser tab's citation of a page names its URL (`src/composer/cite.ts`), which no checkout holds.
+  if (/^https?:/i.test(path))
+    return void (await getService(INotificationService)).info(
+      "This citation names a page, not a file.",
+    );
   const [files, editors, notifications, quickInput] = await Promise.all([
     getService(IFileService),
     getService(IEditorService),
