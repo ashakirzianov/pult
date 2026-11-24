@@ -955,13 +955,13 @@
   box-sizing: border-box;
 }
 
-/* The shared header and native title toolbar sit in the same sidebar row. */
+/* The sidebar's title is the panel's top row: the header (src/panel/rows.tsx), as wide as what it
+   shows, then the active tab's toolbar in the room left (src/style.css). */
 .pult-panel-header {
   display: flex;
-  flex: 1;
+  flex: none;
   align-items: center;
   gap: 2px;
-  min-width: 0;
   box-sizing: border-box;
   height: 100%;
 }
@@ -974,20 +974,18 @@
   padding-left: calc(8px + var(--pult-traffic-lights, 0px));
 }
 
+/* VS Code mode: the header on the Pult tab alone, before its toolbar, in place of its name; the tabs in the tray. */
 .pult-mode-vscode .part.sidebar:not(.pult-header-in-title) .pult-panel-header,
-.pult-mode-vscode .part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header),
-.pult-mode-vscode .pult-panel-header > .pult-panel-tabs,
-.pult-mode-vscode .pult-tray-collapse,
-.monaco-workbench:not(.pult-mode-vscode) .pult-vscode-collapse {
+.pult-mode-vscode
+  .part.sidebar.pult-header-in-title
+  > .composite.title
+  > :not(.pult-panel-header, .title-actions),
+.pult-mode-vscode .pult-panel-header > .pult-panel-tabs {
   display: none;
 }
 
 .monaco-workbench:not(.pult-mode-vscode) .pult-panel-header > .pult-panel-tabs {
   gap: 1px;
-  min-width: 24px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
   -webkit-app-region: no-drag;
 }
 

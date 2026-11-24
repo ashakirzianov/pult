@@ -427,24 +427,21 @@ html.dark[data-theme-id="t3-chat"] {
   display: none;
 }
 
+/* The active tab's toolbar takes the room the header's tabs leave (src/panel/rows.tsx), its actions at
+   its right end; what does not fit goes under its "..." (src/panel/view.tsx), down to the min-width
+   the toolbar keeps for it. */
 .monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .composite.title > .title-actions {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   min-width: 0;
-  /* Reserve space for five tabs before letting a long toolbar scroll. */
-  max-width: max(26px, calc(100% - var(--pult-traffic-lights, 0px) - 124px));
   padding-left: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
 }
 
-/* When the toolbar overflows, keep its first action at the scroll origin. */
 .monaco-workbench:not(.pult-mode-vscode)
   .part.sidebar
   > .title
   > .title-actions
   .actions-container {
-  justify-content: safe end;
+  justify-content: flex-end;
 }
 
 .monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .title > .title-actions .action-item {

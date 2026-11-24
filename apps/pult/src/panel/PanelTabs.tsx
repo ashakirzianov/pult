@@ -11,12 +11,19 @@ import { DisposableStore } from "@codingame/monaco-vscode-api/vscode/vs/base/com
 import { FileAccess } from "@codingame/monaco-vscode-api/vscode/vs/base/common/network";
 import { ThemeIcon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/themables";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
+import {
+  MenuId,
+  MenuRegistry,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
+import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { StorageScope } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
 import { NumberBadge } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/activity/common/activity";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
-import { modeChoice } from "../mode.ts";
+import { modeChoice, VSCodeModeContext } from "../mode.ts";
+import { fitTabs } from "./fitTabs.ts";
 
 /** The stock activity bar's pins, which it keeps while shown, the user's own: unset, every tab is pinned, Search and Extensions too, and the mode leaves them alone. */
 const PINNED_KEY = "workbench.activity.pinnedViewlets2";
@@ -178,12 +185,25 @@ export async function panelTabStore() {
 
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
-/** Panel tabs in Pult's header or, in VS Code mode, in the tray. Source Control opens on all checkouts. */
-export function PanelTabs({ store }: { store: PanelTabStore }) {
+/** The room the header gives its tabs and each one's width with its gap, measured (`rows.tsx`). */
+export interface TabFit {
+  readonly room: number;
+  readonly step: number;
+}
+
+/**
+ * Panel tabs in Pult's header or, in VS Code mode, in the tray. Source Control
+ * opens on all checkouts. Given a `fit`, those that do not fit go under the
+ * active tab's toolbar's "..." (`fitTabs`, `useOverflowTabs`).
+ */
+export function PanelTabs({ store, fit }: { store: PanelTabStore; fit?: TabFit }) {
   const tabs = useSyncExternalStore(store.subscribe, store.get);
+  const { shown, hidden } =
+    fit === undefined ? { shown: tabs, hidden: [] } : fitTabs(tabs, fit.room, fit.step);
+  useOverflowTabs(hidden, store);
   return (
     <div className="pult-panel-tabs" role="tablist" aria-label="Panel tabs">
-      {tabs.map((tab) => (
+      {shown.map((tab) => (
         <button
           key={tab.id}
           type="button"
@@ -213,4 +233,38 @@ export function PanelTabs({ store }: { store: PanelTabStore }) {
       ))}
     </div>
   );
+}
+
+/**
+ * The tabs that do not fit, as the first group of the menu under the sidebar
+ * title toolbar's "...", after the actions that do not fit: one "..." for the
+ * header, the workbench's own (`responsiveSidebarToolbar`, `view.tsx`). Each
+ * entry carries its tab's badge's count.
+ */
+function useOverflowTabs(hidden: readonly PanelTab[], store: PanelTabStore) {
+  const entries = hidden.map(
+    (tab) => [tab.id, tab.badge === undefined ? tab.title : `${tab.title} (${tab.badge})`] as const,
+  );
+  const key = JSON.stringify(entries);
+  useEffect(() => {
+    const items = (JSON.parse(key) as [string, string][]).map(([id, title], order) => {
+      const command = `pult-shell.openPanelTab.${id}`;
+      if (CommandsRegistry.getCommand(command) === undefined)
+        CommandsRegistry.registerCommand(command, () => store.open(id));
+      return {
+        id: MenuId.ViewContainerTitle,
+        item: {
+          command: { id: command, title },
+          group: "0_pult_tabs",
+          order,
+          when: ContextKeyExpr.and(
+            ContextKeyExpr.equals("viewContainerLocation", "sidebar"),
+            VSCodeModeContext.toNegated(),
+          ),
+        },
+      };
+    });
+    const registered = MenuRegistry.appendMenuItems(items);
+    return () => registered.dispose();
+  }, [key, store]);
 }

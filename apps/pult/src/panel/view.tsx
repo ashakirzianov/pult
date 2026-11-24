@@ -4,6 +4,8 @@ import {
   IPaneCompositePartService,
   IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
+import type { IToolBarResponsiveBehaviorOptions } from "@codingame/monaco-vscode-api/vscode/vs/base/browser/ui/toolbar/toolbar";
+import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { KeyCode } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import {
   Action2,
@@ -14,6 +16,7 @@ import {
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
+import { SidebarPart } from "@codingame/monaco-vscode-api/vscode/vs/workbench/browser/parts/sidebar/sidebarPart";
 import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService";
 import {
   LifecyclePhase,
@@ -26,7 +29,7 @@ import {
 import { createRoot } from "react-dom/client";
 
 import markUrl from "../../assets/pult/mark.svg?no-inline";
-import { modeChoice, VSCodeModeContext } from "../mode.ts";
+import { modeChoice, VSCODE_MODE_CLASS, VSCodeModeContext } from "../mode.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import {
   followExplorerScope,
@@ -74,6 +77,8 @@ export function registerPanel(): void {
     },
   });
   void showPultTabOnStart();
+  responsiveSidebarToolbar();
+  registerNewMenu();
   hideUndesignedTabs();
   registerCloseTabAction();
   registerExplorerCommands();
@@ -104,6 +109,56 @@ async function showPultTabOnStart(): Promise<void> {
   )
     return;
   await panes.openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, false);
+}
+
+/**
+ * The sidebar title's toolbar, the active tab's actions, puts what does not
+ * fit under its own "..." in Pult mode, after the header's tabs have taken
+ * their room (`rows.tsx`): the workbench's responsive toolbar, as the
+ * secondary side bar's part configures it. The part reads this once, as it
+ * creates its title, so it is set before the workbench starts.
+ */
+function responsiveSidebarToolbar(): void {
+  const part = SidebarPart.prototype as unknown as {
+    getToolbarResponsiveBehavior?: () => IToolBarResponsiveBehaviorOptions | undefined;
+  };
+  if (part.getToolbarResponsiveBehavior === undefined)
+    throw new Error("Pult: the sidebar part has no toolbar behaviour to configure.");
+  part.getToolbarResponsiveBehavior = () => ({
+    enabled: true,
+    kind: "all",
+    minItems: 0,
+    actionMinWidth: 22,
+    allowOverflow: () =>
+      document.querySelector(".monaco-workbench")?.classList.contains(VSCODE_MODE_CLASS) !== true,
+  });
+}
+
+/** The Pult tab's New, a menu of New Thread and New Star (while Create Star is offered), first in its toolbar. */
+function registerNewMenu(): void {
+  const menu = new MenuId("pult.panel.new");
+  MenuRegistry.appendMenuItem(MenuId.ViewContainerTitle, {
+    submenu: menu,
+    title: "New",
+    icon: Codicon.add,
+    group: "navigation",
+    order: -1,
+    when: ContextKeyExpr.equals("viewContainer", PANEL_ID),
+  });
+  MenuRegistry.appendMenuItems([
+    { id: menu, item: { command: { id: "pult-shell.newThread", title: "New Thread" }, order: 1 } },
+    {
+      id: menu,
+      item: {
+        command: {
+          id: "pult-shell.createStar",
+          title: "New Star",
+          precondition: ContextKeyExpr.has("pult.canCreateStar"),
+        },
+        order: 2,
+      },
+    },
+  ]);
 }
 
 /**

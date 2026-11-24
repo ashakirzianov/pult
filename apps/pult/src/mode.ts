@@ -43,7 +43,8 @@ export type Mode = (typeof MODES)[number]["mode"];
  * (`src/editorMenus.ts`).
  */
 export const VSCodeModeContext = new RawContextKey<boolean>("pult.vscodeMode", false);
-const VSCODE_MODE_CLASS = "pult-mode-vscode";
+/** On the workbench's element in VS Code mode, for the rules of `style.css`, and read where a context key cannot be. */
+export const VSCODE_MODE_CLASS = "pult-mode-vscode";
 /** What Pult's mode holds: the tab bar on Multiple, since a thread's tab is its header; the editor actions on it, since the title bar never shows; and no window from a tab dragged out, since the shell's selection spans one window. */
 const HELD_SETTINGS = {
   "workbench.editor.showTabs": "multiple",
