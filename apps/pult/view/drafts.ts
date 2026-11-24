@@ -114,10 +114,11 @@ export function isPromotion(
   );
 }
 
-/** A project's unsent draft, as its card shows it. */
+/** A project's unsent draft, as its card shows it; a tagged one, which has no card, with its tags. */
 export interface ProjectDraft {
   readonly environmentId: string;
   readonly projectId: string;
+  readonly tags?: ReadonlyArray<string>;
   /** The prompt's first line, its context references by their labels; or its attachments' count; or empty. */
   readonly preview: string;
   readonly createdAt: string;
@@ -125,17 +126,19 @@ export interface ProjectDraft {
 
 type ComposerDraft = ReturnType<typeof useComposerDraftStore.getState>["draftsByThreadKey"][string];
 
-/** Every project's remembered draft that holds something the user wrote or attached, newest first. */
+/** Every project's remembered draft that holds something the user wrote or attached, its tagged ones too, newest first. */
 function readDrafts(): ReadonlyArray<ProjectDraft> {
   const store = useComposerDraftStore.getState();
   const drafts: ProjectDraft[] = [];
   for (let index = 0; index < localStorage.length; index++) {
     const key = localStorage.key(index);
-    // A tagged draft (`#` after its project) is no project's card.
-    if (key === null || !key.startsWith(DRAFT_KEY_PREFIX) || key.includes("#")) continue;
-    const [environmentId, projectId] = key.slice(DRAFT_KEY_PREFIX.length).split("/");
+    if (key === null || !key.startsWith(DRAFT_KEY_PREFIX)) continue;
+    // A tagged draft's tags follow its project after a `#` (`draftKey`).
+    const [project = "", tagged] = key.slice(DRAFT_KEY_PREFIX.length).split(/#(.*)/s);
+    const [environmentId, projectId] = project.split("/");
     if (environmentId === undefined || projectId === undefined) continue;
-    const draftId = heldDraft(environmentId, projectId);
+    const tags = tagged === undefined ? undefined : (JSON.parse(tagged) as ReadonlyArray<string>);
+    const draftId = heldDraft(environmentId, projectId, tags);
     if (draftId === null) continue;
     const session = store.getDraftSession(draftId);
     const composer = store.draftsByThreadKey[draftId];
@@ -149,6 +152,7 @@ function readDrafts(): ReadonlyArray<ProjectDraft> {
     drafts.push({
       environmentId,
       projectId,
+      ...(tags === undefined ? {} : { tags }),
       preview: preview(composer),
       createdAt: session.createdAt,
     });

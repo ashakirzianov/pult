@@ -19,7 +19,7 @@ import {
   starTarget,
   starWakeModel,
 } from "./model.ts";
-import { starName } from "./stars.ts";
+import { conversationOpening, starName } from "./stars.ts";
 import "./stars.css";
 
 // With the view, whose markdown its transcripts render with.
@@ -34,17 +34,17 @@ const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined)
   JSON.stringify(left) === JSON.stringify(right);
 
 /**
- * After the Star's draft woke it in a fresh conversation of `user`: its
- * plugin tells the Star's `work` of a model choice it cannot serve, as a
- * wake by message does, at the mode the draft woke it at. The draft took
- * the model it shows, the choice the plugin resolved for it, unless one was
- * picked in it; the answer is not used.
+ * After a draft of the Star's channel woke it in a fresh conversation: its
+ * plugin tells the channel of a model choice it cannot serve, as a wake by
+ * message does, at the mode the draft woke it at. The draft took the model
+ * it shows, the choice the plugin resolved for it, unless one was picked in
+ * it; the answer is not used.
  */
 export async function afterDraftWake(
   starId: string,
   environmentId: string,
   threadId: string,
-  channel?: string,
+  channel: string,
 ) {
   try {
     const projection = await connection.run(
@@ -59,15 +59,29 @@ export async function afterDraftWake(
   }
 }
 
+/** The Star the page holds by `starId`, which a draft of it mounted needs: loud where it is gone. */
+function heldStar(starId: string) {
+  const star = starById(starId);
+  if (star === undefined) throw new Error(`The page holds no Star ${starId}.`);
+  return star;
+}
+
+/** The line a message starting a conversation in `channel` opens with (`conversationOpening`), as the view's draft send reads it. */
+const openingOf = (channel: () => string) => ({
+  get: () => conversationOpening(channel()),
+  subscribe: starStore.subscribe,
+});
+
 /**
  * How the Star's composer reads, in its tab and in the composer strip under
  * its files: asleep, its draft rests where a thread's composer sits, under
  * the fold, without upstream's hero, which asks what to build in a project
  * and offers to start without one; awake or asleep, it addresses the Star,
- * "Message Star", or its name once it has one; and its draft takes the
- * model a wake by message into `user` takes on the home it wakes in, the
- * Star's choice else its last conversation's, rather than the one last
- * picked in any thread; its send tells the plugin (`afterDraftWake`).
+ * "Message Star", or its name once it has one; and its draft, its default
+ * channel's, takes the model a wake by message into that channel takes on
+ * the home it wakes in, the Star's choice else its last conversation's,
+ * rather than the one last picked in any thread, its message opens with the
+ * channel's line, and its send tells the plugin (`afterDraftWake`).
  */
 export function starComposerOptions(starId: string) {
   const draftModel = {
@@ -90,10 +104,9 @@ export function starComposerOptions(starId: string) {
       subscribe: starStore.subscribe,
     },
     draftModel,
-    // A draft that shows no model is the Star's first conversation on its home, which tells nothing.
-    draftSent: (environmentId: string, threadId: string) => {
-      if (draftModel.get() !== null) void afterDraftWake(starId, environmentId, threadId);
-    },
+    creationPrefix: openingOf(() => heldStar(starId).defaultChannel),
+    draftSent: (environmentId: string, threadId: string) =>
+      void afterDraftWake(starId, environmentId, threadId, heldStar(starId).defaultChannel),
   };
 }
 
@@ -148,6 +161,7 @@ export function StarContent({
       channel && asleep
         ? {
             draftModel: channelModel(starId, channel.environmentId, channel.slug),
+            creationPrefix: openingOf(() => channel.slug),
             draftSent: (environmentId: string, threadId: string) =>
               void afterDraftWake(starId, environmentId, threadId, channel.slug),
           }

@@ -22,9 +22,7 @@ import { connection } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
 import { channelModel, starById, starStore, starTarget } from "../stars/model.ts";
-import { USER_CHANNEL } from "../stars/plugin.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { starName } from "../stars/stars.ts";
 import { afterDraftWake } from "../stars/tab.tsx";
 import { StarThreadInput } from "../threads/pane.tsx";
 import { selectStar, selectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
@@ -57,10 +55,7 @@ const kept = new Map<string, MountOptions>();
 const posterOf = (ask: PageAsk) =>
   posterName(
     ask,
-    (starId) => {
-      const star = starById(starId);
-      return star === undefined ? undefined : starName(star);
-    },
+    starById,
     (environmentId, threadId) =>
       threadStore
         .get()
@@ -122,9 +117,9 @@ const replySuggestions = (ask: PageAsk) => ({
 /**
  * The composer a reply to the ask is written in: a thread's own; a Star's
  * posting channel's conversation on the ask's environment, or while that
- * channel sleeps there its draft, `user`'s the Star's own and any other's
- * tagged `pult:channel:<slug>` (`view/drafts.ts`), at the model the Star
- * chose for it. Undefined where the page does not hold it.
+ * channel sleeps there its draft, tagged `pult:channel:<slug>`
+ * (`view/drafts.ts`), the default channel's being the Star's own, at the
+ * model the Star chose for it. Undefined where the page does not hold it.
  */
 function replyTarget(ask: PageAsk) {
   const environmentId = ask.environmentId;
@@ -144,24 +139,25 @@ function replyTarget(ask: PageAsk) {
       target: { kind: "thread", environmentId, threadId: open.threadId } satisfies ViewTarget,
       options: {},
     };
-  const user = channel === USER_CHANNEL;
   return {
     target: {
       kind: "draft",
       environmentId,
       projectId: home.projectId,
-      ...(user ? {} : { tags: [`pult:channel:${channel}`] }),
+      tags: [`pult:channel:${channel}`],
     } satisfies ViewTarget,
     options: {
       draftHero: false,
-      draftModel: user
-        ? {
-            get: () =>
-              starById(starId)?.homes.find((each) => each.environmentId === environmentId)?.model ??
-              null,
-            subscribe: starStore.subscribe,
-          }
-        : channelModel(starId, environmentId, channel),
+      // The route serves the default channel's model; another channel's is asked for.
+      draftModel:
+        channel === star.defaultChannel
+          ? {
+              get: () =>
+                starById(starId)?.homes.find((each) => each.environmentId === environmentId)
+                  ?.model ?? null,
+              subscribe: starStore.subscribe,
+            }
+          : channelModel(starId, environmentId, channel),
     } satisfies MountOptions,
   };
 }
@@ -203,12 +199,7 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
         suggestions: replySuggestions(ask),
         sent: (sentOn, threadId) => {
           if (found.target.kind === "draft" && "star" in ask.poster)
-            void afterDraftWake(
-              ask.poster.star,
-              sentOn,
-              threadId,
-              ask.poster.channel === USER_CHANNEL ? undefined : ask.poster.channel,
-            );
+            void afterDraftWake(ask.poster.star, sentOn, threadId, ask.poster.channel);
           void replied(ask, sentOn);
           void openReplyThread(ask.poster, sentOn, threadId).catch(async (error: unknown) => {
             (await getService(INotificationService)).error(

@@ -135,7 +135,7 @@ function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | nu
           kind: "star",
           channel:
             editor instanceof StarInput
-              ? "user"
+              ? subject.star.defaultChannel
               : editor instanceof StarThreadInput
                 ? editor.slug
                 : null,

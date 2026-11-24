@@ -106,14 +106,19 @@ function followFilled(): void {
   });
 }
 
-/** The selected thread or draft, or the selected Star's (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
+/** The selected thread or draft, or the selected Star's, its tags with it (`selectionTarget`), on the environment the page holds it by, which the strip's composer is. */
 export function selectedTarget(): ViewTarget | null {
   const target = selectionTarget();
   const environmentId = connection.environment(target?.environmentId ?? "")?.environmentId;
   if (target === undefined || environmentId === undefined) return null;
   return "threadId" in target
     ? { kind: "thread", environmentId, threadId: target.threadId }
-    : { kind: "draft", environmentId, projectId: target.projectId };
+    : {
+        kind: "draft",
+        environmentId,
+        projectId: target.projectId,
+        ...(target.tags === undefined ? {} : { tags: target.tags }),
+      };
 }
 
 /** The composer the strip shows, and Cite cites into: a reply's under its ask's file (`src/asks/reply.ts`), else the selection's (`selectedTarget`). */

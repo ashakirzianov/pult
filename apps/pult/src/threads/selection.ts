@@ -144,17 +144,25 @@ export function selectedStar(): string | undefined {
 /**
  * The thread or draft the selection's composer and files belong to: the
  * selected thread or draft, or the selected Star's current conversation,
- * or while it sleeps its draft (`starTarget`); undefined for the Explorer
- * workspace, or a Star with nothing to show.
+ * or while it sleeps its default channel's draft, with its tags
+ * (`starTarget`); undefined for the Explorer workspace, or a Star with
+ * nothing to show.
  */
-export function selectionTarget(): ThreadSelection | DraftSelection | undefined {
+export function selectionTarget():
+  | ThreadSelection
+  | (DraftSelection & { readonly tags?: ReadonlyArray<string> })
+  | undefined {
   if (!isStar(selected)) return selectedThread() ?? selectedDraft();
   const star = starById(selected.starId);
   const target = star === undefined ? undefined : starTarget(star);
   if (target === undefined) return undefined;
   return target.kind === "thread"
     ? { environmentId: target.environmentId, threadId: target.threadId }
-    : { environmentId: target.environmentId, projectId: target.projectId };
+    : {
+        environmentId: target.environmentId,
+        projectId: target.projectId,
+        ...(target.tags === undefined ? {} : { tags: target.tags }),
+      };
 }
 
 /** The Explorer workspace's open files, in their groups' order, and its active editor's file, if it has one. */

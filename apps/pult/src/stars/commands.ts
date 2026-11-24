@@ -9,26 +9,31 @@ import {
   IQuickInputService,
   type ServicesAccessor,
 } from "@codingame/monaco-vscode-api";
+import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import {
   Action2,
+  MenuId,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 
 import { connection, pickEnvironment } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { StarThreadInput } from "../threads/pane.tsx";
+import { StarInput, StarThreadInput } from "../threads/pane.tsx";
 import { selectedStar } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures } from "./about.ts";
 import {
   canCreateStarOn,
-  canSleepStar,
+  canSleepChannel,
   createStar,
   primaryHome,
-  sleepStar,
+  sleepChannel,
   starById,
   starStore,
 } from "./model.ts";
@@ -39,8 +44,21 @@ import { syncStar } from "./syncing.ts";
 export const HasStarContext = new RawContextKey<boolean>("pult.hasStar", false);
 /** Whether a held environment's Pult plugin serves Stars: Create Star is offered then. */
 const CanCreateStarContext = new RawContextKey<boolean>("pult.canCreateStar", false);
-/** Whether a Star can be put to sleep by hand (`canSleepStar`): Refresh Context is offered then. */
-const CanSleepStarContext = new RawContextKey<boolean>("pult.canRefreshContext", false);
+/** Whether the active tab's channel, a Star's tab's default channel or a channel's tab's, can be put to sleep by hand (`canSleepChannel`): Refresh Context is offered then. */
+const CanRefreshContext = new RawContextKey<boolean>("pult.canRefreshContext", false);
+
+/** The Star and channel a tab shows: a Star's tab its default channel, a channel's tab its own; undefined for any other tab. */
+function channelOfTab(editor: unknown): { readonly star: Star; readonly slug: string } | undefined {
+  if (editor instanceof StarInput) {
+    const star = starById(editor.starId);
+    return star === undefined ? undefined : { star, slug: star.defaultChannel };
+  }
+  if (editor instanceof StarThreadInput && editor.starId !== undefined && editor.slug !== null) {
+    const star = starById(editor.starId);
+    return star === undefined ? undefined : { star, slug: editor.slug };
+  }
+  return undefined;
+}
 
 /** The Star `starId` names, or with none the page's one, or one picked in the shell's quick input while it holds several. */
 export async function pickStar(
@@ -133,10 +151,10 @@ async function openStarChannel(
 ): Promise<void> {
   const notifications = await getService(INotificationService);
   const rows = cardRows(star, threadStore.get().threads).channels.filter(
-    (row) => row.slug !== "user",
+    (row) => row.slug !== star.defaultChannel,
   );
   if (typeof slug !== "string" && rows.length === 0)
-    return notifications.info(`${starName(star)} has no channel open but yours.`);
+    return notifications.info(`${starName(star)} has no channel open but its default one.`);
   const channel =
     typeof slug === "string"
       ? rows.find((each) => each.slug === slug)
@@ -241,11 +259,12 @@ function todo(reason: string): never {
  * (`pult-shell.openStarFolder [starId]`), Open Star Schedule…
  * (`pult-shell.openStarSchedule [starId] [name]`, the card's schedule rows),
  * Open Star Channel… (`pult-shell.openStarChannel [starId] [slug]`,
- * the card's channel rows), Sync Star (`pult-shell.syncStar
- * [starId]`, `syncing.ts`) and Refresh Context (`pult-shell.refreshContext
- * [starId]`, the Star's current conversation in `user` put to sleep, offered only
- * while `canSleepStar`), each on the page's Star, picked while it holds
- * several. `pult-shell.openStarChild <starId> <environmentId> <threadId>`,
+ * the card's channel rows) and Sync Star (`pult-shell.syncStar
+ * [starId]`, `syncing.ts`), each on the page's Star, picked while it holds
+ * several; and Refresh Context (`pult-shell.refreshContext [starId slug]`,
+ * the channel's current conversation put to sleep, the active tab's without
+ * arguments, offered while `canSleepChannel`, on the tab's bar and a
+ * channel's row in the Star's details). `pult-shell.openStarChild <starId> <environmentId> <threadId>`,
  * off the palette, is the card's child rows'. Open Star is the selection's
  * (`src/threads/selection.ts`); Show Star and Hide Star the setting's
  * (`settings.ts`). Registered before the workbench starts.
@@ -438,43 +457,50 @@ export function registerStarCommands(): void {
           id: "pult-shell.refreshContext",
           title: { value: "Refresh Context", original: "Refresh Context" },
           category,
+          icon: Codicon.refresh,
           f1: true,
-          precondition: CanSleepStarContext,
+          precondition: CanRefreshContext,
+          // In the tab's title, as Back to Parent Thread is, while the active tab's channel can sleep.
+          menu: {
+            id: MenuId.EditorTitle,
+            when: ContextKeyExpr.and(
+              CanRefreshContext,
+              ContextKeyExpr.equals("activeEditor", "pult.shell.threadPane"),
+            ),
+            group: "navigation",
+            order: -90,
+          },
         });
       }
 
-      async run(accessor: ServicesAccessor, starId?: unknown): Promise<void> {
-        const quickInput = accessor.get(IQuickInputService);
-        const sleepable = starStore.get().filter(canSleepStar);
-        const star =
-          typeof starId === "string"
-            ? starById(starId)
-            : sleepable.length <= 1
-              ? sleepable[0]
-              : (
-                  await quickInput.pick(
-                    sleepable.map((each) => ({ star: each, label: starName(each) })),
-                    { placeHolder: "Refresh a Star's context" },
-                  )
-                )?.star;
-        if (star !== undefined) await sleepStar(star);
+      async run(accessor: ServicesAccessor, starId?: unknown, slug?: unknown): Promise<void> {
+        const named = typeof starId === "string" ? starById(starId) : undefined;
+        const channel =
+          named !== undefined && typeof slug === "string"
+            ? { star: named, slug }
+            : channelOfTab(accessor.get(IEditorService).activeEditor);
+        if (channel !== undefined) await sleepChannel(channel.star, channel.slug);
       }
     },
   );
-  void getService(IContextKeyService).then((contextKeys) => {
-    const hasStar = HasStarContext.bindTo(contextKeys);
-    const canCreate = CanCreateStarContext.bindTo(contextKeys);
-    const canSleep = CanSleepStarContext.bindTo(contextKeys);
-    const update = () => {
-      hasStar.set(starStore.get().length > 0);
-      canCreate.set(
-        connection.environments.some((environment) => canCreateStarOn(environment.environmentId)),
-      );
-      canSleep.set(starStore.get().some(canSleepStar));
-    };
-    starStore.subscribe(update);
-    connection.onDidChange(update);
-    onDidChangePluginFeatures(update);
-    update();
-  });
+  void Promise.all([getService(IContextKeyService), getService(IEditorService)]).then(
+    ([contextKeys, editors]) => {
+      const hasStar = HasStarContext.bindTo(contextKeys);
+      const canCreate = CanCreateStarContext.bindTo(contextKeys);
+      const canRefresh = CanRefreshContext.bindTo(contextKeys);
+      const update = () => {
+        hasStar.set(starStore.get().length > 0);
+        canCreate.set(
+          connection.environments.some((environment) => canCreateStarOn(environment.environmentId)),
+        );
+        const tab = channelOfTab(editors.activeEditor);
+        canRefresh.set(tab !== undefined && canSleepChannel(tab.star, tab.slug));
+      };
+      starStore.subscribe(update);
+      connection.onDidChange(update);
+      onDidChangePluginFeatures(update);
+      editors.onDidActiveEditorChange(update);
+      update();
+    },
+  );
 }

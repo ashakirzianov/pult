@@ -9,7 +9,7 @@ import { drawnHome, isEarlierConversation } from "./stars.ts";
 
 /**
  * What the Star's tab does with a citation it follows (`MountOptions.consumesCitation`): one of
- * its earlier conversations with the user on the home it is drawn from (`isEarlierConversation`),
+ * its earlier conversations in its default channel on the home it is drawn from (`isEarlierConversation`),
  * which no route of the view shows, is kept, with its transcript where the fold has it or the
  * plugin finds it by its thread, else `"unshown"`; undefined for any other, which takes its
  * ordinary path. Known from a transcript of that thread, else from the page's row of it, else

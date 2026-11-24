@@ -16,27 +16,25 @@ import { refreshTranscripts } from "./foldState.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
   CHANNEL_MODELS_FEATURE,
+  CHANNEL_SLEEP_FEATURE,
   channelTranscriptStars,
   createStarOn,
   type Credential,
+  defaultTranscriptStars,
   PluginAnswerError,
   writeStarRecord,
   type RecordFields,
   readStars,
   readWakeModel,
-  rewritesUserTranscripts,
   type RouteModel,
-  SLEEP_FEATURE,
-  sleepStarOn,
+  sleepChannelOn,
   STARS_FEATURE,
   type StarsAnswer,
-  USER_CHANNEL,
 } from "./plugin.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
 import { originOf } from "./sync.ts";
 import {
   creationTarget,
-  drawnHome,
   type EnvironmentAnswer,
   findStarOfProject,
   findStarOfThread,
@@ -67,7 +65,7 @@ export interface FoundTranscripts {
   readonly names: ReadonlyArray<string>;
 }
 
-/** Stars of a home whose channels but `user` may have had a transcript written, which no answer names. */
+/** Stars of a home whose channels but the default one may have had a transcript written, which no answer names. */
 export interface WrittenChannelTranscripts {
   readonly environmentId: string;
   readonly starIds: ReadonlyArray<string>;
@@ -122,20 +120,20 @@ function holdText(heldBy: string): string {
 }
 
 /**
- * The home whose conversation in `user` Refresh Context ends, never another
- * channel's: `user` open and not working, in a conversation its home's
- * plugin reads with a deadline, no hold, on an environment whose plugin
- * lists `star-sleep`.
+ * The home whose conversation in the channel `slug` Refresh Context ends,
+ * that channel's alone: the channel open and not working, in a conversation
+ * its home's plugin reads with a deadline, no hold, on an environment whose
+ * plugin lists `star-channel-sleep`.
  */
-function sleepableHome(star: Star): StarHome | undefined {
-  const { current } = star;
-  if (current === null || current.working) return undefined;
-  const home = drawnHome(star);
-  const user = home?.channels.find((channel) => channel.slug === USER_CHANNEL);
+function sleepableHome(star: Star, slug: string): StarHome | undefined {
+  const open = star.channels.find((channel) => channel.slug === slug)?.thread;
+  if (open === undefined || open.working) return undefined;
+  const home = star.homes.find((each) => each.environmentId === open.environmentId);
+  const read = home?.channels.find((channel) => channel.slug === slug);
   return home !== undefined &&
-    user?.threadId === current.id &&
-    "at" in user.sleeps &&
-    pluginFeatures(home.environmentId)?.has(SLEEP_FEATURE) === true
+    read?.threadId === open.id &&
+    "at" in read.sleeps &&
+    pluginFeatures(home.environmentId)?.has(CHANNEL_SLEEP_FEATURE) === true
     ? home
     : undefined;
 }
@@ -436,10 +434,10 @@ class StarsModel {
         watch.disposable = server.watchEntries(directory, {
           subscribed: async () => {},
           changed: (event) => {
-            // A transcript of `user`'s the plugin rewrote is read again where the fold shows it; any change asks for the Stars again.
-            if (rewritesUserTranscripts(event))
-              for (const star of reading.answer?.stars ?? [])
-                refreshTranscripts(environmentId, star.id);
+            // A transcript of a default channel's the plugin rewrote is read again where the fold shows it; any change asks for the Stars again.
+            if (reading.answer !== undefined)
+              for (const id of defaultTranscriptStars(event, reading.answer))
+                refreshTranscripts(environmentId, id);
             // A channel transcript can be rewritten under the same name.
             const starIds =
               reading.answer === undefined ? [] : channelTranscriptStars(event, reading.answer);
@@ -541,19 +539,19 @@ class StarsModel {
   }
 
   /**
-   * Refresh Context: puts the Star's current conversation to sleep through
-   * its home's plugin (`POST /stars/<id>/sleep`), which looks again under
-   * the Star's lock; a hold that appeared since, or a failure, notifies.
+   * Refresh Context: puts the current conversation of the Star's channel
+   * `slug` to sleep through its home's plugin (`POST /stars/<id>/sleep`),
+   * which looks again under the Star's lock; a hold that appeared since, or
+   * a failure, notifies.
    */
-  async sleep(star: Star): Promise<void> {
+  async sleep(star: Star, slug: string): Promise<void> {
     const notifications = await getService(INotificationService);
-    const home = sleepableHome(star);
-    if (home === undefined)
-      return notifications.info(`${starName(star)} has no conversation to end now.`);
+    const home = sleepableHome(star, slug);
+    const what = `${starName(star)}'s channel ${slug}`;
+    if (home === undefined) return notifications.info(`${what} has no conversation to end now.`);
     try {
-      const answer = await sleepStarOn(this.credential(home.environmentId), star.id);
-      if (!answer.slept)
-        notifications.info(`${starName(star)} stays awake: ${holdText(answer.heldBy)}.`);
+      const answer = await sleepChannelOn(this.credential(home.environmentId), star.id, slug);
+      if (!answer.slept) notifications.info(`${what} stays awake: ${holdText(answer.heldBy)}.`);
     } catch (error) {
       notifications.error(`Pult could not refresh your Star's context: ${errorMessage(error)}`);
     } finally {
@@ -562,9 +560,9 @@ class StarsModel {
   }
 
   /**
-   * The model the page wakes the Star's `user`, or `channel`, at itself on the
+   * The model the page wakes the Star's `channel` at itself on the
    * environment, at `runtimeMode`, through its plugin (`POST /stars/<id>/model`), which
-   * tells the Star's `work` of a file it cannot serve: the Star's choice, or
+   * tells the channel of a file it cannot serve: the Star's choice, or
    * null for the page's own, which is also what a plugin without the feature
    * and a failure, logged, answer.
    */
@@ -572,7 +570,7 @@ class StarsModel {
     starId: string,
     environmentId: string,
     runtimeMode: string,
-    channel?: string,
+    channel: string,
   ): Promise<RouteModel | null> {
     if (pluginFeatures(environmentId)?.has(CHANNEL_MODELS_FEATURE) !== true) return null;
     try {
@@ -633,12 +631,12 @@ export function starById(starId: string): Star | undefined {
 /** Asks for a new Star named `name` on the environment. */
 export const createStar = (environmentId: string, name: string) =>
   model.create(environmentId, { ifNone: false, name });
-/** The model the page wakes the Star's `user`, or `channel`, at itself, telling its `work` of a broken file; null for the page's own (`StarsModel.wakeModel`). */
+/** The model the page wakes the Star's `channel` at itself, telling the channel of a broken file; null for the page's own (`StarsModel.wakeModel`). */
 export const starWakeModel = (
   starId: string,
   environmentId: string,
   runtimeMode: string,
-  channel?: string,
+  channel: string,
 ) => model.wakeModel(starId, environmentId, runtimeMode, channel);
 /** Asks the environment's plugin for its Stars again: after a sync occasion, which a watch may tell late or not at all. */
 export const rereadStars = (environmentId: string) => model.read(environmentId);
@@ -650,14 +648,15 @@ export const starsReadOn = (environmentId: string) => model.readOn(environmentId
 export const starsAnsweredOn = (environmentId: string) => model.answeredOn(environmentId);
 export const setStarFields = (starId: string, changes: RecordFields, environmentId: string) =>
   model.setFields(starId, changes, environmentId);
-/** Whether Refresh Context is offered for the Star: awake, unheld, its home's plugin listing `star-sleep`. */
-export const canSleepStar = (star: Star) => sleepableHome(star) !== undefined;
-/** Refresh Context: ends the Star's current conversation, its next message waking it in a fresh one. */
-export const sleepStar = (star: Star) => model.sleep(star);
+/** Whether Refresh Context is offered for the Star's channel `slug`: open, unheld, its home's plugin listing `star-channel-sleep`. */
+export const canSleepChannel = (star: Star, slug: string) =>
+  sleepableHome(star, slug) !== undefined;
+/** Refresh Context: ends the current conversation of the Star's channel `slug`, its next message waking it in a fresh one. */
+export const sleepChannel = (star: Star, slug: string) => model.sleep(star, slug);
 /** Calls `listener` with the transcripts that appeared in a home since the page's earlier answer for it. */
 export const onDidFindStarTranscripts = (listener: (found: FoundTranscripts) => void) =>
   model.onDidFindTranscripts(listener);
-/** Calls `listener` as the Stars directory's watch tells of a transcript written for a channel but `user`'s (`channelTranscriptStars`). */
+/** Calls `listener` as the Stars directory's watch tells of a transcript written for a channel but the default one (`channelTranscriptStars`). */
 export const onDidWriteStarChannelTranscripts = (
   listener: (written: WrittenChannelTranscripts) => void,
 ) => model.onDidWriteChannelTranscripts(listener);
@@ -665,15 +664,17 @@ export const onDidWriteStarChannelTranscripts = (
 /** Whether the page holds the environment. */
 const held = (environmentId: string) => connection.environment(environmentId) !== undefined;
 
-/**
- * What the Star's tab shows: its current conversation, or while it sleeps
- * its project's draft in the home it wakes in (`wakeHome`); undefined while
- * none of its homes is on a held environment.
- */
+/** A channel's tab among a Star's: the channel on one home. */
 export interface ChannelTab {
   readonly environmentId: string;
   readonly slug: string;
 }
+/**
+ * What the Star's tab shows: its current conversation, or while it sleeps
+ * its default channel's draft in the home it wakes in (`wakeHome`); or a
+ * channel's tab's, its conversation on its home, else its draft there;
+ * undefined while none of its homes is on a held environment.
+ */
 export function starTarget(star: Star, channel?: ChannelTab): StarTarget | undefined {
   if (channel) {
     const home = star.homes.find((each) => each.environmentId === channel.environmentId);
@@ -693,7 +694,12 @@ export function starTarget(star: Star, channel?: ChannelTab): StarTarget | undef
   const home = wakeHome(star, held);
   return home === undefined
     ? undefined
-    : { kind: "draft", environmentId: home.environmentId, projectId: home.projectId };
+    : {
+        kind: "draft",
+        environmentId: home.environmentId,
+        projectId: home.projectId,
+        tags: [`pult:channel:${star.defaultChannel}`],
+      };
 }
 
 /** The home whose folder stands for the Star, its instructions and its folder: its current conversation's or wake's, else its first held one. */

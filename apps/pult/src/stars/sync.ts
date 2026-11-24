@@ -12,8 +12,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-import { USER_CHANNEL } from "./plugin.ts";
-import { channelOf } from "./stars.ts";
+import { channelOf, conversationOpening } from "./stars.ts";
 
 /** Why the page will not take `url` as an origin, or undefined when it will. */
 export function originProblem(url: string): string | undefined {
@@ -257,16 +256,20 @@ export function handoffMessage(input: {
 
 /**
  * The conversation whose model and modes a handoff wakes the Star with,
- * among its conversations newest first: the woken thread is untagged, so
- * `user`'s, and takes `user`'s newest, the environment's first; with none,
- * any channel's newest, the environment's first, as the plugin's wake into
- * `user` falls back (`star-delivery`).
+ * among its conversations newest first: the woken thread is the Star's
+ * default `channel`'s, and takes that channel's newest, the environment's
+ * first; with none, any channel's newest, the environment's first, as the
+ * plugin's wake falls back (`star-delivery`).
  */
 export function handoffModel<
   Thread extends { readonly environmentId: string; readonly tags: ReadonlyArray<string> },
->(conversations: ReadonlyArray<Thread>, environmentId: string): Thread | undefined {
-  const users = conversations.filter((thread) => channelOf(thread) === USER_CHANNEL);
-  const among = users.length > 0 ? users : conversations;
+>(
+  conversations: ReadonlyArray<Thread>,
+  environmentId: string,
+  channel: string,
+): Thread | undefined {
+  const own = conversations.filter((thread) => channelOf(thread) === channel);
+  const among = own.length > 0 ? own : conversations;
   return among.find((thread) => thread.environmentId === environmentId) ?? among[0];
 }
 
@@ -274,14 +277,17 @@ export function handoffModel<
 const HANDOFF_TITLE = "Reconcile your repository";
 
 /**
- * The handoff's first turn, which creates its thread: at the modes of the
- * conversation `handoffModel` picked, and at the Star's model choice for
- * `user` its plugin resolved at them as the handoff wakes, else at that
- * conversation's model, the thread and its first turn alike.
+ * The handoff's first turn, which creates its thread in the Star's default
+ * `channel`, tagged with it and opening with its line
+ * (`conversationOpening`): at the modes of the conversation `handoffModel`
+ * picked, and at the Star's model choice for the channel its plugin
+ * resolved at them as the handoff wakes, else at that conversation's model,
+ * the thread and its first turn alike.
  */
 export function handoffTurn(input: {
   readonly threadId: ThreadId;
   readonly projectId: ProjectId;
+  readonly channel: string;
   readonly messageId: MessageId;
   readonly text: string;
   readonly createdAt: string;
@@ -299,7 +305,7 @@ export function handoffTurn(input: {
     message: {
       messageId: input.messageId,
       role: "user" as const,
-      text: input.text,
+      text: `${conversationOpening(input.channel)}\n\n${input.text}`,
       attachments: [],
     },
     runtimeMode,
@@ -315,6 +321,7 @@ export function handoffTurn(input: {
         branch: null,
         worktreePath: null,
         createdAt: input.createdAt,
+        tags: [`pult:channel:${input.channel}`],
       },
     },
   };

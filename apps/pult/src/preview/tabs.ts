@@ -77,7 +77,7 @@ function enqueue(run: () => Promise<void>): Promise<void> {
   return next;
 }
 
-/** The thread whose preview tabs sit beside the lead tab: the selected thread, or the selected Star's conversation in `user`. */
+/** The thread whose preview tabs sit beside the lead tab: the selected thread, or the selected Star's conversation in its default channel. */
 function targetThread(): ThreadSelection | undefined {
   const target = selectionTarget();
   return target !== undefined && "threadId" in target ? target : undefined;
@@ -384,7 +384,7 @@ async function refreshFollows(): Promise<void> {
  * open channel and child tabs' alone, so a conversation's end, a Star's
  * thread's tab closed, or anything else that leaves another thread's tab in
  * the part, closes it, a dismissal that ends no session. Nothing while a
- * Star's conversation is not known (its Stars still loading, or `user`
+ * Star's conversation is not known (its Stars still loading, or its default channel
  * asleep), but the browsers of `closed`, a Star's thread whose tab closed
  * (`foreignPreviews`).
  */
@@ -530,7 +530,7 @@ export function registerPreviewTabs(): void {
   );
 }
 
-/** The thread a command naming none acts on: the active tab's of a Star's channel, not `user`, or child, else the selection's. */
+/** The thread a command naming none acts on: the active tab's of a Star's channel, not the default one, or child, else the selection's. */
 async function commandThread(): Promise<ThreadSelection | undefined> {
   const active = (await getService(IEditorService)).activeEditor;
   return active instanceof StarThreadInput

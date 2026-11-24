@@ -4,7 +4,7 @@ import { posterName } from "../asks/asks.ts";
 import { starMarks, starStillUrl } from "../stars/mark.ts";
 import type { RoutePoster } from "../stars/plugin.ts";
 import { starById, starStore } from "../stars/model.ts";
-import { type Star, starName } from "../stars/stars.ts";
+import type { Star } from "../stars/stars.ts";
 import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/projectIcon.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
@@ -33,7 +33,7 @@ function PosterIcon({ star, thread }: { star: Star | undefined; thread: ShellThr
 /**
  * A row an agent posted for the user, an ask's or a secret's, in a thread
  * card's look: its poster in the project's place, a Star's mark and name
- * with its channel but `user`'s, or the posting thread's project icon and
+ * with its channel but its default one, or the posting thread's project icon and
  * title, its environment's chip while there are several, its `slot` where a
  * thread's status sits (its status, giving way to its actions on hover), and
  * its title. A click, or Enter, runs `onOpen`.
@@ -64,14 +64,7 @@ export function PosterCard({
     "thread" in poster
       ? threads.find((each) => each.environmentId === environmentId && each.id === poster.thread)
       : undefined;
-  const name = posterName(
-    { environmentId, poster },
-    (starId) => {
-      const found = starById(starId);
-      return found === undefined ? undefined : starName(found);
-    },
-    () => thread?.title,
-  );
+  const name = posterName({ environmentId, poster }, starById, () => thread?.title);
   return (
     <li className={`pult-card${settled ? " pult-card-settled" : ""}`}>
       {/* A button by role, as a thread's card: its actions are buttons inside it. */}

@@ -620,7 +620,7 @@ export class StarInput extends SimpleEditorInput {
 
 /**
  * A thread of a Star's as a tab among the Star's (`src/stars/`): a channel's
- * conversation but `user`'s (the card's channel rows,
+ * conversation but the default channel's (the card's channel rows,
  * `pult-shell.openStarChannel`), labelled by its channel's slug, or a child
  * the Star launched (the card's child rows, `pult-shell.openStarChild`),
  * `slug` null, labelled by the thread's title; an ordinary thread's tab, in

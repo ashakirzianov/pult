@@ -135,7 +135,7 @@ const threadExists = (environmentId: string, threadId: string) =>
  * a time per home: in full once per connect while the Star sleeps there, no
  * channel of its open on its home there, when its last open channel there
  * sleeps, when a transcript the plugin wrote appears in its answer, or the
- * watch tells of one of a channel but `user`'s, while it sleeps there, on
+ * watch tells of one of a channel but the default one, while it sleeps there, on
  * Sync Star and for a change of its record; with an origin (its
  * `.git/config`'s, the one place it is kept) each full occasion fetches,
  * pulls and pushes too, and its draft written in while it sleeps pulls
@@ -243,7 +243,7 @@ class StarSync {
    * A Star falling asleep on an environment, its last channel open on its
    * home there sleeping: a full occasion on that home, committing what the
    * channels left there (a transcript the plugin writes after the settle
-   * being its own occasion, `afterChannelTranscripts`, or `user`'s,
+   * being its own occasion, `afterChannelTranscripts`, or the default channel's,
    * `afterTranscripts`) and delivering a divergence that waited for the
    * sleep. An environment counts only while it is ready with its threads
    * and its plugin's answer in (`known`), so a sleep seen while it loads,
@@ -371,7 +371,7 @@ class StarSync {
 
   /**
    * After the watch told of a transcript written for a channel but
-   * `user`'s, which no answer names: a full occasion on each of those
+   * the default one, which no answer names: a full occasion on each of those
    * Stars' homes there while the Star sleeps there. The plugin writes a
    * transcript after it settles the thread, so the occasion of a sleep the
    * page sees at the settle can run before the file is there.
@@ -499,9 +499,10 @@ class StarSync {
   /**
    * Hands a divergence of the Star's repository on a home to the Star, as
    * the first message of a conversation it wakes in, on that home's
-   * project, `user`'s, with the modes of `user`'s latest conversation
-   * (`handoffModel`) and the Star's model choice for `user` at them, which
-   * its plugin resolves as the handoff wakes, else that conversation's;
+   * project, its default channel's, with the modes of that channel's latest
+   * conversation (`handoffModel`) and the Star's model choice for the
+   * channel at them, which its plugin resolves as the handoff wakes, else
+   * that conversation's;
    * once, its thread's id deterministic from the repository and both sides
    * (`handoffThreadId`), looked up on the
    * server, so no page, and no reload, hands the same divergence over
@@ -541,9 +542,11 @@ class StarSync {
       this.change(key, { note: `${what}; Pult hands it to your Star once it sleeps.` });
       return false;
     }
+    const channel = star.defaultChannel;
     const model = handoffModel(
       conversationsOf(star.homes, threadStore.get().threads),
       environmentId,
+      channel,
     );
     if (model === undefined) {
       this.change(key, { note: `${what}; reconcile it with git in ${root}.` });
@@ -559,7 +562,12 @@ class StarSync {
         threadId: ThreadId.make(model.id),
       }),
     );
-    const chosen = await starWakeModel(starId, environmentId, projection.thread.runtimeMode);
+    const chosen = await starWakeModel(
+      starId,
+      environmentId,
+      projection.thread.runtimeMode,
+      channel,
+    );
     const text = handoffMessage({
       environmentName: environmentName(environmentId),
       repository: root,
@@ -572,6 +580,7 @@ class StarSync {
         handoffTurn({
           threadId: ThreadId.make(threadId),
           projectId: ProjectId.make(home.projectId),
+          channel,
           messageId: MessageId.make(globalThis.crypto.randomUUID()),
           text,
           createdAt: new Date().toISOString(),

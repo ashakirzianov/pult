@@ -11,8 +11,8 @@ export const STARS_FEATURE = "stars";
 /** The plugin's feature of firing the Stars' schedules: listed only where the server fires them, none under its `schedules-off`. */
 export const SCHEDULES_FEATURE = "star-schedules";
 
-/** The plugin's feature of putting a Star to sleep by hand, Refresh Context: `POST stars/<id>/sleep`, offered only where `about` lists it. */
-export const SLEEP_FEATURE = "star-sleep";
+/** The plugin's feature of putting a Star's channel to sleep by hand, Refresh Context: `POST stars/<id>/sleep` with `{ channel }`, offered only where `about` lists it. */
+export const CHANNEL_SLEEP_FEATURE = "star-channel-sleep";
 
 /** The plugin's feature of a Star's model per channel (`.pult/channel-models.json`): `POST stars/<id>/model`, asked only where `about` lists it. */
 export const CHANNEL_MODELS_FEATURE = "star-channel-models";
@@ -79,61 +79,79 @@ export async function readAbout(credential: Credential): Promise<ReadonlyArray<s
   return features ?? [];
 }
 
-/** The channel with the user, whose conversation is the Star's tab (xaxis `pult/tasks/star-channels.task`). */
-export const USER_CHANNEL = "user";
-
-/**
- * Whether a batch of changes under the Stars directory may have rewritten a
- * transcript of `user`'s, which the fold shows, as a conversation
- * un-settled and settled again does: a change to a `.pult/channels/user`
- * or under it, where the plugin writes them, or more changed than the batch
- * names.
- */
-export function rewritesUserTranscripts(event: {
+/** A batch of changes under a Stars directory, as its watch tells it. */
+interface DirectoryChanges {
   readonly changes: ReadonlyArray<{ readonly path: string }>;
   readonly truncated: boolean;
-}): boolean {
-  return (
-    event.truncated ||
-    event.changes.some((change) => USER_CHANNEL_PATH.test(change.path.replaceAll("\\", "/")))
-  );
 }
 
-/** `user`'s channel's folder, or a path under it, `/`-separated. */
-const USER_CHANNEL_PATH = new RegExp(`(?:^|/)\\.pult/channels/${USER_CHANNEL}(?:/|$)`);
+/** An answer's Stars, as the watch's readers need them: each one's folder and default channel. */
+interface WatchedStars {
+  readonly directory: string;
+  readonly stars: ReadonlyArray<{
+    readonly id: string;
+    readonly root: string;
+    readonly defaultChannel: string;
+  }>;
+}
 
 /**
- * The Stars of `answer` a batch of changes under its Stars directory may
- * have written a transcript of a channel but `user`'s for, which no answer
- * names (its `conversations` are `user`'s): a change under a Star's
- * `.pult/channels/<slug>/conversations/`, `slug` not `user`, the Star's
- * folder read from the change's path, relative to the directory; every
- * Star where more changed than the batch names.
+ * The Stars of `answer` whose channels a batch of changes under its Stars
+ * directory touched, `which` of them: a change to a Star's
+ * `.pult/channels/<slug>` or under it (`under`, below it, a path in the
+ * channel's folder relative to it, empty for the folder itself), the Star's
+ * folder read from the change's path, relative to the directory; every Star
+ * where more changed than the batch names.
  */
-export function channelTranscriptStars(
-  event: {
-    readonly changes: ReadonlyArray<{ readonly path: string }>;
-    readonly truncated: boolean;
-  },
-  answer: {
-    readonly directory: string;
-    readonly stars: ReadonlyArray<{ readonly id: string; readonly root: string }>;
-  },
+function starsTouched(
+  event: DirectoryChanges,
+  answer: WatchedStars,
+  which: (star: WatchedStars["stars"][number], slug: string, under: string) => boolean,
 ): string[] {
   const slashed = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "");
   const directory = slashed(answer.directory);
-  const folders = new Set(
-    event.changes.flatMap((change) => {
-      const match = /^(.+)\/\.pult\/channels\/([^/]+)\/conversations(?:\/|$)/.exec(
-        slashed(change.path),
-      );
-      return match === null || match[2] === USER_CHANNEL ? [] : [`${directory}/${match[1]}`];
-    }),
-  );
+  const touched = event.changes.flatMap((change) => {
+    const match = /^(.+)\/\.pult\/channels\/([^/]+)(?:\/(.*))?$/.exec(slashed(change.path));
+    return match === null
+      ? []
+      : [{ folder: `${directory}/${match[1]}`, slug: match[2] ?? "", under: match[3] ?? "" }];
+  });
   return answer.stars
-    .filter((star) => event.truncated || folders.has(slashed(star.root)))
+    .filter(
+      (star) =>
+        event.truncated ||
+        touched.some(
+          ({ folder, slug, under }) => folder === slashed(star.root) && which(star, slug, under),
+        ),
+    )
     .map((star) => star.id);
 }
+
+/**
+ * The Stars of `answer` a batch of changes may have rewritten a transcript
+ * of their default channel for, which the fold shows, as a conversation
+ * un-settled and settled again does: a change to the Star's
+ * `.pult/channels/<default>` or under it, where the plugin writes them;
+ * every Star where more changed than the batch names.
+ */
+export const defaultTranscriptStars = (event: DirectoryChanges, answer: WatchedStars) =>
+  starsTouched(event, answer, (star, slug) => slug === star.defaultChannel);
+
+/**
+ * The Stars of `answer` a batch of changes may have written a transcript of
+ * a channel but the default one for, which no answer names (its
+ * `conversations` are the default channel's): a change under a Star's
+ * `.pult/channels/<slug>/conversations/`, `slug` not its default channel;
+ * every Star where more changed than the batch names.
+ */
+export const channelTranscriptStars = (event: DirectoryChanges, answer: WatchedStars) =>
+  starsTouched(
+    event,
+    answer,
+    (star, slug, under) =>
+      slug !== star.defaultChannel &&
+      (under === "conversations" || under.startsWith("conversations/")),
+  );
 
 /** An open channel of a Star's as the route reads it: its slug, its current conversation's thread, and the sleep rule's reading of it, a deadline or what holds it. */
 export interface RouteChannel {
@@ -231,13 +249,15 @@ export interface RouteModel {
 /** A Star as `GET /stars` serves it, the fields the page draws; `root` and `instructions` are host paths. */
 export interface RouteStar extends WrittenStar {
   readonly instructions: string;
-  /** Every open channel, `user` among them, by slug; none while it sleeps. `asleepSince`, `model` and `conversations` are `user`'s. */
+  /** The slug of its default channel, the one its tab shows, `default-channel` in its record (`star-channels`). */
+  readonly defaultChannel: string;
+  /** Every open channel, the default among them, by slug; none while it sleeps. `asleepSince`, `model` and `conversations` are the default channel's. */
   readonly channels: ReadonlyArray<RouteChannel>;
-  /** Since when `user` sleeps: its last conversation's settlement, else the Star's creation. */
+  /** Since when the default channel sleeps: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
-  /** The model its next conversation with the user takes, the one a wake by message into `user` takes; null before its first, and from a plugin older than the field. */
+  /** The model the default channel's next conversation takes, the one a wake by message into it takes; null before its first. */
   readonly model: RouteModel | null;
-  /** The names of `user`'s transcripts on this environment, oldest first. */
+  /** The names of every other channel's transcripts on this environment, by channel, oldest first. */
   readonly histories?: ReadonlyArray<{
     readonly slug: string;
     readonly names: ReadonlyArray<string>;
@@ -388,6 +408,7 @@ const routeStar = struct<RouteStar>({
   root: string,
   projectId: string,
   instructions: string,
+  defaultChannel: string,
   channels,
   asleepSince: string,
   model,
@@ -533,7 +554,7 @@ export const createStarOn = (
 export const writeStarRecord = (credential: Credential, id: string, fields: RecordFields) =>
   ask(credential, "POST", starPath(id), decodeStar, fields);
 
-/** What Refresh Context answers: the Star's conversation in `user` put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
+/** What Refresh Context answers: the channel's conversation put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
 export type SleepAnswer =
   | { readonly slept: true }
   | { readonly slept: false; readonly heldBy: string };
@@ -545,9 +566,9 @@ const sleepAnswer = (body: unknown): SleepAnswer => {
   return fail("sleep", "{ slept: true } or { slept: false, heldBy }");
 };
 
-/** Puts the Star's current conversation in `user` to sleep now, unless something holds it; a Star asleep already is refused. */
-export const sleepStarOn = (credential: Credential, id: string) =>
-  ask(credential, "POST", `${starPath(id)}/sleep`, sleepAnswer, {});
+/** Puts the current conversation of the Star's `channel` to sleep now, unless something holds it; a channel asleep already is refused. */
+export const sleepChannelOn = (credential: Credential, id: string, channel: string) =>
+  ask(credential, "POST", `${starPath(id)}/sleep`, sleepAnswer, { channel });
 
 const wakeModel = (body: unknown): RouteModel | null =>
   isFields(body) && body.model !== undefined
@@ -555,21 +576,17 @@ const wakeModel = (body: unknown): RouteModel | null =>
     : fail("wake", "{ model }");
 
 /**
- * The model the page wakes the Star's `user` at itself (its draft, a sync's
- * handoff), or `channel` (its tagged draft), at `runtimeMode`: the Star's
- * choice, its options kept for the caller to decode, or null for the page's
- * own; the plugin tells the Star's `work` of a file it cannot serve.
+ * The model the page wakes the Star's `channel` at itself (its draft, a
+ * sync's handoff), at `runtimeMode`: the Star's choice, its options kept for
+ * the caller to decode, or null for the page's own; the plugin tells the
+ * channel of a file it cannot serve.
  */
 export const readWakeModel = (
   credential: Credential,
   id: string,
   runtimeMode: string,
-  channel?: string,
-) =>
-  ask(credential, "POST", `${starPath(id)}/model`, wakeModel, {
-    runtimeMode,
-    ...(channel === undefined ? {} : { channel }),
-  });
+  channel: string,
+) => ask(credential, "POST", `${starPath(id)}/model`, wakeModel, { runtimeMode, channel });
 
 /** One transcript of the Star on this environment, parsed. */
 export const readStarTranscript = (

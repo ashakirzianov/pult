@@ -6,7 +6,6 @@ import { scopedKey, threadStore } from "../threads/store.ts";
 import { carryInto, carryOutOf } from "./carry.ts";
 import { starStore, type StarTarget, starTarget } from "./model.ts";
 import { starEnabled, starSettingKnown } from "./settings.ts";
-import { USER_CHANNEL } from "./plugin.ts";
 import { channelOf, conversationsOf, type Star, type StarHome } from "./stars.ts";
 
 /** The composer store's module, once loaded. */
@@ -35,13 +34,13 @@ function look(): void {
 
 /**
  * Whenever a Star's tab shows its draft and the composer of a conversation
- * in `user` of that home that has ended holds text (another channel's
- * keeps its own), moves the text into the draft
+ * in its default channel of that home that has ended holds text (another
+ * channel's keeps its own), moves the text into the draft
  * (`carryInto`); whenever the Star is awake in a conversation its draft did
- * not create and a draft of its holds text, moves the text into that
- * conversation's composer (`carryOutOf`), whether or not its tab is open;
- * and the same for each other open channel, from the drafts tagged with it,
- * which a reply to an ask wakes it from, into its conversation.
+ * not create and a draft of its default channel holds text, moves the text
+ * into that conversation's composer (`carryOutOf`), whether or not its tab
+ * is open; and the same for each other open channel, from the drafts tagged
+ * with it, which a reply to an ask wakes it from, into its conversation.
  * A state looked at on every change, so text stranded while no page was
  * open is carried on the next look. Unsent text holds no Star awake, nor
  * asleep: its plugin puts it to sleep, and wakes it for a message,
@@ -54,7 +53,7 @@ function carry(drafts: typeof Drafts): void {
     // Each other channel open on a home takes what that home's draft tagged with it holds (`src/asks/reply.ts`).
     for (const home of star.homes)
       for (const channel of home.channels)
-        if (channel.slug !== USER_CHANNEL)
+        if (channel.slug !== star.defaultChannel)
           carryOut(
             drafts,
             star,
@@ -64,7 +63,7 @@ function carry(drafts: typeof Drafts): void {
           );
     const target = starTarget(star);
     if (target?.kind === "thread") {
-      carryOut(drafts, star, target);
+      carryOut(drafts, star, target, [`pult:channel:${star.defaultChannel}`]);
       continue;
     }
     if (target?.kind !== "draft") continue;
@@ -72,7 +71,7 @@ function carry(drafts: typeof Drafts): void {
       (home) => home.environmentId === target.environmentId && home.projectId === target.projectId,
     );
     const ended = conversationsOf(homes, threads).flatMap((thread) =>
-      thread.settled && thread.settledAt !== null && channelOf(thread) === USER_CHANNEL
+      thread.settled && thread.settledAt !== null && channelOf(thread) === star.defaultChannel
         ? [
             {
               threadId: thread.id,
@@ -116,12 +115,12 @@ function carry(drafts: typeof Drafts): void {
   }
 }
 
-/** Moves an awake Star's drafts' text into its current conversation's composer, or a channel's tagged drafts' into its conversation's (`carryOutOf`). */
+/** Moves the text of a channel's drafts, tagged with it, into its open conversation's composer (`carryOutOf`): the default channel's from any home's draft, another's from its home's. */
 function carryOut(
   drafts: typeof Drafts,
   star: Star,
   target: Extract<StarTarget, { kind: "thread" }>,
-  tags?: ReadonlyArray<string>,
+  tags: ReadonlyArray<string>,
   homes: ReadonlyArray<Pick<StarHome, "environmentId" | "projectId">> = star.homes,
 ): void {
   // Keyed by the draft and the conversation, so what stuck or was told in one wake holds no later one.

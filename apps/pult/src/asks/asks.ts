@@ -2,6 +2,7 @@
 // `node --test src/panel/order.test.ts` and `src/stars/notices.test.ts` can
 // run what reads them: their shelves and their posters' names.
 import type { AskStatus, RouteAsk } from "../stars/plugin.ts";
+import { type Star, starName } from "../stars/stars.ts";
 
 /** An ask of an environment's plugin, with the line its reply opens with. */
 export interface PageAsk extends RouteAsk {
@@ -31,18 +32,19 @@ export const asksOn = <Ask extends Pick<PageAsk, "status">>(
 
 /**
  * How a row names its poster, from the page's own data: a Star by its name,
- * with its channel but `user`'s, "Star" for one the page does not hold; a
- * thread by its title, "A thread" for one it does not.
+ * with its channel but its default one, "Star" for one the page does not
+ * hold; a thread by its title, "A thread" for one it does not.
  */
 export function posterName(
   ask: Pick<PageAsk, "environmentId" | "poster">,
-  starName: (starId: string) => string | undefined,
+  starOf: (starId: string) => Pick<Star, "name" | "defaultChannel"> | undefined,
   threadTitle: (environmentId: string, threadId: string) => string | undefined,
 ): string {
   if ("thread" in ask.poster)
     return threadTitle(ask.environmentId, ask.poster.thread) ?? "A thread";
-  const name = starName(ask.poster.star) ?? "Star";
-  return ask.poster.channel === "user" ? name : `${name} · ${ask.poster.channel}`;
+  const star = starOf(ask.poster.star);
+  const name = star === undefined ? "Star" : starName(star);
+  return ask.poster.channel === star?.defaultChannel ? name : `${name} · ${ask.poster.channel}`;
 }
 
 /** An ask's row as the panel's order reads it (`src/panel/order.ts`). */

@@ -185,6 +185,7 @@ NodeTest.describe("the handoff", () => {
         handoffTurn({
           threadId: ThreadId.make("handoff"),
           projectId: ProjectId.make("star"),
+          channel: "user",
           messageId: MessageId.make("m"),
           text: "Reconcile.",
           createdAt: "2026-11-20T12:00:00.000Z",
@@ -212,29 +213,40 @@ NodeTest.describe("the handoff", () => {
         "full-access",
         "full-access",
       ]);
+      // In the Star's default channel, its message opening with the channel's line.
+      const { message, bootstrap } = turn(null);
+      NodeAssert.equal(message.text, "[To your channel user]\n\nReconcile.");
+      NodeAssert.deepEqual(bootstrap.createThread.tags, ["pult:channel:user"]);
     },
   );
 
-  NodeTest.test("wakes `user` at `user`'s newest model, else at any channel's newest", () => {
-    const conversation = (id: string, environmentId: string, channel?: string) => ({
-      id,
-      environmentId,
-      tags: channel === undefined ? [] : [`pult:channel:${channel}`],
-    });
-    // Newest first: `work` ran last, on this environment.
-    const conversations = [
-      conversation("work-here", "env", "work"),
-      conversation("user-there", "other"),
-      conversation("user-here", "env", "user"),
-      conversation("user-older", "env"),
-    ];
-    NodeAssert.equal(handoffModel(conversations, "env")?.id, "user-here");
-    NodeAssert.equal(handoffModel(conversations, "far")?.id, "user-there");
-    const noUser = [conversation("review", "other", "review"), conversation("work", "env", "work")];
-    NodeAssert.equal(handoffModel(noUser, "env")?.id, "work");
-    NodeAssert.equal(handoffModel(noUser, "far")?.id, "review");
-    NodeAssert.equal(handoffModel([], "env"), undefined);
-  });
+  NodeTest.test(
+    "wakes the default channel at its newest model, else at any channel's newest",
+    () => {
+      const conversation = (id: string, environmentId: string, channel?: string) => ({
+        id,
+        environmentId,
+        tags: channel === undefined ? [] : [`pult:channel:${channel}`],
+      });
+      // Newest first: `work` ran last, on this environment.
+      const conversations = [
+        conversation("work-here", "env", "work"),
+        conversation("main-there", "other", "main"),
+        conversation("main-here", "env", "main"),
+        conversation("main-older", "env", "main"),
+      ];
+      NodeAssert.equal(handoffModel(conversations, "env", "main")?.id, "main-here");
+      NodeAssert.equal(handoffModel(conversations, "far", "main")?.id, "main-there");
+      NodeAssert.equal(handoffModel(conversations, "env", "work")?.id, "work-here");
+      const noMain = [
+        conversation("review", "other", "review"),
+        conversation("work", "env", "work"),
+      ];
+      NodeAssert.equal(handoffModel(noMain, "env", "main")?.id, "work");
+      NodeAssert.equal(handoffModel(noMain, "far", "main")?.id, "review");
+      NodeAssert.equal(handoffModel([], "env", "main"), undefined);
+    },
+  );
 });
 
 NodeTest.describe("a Star's own repository", () => {
@@ -320,6 +332,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
           root: "/Users/a/.pult/stars/star",
           projectId: "star-project",
           instructions: "/Users/a/.pult/stars/star/instructions.md",
+          defaultChannel: "user",
           channels: [{ slug: "work", threadId, sleeps: { at: CREATED } }],
           asleepSince: CREATED,
           model: null,

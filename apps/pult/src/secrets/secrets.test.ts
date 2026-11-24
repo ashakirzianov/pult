@@ -63,6 +63,7 @@ const star: Star = {
       schedules: [],
     },
   ],
+  defaultChannel: "main",
   channels: [],
   current: null,
   asleepSince: NOW,

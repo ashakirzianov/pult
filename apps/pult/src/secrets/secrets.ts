@@ -51,15 +51,17 @@ export function pageSecrets<Thread extends StarThread & Pick<ShellThread, "tags"
       const read = reads.get(cardKey(card));
       if (read?.type !== "secret_request") return [];
       const star = findStarOfThread(stars, thread);
+      // An untagged root thread of a Star's project is no conversation of the Star's.
+      const channel = channelOf(thread);
       return [
         {
           ...card,
           since: thread.pendingCard.since,
           label: read.label,
           poster:
-            star === undefined
+            star === undefined || channel === undefined
               ? { thread: thread.id }
-              : { star: star.id, channel: channelOf(thread) },
+              : { star: star.id, channel },
         },
       ];
     })

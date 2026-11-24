@@ -10,7 +10,6 @@ import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 import { SimpleEditorPane } from "@codingame/monaco-vscode-workbench-service-override/common";
 
 import { starById } from "../stars/model.ts";
-import { USER_CHANNEL } from "../stars/plugin.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
@@ -72,7 +71,7 @@ function shows(environmentId: string, threadId: string, starId: string | undefin
 /**
  * Opens the secret's card (`pult-shell.openSecret <environmentId> <threadId>`,
  * its card's click and a jump to it): its poster selected, a Star's open
- * conversation in `user` the Star, in another channel that channel's tab
+ * conversation in its default channel the Star, in another channel that channel's tab
  * among the Star's, any other of its threads (a conversation no channel holds
  * open now) as a tab of its own among the Star's, as a Star's child is while
  * Show Star is on, any other thread itself; then the keyboard in the card's
@@ -92,10 +91,11 @@ async function openSecret(environmentId: unknown, threadId: unknown): Promise<vo
   if ("star" in secret.poster) {
     starId = secret.poster.star;
     // By the thread itself: a channel's tab shows its open conversation, which may be another.
-    const channel = starById(starId)?.channels.find(
+    const star = starById(starId);
+    const channel = star?.channels.find(
       ({ thread }) => thread.environmentId === environmentId && thread.id === threadId,
     );
-    if (channel?.slug === USER_CHANNEL)
+    if (channel !== undefined && channel.slug === star?.defaultChannel)
       await commands.executeCommand("pult-shell.selectStar", starId);
     else if (channel !== undefined)
       await commands.executeCommand("pult-shell.openStarChannel", starId, channel.slug);

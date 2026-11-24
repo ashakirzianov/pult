@@ -42,9 +42,15 @@ export function isStarDraft(draft: Pick<ProjectDraft, "environmentId" | "project
   return isHiddenProject(draft.environmentId, draft.projectId);
 }
 
-/** Whether `draft` gets no card: a Star's, or any of an environment whose hidden projects are not known yet, so a Star's draft never flashes as one. */
-export function hasNoDraftCard(draft: Pick<ProjectDraft, "environmentId" | "projectId">): boolean {
-  return hiddenProjects(draft.environmentId) === undefined || isStarDraft(draft);
+/** Whether `draft` gets no card: a tagged one, a Star's, or any of an environment whose hidden projects are not known yet, so a Star's draft never flashes as one. */
+export function hasNoDraftCard(
+  draft: Pick<ProjectDraft, "environmentId" | "projectId" | "tags">,
+): boolean {
+  return (
+    draft.tags !== undefined ||
+    hiddenProjects(draft.environmentId) === undefined ||
+    isStarDraft(draft)
+  );
 }
 
 /** The projects' unsent drafts, for Inbox's draft cards. */

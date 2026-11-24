@@ -4,13 +4,7 @@
 // with its homes and its open channels' live rows; and when the page asks
 // for a Star to be created.
 import type { ShellThread } from "../threads/store.ts";
-import {
-  type RouteChannel,
-  type RouteModel,
-  type RouteSchedule,
-  type StarsAnswer,
-  USER_CHANNEL,
-} from "./plugin.ts";
+import type { RouteChannel, RouteModel, RouteSchedule, StarsAnswer } from "./plugin.ts";
 
 /** A Star's home: its folder and project on one environment, as that environment's plugin serves it. */
 export interface StarHome {
@@ -24,11 +18,11 @@ export interface StarHome {
   readonly instructions: string;
   /** Its open channels on this environment, as the plugin reads them, by slug; none while it sleeps here. */
   readonly channels: ReadonlyArray<RouteChannel>;
-  /** The model its next conversation with the user here takes, as this environment's plugin reads it (`RouteStar`'s). */
+  /** The model the default channel's next conversation here takes, as this environment's plugin reads it (`RouteStar`'s). */
   readonly model: RouteModel | null;
-  /** Since when `user` sleeps here: its last conversation's settlement, else the Star's creation. */
+  /** Since when the default channel sleeps here: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
-  /** The names of `user`'s transcripts of this environment, oldest first. */
+  /** The names of every other channel's transcripts of this environment, by channel, oldest first. */
   readonly histories?: ReadonlyArray<{
     readonly slug: string;
     readonly names: ReadonlyArray<string>;
@@ -63,10 +57,11 @@ export interface StarChannel<Thread extends StarThread = ShellThread> {
 
 /**
  * A Star: a record id with its homes, one per environment whose plugin
- * serves it; its open channels, each the page's live row of the thread a
- * home's plugin names, while the page holds it open; its current
- * conversation, `user`'s, the one its tab shows; and since when `user`
- * sleeps, by the home it is drawn from (`drawnHome`).
+ * serves it; its default channel; its open channels, each the page's live
+ * row of the thread a home's plugin names, while the page holds it open;
+ * its current conversation, the default channel's, the one its tab shows;
+ * and since when the default channel sleeps, by the home it is drawn from
+ * (`drawnHome`).
  */
 export interface Star<Thread extends StarThread = ShellThread> {
   readonly id: string;
@@ -75,9 +70,11 @@ export interface Star<Thread extends StarThread = ShellThread> {
   readonly tint: string;
   readonly created: string;
   readonly homes: ReadonlyArray<StarHome>;
-  /** Every open channel whose conversation the page holds open, `user` among them, by slug. */
+  /** The slug of its default channel, its first home's, as its name and tint are (`star-channels`). */
+  readonly defaultChannel: string;
+  /** Every open channel whose conversation the page holds open, the default among them, by slug. */
   readonly channels: ReadonlyArray<StarChannel<Thread>>;
-  /** `user`'s open conversation; null while `user` sleeps, whatever the other channels do. */
+  /** The default channel's open conversation; null while it sleeps, whatever the other channels do. */
   readonly current: Thread | null;
   readonly asleepSince: string;
   /** The environments where a channel of its is open on its home there, whose conversations write in its folder there (`sync.ts`). */
@@ -104,21 +101,19 @@ const CHANNEL_TAG = "pult:channel:";
 /** A channel's slug, as the plugin reads one: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. */
 const SLUG = /^[a-z0-9][a-z0-9-]{0,50}$/u;
 
-/** A thread's first valid `pult:channel:<slug>` tag's slug, if it has one. */
-function channelTag(thread: { readonly tags: ReadonlyArray<string> }): string | undefined {
+/** The channel a thread is of, by its first valid `pult:channel:<slug>` tag; none where it has none, as a root thread of a Star's project is then no conversation of the Star's. */
+export function channelOf(thread: { readonly tags: ReadonlyArray<string> }): string | undefined {
   return thread.tags
     .filter((tag) => tag.startsWith(CHANNEL_TAG))
     .map((tag) => tag.slice(CHANNEL_TAG.length))
     .find((slug) => SLUG.test(slug));
 }
 
-/** The channel a conversation is, by its first valid `pult:channel:<slug>` tag; `user` where none is. */
-export function channelOf(thread: { readonly tags: ReadonlyArray<string> }): string {
-  return channelTag(thread) ?? USER_CHANNEL;
-}
+/** The line the user's message that starts a conversation in `channel` from the page opens with (`star-channels`): a reply to an ask names the channel already, in the line the plugin serves. */
+export const conversationOpening = (channel: string) => `[To your channel ${channel}]`;
 
-/** A Star's conversations among `threads`: the root threads of its homes' projects, newest first. */
-export function conversationsOf<Thread extends StarThread>(
+/** A Star's conversations among `threads`: the root threads of its homes' projects with a channel tag, newest first. */
+export function conversationsOf<Thread extends StarThread & Pick<ShellThread, "tags">>(
   homes: ReadonlyArray<Pick<StarHome, "environmentId" | "projectId">>,
   threads: ReadonlyArray<Thread>,
 ): Thread[] {
@@ -126,6 +121,7 @@ export function conversationsOf<Thread extends StarThread>(
     threads.filter(
       (thread) =>
         thread.parentId === null &&
+        channelOf(thread) !== undefined &&
         homes.some(
           (home) =>
             home.environmentId === thread.environmentId && home.projectId === thread.projectId,
@@ -154,11 +150,11 @@ export function drawnHome(star: Pick<Star<StarThread>, "homes" | "current">): St
 }
 
 /**
- * Whether a thread is one of the Star's earlier conversations with the user on the home it is
- * drawn from, the fold's: a settled root thread of that home's project in `user`.
+ * Whether a thread is one of the Star's earlier conversations in its default channel on the home
+ * it is drawn from, the fold's: a settled root thread of that home's project in that channel.
  */
 export function isEarlierConversation(
-  star: Pick<Star<StarThread>, "homes" | "current">,
+  star: Pick<Star<StarThread>, "homes" | "current" | "defaultChannel">,
   thread: Pick<StarThread, "environmentId" | "projectId" | "parentId" | "settled"> & {
     readonly tags: ReadonlyArray<string>;
   },
@@ -170,7 +166,7 @@ export function isEarlierConversation(
     thread.projectId === home.projectId &&
     thread.parentId === null &&
     thread.settled &&
-    channelOf(thread) === USER_CHANNEL
+    channelOf(thread) === star.defaultChannel
   );
 }
 
@@ -228,7 +224,7 @@ export function starsOf<Thread extends StarThread>(
     const channels = [...open]
       .map(([slug, thread]) => ({ slug, thread }))
       .toSorted((left, right) => left.slug.localeCompare(right.slug));
-    const current = open.get(USER_CHANNEL) ?? null;
+    const current = open.get(first.defaultChannel) ?? null;
     const star = { homes, current };
     return {
       id: first.id,
@@ -237,6 +233,7 @@ export function starsOf<Thread extends StarThread>(
       tint: first.tint,
       created: first.created,
       homes,
+      defaultChannel: first.defaultChannel,
       channels,
       current,
       asleepSince: drawnHome(star)?.asleepSince ?? first.created,
@@ -256,6 +253,7 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
     star.name,
     star.description,
     star.tint,
+    star.defaultChannel,
     star.homes,
     star.channels.map(({ slug, thread }) => [slug, thread.id, thread.working, thread.workingSince]),
     star.asleepSince,
@@ -264,17 +262,15 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
 
 /** The tag a Star gives every thread it launches, its child, before the Star's id (`star-launched-threads`). */
 const CHILD_TAG = "pult:child:star:";
-/** The channel a child's messages land in where it names none (`star-channels`). */
-const WORK_CHANNEL = "work";
 
-/** A row of a selected Star's details: a channel but `user`, its open conversation, null while it sleeps, and the Star's children of it, oldest first. */
+/** A row of a selected Star's details: a channel, its open conversation, null while it sleeps, and the Star's children of it, oldest first. */
 export interface ChannelRow<Thread> {
   readonly slug: string;
   readonly thread: Thread | null;
   readonly children: ReadonlyArray<Thread>;
 }
 
-/** What a selected Star's details list: its channel rows, `user`'s first. */
+/** What a selected Star's details list: its channel rows, the default channel's first. */
 export interface CardRows<Thread> {
   readonly channels: ReadonlyArray<ChannelRow<Thread>>;
 }
@@ -283,13 +279,14 @@ export interface CardRows<Thread> {
  * What a selected Star's details list, as the page's threads have them now
  * (the Stars' model tells only a change of conversation or of its run): its
  * children, the unsettled threads tagged `pult:child:star:<id>` but its own
- * conversations, each under the row of its channel, its channel tag, `work`
- * with none, in the order they were created; `user`'s row, always there, its
- * conversation's live row or asleep; then a row per other open channel and
- * per sleeping channel with an unsettled child, by slug.
+ * conversations, each under the row of its channel, its channel tag, the
+ * default channel with none, in the order they were created; the default
+ * channel's row, always there, its conversation's live row or asleep; then a
+ * row per other open channel and per sleeping channel with an unsettled
+ * child, by slug.
  */
 export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
-  star: Pick<Star<Thread>, "id" | "homes" | "channels">,
+  star: Pick<Star<Thread>, "id" | "homes" | "channels" | "defaultChannel">,
   threads: ReadonlyArray<Thread>,
 ): CardRows<Thread> {
   const conversations = new Set(conversationsOf(star.homes, threads));
@@ -300,7 +297,7 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
     )
     .toSorted((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   const childrenOf = (slug: string) =>
-    children.filter((child) => (channelTag(child) ?? WORK_CHANNEL) === slug);
+    children.filter((child) => (channelOf(child) ?? star.defaultChannel) === slug);
   const open = new Map(
     star.channels.map(({ slug, thread }) => {
       const live = threads.find(
@@ -311,9 +308,9 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   );
   const slugs = new Set([
     ...[...open].flatMap(([slug, thread]) => (thread === null ? [] : [slug])),
-    ...children.map((child) => channelTag(child) ?? WORK_CHANNEL),
+    ...children.map((child) => channelOf(child) ?? star.defaultChannel),
   ]);
-  slugs.delete(USER_CHANNEL);
+  slugs.delete(star.defaultChannel);
   const row = (slug: string) => ({
     slug,
     thread: open.get(slug) ?? null,
@@ -321,7 +318,7 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   });
   return {
     channels: [
-      row(USER_CHANNEL),
+      row(star.defaultChannel),
       ...[...slugs].toSorted((left, right) => left.localeCompare(right)).map(row),
     ],
   };

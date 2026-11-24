@@ -1,4 +1,6 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
+import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
+import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { limitsStore } from "../limits/model.ts";
 import { useSyncExternalStore } from "react";
 
@@ -8,7 +10,7 @@ import { type Activity, age, Status } from "../panel/PanelView.tsx";
 import { StarSchedules } from "../panel/StarSchedules.tsx";
 import { starLook } from "../stars/look.ts";
 import { lookStillUrl, starMarks } from "../stars/mark.ts";
-import { USER_CHANNEL } from "../stars/plugin.ts";
+import { canSleepChannel } from "../stars/model.ts";
 import type { CardRows, Star } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { hasUsageProviderIcon, UsageProviderIcon } from "../../view/usageProviders.tsx";
@@ -192,14 +194,35 @@ function ChannelMark({
   );
 }
 
+/** A channel's row's context menu: Refresh Context, its next message then waking it in a fresh conversation; none while it cannot be put to sleep by hand (`canSleepChannel`). */
+async function showChannelMenu(
+  star: Star,
+  slug: string,
+  anchor: { x: number; y: number },
+): Promise<void> {
+  if (!canSleepChannel(star, slug)) return;
+  (await getService(IContextMenuService)).showContextMenu({
+    getAnchor: () => anchor,
+    getActions: () => [
+      toAction({
+        id: "pult-shell.refreshContext",
+        label: "Refresh Context",
+        run: () => run("pult-shell.refreshContext", star.id, slug),
+      }),
+    ],
+  });
+}
+
 /**
- * A selected Star's channels on their shelf, `user` first: a row each, the
- * Star's mark in that channel's look, its slug and its status, Working with
- * its elapsed time, Waiting, the time since its last turn, or Asleep, over
- * the threads it launched and its conversation's subagents (`ChannelThreads`).
- * `user`'s row selects the Star, whose tab is that channel's, awake or asleep;
- * another open channel's opens its conversation as a thread's tab among the
- * Star's (`pult-shell.openStarChannel`); an asleep channel opens its draft.
+ * A selected Star's channels on their shelf, the default channel first: a
+ * row each, the Star's mark in that channel's look, its slug and its status,
+ * Working with its elapsed time, Waiting, the time since its last turn, or
+ * Asleep, over the threads it launched and its conversation's subagents
+ * (`ChannelThreads`). The default channel's row selects the Star, whose tab
+ * is that channel's, awake or asleep; another open channel's opens its
+ * conversation as a thread's tab among the Star's
+ * (`pult-shell.openStarChannel`); an asleep channel opens its draft. A row's
+ * right-click is its menu (`showChannelMenu`).
  */
 function StarChannels({
   star,
@@ -243,7 +266,7 @@ function StarChannels({
             </>
           );
           const open =
-            slug === USER_CHANNEL
+            slug === star.defaultChannel
               ? () => run("pult-shell.selectStar", starId)
               : () => run("pult-shell.openStarChannel", starId, slug);
           return (
@@ -256,6 +279,10 @@ function StarChannels({
                 }
                 title={`Channel ${slug}`}
                 onClick={open}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  void showChannelMenu(star, slug, { x: event.clientX, y: event.clientY });
+                }}
               >
                 {content}
               </button>

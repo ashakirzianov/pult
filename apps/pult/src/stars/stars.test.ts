@@ -28,6 +28,7 @@ const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar =>
   root: `/Users/a/.pult/stars/${id}`,
   projectId: "star-project",
   instructions: `/Users/a/.pult/stars/${id}/instructions.md`,
+  defaultChannel: "main",
   channels: [],
   asleepSince: CREATED,
   model: null,
@@ -111,7 +112,7 @@ NodeTest.describe("starsOf", () => {
   );
 
   NodeTest.test(
-    "takes the live row of the conversation a home's plugin names as `user`'s current",
+    "takes the live row of the conversation a home's plugin names as the default channel's current",
     () => {
       const threads = [
         thread("a", "older", "2026-11-01T00:00:00.000Z"),
@@ -122,11 +123,11 @@ NodeTest.describe("starsOf", () => {
         [
           {
             environmentId: "a",
-            answer: answer([routeStar("one", { channels: [open("user", "older")] })]),
+            answer: answer([routeStar("one", { channels: [open("main", "older")] })]),
           },
           {
             environmentId: "b",
-            answer: answer([routeStar("one", { channels: [open("user", "newer")] })]),
+            answer: answer([routeStar("one", { channels: [open("main", "newer")] })]),
           },
         ],
         threads,
@@ -134,7 +135,7 @@ NodeTest.describe("starsOf", () => {
       NodeAssert.equal(star?.current?.id, "newer");
       NodeAssert.deepEqual(
         star?.channels.map(({ slug, thread }) => [slug, thread.id]),
-        [["user", "newer"]],
+        [["main", "newer"]],
       );
     },
   );
@@ -142,23 +143,43 @@ NodeTest.describe("starsOf", () => {
   const of = (channels: RouteStar["channels"], threads: ReturnType<typeof thread>[]) =>
     starsOf([{ environmentId: "a", answer: answer([routeStar("one", { channels })]) }], threads)[0];
 
-  NodeTest.test("holds every open channel by slug, `user`'s alone the current conversation", () => {
-    const star = of(
-      [open("user", "u"), open("review-x", "r"), open("work", "w")],
-      [thread("a", "u", CREATED), thread("a", "r", CREATED), thread("a", "w", CREATED)],
-    );
-    NodeAssert.deepEqual(
-      star?.channels.map(({ slug, thread }) => [slug, thread.id]),
-      [
-        ["review-x", "r"],
-        ["user", "u"],
-        ["work", "w"],
-      ],
-    );
-    NodeAssert.equal(star?.current?.id, "u");
-  });
+  NodeTest.test(
+    "holds every open channel by slug, the default channel's alone the current conversation",
+    () => {
+      const star = of(
+        [open("main", "m"), open("review-x", "r"), open("user", "u")],
+        [thread("a", "m", CREATED), thread("a", "r", CREATED), thread("a", "u", CREATED)],
+      );
+      NodeAssert.deepEqual(
+        star?.channels.map(({ slug, thread }) => [slug, thread.id]),
+        [
+          ["main", "m"],
+          ["review-x", "r"],
+          ["user", "u"],
+        ],
+      );
+      NodeAssert.equal(star?.current?.id, "m");
+      // The record names the default channel: `user` is then the one, and `main` an ordinary one.
+      const named = starsOf(
+        [
+          {
+            environmentId: "a",
+            answer: answer([
+              routeStar("one", {
+                defaultChannel: "user",
+                channels: [open("main", "m"), open("user", "u")],
+              }),
+            ]),
+          },
+        ],
+        [thread("a", "m", CREATED), thread("a", "u", CREATED)],
+      )[0];
+      NodeAssert.equal(named?.defaultChannel, "user");
+      NodeAssert.equal(named?.current?.id, "u");
+    },
+  );
 
-  NodeTest.test("holds another channel open while `user` sleeps", () => {
+  NodeTest.test("holds another channel open while the default channel sleeps", () => {
     const userAsleep = of([open("work", "w")], [thread("a", "w", CREATED)]);
     NodeAssert.deepEqual(
       userAsleep?.channels.map(({ slug }) => slug),
@@ -175,7 +196,7 @@ NodeTest.describe("starsOf", () => {
       NodeAssert.equal(asleep([], [thread("a", "t", CREATED)]), "asleep");
       NodeAssert.equal(
         asleep(
-          [open("user", "u"), open("work", "w")],
+          [open("main", "u"), open("work", "w")],
           [
             thread("a", "u", CREATED, { settled: true }),
             thread("a", "w", CREATED, { settled: true }),
@@ -186,7 +207,7 @@ NodeTest.describe("starsOf", () => {
       NodeAssert.equal(asleep([open("work", "w")], []), "asleep");
       NodeAssert.equal(
         asleep(
-          [open("user", "u"), open("work", "w")],
+          [open("main", "u"), open("work", "w")],
           [thread("a", "u", CREATED, { settled: true }), thread("a", "w", CREATED)],
         ),
         "awake",
@@ -269,7 +290,7 @@ NodeTest.describe("cardRows", () => {
   });
 
   NodeTest.test(
-    "lists each child under its channel's row, `work` with none, `user`'s row first, oldest first, the Channels node holding all but `user`'s",
+    "lists each child under its channel's row, the default channel's with none, the default channel's row first, oldest first",
     () => {
       const threads = [
         thread("a", "u", CREATED),
@@ -279,17 +300,20 @@ NodeTest.describe("cardRows", () => {
         child("late", "2026-11-03T00:00:00.000Z", ["pult:channel:build"]),
         child("early", "2026-11-02T00:00:00.000Z", ["pult:channel:build"]),
         child("untagged", "2026-11-02T00:00:00.000Z", []),
+        child("with-main", "2026-11-02T00:00:00.000Z", ["pult:channel:main"]),
+        // `user` is an ordinary channel's name, its row sleeping with its child.
         child("with-user", "2026-11-02T00:00:00.000Z", ["pult:channel:user"]),
         // Another Star's child, and a thread of no Star's.
         thread("a", "other", CREATED, { projectId: "repo", tags: ["pult:child:star:two"] }),
         thread("a", "plain", CREATED, { projectId: "repo" }),
       ];
-      const star = starWith([open("user", "u"), open("work", "w"), open("build", "b")], threads);
+      const star = starWith([open("main", "u"), open("work", "w"), open("build", "b")], threads);
       NodeAssert.deepEqual(shape(cardRows(star, threads)), {
         channels: [
-          ["user", "u", ["with-user"]],
+          ["main", "u", ["untagged", "with-main"]],
           ["build", "b", ["early", "late"]],
-          ["work", "w", ["untagged"]],
+          ["user", null, ["with-user"]],
+          ["work", "w", []],
         ],
       });
     },
@@ -302,10 +326,10 @@ NodeTest.describe("cardRows", () => {
         thread("a", "u", CREATED),
         child("builder", CREATED, ["pult:channel:review"]),
       ];
-      const asleep = starWith([open("user", "u")], unsettled);
+      const asleep = starWith([open("main", "u")], unsettled);
       NodeAssert.deepEqual(shape(cardRows(asleep, unsettled)), {
         channels: [
-          ["user", "u", []],
+          ["main", "u", []],
           ["review", null, ["builder"]],
         ],
       });
@@ -313,8 +337,8 @@ NodeTest.describe("cardRows", () => {
         thread("a", "u", CREATED),
         child("builder", CREATED, ["pult:channel:review"], true),
       ];
-      NodeAssert.deepEqual(shape(cardRows(starWith([open("user", "u")], settled), settled)), {
-        channels: [["user", "u", []]],
+      NodeAssert.deepEqual(shape(cardRows(starWith([open("main", "u")], settled), settled)), {
+        channels: [["main", "u", []]],
       });
     },
   );
@@ -325,11 +349,11 @@ NodeTest.describe("cardRows", () => {
       const threads = [
         thread("a", "w", CREATED),
         child("done", CREATED, ["pult:channel:work"], true),
-        child("done-user", CREATED, ["pult:channel:user"], true),
+        child("done-main", CREATED, ["pult:channel:main"], true),
       ];
       NodeAssert.deepEqual(shape(cardRows(starWith([open("work", "w")], threads), threads)), {
         channels: [
-          ["user", null, []],
+          ["main", null, []],
           ["work", "w", []],
         ],
       });
@@ -348,7 +372,7 @@ NodeTest.describe("cardRows", () => {
       const star = starWith([open("work", "w")], [thread("a", "w", CREATED)]);
       NodeAssert.deepEqual(shape(cardRows(star, threads)), {
         channels: [
-          ["user", null, []],
+          ["main", null, []],
           ["work", null, ["builder"]],
         ],
       });
@@ -357,9 +381,9 @@ NodeTest.describe("cardRows", () => {
 });
 
 NodeTest.describe("channelOf", () => {
-  NodeTest.test("reads the first valid channel tag, `user` where none is", () => {
-    NodeAssert.equal(channelOf({ tags: [] }), "user");
-    NodeAssert.equal(channelOf({ tags: ["pult:child:star:s1"] }), "user");
+  NodeTest.test("reads the first valid channel tag, none where there is none", () => {
+    NodeAssert.equal(channelOf({ tags: [] }), undefined);
+    NodeAssert.equal(channelOf({ tags: ["pult:child:star:s1"] }), undefined);
     NodeAssert.equal(channelOf({ tags: ["pult:channel:work"] }), "work");
     NodeAssert.equal(
       channelOf({ tags: ["pult:channel:Not A Slug", "pult:channel:review-2", "pult:channel:x"] }),
@@ -410,13 +434,17 @@ NodeTest.describe("a Star's places", () => {
   });
 
   NodeTest.test(
-    "has earlier conversations with the user only on the home it is drawn from, settled roots of its project",
+    "has earlier conversations in its default channel only on the home it is drawn from, settled roots of its project",
     () => {
       const earlier = (overrides: Parameters<typeof thread>[3], environmentId = "b") =>
         star !== undefined &&
         isEarlierConversation(
           star,
-          thread(environmentId, "t", CREATED, { settled: true, ...overrides }),
+          thread(environmentId, "t", CREATED, {
+            settled: true,
+            tags: ["pult:channel:main"],
+            ...overrides,
+          }),
         );
       NodeAssert.equal(earlier({}), true);
       NodeAssert.equal(earlier({}, "a"), false);
@@ -424,7 +452,9 @@ NodeTest.describe("a Star's places", () => {
       NodeAssert.equal(earlier({ parentId: "t0" }), false);
       NodeAssert.equal(earlier({ projectId: "other" }), false);
       NodeAssert.equal(earlier({ tags: ["pult:channel:work"] }), false);
-      NodeAssert.equal(earlier({ tags: ["pult:channel:user"] }), true);
+      NodeAssert.equal(earlier({ tags: ["pult:channel:user"] }), false);
+      // An untagged root thread is no conversation of the Star's.
+      NodeAssert.equal(earlier({ tags: [] }), false);
     },
   );
 

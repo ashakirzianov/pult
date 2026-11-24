@@ -39,10 +39,7 @@ function nameOf(row: Parameters<typeof posterName>[0]): string {
   const { threads } = threadStore.get();
   return posterName(
     row,
-    (starId) => {
-      const star = starById(starId);
-      return star === undefined ? undefined : starName(star);
-    },
+    starById,
     (threadEnvironment, threadId) =>
       threads.find((thread) => thread.environmentId === threadEnvironment && thread.id === threadId)
         ?.title,

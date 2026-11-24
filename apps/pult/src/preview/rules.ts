@@ -25,9 +25,9 @@ interface PreviewThread {
 /**
  * The tab a thread's preview tabs belong beside, in the selection's tab set:
  * the lead tab for the selection's thread (the selected one, or the selected
- * Star's conversation in `user`); a tab open among a Star's for a channel's
+ * Star's conversation in its default channel); a tab open among a Star's for a channel's
  * conversation or a child of the Star's (`StarThreadInput`), so its browsers
- * open as `user`'s do; undefined for any other thread, whose reveal waits
+ * open as the default channel's do; undefined for any other thread, whose reveal waits
  * until its thread is one of these, and whose tabs leave the part.
  */
 export function previewAnchor<Tab extends PreviewThread>(
@@ -44,9 +44,9 @@ export function previewAnchor<Tab extends PreviewThread>(
 /**
  * The preview tabs that leave the part as foreign to the selection's tab
  * set: each whose thread has no anchor (`previewAnchor`). None while that
- * set is not known (a selected Star whose `user` is asleep or not read
+ * set is not known (a selected Star whose default channel is asleep or not read
  * yet), but those of `closed`, a Star's thread whose tab just closed, whose
- * browsers go with it whatever `user` does.
+ * browsers go with it whatever the default channel does.
  */
 export function foreignPreviews<Preview extends PreviewThread>(
   previews: ReadonlyArray<Preview>,

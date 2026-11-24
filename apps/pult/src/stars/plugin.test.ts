@@ -6,6 +6,7 @@ import {
   actOnAsk,
   channelTranscriptStars,
   createStarOn,
+  defaultTranscriptStars,
   decodeAbout,
   decodeStars,
   decodeTranscript,
@@ -17,63 +18,74 @@ import {
   readStarTranscript,
   readStarTranscriptOfThread,
   readWakeModel,
-  rewritesUserTranscripts,
-  sleepStarOn,
+  sleepChannelOn,
 } from "./plugin.ts";
 
-NodeTest.test("rewritesUserTranscripts reads a change under `user`'s channel alone", () => {
+NodeTest.describe("the Stars directory's watch", () => {
   const batch = (paths: ReadonlyArray<string>, truncated = false) => ({
-    changes: paths.map((path) => ({ path, kind: "changed" as const })),
+    changes: paths.map((path) => ({ path, kind: "created" as const })),
     truncated,
   });
-  const transcript = (slug: string) =>
-    `star/.pult/channels/${slug}/conversations/env/2026-11-12T10-00-00Z-t.md`;
-  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("user")])), true);
-  NodeAssert.equal(
-    rewritesUserTranscripts(batch([transcript("user").replaceAll("/", "\\")])),
-    true,
-  );
-  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("work")])), false);
-  NodeAssert.equal(rewritesUserTranscripts(batch([transcript("user-research")])), false);
-  // The channel's folder itself, made or removed whole.
-  NodeAssert.equal(rewritesUserTranscripts(batch(["star/.pult/channels/user"])), true);
-  NodeAssert.equal(rewritesUserTranscripts(batch(["star/.pult/channels/user-research"])), false);
-  NodeAssert.equal(rewritesUserTranscripts(batch(["star/old.pult/channels/user/x.md"])), false);
-  NodeAssert.equal(rewritesUserTranscripts(batch(["star/notes.md"])), false);
-  NodeAssert.equal(rewritesUserTranscripts(batch([], true)), true);
-});
+  const answer = {
+    directory: "/Users/a/.pult/stars/",
+    stars: [
+      { id: "one", root: "/Users/a/.pult/stars/star", defaultChannel: "user" },
+      { id: "two", root: "/Users/a/.pult/stars/star-2", defaultChannel: "main" },
+    ],
+  };
+  const transcript = (folder: string, slug: string) =>
+    `${folder}/.pult/channels/${slug}/conversations/env/2026-11-12T10-00-00Z-t.md`;
 
-NodeTest.test(
-  "channelTranscriptStars names the Star whose channel but `user`'s had a transcript written",
-  () => {
-    const batch = (paths: ReadonlyArray<string>, truncated = false) => ({
-      changes: paths.map((path) => ({ path, kind: "created" as const })),
-      truncated,
-    });
-    const answer = {
-      directory: "/Users/a/.pult/stars/",
-      stars: [
-        { id: "one", root: "/Users/a/.pult/stars/star" },
-        { id: "two", root: "/Users/a/.pult/stars/star-2" },
-      ],
-    };
-    const transcript = (folder: string, slug: string) =>
-      `${folder}/.pult/channels/${slug}/conversations/env/2026-11-12T10-00-00Z-t.md`;
-    NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star-2", "work")]), answer), [
-      "two",
+  NodeTest.test("defaultTranscriptStars names the Star whose default channel changed", () => {
+    NodeAssert.deepEqual(defaultTranscriptStars(batch([transcript("star", "user")]), answer), [
+      "one",
     ]);
     NodeAssert.deepEqual(
-      channelTranscriptStars(batch([transcript("star", "build").replaceAll("/", "\\")]), answer),
-      ["one"],
+      defaultTranscriptStars(batch([transcript("star-2", "main").replaceAll("/", "\\")]), answer),
+      ["two"],
     );
-    NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star", "user")]), answer), []);
+    // Another Star's default channel's name is an ordinary channel here.
+    NodeAssert.deepEqual(defaultTranscriptStars(batch([transcript("star", "main")]), answer), []);
     NodeAssert.deepEqual(
-      channelTranscriptStars(batch(["star/.pult/channels/work/notes.md", "star/notes.md"]), answer),
+      defaultTranscriptStars(batch([transcript("star", "user-research")]), answer),
       [],
     );
-    NodeAssert.deepEqual(channelTranscriptStars(batch([], true), answer), ["one", "two"]);
-  },
-);
+    // The channel's folder itself, made or removed whole.
+    NodeAssert.deepEqual(defaultTranscriptStars(batch(["star/.pult/channels/user"]), answer), [
+      "one",
+    ]);
+    NodeAssert.deepEqual(
+      defaultTranscriptStars(batch(["star/old.pult/channels/user/x.md", "star/notes.md"]), answer),
+      [],
+    );
+    NodeAssert.deepEqual(defaultTranscriptStars(batch([], true), answer), ["one", "two"]);
+  });
+
+  NodeTest.test(
+    "channelTranscriptStars names the Star whose channel but its default one had a transcript written",
+    () => {
+      NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star-2", "work")]), answer), [
+        "two",
+      ]);
+      NodeAssert.deepEqual(
+        channelTranscriptStars(batch([transcript("star", "build").replaceAll("/", "\\")]), answer),
+        ["one"],
+      );
+      NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star", "user")]), answer), []);
+      NodeAssert.deepEqual(channelTranscriptStars(batch([transcript("star", "main")]), answer), [
+        "one",
+      ]);
+      NodeAssert.deepEqual(
+        channelTranscriptStars(
+          batch(["star/.pult/channels/work/notes.md", "star/notes.md"]),
+          answer,
+        ),
+        [],
+      );
+      NodeAssert.deepEqual(channelTranscriptStars(batch([], true), answer), ["one", "two"]);
+    },
+  );
+});
 
 NodeTest.describe("decodeAbout", () => {
   NodeTest.test("reads the features", () => {
@@ -164,6 +176,7 @@ const star = {
   root: "/Users/a/.pult/stars/star",
   projectId: "p1",
   instructions: "/Users/a/.pult/stars/star/instructions.md",
+  defaultChannel: "user",
   channels: [
     { slug: "user", threadId: "t1", sleeps: { at: "2026-11-02T00:10:00.000Z" } },
     { slug: "work", threadId: "t2", sleeps: { heldBy: "run" } },
@@ -266,6 +279,8 @@ NodeTest.describe("decodeStars", () => {
       { ...stars, directory: 1 },
       { ...stars, hidden: "p1" },
       { ...stars, stars: [{ ...star, projectId: null }] },
+      // An answer without the default channel is an older plugin's, which the page does not read.
+      { ...stars, stars: [{ ...star, defaultChannel: undefined }] },
       { ...stars, stars: [{ ...star, conversations: [1] }] },
       { ...stars, stars: [{ ...star, channels: [{ slug: "work", threadId: "t1", sleeps: {} }] }] },
       { ...stars, stars: [{ ...star, channels: [{ threadId: "t1", sleeps: { heldBy: "run" } }] }] },
@@ -509,30 +524,30 @@ NodeTest.describe("the Stars' routes", () => {
     },
   );
 
-  NodeTest.test("asks a Star to sleep, reading the hold that refused it", async () => {
+  NodeTest.test("asks a Star's channel to sleep, reading the hold that refused it", async () => {
     const slept = await askOver(
       () => json({ slept: true }),
-      () => sleepStarOn(credential, "s1"),
+      () => sleepChannelOn(credential, "s1", "main"),
     );
     NodeAssert.deepEqual(
-      slept.asked.map((each) => [each.method, each.url]),
-      [["POST", "http://127.0.0.1:3773/api/plugins/pult/stars/s1/sleep"]],
+      slept.asked.map((each) => [each.method, each.url, each.body]),
+      [["POST", "http://127.0.0.1:3773/api/plugins/pult/stars/s1/sleep", { channel: "main" }]],
     );
     NodeAssert.deepEqual(slept.result, { slept: true });
     const held = await askOver(
       () => json({ slept: false, heldBy: "subagent" }),
-      () => sleepStarOn(credential, "s1"),
+      () => sleepChannelOn(credential, "s1", "main"),
     );
     NodeAssert.deepEqual(held.result, { slept: false, heldBy: "subagent" });
     const misshapen = await askOver(
       () => json({ slept: false }),
-      () => sleepStarOn(credential, "s1"),
+      () => sleepChannelOn(credential, "s1", "main"),
     );
     NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
   });
 
   NodeTest.test(
-    "asks the model a page's own wake of `user` takes at its mode, the options kept",
+    "asks the model a page's own wake of a channel takes at its mode, the options kept",
     async () => {
       const chosen = {
         instanceId: "codex",
@@ -541,7 +556,7 @@ NodeTest.describe("the Stars' routes", () => {
       };
       const asked = await askOver(
         () => json({ model: chosen }),
-        () => readWakeModel(credential, "s1", "full-access"),
+        () => readWakeModel(credential, "s1", "full-access", "review"),
       );
       NodeAssert.deepEqual(
         asked.asked.map((each) => [each.method, each.url, each.body]),
@@ -549,24 +564,19 @@ NodeTest.describe("the Stars' routes", () => {
           [
             "POST",
             "http://127.0.0.1:3773/api/plugins/pult/stars/s1/model",
-            { runtimeMode: "full-access" },
+            { runtimeMode: "full-access", channel: "review" },
           ],
         ],
       );
       NodeAssert.deepEqual(asked.result, chosen);
-      const channel = await askOver(
-        () => json({ model: chosen }),
-        () => readWakeModel(credential, "s1", "auto", "review"),
-      );
-      NodeAssert.deepEqual(channel.asked[0]?.body, { runtimeMode: "auto", channel: "review" });
       const none = await askOver(
         () => json({ model: null }),
-        () => readWakeModel(credential, "s1", "auto"),
+        () => readWakeModel(credential, "s1", "auto", "main"),
       );
       NodeAssert.equal(none.result, null);
       const misshapen = await askOver(
         () => json({}),
-        () => readWakeModel(credential, "s1", "auto"),
+        () => readWakeModel(credential, "s1", "auto", "main"),
       );
       NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
     },
