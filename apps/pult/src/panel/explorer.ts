@@ -14,14 +14,22 @@ import {
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import {
   Action2,
+  isIMenuItem,
+  MenuId,
+  MenuRegistry,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
-import { RawContextKey } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import {
+  ContextKeyExpr,
+  RawContextKey,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
 import {
   StorageScope,
   StorageTarget,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/storage/common/storage";
+import { getVisbileViewContextKey } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/contextkeys";
 import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/views";
+import { VIEW_ID as FILE_VIEW_ID } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/files/common/files";
 import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/lifecycle/common/lifecycle";
 
 import { checkoutName, checkoutsOf } from "../changes/checkouts.ts";
@@ -39,6 +47,7 @@ import {
 } from "../files/paths.ts";
 import { environmentHome } from "../files/server.ts";
 import { knownRoots, projectRootPaths } from "../files/workspace.ts";
+import { VSCodeModeContext } from "../mode.ts";
 import { isHiddenProject } from "../stars/hidden.ts";
 import { starStore } from "../stars/model.ts";
 import { type ProjectIconSource, threadProjectIcon } from "../threads/projectIcon.ts";
@@ -57,6 +66,31 @@ import { closeShelf, openShelf, shelfOrder } from "./shelves.tsx";
 /** The panel's own view container, and its one view, in the sidebar: the Pult tab. */
 export const PANEL_ID = "pult.panel";
 const EXPLORER_ID = "workbench.view.explorer";
+const EXPLORER_HEADER_ACTIONS = [
+  "workbench.files.action.createFileFromExplorer",
+  "workbench.files.action.createFolderFromExplorer",
+  "workbench.files.action.collapseExplorerFolders",
+];
+
+/** Route Explorer's file actions to its container title, even with Outline or Timeline open. */
+export function registerExplorerHeaderActions(): void {
+  const viewItems = MenuRegistry.getMenuItems(MenuId.ViewTitle);
+  for (const id of EXPLORER_HEADER_ACTIONS) {
+    const item = viewItems.find((entry) => isIMenuItem(entry) && entry.command.id === id);
+    if (item === undefined || !isIMenuItem(item))
+      throw new Error(`Pult: Explorer title action ${id} is missing.`);
+    MenuRegistry.appendMenuItem(MenuId.ViewContainerTitle, {
+      ...item,
+      when: ContextKeyExpr.and(
+        ContextKeyExpr.equals("viewContainer", EXPLORER_ID),
+        ContextKeyExpr.has(getVisbileViewContextKey(FILE_VIEW_ID)),
+        VSCodeModeContext.toNegated(),
+      ),
+    });
+    item.when = ContextKeyExpr.and(item.when, VSCodeModeContext);
+  }
+}
+
 /** The explorer container's other views, which the Explorer tab does not show. */
 const HIDDEN_VIEW_IDS = ["outline", "timeline", "workbench.explorer.openEditorsView"];
 

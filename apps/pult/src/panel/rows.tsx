@@ -23,8 +23,8 @@ import { Parts } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services
 import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
-import logoUrl from "../../assets/pult/logo-color.svg";
 import { updateOffer } from "../desktop/updates.ts";
+import { allowNativeScroll } from "../nativeScroll.ts";
 import { PANEL_ID } from "./explorer.ts";
 import { panelTabStore, PanelTabs, type PanelTabStore } from "./PanelTabs.tsx";
 import { TrayShelves } from "./TrayShelves.tsx";
@@ -81,24 +81,24 @@ function RowButton({
   );
 }
 
-/**
- * The left panel's header: room for the desktop's traffic lights
- * (`--pult-traffic-lights`, `src/desktop/titleBar.ts`), Collapse Panel,
- * Pult's logo and, rightmost, New (`showNewMenu`). In the desktop it drags
- * the window, its buttons excepted.
- */
-function PanelHeader() {
+/** The header sits before the active tab's native toolbar. In VS Code mode only Pult uses it. */
+function PanelHeader({ store }: { store: PanelTabStore }) {
+  const tabs = useSyncExternalStore(store.subscribe, store.get);
   return (
     <>
       <span className="pult-panel-header-lights" />
-      <RowButton
-        title="Collapse Panel"
-        icon="layout-sidebar-left"
-        command="pult-shell.collapsePanel"
-      />
-      <img className="pult-panel-header-logo" src={logoUrl} alt="Pult" draggable={false} />
+      <span className="pult-vscode-collapse">
+        <RowButton
+          title="Collapse Panel"
+          icon="layout-sidebar-left"
+          command="pult-shell.collapsePanel"
+        />
+      </span>
+      <PanelTabs store={store} />
       <span className="pult-panel-row-spacer" />
-      <RowButton title="New" icon="add" menu={showNewMenu} />
+      {tabs.some((tab) => tab.active && tab.id === PANEL_ID) && (
+        <RowButton title="New" icon="add" menu={showNewMenu} />
+      )}
     </>
   );
 }
@@ -155,7 +155,7 @@ function UpdateButton() {
  * The left panel's bottom row, the tray: every icon in it is something not
  * showing, which a click shows. The closed shelves' icons at
  * its left end (`TrayShelves.tsx`), then in Pult.app the update's button while there is
- * one, in VS Code's mode the tabs beside the gear (`PanelTabs.tsx`), and
+ * one, Collapse Panel in Pult mode or the tabs in VS Code mode, and
  * rightmost the gear, which opens the Pult settings page.
  */
 function Tray({ store }: { store: PanelTabStore }) {
@@ -164,6 +164,13 @@ function Tray({ store }: { store: PanelTabStore }) {
       <TrayShelves />
       <span className="pult-panel-row-spacer" />
       <UpdateButton />
+      <span className="pult-tray-collapse">
+        <RowButton
+          title="Collapse Panel"
+          icon="layout-sidebar-left"
+          command="pult-shell.collapsePanel"
+        />
+      </span>
       <PanelTabs store={store} />
       <RowButton title="Settings" icon="settings-gear" command="pult-shell.selectSettings" />
     </>
@@ -171,20 +178,10 @@ function Tray({ store }: { store: PanelTabStore }) {
 }
 
 /**
- * The left panel's own parts around the sidebar part. The part keeps a 35px
- * title for every tab, which is the panel's top row: while the Pult tab is
- * open the header (`PanelHeader`) stands in it, in place of the tab's name
- * and buttons; any other tab's own title shows, leaving the traffic lights
- * their room (`panel.css`). Its right-click menu goes in Pult's mode, since
- * in the desktop the title drags the window. Below the part, the tray
- * (`Tray`), a view added to the layout's
- * grid with the grid's own `addView` and shown with the part, so a
- * collapsed panel leaves no column behind. While the panel is collapsed,
- * Expand Panel sits at the window's top-left over the room the top-left
- * editor group's tabs row leaves it (`src/style.css`). Collapsing or
- * expanding saves the workbench's state at once, so the next start keeps it,
- * and the panel keeps its width while collapsed (`keepPanelWidth`). Started
- * once the workbench is up.
+ * The sidebar's title hosts the header, reusing the active container's native toolbar.
+ * The tray is a separate grid view, hidden with the sidebar. Expand Panel appears over
+ * the top-left editor group's tabs while the sidebar is collapsed. Its width and
+ * visibility are saved so it reopens as left.
  */
 export async function startPanelRows(): Promise<void> {
   const [layout, panes, storage] = await Promise.all([
@@ -202,10 +199,12 @@ export async function startPanelRows(): Promise<void> {
   )
     return;
 
+  const store = await panelTabStore();
   const header = document.createElement("div");
   header.className = "pult-panel-header";
-  title.append(header);
-  createRoot(header).render(<PanelHeader />);
+  title.prepend(header);
+  allowNativeScroll(title);
+  createRoot(header).render(<PanelHeader store={store} />);
   // Ahead of the part's own listener on the title, which opens the menu.
   title.addEventListener(
     "contextmenu",
@@ -219,7 +218,7 @@ export async function startPanelRows(): Promise<void> {
 
   const tray = rowView("pult-panel-tray");
   workbenchGrid.addView(tray, ROW_HEIGHT, sideBarPartView, Direction.Down);
-  createRoot(tray.element).render(<Tray store={await panelTabStore()} />);
+  createRoot(tray.element).render(<Tray store={store} />);
 
   const expand = document.createElement("div");
   expand.className = "pult-panel-expand";

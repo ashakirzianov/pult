@@ -812,12 +812,6 @@
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-/* Close, which the workbench lists among the tab's own actions, before its
-   view's (src/panel/view.tsx), goes last; its label names its key, "Close (Escape)". */
-.part.sidebar > .composite.title .action-item:has(> a.codicon-close[aria-label^="Close"]) {
-  order: 1;
-}
-
 /* The Explorer shelf (src/panel/ExplorerShelf.tsx): an environment, its open files indented under it, one compact row each, selected on the cards' background. */
 .pult-explorer-entries {
   margin: 0;
@@ -923,33 +917,44 @@
   box-sizing: border-box;
 }
 
-/* The top row is the sidebar's title: the Pult tab's header (src/panel/rows.tsx) in place of the
-   tab's name and buttons while that tab is open, else the tab's own title, after the traffic lights.
-   Its buttons' glyphs line up with the tray's (`.pult-panel-tray`). */
+/* The shared header and native title toolbar sit in the same sidebar row. */
 .pult-panel-header {
   display: flex;
   flex: 1;
   align-items: center;
   gap: 2px;
+  min-width: 0;
   box-sizing: border-box;
   height: 100%;
+}
+
+.monaco-workbench .part.sidebar > .composite.title {
   padding: 0 calc(var(--pult-panel-inset) - 5px);
 }
 
-.part.sidebar:not(.pult-header-in-title) > .composite.title > .pult-panel-header {
-  display: none;
-}
-
-.part.sidebar.pult-header-in-title > .composite.title {
-  padding: 0;
-}
-
-.part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header) {
-  display: none;
-}
-
-.part.sidebar:not(.pult-header-in-title) > .composite.title {
+.pult-mode-vscode .part.sidebar:not(.pult-header-in-title) > .composite.title {
   padding-left: calc(8px + var(--pult-traffic-lights, 0px));
+}
+
+.pult-mode-vscode .part.sidebar:not(.pult-header-in-title) .pult-panel-header,
+.pult-mode-vscode .part.sidebar.pult-header-in-title > .composite.title > :not(.pult-panel-header),
+.pult-mode-vscode .pult-panel-header > .pult-panel-tabs,
+.pult-mode-vscode .pult-tray-collapse,
+.monaco-workbench:not(.pult-mode-vscode) .pult-vscode-collapse {
+  display: none;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .pult-panel-header > .pult-panel-tabs {
+  gap: 1px;
+  min-width: 24px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.pult-panel-header .pult-panel-tab {
+  min-width: 24px;
 }
 
 /* In the desktop the top row drags the window, as a title bar does, its buttons excepted; in
@@ -963,18 +968,11 @@
   -webkit-app-region: no-drag;
 }
 
-/* Collapse Panel 2px after the traffic lights, where Expand Panel sits (`.pult-panel-expand`), or at the padding without them. */
+/* Leave room for the desktop traffic lights before the header's controls. */
 .pult-panel-header-lights {
   flex: none;
   width: max(0px, calc(var(--pult-traffic-lights, 0px) + 7px - var(--pult-panel-inset)));
   margin-right: -2px;
-}
-
-.pult-panel-header-logo {
-  height: 14px;
-  margin-left: 4px;
-  pointer-events: none;
-  user-select: none;
 }
 
 .pult-panel-row-spacer {

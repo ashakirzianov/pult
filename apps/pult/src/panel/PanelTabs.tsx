@@ -31,7 +31,7 @@ interface PanelTab {
 }
 
 /**
- * The sidebar's view containers as the left panel's tray lists them:
+ * The sidebar's view containers as the left panel lists them:
  * those the stock activity bar would show (a container that is not hidden when
  * empty, Extensions among them, or one with a view to show), the user's
  * unpinned ones left out unless open,
@@ -136,17 +136,7 @@ export async function panelTabStore() {
 
 export type PanelTabStore = Awaited<ReturnType<typeof panelTabStore>>;
 
-/**
- * The left panel's tabs, in its tray beside the gear (`rows.tsx`): a button per
- * sidebar tab, the open one on the background the others take on hover, in
- * place of VS Code's activity bar, which the shell hides
- * (`workbench.activityBar.location`), since at the sidebar's top or bottom
- * it brings the workbench's title bar with it. VS Code's mode alone shows
- * them (`style.css`): in Pult's every tab's Close goes back to the Pult tab,
- * the Explorer shelf's rows lead to the Explorer tab, and a thread's Source
- * Control button to the changes view. Source Control's opens on every
- * checkout's changes, its filter dropped.
- */
+/** Panel tabs in Pult's header or, in VS Code mode, in the tray. Source Control opens on all checkouts. */
 export function PanelTabs({ store }: { store: PanelTabStore }) {
   const tabs = useSyncExternalStore(store.subscribe, store.get);
   return (

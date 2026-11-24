@@ -4,11 +4,9 @@ import {
   IPaneCompositePartService,
   IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
-import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { KeyCode } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import {
   Action2,
-  MenuId,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
@@ -30,6 +28,7 @@ import {
   followExplorerScope,
   PANEL_ID,
   registerExplorerCommands,
+  registerExplorerHeaderActions,
   showThreads,
 } from "./explorer.ts";
 import { mountFilterCard } from "./filterCard.tsx";
@@ -45,23 +44,10 @@ import "./panel.css";
 const THREADS_ORDER = -1;
 
 /**
- * The left panel: the sidebar part, VS Code's own, between two rows of the
- * shell's (`rows.tsx`): the Pult tab's header, in that tab's title (the
- * desktop's traffic lights, Collapse Panel, Pult's logo, the top group's
- * closed shelves' icons and the New menu),
- * every other tab's own title the panel's top row; and below, the tray, the
- * tabs switching the sidebar between view containers in place of VS Code's
- * activity bar (`PanelTabs.tsx`), the bottom group's closed shelves' icons
- * (`TrayShelves.tsx`), and the gear, which opens the Pult settings page. The Pult tab is the shell's own
- * container, with one React view (the Explorer card and the thread cards)
- * and Pult's mark as its icon; the Explorer tab is VS Code's, rooted by
- * `explorer.ts`, its filter a card above the tree (`filterCard.tsx`). Every
- * other tab of the sidebar closes back to the Pult tab, which in Pult's
- * mode has no button of its own. Collapsing is the sidebar's: the header's
- * toggle, Cmd+B and the palette's Collapse Panel; while it is collapsed,
- * Expand Panel sits at the window's top-left (`rows.tsx`). Cmd+1 to Cmd+9
- * jump to the panel's rows (`jump.ts`). Registered before the workbench
- * starts.
+ * Pult's sidebar container, with one React view. In Pult mode the shared header
+ * switches containers and shows the active container's toolbar (`rows.tsx`).
+ * Escape from another sidebar tab returns to Pult. Cmd+1 to Cmd+9 jump to rows
+ * in Pult's view (`jump.ts`). Registered before the workbench starts.
  */
 export function registerPanel(): void {
   registerCustomView({
@@ -85,6 +71,7 @@ export function registerPanel(): void {
   void showPultTabOnStart();
   registerCloseTabAction();
   registerExplorerCommands();
+  registerExplorerHeaderActions();
   registerJumps();
   void followExplorerScope();
   void mountFilterCard();
@@ -113,14 +100,7 @@ async function showPultTabOnStart(): Promise<void> {
   await panes.openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, false);
 }
 
-/**
- * Close, an X last in the title of every sidebar tab but Pult, the main
- * one, which it shows instead, and Escape while the sidebar has focus, but
- * not while an input does or a tree's find box is open, which take it
- * first; a list's selection does not, or Escape would never get past it.
- * In Pult's mode only, as VS Code's tabs have none. Not in the palette:
- * Pult: Show Pult Tab is.
- */
+/** Escape goes back to Pult from a focused sidebar, after inputs and tree find have handled it. */
 function registerCloseTabAction(): void {
   registerAction2(
     class extends Action2 {
@@ -128,7 +108,6 @@ function registerCloseTabAction(): void {
         super({
           id: "pult-shell.closeSidebarTab",
           title: { value: "Close", original: "Close" },
-          icon: Codicon.close,
           keybinding: {
             primary: KeyCode.Escape,
             when: ContextKeyExpr.and(
@@ -141,16 +120,6 @@ function registerCloseTabAction(): void {
             // Over the lists' own Escape, which clears their selection.
             weight: KeybindingWeight.WorkbenchContrib + 1,
           },
-          menu: {
-            id: MenuId.ViewContainerTitle,
-            when: ContextKeyExpr.and(
-              ContextKeyExpr.equals("viewContainerLocation", "sidebar"),
-              ContextKeyExpr.notEquals("viewContainer", PANEL_ID),
-              ContextKeyExpr.not("pult.vscodeMode"),
-            ),
-            group: "navigation",
-            order: 1000,
-          },
         });
       }
 
@@ -161,7 +130,7 @@ function registerCloseTabAction(): void {
   );
 }
 
-/** The palette's Collapse Panel and Expand Panel, which the panel's header and the window's top-left show as buttons (`rows.tsx`). */
+/** The palette's Collapse Panel and Expand Panel, which the panel and the window's top-left show as buttons (`rows.tsx`). */
 function registerSidebarToggle(id: string, title: string, hide: boolean): void {
   const sidebarVisible = ContextKeyExpr.equals("sideBarVisible", true);
   registerAction2(

@@ -415,41 +415,47 @@ html.dark[data-theme-id="t3-chat"] {
   display: none;
 }
 
-/* The Explorer tab's title, the workspace's name while the file view is the
-   tab's only view (the part carries VS Code's own class for that case), is
-   "Explorer" as the tab is named; and its buttons are New File, New Folder
-   and Collapse Folders: Refresh and "Views and More Actions…" go. */
+/* In Pult mode the tab strip names the container. The native toolbar keeps the
+   active container's actions, including per-view actions when VS Code merges a
+   single view into its container. Multi-view sections keep their own controls. */
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .composite.title > .title-label,
 .monaco-workbench:not(.pult-mode-vscode)
-  .part.sidebar.preserve-merged-workspace-name-case
+  .part.sidebar
   > .composite.title
-  h2 {
-  font-size: 0;
-}
-
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.sidebar.preserve-merged-workspace-name-case
-  > .composite.title
-  h2::before {
-  content: "Explorer";
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.sidebar.preserve-merged-workspace-name-case
-  > .composite.title
-  .action-item:has(> .codicon-refresh),
-.monaco-workbench:not(.pult-mode-vscode)
-  .part.sidebar.preserve-merged-workspace-name-case
-  > .composite.title
-  .action-item:has(.codicon-toolbar-more) {
+  > .composite-bar-container,
+.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tray > .pult-panel-tabs[role="tablist"] {
   display: none;
 }
 
-/* The tabs' buttons in the left panel's tray (src/panel/PanelTabs.tsx): every tab's Close goes back
-   to the Pult tab, the Explorer shelf's rows lead to the Explorer tab, and a thread's Source Control
-   button, in its composer bar, to the changes view. */
-.monaco-workbench:not(.pult-mode-vscode) .pult-panel-tabs[role="tablist"] {
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .composite.title > .title-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  /* Reserve space for five tabs before letting a long toolbar scroll. */
+  max-width: max(26px, calc(100% - var(--pult-traffic-lights, 0px) - 124px));
+  padding-left: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+/* When the toolbar overflows, keep its first action at the scroll origin. */
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar
+  > .title
+  > .title-actions
+  .actions-container {
+  justify-content: safe end;
+}
+
+.monaco-workbench:not(.pult-mode-vscode) .part.sidebar > .title > .title-actions .action-item {
+  margin-right: 0;
+}
+
+/* Explorer's file actions: refresh remains available from the palette and tree. */
+.monaco-workbench:not(.pult-mode-vscode)
+  .part.sidebar.preserve-merged-workspace-name-case
+  > .composite.title
+  .action-item:has(> .codicon-refresh) {
   display: none;
 }
 
