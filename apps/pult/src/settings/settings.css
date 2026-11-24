@@ -10,11 +10,15 @@
 }
 
 /* The pane's element is the page's native scroller (src/nativeScroll.ts). */
-.pult-settings-pane {
+.pult-settings-pane,
+.pult-star-settings {
   --pult-settings-hairline: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
   --pult-settings-fill: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
   --pult-settings-control: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
   --pult-settings-control-hover: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+}
+
+.pult-settings-pane {
   height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;

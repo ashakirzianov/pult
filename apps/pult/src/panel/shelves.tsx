@@ -11,13 +11,17 @@ import { flatStill } from "../stars/flat/star.ts";
 import markCss from "../stars/flat/star.css?raw";
 
 import {
+  closedShelves,
   closeIn,
   DEFAULT_SHELF_ORDER,
+  groupOf,
   moveIn,
   openIn,
+  openShelves,
   PANEL_SHELVES,
   type PanelShelf,
   parseShelfOrder,
+  type ShelfGroup,
   type ShelfOrder,
 } from "./order.ts";
 
@@ -78,12 +82,13 @@ function loadOrder(): ShelfOrder {
     return readShelfOrder(ORDER_KEY, PANEL_SHELVES, DEFAULT_SHELF_ORDER);
   if (localStorage.getItem(OLD_ORDER_KEY) !== null) {
     const order = readShelfOrder(OLD_ORDER_KEY, PANEL_SHELVES, DEFAULT_SHELF_ORDER);
-    const open = PANEL_SHELVES.filter((name) => order.open.includes(name));
+    const orderedOpen = openShelves(order, "top");
+    const open = PANEL_SHELVES.filter((name) => orderedOpen.includes(name));
     const previous = [...PANEL_SHELVES.slice(0, -2), "settled", "limits"].filter((name) =>
-      order.open.includes(name as PanelShelf),
+      orderedOpen.includes(name as PanelShelf),
     );
-    const migrated = previous.every((name, index) => order.open[index] === name)
-      ? { open, closed: order.closed }
+    const migrated = previous.every((name, index) => orderedOpen[index] === name)
+      ? { ...order, top: [...open, ...closedShelves(order)] }
       : order;
     localStorage.setItem(ORDER_KEY, JSON.stringify(migrated));
     return migrated;
@@ -109,31 +114,14 @@ function parseJson(text: string): unknown {
 /** Where a shelf can be dropped: its panel, or its panel's tray. */
 export type ShelfPlace = "open" | "tray";
 
-const listOf = (place: ShelfPlace) => (place === "open" ? "open" : "closed");
+type DropTarget = { readonly place: ShelfPlace; readonly at: number };
 
-/**
- * A shelf being dragged, by its header in the panel or its icon in the tray,
- * and where a drop would put it: before `before` in `place`'s list, at its
- * end while null, the drop line `at` that many pixels into the place's
- * content along its axis; no target while the pointer is over no place or a
- * drop there would change nothing.
- */
 interface ShelfDrag<Name extends string> {
   readonly shelf: Name;
-  readonly target: {
-    readonly place: ShelfPlace;
-    readonly before: Name | null;
-    readonly at: number;
-  } | null;
+  readonly target: DropTarget | null;
 }
 
-/**
- * One panel's shelves in their two lists, kept in localStorage under `key`:
- * the open ones in the panel's order, top to bottom, and the closed ones in
- * its tray's order. Opening a shelf puts it at the panel's end
- * (`openIn`), closing one at the tray's end; dragging moves it within
- * or between them. A drag stays in its panel: the other's places take no drop.
- */
+/** One panel's remembered placement, open state and drag. Each panel accepts only its own drags. */
 export function createShelves<Name extends string>(key: string, initial: ShelfOrder<Name>) {
   let order = initial;
   /** The latest ask to bring an opened shelf into view, numbered so a shelf answers each once. */
@@ -165,23 +153,17 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
         drag !== null &&
         next.shelf === drag.shelf &&
         next.target?.place === drag.target?.place &&
-        next.target?.before === drag.target?.before &&
         next.target?.at === drag.target?.at);
     if (same) return;
     drag = next;
     for (const listener of listeners) listener();
   }
 
-  /** Where a drop at the pointer puts `shelf` in `place`, null where it changes nothing. */
-  function aim(
-    event: React.DragEvent<HTMLElement>,
-    place: ShelfPlace,
-    shelf: Name,
-  ): ShelfDrag<Name>["target"] {
+  /** Project the pointer onto the shown shelves to find the new order and the drop line. */
+  function aim(event: React.DragEvent<HTMLElement>, place: ShelfPlace, shelf: Name) {
     const vertical = place === "open";
     const container = event.currentTarget;
     const box = container.getBoundingClientRect();
-    // Along the place's axis, in the container's content, its scroll included.
     const reverse = !vertical && getComputedStyle(container).flexDirection === "row-reverse";
     const offset = (edge: number) =>
       vertical
@@ -198,18 +180,48 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
         return { name: element.dataset.shelf as Name, start, end };
       },
     );
-    const before = shown.find((each) => (each.start + each.end) / 2 > pointer)?.name ?? null;
-    const list = listOf(place);
-    const next = moveIn(order, shelf, list, before);
+    const gap = container.querySelector(":scope > .pult-shelf-gap")?.getBoundingClientRect();
+    const inGap = gap !== undefined && event.clientY >= gap.top && event.clientY <= gap.bottom;
+    const anchor = shown.find((each) => each.end >= pointer) ?? shown.at(-1);
+    const group: ShelfGroup = inGap
+      ? event.clientY < (gap.top + gap.bottom) / 2
+        ? "top"
+        : "bottom"
+      : anchor === undefined
+        ? groupOf(order, shelf)
+        : groupOf(order, anchor.name);
+    const fromTray = order.closed.includes(shelf);
+    let next: ShelfOrder<Name>;
+    if (!vertical && !fromTray) {
+      next = closeIn(order, shelf);
+    } else {
+      const beforeBottom = inGap && group === "bottom";
+      const relativeTo = inGap ? (beforeBottom ? order.bottom[0] : undefined) : anchor?.name;
+      const after = !inGap && anchor !== undefined && pointer > (anchor.start + anchor.end) / 2;
+      const moved = moveIn(order, shelf, group, relativeTo ?? null, after);
+      next = vertical ? openIn(moved, shelf) : moved;
+    }
     if (next === order) return null;
-    // The shown shelves around the one dropped, where the drop puts it.
-    const placed = next[list].filter(
+    const placed = vertical ? openShelves(next, group) : closedShelves(next);
+    const visible = placed.filter(
       (each) => each === shelf || shown.some((other) => other.name === each),
     );
-    const index = placed.indexOf(shelf);
+    const index = visible.indexOf(shelf);
     const edge = (name: Name | undefined) => shown.find((each) => each.name === name);
-    const at = edge(placed[index + 1])?.start ?? edge(placed[index - 1])?.end ?? 0;
-    return { place, before, at: reverse ? container.clientWidth - at : at };
+    const at =
+      edge(visible[index + 1])?.start ??
+      edge(visible[index - 1])?.end ??
+      (gap === undefined ? 0 : offset(group === "top" ? gap.top : gap.bottom));
+    return { next, target: { place, at: reverse ? container.clientWidth - at : at } };
+  }
+
+  function stickAction(shelf: Name) {
+    const group = groupOf(order, shelf) === "top" ? "bottom" : "top";
+    return toAction({
+      id: `pult-shell.stickShelf.${shelf}`,
+      label: `Stick to ${group}`,
+      run: () => update(moveIn(order, shelf, group)),
+    });
   }
 
   const shelfDrag = { get: () => drag, subscribe: shelfOrder.subscribe };
@@ -217,11 +229,17 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
   return {
     shelfOrder,
     shelfDrag,
-    /** Closes the shelf, its icon at the tray's end, or at `at` among the closed. */
-    closeShelf(shelf: Name, at?: number): void {
-      update(closeIn(order, shelf, at));
+    stickAction,
+    trayMenu(shelf: Name) {
+      return (event: React.MouseEvent) => {
+        event.preventDefault();
+        void showShelfMenu({ x: event.clientX, y: event.clientY }, [stickAction(shelf)]);
+      };
     },
-    /** Opens the shelf at the panel's end (`openIn`), an open one kept in place, and brings it into view (`useReveal`). */
+    closeShelf(shelf: Name): void {
+      update(closeIn(order, shelf));
+    },
+    /** Opens the shelf in its remembered place and brings it into view. */
     openShelf(shelf: Name): void {
       reveal = { shelf, serial: (reveal?.serial ?? 0) + 1 };
       update(openIn(order, shelf));
@@ -239,20 +257,14 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
         onDragEnd: () => setDrag(null),
       };
     },
-    /**
-     * The handlers of a place a shelf can be dropped in, the panel's shelves
-     * (`open`, top to bottom) or its tray's icons (in the direction they fill), on the
-     * element whose children carrying `data-shelf` are the place's shown
-     * shelves. A drop goes before the first shelf whose middle is past the
-     * pointer, or at the end, and runs `onDrop` with the shelf when it moved.
-     */
+    /** Handle drops on the list or tray containing the direct children marked with `data-shelf`. */
     shelfDropHandlers(place: ShelfPlace, onDrop: (shelf: Name) => void = () => {}) {
       return {
         onDragOver(event: React.DragEvent<HTMLElement>) {
           if (drag === null) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
-          setDrag({ shelf: drag.shelf, target: aim(event, place, drag.shelf) });
+          setDrag({ shelf: drag.shelf, target: aim(event, place, drag.shelf)?.target ?? null });
         },
         onDragLeave(event: React.DragEvent<HTMLElement>) {
           if (drag === null || event.currentTarget.contains(event.relatedTarget as Node | null))
@@ -262,11 +274,13 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
         onDrop(event: React.DragEvent<HTMLElement>) {
           if (drag === null) return;
           event.preventDefault();
-          const { shelf, target } = drag;
+          const { shelf } = drag;
+          const drop = aim(event, place, shelf);
           setDrag(null);
-          if (target === null) return;
-          update(moveIn(order, shelf, listOf(target.place), target.before));
-          onDrop(shelf);
+          if (drop === null) return;
+          const closing = !order.closed.includes(shelf) && drop.next.closed.includes(shelf);
+          update(drop.next);
+          if (closing) onDrop(shelf);
         },
       };
     },
@@ -297,16 +311,18 @@ export function createShelves<Name extends string>(key: string, initial: ShelfOr
 }
 
 /** The Pult tab's shelves, whose tray's rows none of the jumps reach (`jump.ts`). */
+const panelShelves = createShelves(ORDER_KEY, loadOrder());
 export const {
   shelfOrder,
   shelfDrag,
   closeShelf,
   openShelf,
+  trayMenu,
   shelfDragHandlers,
   shelfDropHandlers,
   ShelfDropLine,
   useReveal,
-} = createShelves(ORDER_KEY, loadOrder());
+} = panelShelves;
 
 /** A left panel shelf's header (`ShelfHeaderFrame`), its icon its tray icon's and its Close and drag the Pult tab's. */
 export function ShelfHeader({
@@ -314,7 +330,10 @@ export function ShelfHeader({
   onClose = () => closeShelf(shelf),
   icon = SHELF_ICONS[shelf].icon,
   ...rest
-}: Omit<ComponentProps<typeof ShelfHeaderFrame>, "id" | "drag" | "onClose" | "icon"> & {
+}: Omit<
+  ComponentProps<typeof ShelfHeaderFrame>,
+  "id" | "drag" | "onClose" | "icon" | "stickAction"
+> & {
   shelf: PanelShelf;
   onClose?: () => void;
   /** A codicon before the label, the shelf's own by default. */
@@ -326,6 +345,7 @@ export function ShelfHeader({
       icon={icon}
       onClose={onClose}
       drag={shelfDragHandlers(shelf)}
+      stickAction={() => panelShelves.stickAction(shelf)}
       {...rest}
     />
   );
@@ -334,7 +354,7 @@ export function ShelfHeader({
 /**
  * A shelf's header in either panel: its label,
  * its `actions` and Close, shown on hover or keyboard focus; its right-click
- * its `menu`, then Close Shelf. `title` is its tooltip. `icon` leads the
+ * its `menu`, then placement and Close Shelf. `title` is its tooltip. `icon` leads the
  * label. With `onOpen`, the label is a button running it, `openTitle` its
  * tooltip, highlighted while `selected`: the Explorer shelf's, opening the
  * Explorer tab. Dragged, it moves the shelf (`drag`, `shelfDragHandlers`).
@@ -346,6 +366,7 @@ export function ShelfHeaderFrame({
   actions = null,
   menu = [],
   onClose,
+  stickAction,
   icon,
   drag,
   onOpen,
@@ -358,6 +379,7 @@ export function ShelfHeaderFrame({
   actions?: React.ReactNode;
   menu?: ReadonlyArray<IAction>;
   onClose: () => void;
+  stickAction: () => IAction;
   icon: string;
   drag: { draggable: boolean; onDragStart(event: React.DragEvent): void; onDragEnd(): void };
   onOpen?: (() => void) | undefined;
@@ -380,6 +402,7 @@ export function ShelfHeaderFrame({
         void showShelfMenu({ x: event.clientX, y: event.clientY }, [
           ...menu,
           ...(menu.length > 0 ? [new Separator()] : []),
+          stickAction(),
           toAction({ id: `pult-shell.closeShelf.${id}`, label: "Close Shelf", run: onClose }),
         ]);
       }}

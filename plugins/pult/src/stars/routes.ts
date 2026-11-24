@@ -12,7 +12,11 @@ const decodeCreate = Schema.decodeUnknownEffect(
   Schema.Struct({ ifNone: Schema.optional(Schema.Boolean), name: Schema.optional(Schema.String) }),
 );
 const decodeFields = Schema.decodeUnknownEffect(
-  Schema.Struct({ name: Schema.optional(Schema.String), tint: Schema.optional(Schema.String) }),
+  Schema.Struct({
+    name: Schema.optional(Schema.String),
+    description: Schema.optional(Schema.String),
+    tint: Schema.optional(Schema.String),
+  }),
 );
 const decodeWake = Schema.decodeUnknownEffect(
   Schema.Struct({ runtimeMode: RuntimeMode, channel: Schema.optional(Schema.String) }),
@@ -71,7 +75,7 @@ export const starsRoute = (
       Effect.gen(function* () {
         const body = yield* bodyOf(request, decodeFields);
         if (body._tag === "None")
-          return json({ error: "The body must be JSON: { name?, tint? }." }, 400);
+          return json({ error: "The body must be JSON: { name?, description?, tint? }." }, 400);
         yield* stars.upkeep;
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;

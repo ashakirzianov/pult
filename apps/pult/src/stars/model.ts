@@ -21,6 +21,7 @@ import {
   type Credential,
   PluginAnswerError,
   writeStarRecord,
+  type RecordFields,
   readStars,
   readWakeModel,
   rewritesUserTranscripts,
@@ -585,18 +586,16 @@ class StarsModel {
   }
 
   /**
-   * Writes Name or Tint into the Star's record on the environment, through
+   * Writes editable fields into the Star's record on the environment, through
    * its plugin (`POST /stars/<id>`), which retitles its project too; a
    * failure notifies. Whether it took. `syncing.ts` (`setStarRecord`) runs
    * it on each home after that home's pull, and commits it.
    */
-  async setFields(
-    starId: string,
-    changes: { readonly name?: string; readonly tint?: string },
-    environmentId: string,
-  ): Promise<boolean> {
+  async setFields(starId: string, changes: RecordFields, environmentId: string): Promise<boolean> {
     try {
-      await writeStarRecord(this.credential(environmentId), starId, changes);
+      const recorded = await writeStarRecord(this.credential(environmentId), starId, changes);
+      if (changes.description !== undefined && recorded.description !== changes.description)
+        throw new Error("This environment did not save the description.");
       return true;
     } catch (error) {
       (await getService(INotificationService)).error(
@@ -649,11 +648,8 @@ export const starsRead = () => model.allRead();
 export const starsReadOn = (environmentId: string) => model.readOn(environmentId);
 /** Whether the environment's Stars were answered since it last became ready: its first answer after a connect is the notices' baseline (`notify.ts`). */
 export const starsAnsweredOn = (environmentId: string) => model.answeredOn(environmentId);
-export const setStarFields = (
-  starId: string,
-  changes: { readonly name?: string; readonly tint?: string },
-  environmentId: string,
-) => model.setFields(starId, changes, environmentId);
+export const setStarFields = (starId: string, changes: RecordFields, environmentId: string) =>
+  model.setFields(starId, changes, environmentId);
 /** Whether Refresh Context is offered for the Star: awake, unheld, its home's plugin listing `star-sleep`. */
 export const canSleepStar = (star: Star) => sleepableHome(star) !== undefined;
 /** Refresh Context: ends the Star's current conversation, its next message waking it in a fresh one. */

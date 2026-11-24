@@ -4,8 +4,8 @@
 // while that view is the active editor's. Files host the same rows through a portal from the composer strip. A thread's or a draft's details are upstream's rows
 // (`ThreadDetailsPanel.tsx`, with its own "Choose what to show" and defaults) in one card of
 // upstream's look; a Star's are the shell's cards, which it renders into an element of ours. The
-// canvas clears its lane of them as of upstream's card, and where it has no room for one they do
-// not show. The fork's own web app keeps upstream's card.
+// canvas clears its lane of them as of upstream's card. In a narrow pane the Star shelves
+// overlay the lane so its settings stay reachable. The fork's web app keeps upstream's card.
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   type ComponentProps,
@@ -42,7 +42,7 @@ export const DetailsTarget = createContext<ViewTarget | null>(null);
 /** Upstream's frame's props, which the stub owns. */
 interface ThreadDetailsCardProps {
   threadRef: ScopedThreadRef;
-  /** Upstream's popover's anchor and handle, for its narrow-pane mode, which the cards do not have. */
+  /** Upstream's narrow-pane popover anchor and handle. */
   anchor: RefObject<Element | null>;
   handle: ReturnType<typeof PopoverCreateHandle>;
   /** Upstream measures its densities again when it changes; the card always renders the full one. */
@@ -159,7 +159,7 @@ function DetailsCardResizer({
 }
 
 /** The element the shell renders the right panel's tray into, on the composer buttons' row, as wide as the panel. */
-function DetailsTrayHost({ width }: { readonly width: number }) {
+function DetailsTrayHost({ width }: { readonly width: number | string }) {
   const { detailsCards } = threadViewHost();
   const [element, setElement] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -232,22 +232,26 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
     );
   if (shown?.fileRows !== undefined) return rows && createPortal(rows, shown.fileRows);
   const placement = canvas?.detailsCardPlacement ?? null;
-  // Where the canvas has no room for a card beside its lane, the cards do not show.
-  if (shown === null || placement === null) return null;
+  if (shown === null || (placement === null && (!star || canvas === null))) return null;
+  const overlay = placement === null;
+  const panelWidth = placement?.width ?? `min(calc(100% - 24px), ${detailsCardWidth.get()}px)`;
+  const panelHeight =
+    placement === null ? undefined : `calc(${placement.height}px - var(--pult-bar-height))`;
   return (
     <>
       <aside
         className="absolute z-22 flex flex-col"
         style={{
-          right: placement.right,
-          top: placement.y,
-          width: placement.width,
-          // Above the tray, on the composer buttons' row.
-          maxHeight: `calc(${placement.height}px - var(--pult-bar-height))`,
+          right: placement?.right ?? 12,
+          top: placement?.y ?? 12,
+          width: panelWidth,
+          bottom: overlay ? "var(--pult-bar-height)" : undefined,
+          maxHeight: panelHeight,
+          height: star ? panelHeight : undefined,
         }}
-        data-thread-details-panel="inline"
+        data-thread-details-panel={overlay ? "overlay" : "inline"}
       >
-        <div className="flex min-h-0 flex-col">
+        <div className={star ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-col"}>
           {star ? (
             // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
             <div ref={setIsland} className="pult-details-island pult-details-panel" />
@@ -257,8 +261,10 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
           )}
         </div>
       </aside>
-      <DetailsCardResizer width={placement.width} right={placement.right + placement.width - 3} />
-      <DetailsTrayHost width={placement.width} />
+      {placement === null ? null : (
+        <DetailsCardResizer width={placement.width} right={placement.right + placement.width - 3} />
+      )}
+      <DetailsTrayHost width={panelWidth} />
     </>
   );
 }

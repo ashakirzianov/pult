@@ -22,6 +22,7 @@ const CREATED = "2026-11-01T00:00:00.000Z";
 const routeStar = (id: string, overrides: Partial<RouteStar> = {}): RouteStar => ({
   id,
   name: "",
+  description: "",
   tint: "amber",
   created: CREATED,
   root: `/Users/a/.pult/stars/${id}`,

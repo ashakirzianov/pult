@@ -33,6 +33,7 @@ import {
   environmentKey,
   jumpTargets,
   type JumpTarget,
+  openShelves,
   SETTLED_TAIL_INITIAL_COUNT,
   starKey,
 } from "./order.ts";
@@ -94,7 +95,7 @@ function currentTargets(): JumpTarget<URI>[] {
     ),
     threads,
     selection: selectedCardKey(),
-    open: shelfOrder.get().open,
+    open: [...openShelves(shelfOrder.get(), "top"), ...openShelves(shelfOrder.get(), "bottom")],
     settledCount,
   });
 }

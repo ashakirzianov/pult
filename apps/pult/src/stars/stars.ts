@@ -71,6 +71,7 @@ export interface StarChannel<Thread extends StarThread = ShellThread> {
 export interface Star<Thread extends StarThread = ShellThread> {
   readonly id: string;
   readonly name: string;
+  readonly description: string;
   readonly tint: string;
   readonly created: string;
   readonly homes: ReadonlyArray<StarHome>;
@@ -232,6 +233,7 @@ export function starsOf<Thread extends StarThread>(
     return {
       id: first.id,
       name: first.name,
+      description: first.description ?? "",
       tint: first.tint,
       created: first.created,
       homes,
@@ -252,6 +254,7 @@ export const starsSignature = <Thread extends StarThread>(stars: ReadonlyArray<S
   stars.map((star) => [
     star.id,
     star.name,
+    star.description,
     star.tint,
     star.homes,
     star.channels.map(({ slug, thread }) => [slug, thread.id, thread.working, thread.workingSince]),

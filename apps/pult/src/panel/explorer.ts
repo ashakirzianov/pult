@@ -136,9 +136,7 @@ let provisional: { dispose(): void } | undefined;
  */
 export async function openExplorerShelf(): Promise<void> {
   provisional?.dispose();
-  // Its place in the tray, which only its icon there opens.
-  const at = shelfOrder.get().closed.indexOf("explorer");
-  if (at === -1)
+  if (!shelfOrder.get().closed.includes("explorer"))
     throw new Error("Pult: the Explorer shelf's tray icon opened a shelf that is not closed.");
   openShelf("explorer");
   await exploreEnvironment(undefined);
@@ -147,7 +145,7 @@ export async function openExplorerShelf(): Promise<void> {
     if (panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId() === EXPLORER_ID)
       return;
     wait.dispose();
-    if (openExplorerFiles.get().files.length === 0) closeShelf("explorer", at);
+    if (openExplorerFiles.get().files.length === 0) closeShelf("explorer");
   });
   const wait = {
     dispose() {

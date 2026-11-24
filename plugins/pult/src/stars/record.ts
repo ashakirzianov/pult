@@ -53,6 +53,7 @@ export interface StarRecord {
 
 export interface RecordFields {
   readonly name?: string | undefined;
+  readonly description?: string | undefined;
   readonly tint?: string | undefined;
 }
 

@@ -314,6 +314,7 @@ NodeTest.describe("the sync on a Star's sleep", () => {
         {
           id: "star",
           name: "",
+          description: "",
           tint: "amber",
           created: CREATED,
           root: "/Users/a/.pult/stars/star",

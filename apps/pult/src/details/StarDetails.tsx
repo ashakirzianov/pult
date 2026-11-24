@@ -3,7 +3,7 @@ import { limitsStore } from "../limits/model.ts";
 import { useSyncExternalStore } from "react";
 
 import { askStore } from "../asks/model.ts";
-import { keyOf } from "../panel/order.ts";
+import { keyOf, openShelves } from "../panel/order.ts";
 import { type Activity, age, Status } from "../panel/PanelView.tsx";
 import { StarSchedules } from "../panel/StarSchedules.tsx";
 import { starLook } from "../stars/look.ts";
@@ -13,6 +13,7 @@ import type { CardRows, Star } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { hasUsageProviderIcon, UsageProviderIcon } from "../../view/usageProviders.tsx";
 import { detailsCards } from "./cards.ts";
+import { StarSettings } from "./StarSettings.tsx";
 import { DetailsShelf, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -24,7 +25,7 @@ function run(command: string, ...args: unknown[]): void {
  * `view-right-panel`): its shelves, in their order (`detailsShelves`), each
  * closing into the tray and left out while it holds nothing: its posted asks
  * (`StarAsks`), its channels with their threads (`StarChannels`) and its
- * schedules (`StarSchedules.tsx`).
+ * schedules (`StarSchedules.tsx`), and its settings (`StarSettings`).
  */
 export function StarDetails({
   star,
@@ -44,7 +45,7 @@ export function StarDetails({
   activities: Map<string, Activity>;
   now: number;
 }) {
-  const { open } = useSyncExternalStore(
+  const order = useSyncExternalStore(
     detailsShelves.shelfOrder.subscribe,
     detailsShelves.shelfOrder.get,
   );
@@ -66,16 +67,22 @@ export function StarDetails({
             now={now}
           />
         );
+      case "settings":
+        return <StarSettings key={name} star={star} />;
       case "schedules":
         return <StarSchedules key={name} star={star} now={now} />;
     }
   };
   return (
     <ul
-      className={`pult-details-shelves${dragging ? " pult-details-shelves-dropping" : ""}`}
+      className={`pult-details-shelves${dragging ? " pult-shelf-dragging" : ""}`}
       {...detailsShelves.shelfDropHandlers("open")}
     >
-      {open.map(shelf)}
+      {[
+        ...openShelves(order, "top").map(shelf),
+        <li key="gap" className="pult-shelf-gap" aria-hidden />,
+        ...openShelves(order, "bottom").map(shelf),
+      ]}
       <detailsShelves.ShelfDropLine place="open" />
     </ul>
   );

@@ -142,11 +142,19 @@ export interface RouteChannel {
   readonly sleeps: { readonly at: string } | { readonly heldBy: string };
 }
 
+/** The fields the shelf can edit in a Star's record. */
+export interface RecordFields {
+  readonly name?: string;
+  readonly description?: string;
+  readonly tint?: string;
+}
+
 /** A Star as the write routes answer it: its record, its folder (a host path) and its project. */
 export interface WrittenStar {
   readonly id: string;
   readonly name: string;
   readonly tint: string;
+  readonly description: string | null;
   readonly created: string;
   readonly root: string;
   readonly projectId: string;
@@ -364,6 +372,7 @@ const model: Decode<RouteModel | null> = (value, at) => {
 const writtenStar = struct<WrittenStar>({
   id: string,
   name: string,
+  description: optional(string),
   tint: string,
   created: string,
   root: string,
@@ -373,6 +382,7 @@ const writtenStar = struct<WrittenStar>({
 const routeStar = struct<RouteStar>({
   id: string,
   name: string,
+  description: optional(string),
   tint: string,
   created: string,
   root: string,
@@ -520,11 +530,8 @@ export const createStarOn = (
 ) => ask(credential, "POST", "/stars", decodeStar, options);
 
 /** Rewrites those lines of the Star's record and retitles its project. */
-export const writeStarRecord = (
-  credential: Credential,
-  id: string,
-  fields: { readonly name?: string; readonly tint?: string },
-) => ask(credential, "POST", starPath(id), decodeStar, fields);
+export const writeStarRecord = (credential: Credential, id: string, fields: RecordFields) =>
+  ask(credential, "POST", starPath(id), decodeStar, fields);
 
 /** What Refresh Context answers: the Star's conversation in `user` put to sleep, or left awake by what holds it, the sleep rule's hold as `sleeps` names it. */
 export type SleepAnswer =

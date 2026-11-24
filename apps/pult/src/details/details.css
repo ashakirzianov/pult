@@ -23,21 +23,19 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
 }
 
 .pult-details-shelves {
   position: relative;
-  flex: none;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-/* While a shelf is dragged, a place to drop it even with none open. */
-.pult-details-shelves-dropping {
-  min-height: 28px;
 }
 
 /* The rows of a shelf's content, with room to read. */
@@ -80,7 +78,7 @@
   box-sizing: border-box;
 }
 
-/* The first closed shelf sits at the right edge. */
+/* The first shelf in the remembered order sits at the right edge. */
 .pult-details-tray .pult-tray-shelves {
   width: 100%;
   flex-direction: row-reverse;
@@ -125,4 +123,31 @@
 
 .pult-file-details > .pult-details-tray {
   left: 0;
+}
+
+.pult-star-settings {
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pult-star-settings .pult-settings-row {
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.pult-star-settings .pult-star-settings-field {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.pult-star-settings .pult-settings-input {
+  width: 100%;
+}
+
+.pult-star-settings .pult-settings-swatches {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 1;
+  padding: 2px;
 }

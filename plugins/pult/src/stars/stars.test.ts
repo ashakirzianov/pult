@@ -261,17 +261,26 @@ describe("upkeep", () => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("rewrites a record's name and tint, keeping its other lines, and retitles", () =>
+  it.effect("rewrites a record's editable fields, keeping its other lines, and retitles", () =>
     Effect.gen(function* () {
       const h = yield* harness;
       const star = yield* h.stars.create({ ifNone: true });
       const file = h.path.join(star.root, ".pult/star.yaml");
       yield* h.write(file, `${yield* h.read(file)}# the Star's own line\n`);
-      const renamed = yield* h.stars.setRecord(star, { name: "Vega", tint: "sky" });
-      assert.deepStrictEqual(renamed, { ...star, name: "Vega", tint: "sky" });
+      const renamed = yield* h.stars.setRecord(star, {
+        name: "Vega",
+        description: "Coordinates the fleet",
+        tint: "sky",
+      });
+      assert.deepStrictEqual(renamed, {
+        ...star,
+        name: "Vega",
+        description: "Coordinates the fleet",
+        tint: "sky",
+      });
       assert.match(
         yield* h.read(file),
-        /^name: "Vega"\ndescription: ""\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
+        /^name: "Vega"\ndescription: "Coordinates the fleet"\ntint: "sky"\ncreated: .*\n# the Star's own line\n$/m,
       );
       assert.strictEqual(h.projects.shells[0]?.title, "Vega");
 

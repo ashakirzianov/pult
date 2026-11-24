@@ -13,7 +13,15 @@ import { type ShelfName, threadStore } from "../threads/store.ts";
 import { openExplorerShelf, showThreads } from "./explorer.ts";
 import { selectedCardKey, selectionSnapshot } from "./jump.ts";
 import { hasNoDraftCard, projectDrafts } from "./drafts.ts";
-import { draftCards, draftKey, inboxRows, keyOf, type PanelShelf, starKey } from "./order.ts";
+import {
+  closedShelves,
+  draftCards,
+  draftKey,
+  inboxRows,
+  keyOf,
+  type PanelShelf,
+  starKey,
+} from "./order.ts";
 import { useMinuteClock } from "./PanelView.tsx";
 import { setLimitsShowAll } from "../limits/shelf.ts";
 import {
@@ -25,6 +33,7 @@ import {
   ShelfDropLine,
   shelfDropHandlers,
   shelfOrder,
+  trayMenu,
 } from "./shelves.tsx";
 
 /** What a closed shelf's icon tells: its count as a badge, if any; whether it holds nothing; whether it holds the selected card; and its tooltip. */
@@ -40,10 +49,9 @@ const subscribeToThreads = (listener: () => void) => threadStore.subscribe(liste
 const threadsSnapshot = () => threadStore.get();
 
 /**
- * The closed shelves' icons at the tray's left end (`rows.tsx`), in the order
- * they were closed, the last closed rightmost (`shelfOrder`), the Stars' none
- * while Show Star is off; a click opens the shelf at the end of the Pult tab
- * (`openIn`) and brings it into view, the Explorer shelf's the Explorer tab with
+ * The closed shelves' icons at the tray's left end (`rows.tsx`) in remembered
+ * panel order, top group first, the Stars' none while Show Star is off; a
+ * click opens the shelf in its remembered place and brings it into view, the Explorer shelf's the Explorer tab with
  * it, provisionally (`openExplorerShelf`). Each carries its shelf's count as
  * an outlined badge in the icon’s colour, as Source Control's tab does (Inbox's
  * counting its rows, the secrets and posted asks among them), but Stars, whose asks
@@ -58,7 +66,7 @@ const threadsSnapshot = () => threadStore.get();
  * and with no drag, it draws nothing.
  */
 export function TrayShelves() {
-  const { closed: closedShelves } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  const order = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
@@ -67,7 +75,7 @@ export function TrayShelves() {
     starsShown,
   );
   // The Stars' shelf is no shelf at all while Show Star is off.
-  const closed = closedShelves.filter((shelf) => shelf !== "stars" || starsShown);
+  const closed = closedShelves(order).filter((shelf) => shelf !== "stars" || starsShown);
   const state = useSyncExternalStore(subscribeToThreads, threadsSnapshot);
   const { files } = useSyncExternalStore(openExplorerFiles.subscribe, openExplorerFiles.get);
   const limits = useSyncExternalStore(limitsStore.subscribe, limitsStore.get);
@@ -178,6 +186,7 @@ export function TrayShelves() {
             type="button"
             data-shelf={shelf}
             {...shelfDragHandlers(shelf)}
+            onContextMenu={trayMenu(shelf)}
             title={title}
             aria-label={`Open the ${SHELF_ICONS[shelf].label} shelf`}
             className={`pult-panel-tab${selected ? " pult-panel-tab-active" : ""}${empty ? " pult-tray-shelf-empty" : ""}`}

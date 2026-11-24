@@ -48,6 +48,7 @@ import {
   draftKey,
   inboxRows,
   keyOf,
+  openShelves,
   type PanelShelf,
   SETTLED_TAIL_INITIAL_COUNT,
   SETTLED_TAIL_PAGE_COUNT,
@@ -57,6 +58,7 @@ import {
 } from "./order.ts";
 import {
   SHELF_ICONS,
+  shelfDrag,
   ShelfDropLine,
   shelfDropHandlers,
   ShelfHeader,
@@ -145,7 +147,7 @@ export function subagentsByRoot(
 
 /**
  * The Pult tab's view, under the sidebar's title row: its shelves in the
- * order they were opened (`shelfOrder`, `shelves.tsx`), each left out while
+ * remembered top and bottom groups (`shelfOrder`, `shelves.tsx`), each left out while
  * it holds nothing and, closed, its icon in the tray (`TrayShelves.tsx`),
  * one bordered element of shelves stacked from the top, a divider between
  * them, the panel's notice, Not connected or No threads, after them. The Stars' shelf holds the
@@ -165,8 +167,8 @@ export function subagentsByRoot(
  * is selected its root's card is the expanded one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
  * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A
- * shelf's header dragged moves it among its group's open shelves, or into
- * its group's tray to close it, and a tray icon dragged here opens its shelf
+ * shelf's header dragged moves it within or between groups, or into the
+ * tray to close it, and a tray icon dragged here opens its shelf
  * where it drops within its group.
  */
 export function PanelView() {
@@ -280,9 +282,11 @@ export function PanelView() {
         return unreachable(row);
     }
   });
-  const { open } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  const order = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
   // The Stars' shelf is no shelf at all while Show Star is off.
-  const shown = open.filter((shelf) => shelf !== "stars" || starsShown);
+  const shown = (group: "top" | "bottom") =>
+    openShelves(order, group).filter((shelf) => shelf !== "stars" || starsShown);
   const shelf = (name: PanelShelf): React.ReactNode => {
     switch (name) {
       case "stars":
@@ -365,9 +369,16 @@ export function PanelView() {
     ) : null;
   return (
     <div className="pult-panel">
-      <ul className="pult-panel-cards" {...shelfDropHandlers("open")}>
-        {shown.map(shelf)}
-        {notice}
+      <ul
+        className={`pult-panel-cards${dragging ? " pult-shelf-dragging" : ""}`}
+        {...shelfDropHandlers("open")}
+      >
+        {[
+          ...shown("top").map(shelf),
+          notice,
+          <li key="gap" className="pult-shelf-gap" aria-hidden />,
+          ...shown("bottom").map(shelf),
+        ]}
         <ShelfDropLine place="open" />
       </ul>
     </div>

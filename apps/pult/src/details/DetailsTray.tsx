@@ -1,13 +1,21 @@
 import { useSyncExternalStore } from "react";
 
 import { askStore } from "../asks/model.ts";
+import { closedShelves } from "../panel/order.ts";
 import { drawnHome } from "../stars/stars.ts";
 import { useStarDetails } from "./DetailsView.tsx";
 import { DETAILS_SHELF_ICONS, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
 import { starAsks } from "./StarDetails.tsx";
 
-const { ShelfDropLine, shelfDrag, shelfDragHandlers, shelfDropHandlers, shelfOrder, openShelf } =
-  detailsShelves;
+const {
+  ShelfDropLine,
+  shelfDrag,
+  shelfDragHandlers,
+  shelfDropHandlers,
+  shelfOrder,
+  openShelf,
+  trayMenu,
+} = detailsShelves;
 
 /**
  * The right panel's tray, on the composer buttons' row while the panel shows
@@ -18,7 +26,7 @@ const { ShelfDropLine, shelfDrag, shelfDragHandlers, shelfDropHandlers, shelfOrd
  * there closes its shelf. Empty and with no drag, it draws nothing.
  */
 export function DetailsTray() {
-  const { closed } = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
+  const closed = closedShelves(useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get));
   const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
   const asks = useSyncExternalStore(askStore.subscribe, askStore.get);
   const details = useStarDetails();
@@ -30,6 +38,8 @@ export function DetailsTray() {
         return starAsks(asks, details.star.id).length;
       case "channels":
         return details.rows.channels.filter((row) => row.thread !== null).length;
+      case "settings":
+        return 0;
       case "schedules":
         return schedules.filter((schedule) => schedule.rule?.startsWith("once, ")).length;
     }
@@ -48,13 +58,14 @@ export function DetailsTray() {
             ? schedules.length === 0
             : shelf === "channels"
               ? details.rows.channels.length === 0
-              : count === 0;
+              : shelf !== "settings" && count === 0;
         return (
           <button
             key={shelf}
             type="button"
             data-shelf={shelf}
             {...shelfDragHandlers(shelf)}
+            onContextMenu={trayMenu(shelf)}
             title={label}
             aria-label={`Open the ${label} shelf`}
             className={`pult-panel-tab${empty ? " pult-tray-shelf-empty" : ""}`}

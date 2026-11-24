@@ -158,6 +158,7 @@ NodeTest.describe("readAbout", () => {
 const star = {
   id: "s1",
   name: "Vega",
+  description: "A helpful Star",
   tint: "mint",
   created: "2026-11-01T00:00:00.000Z",
   root: "/Users/a/.pult/stars/star",
@@ -390,6 +391,7 @@ NodeTest.describe("the Stars' routes", () => {
     const written = {
       id: star.id,
       name: star.name,
+      description: star.description,
       tint: star.tint,
       created: star.created,
       root: star.root,

@@ -25,13 +25,13 @@
   font-size: 13px;
 }
 
-/* A column, so the shelves after the cards can sit at its bottom. */
+/* The gap between shelf groups fills the room the shelves leave. */
 .pult-panel-cards {
   /* For the drop line (`ShelfDropLine`). */
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
+  flex: 1;
   box-sizing: border-box;
   min-height: 0;
   overflow-y: auto;
@@ -40,7 +40,8 @@
   list-style: none;
 }
 
-.pult-panel-cards > * {
+.pult-panel-cards > *,
+.pult-details-shelves > * {
   flex: none;
 }
 
@@ -356,8 +357,18 @@
   cursor: default;
 }
 
+.pult-panel-cards > .pult-shelf-gap,
+.pult-details-shelves > .pult-shelf-gap {
+  flex: 1 0 0;
+}
+
+/* Keep both sides of the boundary reachable even when open shelves fill the panel. */
+.pult-shelf-dragging > .pult-shelf-gap {
+  min-height: 28px;
+}
+
 /* A shelf, in either panel: its header, label, count and Close, then its content. */
-.pult-shelf + .pult-shelf {
+:is(.pult-shelf, .pult-shelf-gap) + .pult-shelf {
   margin-top: 6px;
 }
 
@@ -1040,6 +1051,16 @@
 
 .pult-tray-shelf-empty {
   opacity: 0.5;
+}
+
+.pult-shelf-header[draggable="true"] .pult-shelf-icon,
+.pult-tray-shelves [draggable="true"] {
+  cursor: grab;
+}
+
+.pult-shelf-header[draggable="true"]:active .pult-shelf-icon,
+.pult-tray-shelves [draggable="true"]:active {
+  cursor: grabbing;
 }
 
 /* While a shelf is dragged the run takes the tray's free room, a place to drop it (`TrayShelves.tsx`). */

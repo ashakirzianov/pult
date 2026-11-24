@@ -611,7 +611,12 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
   background: transparent;
 }
 
-.pult-thread-view [data-thread-details-panel="inline"] {
+.pult-thread-view [data-thread-details-panel] {
   box-sizing: border-box;
   padding-left: var(--pult-shelf-inset);
+}
+
+.pult-thread-view [data-thread-details-panel="overlay"] {
+  background: var(--background);
+  box-shadow: -1px 0 var(--pult-composer-outline);
 }

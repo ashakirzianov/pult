@@ -14,78 +14,96 @@ export const PANEL_SHELVES = [
 
 export type PanelShelf = (typeof PANEL_SHELVES)[number];
 
-/**
- * Where each shelf of a panel is: among its open shelves, top to bottom, or
- * its tray's closed ones, left to right; each shelf in exactly one. Closing a
- * shelf appends it to the closed ones' end, opening one puts it at the end of
- * the open ones (`openIn`, `closeIn`).
- */
+export type ShelfGroup = "top" | "bottom";
+
+/** The panel's order, with closed shelves keeping their place in their group. */
 export interface ShelfOrder<Name extends string = PanelShelf> {
-  readonly open: ReadonlyArray<Name>;
+  readonly top: ReadonlyArray<Name>;
+  readonly bottom: ReadonlyArray<Name>;
   readonly closed: ReadonlyArray<Name>;
 }
 
-export const DEFAULT_SHELF_ORDER: ShelfOrder = { open: PANEL_SHELVES, closed: [] };
+export const DEFAULT_SHELF_ORDER: ShelfOrder = { top: PANEL_SHELVES, bottom: [], closed: [] };
 
-/** The order with `shelf` opened at the end of the panel; an open one stays where it is. */
 export function openIn<Name extends string>(
   order: ShelfOrder<Name>,
   shelf: Name,
 ): ShelfOrder<Name> {
-  if (order.open.includes(shelf)) return order;
-  return {
-    open: [...order.open, shelf],
-    closed: order.closed.filter((each) => each !== shelf),
-  };
+  if (!order.closed.includes(shelf)) return order;
+  return { ...order, closed: order.closed.filter((each) => each !== shelf) };
 }
 
-/** The order with `shelf` closed, at the tray's end, or at `at` among the closed; a closed one stays where it is. */
 export function closeIn<Name extends string>(
   order: ShelfOrder<Name>,
   shelf: Name,
-  at: number = order.closed.length,
 ): ShelfOrder<Name> {
   if (order.closed.includes(shelf)) return order;
-  return {
-    open: order.open.filter((each) => each !== shelf),
-    closed: order.closed.toSpliced(at, 0, shelf),
-  };
+  return { ...order, closed: [...order.closed, shelf] };
 }
 
-/**
- * The order with `shelf` dragged into `list`, just before `before`, or at its
- * end while `before` is null; the order itself when that is where it already is.
- */
+export function openShelves<Name extends string>(
+  order: ShelfOrder<Name>,
+  group: ShelfGroup,
+): Name[] {
+  return order[group].filter((shelf) => !order.closed.includes(shelf));
+}
+
+export function closedShelves<Name extends string>(order: ShelfOrder<Name>): Name[] {
+  return [...order.top, ...order.bottom].filter((shelf) => order.closed.includes(shelf));
+}
+
+export function groupOf<Name extends string>(order: ShelfOrder<Name>, shelf: Name): ShelfGroup {
+  return order.top.includes(shelf) ? "top" : "bottom";
+}
+
+/** Move relative to a shelf in the destination group, or append when there is no anchor. */
 export function moveIn<Name extends string>(
   order: ShelfOrder<Name>,
   shelf: Name,
-  list: keyof ShelfOrder<Name>,
-  before: Name | null,
+  group: ShelfGroup,
+  anchor: Name | null = null,
+  after = false,
 ): ShelfOrder<Name> {
-  if (before === shelf) return order;
-  const rest = {
-    open: order.open.filter((each) => each !== shelf),
-    closed: order.closed.filter((each) => each !== shelf),
+  if (anchor === shelf) return order;
+  const source = groupOf(order, shelf);
+  const rest = order[group].filter((each) => each !== shelf);
+  const at = anchor === null ? rest.length : rest.indexOf(anchor) + Number(after);
+  if (source === group && order[group][at] === shelf) return order;
+  return {
+    ...order,
+    [source]: order[source].filter((each) => each !== shelf),
+    [group]: rest.toSpliced(at, 0, shelf),
   };
-  const found = before === null ? -1 : rest[list].indexOf(before);
-  const at = found === -1 ? rest[list].length : found;
-  const next = { ...rest, [list]: rest[list].toSpliced(at, 0, shelf) };
-  const same = (a: ReadonlyArray<Name>, b: ReadonlyArray<Name>) =>
-    a.length === b.length && a.every((each, index) => each === b[index]);
-  return same(next.open, order.open) && same(next.closed, order.closed) ? order : next;
 }
 
-/** A stored order of `names`, or null when it is not one: every shelf exactly once across the two lists. */
+/** Read the current or immediately preceding storage format, appending newly added shelves. */
 export function parseShelfOrder<Name extends string>(
   stored: unknown,
   names: ReadonlyArray<Name>,
 ): ShelfOrder<Name> | null {
   if (typeof stored !== "object" || stored === null) return null;
-  const { open, closed } = stored as Record<string, unknown>;
-  if (!Array.isArray(open) || !Array.isArray(closed)) return null;
-  const all: unknown[] = [...open, ...closed];
-  const complete = all.length === names.length && names.every((name) => all.includes(name));
-  return complete ? { open: open as Name[], closed: closed as Name[] } : null;
+  const { top, bottom, open, closed } = stored as Record<string, unknown>;
+  if (!Array.isArray(closed)) return null;
+  const groups =
+    Array.isArray(top) && Array.isArray(bottom)
+      ? { top, bottom }
+      : Array.isArray(open)
+        ? { top: [...open, ...closed], bottom: [] }
+        : null;
+  if (groups === null) return null;
+  const all: unknown[] = [...groups.top, ...groups.bottom];
+  const valid =
+    all.length > 0 &&
+    new Set(all).size === all.length &&
+    all.every((shelf) => names.includes(shelf as Name)) &&
+    new Set(closed).size === closed.length &&
+    closed.every((shelf) => all.includes(shelf));
+  if (!valid) return null;
+  return {
+    top: [...(groups.top as Name[]), ...names.filter((shelf) => !all.includes(shelf))],
+    bottom: groups.bottom as Name[],
+    closed: closed as Name[],
+  };
 }
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */

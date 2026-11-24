@@ -46,6 +46,7 @@ const waiting = (
 const star: Star = {
   id: "beta",
   name: "Beta",
+  description: "",
   tint: "",
   created: NOW,
   homes: [

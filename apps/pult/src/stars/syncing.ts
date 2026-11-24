@@ -29,7 +29,7 @@ import {
   starWakeModel,
   type WrittenChannelTranscripts,
 } from "./model.ts";
-import { readStarTranscript } from "./plugin.ts";
+import { readStarTranscript, type RecordFields } from "./plugin.ts";
 import { conversationsOf, type Star, type StarHome, starName } from "./stars.ts";
 import {
   commitMessages,
@@ -47,15 +47,12 @@ import {
   syncPlan,
 } from "./sync.ts";
 
-/** What of a Star's record the page changes: Name and Tint. */
-type RecordFields = { readonly name?: string; readonly tint?: string };
-
 const decodeModel = Schema.decodeUnknownSync(ModelSelection);
 
 /** How long a pull before a sleeping Star wakes stands before another occasion pulls again. */
 const WAKE_PULL_INTERVAL_MS = 60_000;
 
-/** A Star's repository's sync on one home as the page last ran it, for the settings page's line. */
+/** A Star's repository's sync on one home as the page last ran it, for the Star Settings shelf. */
 export interface RepositorySync {
   /** What runs now, while something does. */
   readonly busy: string | null;
@@ -300,7 +297,7 @@ class StarSync {
       });
   }
 
-  /** Name and Tint: written into each held home of the Star after that home's pull, and committed, and pushed where its repository syncs. */
+  /** Name, Description and Tint: written into each held home of the Star after that home's pull, and committed, and pushed where its repository syncs. */
   async setRecord(starId: string, changes: RecordFields): Promise<void> {
     const star = starById(starId);
     if (star === undefined) return;
@@ -328,7 +325,7 @@ class StarSync {
     if (homes.length === 0)
       return notify(
         "info",
-        `${starName(star)} does not sync: give it an origin in Pult's settings, under Star.`,
+        `${starName(star)} does not sync: enter a repository in its Star Settings shelf.`,
       );
     for (const home of homes)
       void this.run(home.environmentId, starId, {
@@ -604,7 +601,7 @@ export const starSyncStore = {
 
 /** The Star's origin, on its repository on every held home; empty, none. */
 export const setStarOrigin = (starId: string, url: string) => sync.setOrigin(starId, url);
-/** Name and Tint, written after each home's pull and committed. */
+/** Name, Description and Tint, written after each home's pull and committed. */
 export const setStarRecord = (starId: string, changes: RecordFields) =>
   sync.setRecord(starId, changes);
 export const syncStar = (starId: string) => sync.syncNow(starId);
