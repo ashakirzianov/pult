@@ -4,6 +4,7 @@
 // sleep and transcribed once a minute and before one is handed to anyone. The plugin persists nothing.
 import {
   CommandId,
+  DEFAULT_RUNTIME_MODE,
   linkOriginIsFenced,
   type ModelSelection,
   type OrchestrationV2ThreadShell,
@@ -130,7 +131,7 @@ export interface StarsView {
       /** Every open channel, the default among them, by slug; `asleepSince`, `model` and `conversations` are `defaultChannel`'s. */
       readonly channels: ReadonlyArray<ChannelView>;
       readonly asleepSince: string;
-      /** The model a wake into the default channel takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode, else that conversation's; null before the Star's first conversation. */
+      /** The model a wake into the default channel takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode (the default runtime mode before the Star's first conversation), else that conversation's; null where neither is. */
       readonly model: ModelSelection | null;
       readonly histories: ReadonlyArray<{
         readonly slug: string;
@@ -728,13 +729,12 @@ export const make = Effect.gen(function* () {
         const { defaultChannel } = star;
         const last = (yield* settledConversations(star, 1, { channel: defaultChannel }))[0];
         const { newest } = yield* conversationsOf(star, defaultChannel);
-        // What the page's draft shows and wakes at; the page's wake tells the channel of a broken file.
-        const chosen =
-          newest === null
-            ? null
-            : yield* wakeChannelModel(star, defaultChannel, newest.runtimeMode).pipe(
-                Effect.provide(resolving),
-              );
+        // What the page's draft shows and wakes at, its first conversation's too; the page's wake tells the channel of a broken file.
+        const chosen = yield* wakeChannelModel(
+          star,
+          defaultChannel,
+          newest?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        ).pipe(Effect.provide(resolving));
         const directory = yield* archivePath(star, CHANNELS_DIRECTORY);
         const histories = [];
         for (const slug of directory !== undefined ? yield* fs.readDirectory(directory) : []) {

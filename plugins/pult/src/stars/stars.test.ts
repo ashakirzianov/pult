@@ -6,8 +6,10 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   ProjectId,
+  type ProviderDriverKind,
   ProviderInstanceId,
   RunId,
+  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
@@ -463,7 +465,7 @@ describe("the pass", () => {
       }).pipe(Effect.scoped),
   );
   it.effect(
-    "serves the model a wake into the default channel takes: its newest conversation's, else any channel's",
+    "serves the model a wake into the default channel takes: its settings' choice, else its newest conversation's, else any channel's",
     () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -474,6 +476,28 @@ describe("the pass", () => {
           model: name,
         });
         const served = Effect.map(h.stars.view, (view) => view.stars[0]?.model);
+        assert.strictEqual(yield* served, null);
+        // Before the Star's first conversation, the default channel's settings choose, as its first wake takes them.
+        h.limits.providers = [
+          {
+            instanceId: ProviderInstanceId.make("codex"),
+            driver: "codex" as ProviderDriverKind,
+            enabled: true,
+            installed: true,
+            version: "test",
+            status: "ready",
+            auth: { status: "authenticated" },
+            checkedAt: "2026-11-10T12:00:00.000Z",
+            models: [{ slug: "gpt-6.2-sol", name: "Sol", isCustom: false, capabilities: null }],
+            slashCommands: [],
+            skills: [],
+          } satisfies ServerProvider,
+        ];
+        const settings = h.path.join(star.root, ".pult/channels/main/settings.yaml");
+        const created = yield* h.read(settings);
+        yield* h.write(settings, `${created}provider: codex\nmodel: gpt-6.2-sol\n`);
+        assert.deepInclude(yield* served, model("gpt-6.2-sol"));
+        yield* h.write(settings, created);
         assert.strictEqual(yield* served, null);
         h.threads.add(star.projectId, "work", {
           createdAt: at("2026-11-10T12:30:00.000Z"),
