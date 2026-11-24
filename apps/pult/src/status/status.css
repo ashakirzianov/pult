@@ -2,7 +2,6 @@
    workbench's layout: the thread view's bar's height and text, its entries
    the shell's bar entries (src/style.css). */
 .pult-status-strip {
-  position: relative;
   display: flex;
   align-items: center;
   gap: var(--pult-bar-gap, 2px);
@@ -50,30 +49,6 @@
 
 .pult-status-entry .codicon-warning {
   color: var(--vscode-problemsWarningIcon-foreground);
-}
-
-/* The file ends at a border above the strip, the composer box's (upstream's
-   `--chat-composer-outline`, `ComposerSurface.tsx`, by the view's `dark`
-   class) laid on the editor's canvas, over the file's last line, where the
-   thread's turns end at a blank band above their composer. The grid's cell
-   clips its view, so the strip's is let overflow. */
-.monaco-workbench .split-view-view:has(> .pult-status-strip) {
-  overflow: visible;
-}
-
-.pult-status-strip::before {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  bottom: 100%;
-  height: 1px;
-  background: linear-gradient(rgb(0 0 0 / 8%), rgb(0 0 0 / 8%)) var(--vscode-editor-background);
-  pointer-events: none;
-}
-
-.dark .pult-status-strip::before {
-  background: linear-gradient(rgb(255 255 255 / 5%), rgb(255 255 255 / 5%))
-    var(--vscode-editor-background);
 }
 
 /* "More": the stock bar's other entries, one row each, in the workbench's hover. */
