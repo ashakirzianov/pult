@@ -12,6 +12,7 @@ import * as KeepAwake from "./keepAwake/keepAwake.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import { runCommand } from "./schedules/command.ts";
 import * as Schedules from "./schedules/schedules.ts";
+import * as ChildFailures from "./stars/childFailures.ts";
 import * as Delivery from "./stars/deliver.ts";
 import * as ListTool from "./stars/listTool.ts";
 import * as MessageTool from "./stars/messageTool.ts";
@@ -56,6 +57,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const schedules = yield* Schedules.make(stars, delivering.deliver, (root, command) =>
     runCommand(root, command).pipe(Effect.provideService(ProcessRunner.ProcessRunner, runner)),
   );
+  yield* ChildFailures.make(stars, delivering.deliver);
   const keepAwake = yield* KeepAwake.make();
   const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const kept = yield* XaxisKept.make(stars.directory);
