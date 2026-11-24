@@ -1003,19 +1003,7 @@
   outline-offset: -1px;
 }
 
-/* The update's button in the tray (src/panel/rows.tsx), a row button on the workbench's primary button colours, so an update is noticed. */
-.pult-panel-update {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.pult-panel-update:hover {
-  background: var(--vscode-button-hoverBackground);
-  color: var(--vscode-button-foreground);
-}
-
 .pult-panel-update:disabled {
-  background: var(--vscode-button-background);
   opacity: 0.7;
   cursor: default;
 }
