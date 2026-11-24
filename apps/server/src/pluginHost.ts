@@ -5,6 +5,8 @@
  * module instances. See docs/internals/plugins.md.
  */
 export * as Cause from "effect/Cause";
+// The Pult plugin's install-at-rest: the desktop's opt-in, `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST`.
+export * as Config from "effect/Config";
 // The Pult plugin's keep-awake: the caffeinate child it spawns and ends by its handle.
 export * as ChildProcess from "effect/process/ChildProcess";
 export * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -24,7 +26,8 @@ export * as Layer from "effect/Layer";
 export * as Option from "effect/Option";
 // The Pult plugin's Stars: their folders, records and transcripts.
 export * as Path from "effect/Path";
-export * as Result from "effect/Result";
+// The Pult plugin's install-at-rest: the last reason it logged, so a quiet night logs it once.
+export * as Ref from "effect/Ref";
 export * as Schema from "effect/Schema";
 export * as Scope from "effect/Scope";
 // The Pult plugin's Stars: a lock per server for creation and upkeep, and one per Star.
@@ -41,6 +44,14 @@ export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 export { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 
 export * as ServerConfig from "./config.ts";
+// The Pult plugin's install-at-rest: the desktop app's update it runs and commits, merged out of the
+// server's runtime dependencies for the plugins.
+export * as DesktopAppUpdate from "./desktopUpdate/DesktopAppUpdate.ts";
+// The Pult plugin's install-at-rest: a fresh host sample, and the desktop's update state.
+export * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
+// The Pult plugin's install-at-rest: the host's idle time, merged out of the server's runtime
+// dependencies for the plugins.
+export * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 // The Pult plugin's Stars: the user's home, against which the live install's Stars directory is refused to other homes.
 export * as HostProcess from "@t3tools/shared/HostProcess";
 // The Pult plugin's Star messages: a thread sender's limits, checked again under the target's lock.
@@ -54,7 +65,6 @@ export * as McpToolAccess from "./mcp/McpToolAccess.ts";
 export { toolkitRegistration } from "./mcp/McpHttpServer.ts";
 // The Pult plugin's Star messages: upstream's rule that a thread's target be no broader than it.
 export * as McpThreadAccess from "./mcp/threadAccess.ts";
-export * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 // The Pult plugin's schedules: a watcher's command, run in its Star's folder.
 export * as ProcessRunner from "./processRunner.ts";
 // The Pult plugin's Stars: projects found, created, adopted and titled.
@@ -63,8 +73,10 @@ export * as ProjectService from "./project/ProjectService.ts";
 export * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 // The Pult plugin's Stars: the pass that puts conversations to sleep, once a minute.
 export * as Scheduler from "./scheduling/Scheduler.ts";
-// The Pult plugin's keep-awake: it holds the Mac awake while the server is not at rest.
+// The Pult plugin's keep-awake: it holds the Mac awake while the server is not at rest; its install-at-rest waits for the rest.
 export * as ServerActivity from "./serverActivity.ts";
+// The Pult plugin's install-at-rest: the user's `autoUpdateDesktopApp`.
+export * as ServerSettings from "./serverSettings.ts";
 // The Pult plugin's Stars: the transcripts' folder and label.
 export * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 // The Pult plugin's Star messages: a delivery waits for startup recovery before it sends or wakes.

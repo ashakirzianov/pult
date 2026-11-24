@@ -19,12 +19,12 @@ import * as References from "effect/References";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
-import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
-import * as ServerActivity from "../serverActivity.ts";
-import * as ServerSettings from "../serverSettings.ts";
-import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
-import * as InstallAtRest from "./InstallAtRest.ts";
+import * as HostPowerMonitor from "../../../../apps/server/src/background/HostPowerMonitor.ts";
+import * as DesktopTelemetryReceiver from "../../../../apps/server/src/resourceTelemetry/DesktopTelemetryReceiver.ts";
+import * as ServerActivity from "../../../../apps/server/src/serverActivity.ts";
+import * as ServerSettings from "../../../../apps/server/src/serverSettings.ts";
+import * as DesktopAppUpdate from "../../../../apps/server/src/desktopUpdate/DesktopAppUpdate.ts";
+import * as InstallAtRest from "./installAtRest.ts";
 
 const MINUTE = 60_000;
 

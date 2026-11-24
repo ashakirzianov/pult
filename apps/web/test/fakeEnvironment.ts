@@ -71,6 +71,8 @@ const descriptor = {
     repositoryIdentity: true,
     sideChats: true,
     freshContext: true,
+    // Pult: the send button's Send later shows only where the server offers one-time schedules
+    // (`ComposerScheduledSend.tsx`), which the shell's composer test sends through.
     oneTimeSchedules: true,
     fileAttachments: { maxUploadBytes: 10_000_000 },
   },
@@ -363,6 +365,7 @@ function shellOf(thread: FakeThread): OrchestrationV2ThreadShell {
   };
 }
 
+// Pult: exported for `ChatView.browser.test.tsx`'s test of the composer the app around the view takes over.
 export function projectionOf(thread: FakeThread): OrchestrationV2ThreadProjection {
   const shell = shellOf(thread);
   const visibleTurnItems: OrchestrationV2ProjectedTurnItem[] = thread.items.map(

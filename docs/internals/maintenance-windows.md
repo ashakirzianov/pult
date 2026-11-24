@@ -19,9 +19,9 @@ reads busy, and a stopped watch resyncs with backoff. A server busy for three ho
 `server-activity.busy` with a thread and kind of work holding it, again only when the holder
 changes, so a holder that never ends is visible.
 
-A desktop app's server installs the app's updates itself when
-`T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`
-([`InstallAtRest`](../../apps/server/src/desktopUpdate/InstallAtRest.ts)), which the desktop sets
+A desktop app's server installs the app's updates itself, through the Pult plugin
+([`installAtRest`](../../plugins/pult/src/installAtRest/installAtRest.ts)), when
+`T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST=true`, which the desktop sets
 for its supervised server under a brand that asks (`serverInstallUpdatesAtRest`). Every 30 minutes,
 once the server has rested 3 minutes and the desktop's power telemetry has seen no input on the
 host for 3, it runs the ordinary desktop update and commits it; missing or stale telemetry counts

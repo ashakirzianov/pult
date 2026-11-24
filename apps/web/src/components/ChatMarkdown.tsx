@@ -234,6 +234,7 @@ import {
   nodeToPlainText,
 } from "./chat/MarkdownCodeBlock.logic";
 import { reportMarkdownActionFailure } from "./chat/markdownActionFailure";
+// Pult: the classes and the list gutter, shared with the shell's Markdown reader (`chatMarkdownClass.ts`).
 import {
   CHAT_MARKDOWN_CLASS,
   CHAT_MARKDOWN_PROSE_CLASS,

@@ -1,19 +1,22 @@
-import * as Config from "effect/Config";
-import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
+// Pult.app's server installs the app's downloaded updates while nobody needs it (xaxis `pult/decisions`,
+// `install-at-rest`). It only consumes the server's services, so it lives in the plugin.
 import type { HostPowerSnapshot } from "@t3tools/contracts";
 
-import * as HostPowerMonitor from "../background/HostPowerMonitor.ts";
-import * as DesktopTelemetryReceiver from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
-import { forkParked } from "../serverActivation.ts";
-import * as ServerActivity from "../serverActivity.ts";
-import * as ServerSettings from "../serverSettings.ts";
-import * as DesktopAppUpdate from "./DesktopAppUpdate.ts";
+import {
+  Config,
+  DateTime,
+  DesktopAppUpdate,
+  DesktopTelemetryReceiver,
+  Duration,
+  Effect,
+  HostPowerMonitor,
+  Layer,
+  Option,
+  Ref,
+  ServerActivity,
+  ServerSettings,
+  Stream,
+} from "../host.ts";
 
 /** Opts a desktop-managed server into installing its desktop app's updates while nobody needs it. */
 const INSTALL_UPDATES_AT_REST_ENV = "T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST";
@@ -135,6 +138,13 @@ const make = Effect.gen(function* () {
     Config.withDefault(false),
   );
   if (!enabled) return;
+  // Each tick's services, resolved here so a server that does not provide one fails at startup (`plugin-host-entry`).
+  yield* Effect.all([
+    HostPowerMonitor.HostPowerMonitor,
+    DesktopTelemetryReceiver.DesktopTelemetryReceiver,
+    ServerActivity.ServerActivity,
+    ServerSettings.ServerSettingsService,
+  ]);
   const update = yield* DesktopAppUpdate.DesktopAppUpdate;
   if (!update.available) {
     yield* Effect.logInfo(
@@ -144,7 +154,7 @@ const make = Effect.gen(function* () {
   }
   yield* Effect.logInfo("Desktop app updates install while the server and the host rest.");
   const lastReason = yield* Ref.make<string | null>(null);
-  yield* forkParked(
+  yield* Effect.forkScoped(
     Effect.forever(Effect.sleep(TICK_INTERVAL).pipe(Effect.andThen(tick(lastReason)))),
   );
 });

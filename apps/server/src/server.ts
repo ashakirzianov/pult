@@ -210,7 +210,6 @@ import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
 import * as CloudCliState from "./cloud/CliState.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as DesktopAppUpdate from "./desktopUpdate/DesktopAppUpdate.ts";
-import * as InstallAtRest from "./desktopUpdate/InstallAtRest.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
@@ -781,9 +780,9 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderInstallation.layer,
   ReplayMarkers.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
-  InstallAtRest.layer.pipe(
-    Layer.provide(Layer.merge(layerDesktopAppUpdate, layerHostPowerMonitor)),
-  ),
+  // Merged out so the Pult plugin's install-at-rest resolves them, as the runtime's scheduler is.
+  layerDesktopAppUpdate,
+  layerHostPowerMonitor,
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
   // One hub, which the feeders above and the workflow store inside the runtime publish to.

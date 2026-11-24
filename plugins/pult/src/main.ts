@@ -8,6 +8,7 @@ import { tellRetiredAsks } from "./asks/retired.ts";
 import { asksRoute } from "./asks/routes.ts";
 import * as AskTools from "./asks/tools.ts";
 import { Effect, HttpServerResponse, Layer, type PluginHost, ProcessRunner } from "./host.ts";
+import * as InstallAtRest from "./installAtRest/installAtRest.ts";
 import * as KeepAwake from "./keepAwake/keepAwake.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import { runCommand } from "./schedules/command.ts";
@@ -58,6 +59,8 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
     runCommand(root, command).pipe(Effect.provideService(ProcessRunner.ProcessRunner, runner)),
   );
   yield* ChildFailures.make(stars, delivering.deliver);
+  // Only where the desktop app opts its server in; elsewhere it builds to nothing.
+  yield* Layer.build(InstallAtRest.layer);
   const keepAwake = yield* KeepAwake.make();
   const listed = keepAwake.available ? [...features, KeepAwake.FEATURE] : features;
   const kept = yield* XaxisKept.make(stars.directory);

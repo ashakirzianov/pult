@@ -2064,6 +2064,8 @@ export function ThreadsSettingsPanel() {
           serverScoped
           {...setting("auto-resume-limited-threads")}
           description={gt(
+            // Pult: auto-resume is on by default in the fork (xaxis `pult/decisions`, `limited-thread-recovery`),
+            // so the text says what it costs.
             "Resume threads when their usage limits reset. On by default: a resumed thread spends fresh allowance, pays to reload its context and runs tools while you are away. Cancel it in each thread.",
           )}
           settingKeys={["autoResumeLimitedThreads"]}

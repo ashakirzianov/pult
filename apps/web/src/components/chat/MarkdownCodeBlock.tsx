@@ -19,6 +19,7 @@ import {
 } from "../../pierre-icons";
 import { Button } from "../ui/button";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+// Pult: the code block's box, shared with the shell's Markdown reader (`chatMarkdownClass.ts`).
 import { CHAT_MARKDOWN_CODE_BLOCK_CLASS } from "../chatMarkdownClass";
 import { HighlightedCodeLines } from "./HighlightedCodeLines";
 import {
