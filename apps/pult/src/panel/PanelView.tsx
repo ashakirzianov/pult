@@ -63,10 +63,12 @@ import {
   shelfDropHandlers,
   ShelfHeader,
   shelfOrder,
+  ShelfToggle,
   useReveal,
 } from "./shelves.tsx";
 import { SecretCard } from "./SecretCard.tsx";
 import { StarCard } from "./StarCard.tsx";
+import { setSleepingStarsShown, sleepingStarsShown, starsOnShelf } from "./starShelf.ts";
 
 /** A row's object, which the rows it was listed from hold by its key. */
 function found<Row>(rows: ReadonlyMap<string, Row>, key: string): Row {
@@ -210,6 +212,7 @@ export function PanelView() {
   );
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
+  const showSleeping = useSyncExternalStore(sleepingStarsShown.subscribe, sleepingStarsShown.get);
   // A Star's square stands for its conversation: selected with the Star, or with one of its conversation's subagents.
   const starCard = (star: Star) => {
     const conversation = star.current === null ? undefined : keyOf(star.current);
@@ -295,9 +298,18 @@ export function PanelView() {
             key={name}
             name={name}
             empty={stars.length === 0}
-            actions={<NewAction title="New Star" command="pult-shell.createStar" />}
+            actions={
+              <>
+                <ShelfToggle
+                  label={showSleeping ? "Hide sleeping" : "Show sleeping"}
+                  icon={showSleeping ? "eye-closed" : "eye"}
+                  onToggle={() => setSleepingStarsShown(!showSleeping)}
+                />
+                <NewAction title="New Star" command="pult-shell.createStar" />
+              </>
+            }
           >
-            {stars.map(starCard)}
+            {starsOnShelf(stars).map(starCard)}
           </Shelf>
         );
       case "explorer":

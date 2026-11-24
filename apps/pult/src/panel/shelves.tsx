@@ -351,6 +351,30 @@ export function ShelfHeader({
   );
 }
 
+/** A text action that shows its icon when the shelf is too narrow for the label. */
+export function ShelfToggle({
+  label,
+  icon,
+  onToggle,
+}: {
+  label: string;
+  icon: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="pult-shelf-action pult-shelf-action-text"
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      <i className={`codicon codicon-${icon}`} aria-hidden />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 /**
  * A shelf's header in either panel: its label,
  * its `actions` and Close, shown on hover or keyboard focus; its right-click

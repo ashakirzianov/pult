@@ -38,6 +38,7 @@ import {
   starKey,
 } from "./order.ts";
 import { shelfOrder } from "./shelves.tsx";
+import { sleepingStarsShown, starsOnShelf } from "./starShelf.ts";
 
 /** What the editor part shows, as a stable snapshot: a thread's key, a project's draft's (`draftKey`), a Star's (`starKey`), `explorer` for the Explorer workspace, or nothing. */
 export function selectionSnapshot(): string | undefined {
@@ -80,9 +81,8 @@ export function showingSettled(count: number): void {
 function currentTargets(): JumpTarget<URI>[] {
   const { environments, threads } = threadStore.get();
   const environmentIds = environments.map((environment) => environment.id);
-  const stars = starEnabled.get() ? starStore.get() : [];
   return jumpTargets({
-    stars: stars.map((star) => star.id),
+    stars: starsOnShelf(starStore.get()).map((star) => star.id),
     secrets: shownAsks(secretStore.get(), starEnabled.get()),
     asks: shownAsks(askStore.get(), starEnabled.get()).map(askRef),
     environmentIds,
@@ -187,6 +187,7 @@ function followJumpKeys(): void {
   shelfOrder.subscribe(refreshHints);
   starStore.subscribe(refreshHints);
   starEnabled.subscribe(refreshHints);
+  sleepingStarsShown.subscribe(refreshHints);
   secretStore.subscribe(refreshHints);
 }
 

@@ -13,7 +13,7 @@ import { type LimitsState, limitsStore, refreshLimits } from "../limits/model.ts
 import { limitsShowAll, setLimitsShowAll } from "../limits/shelf.ts";
 import { limitsWeekend } from "../limits/weekend.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
-import { closeShelf, ShelfHeader, useReveal } from "./shelves.tsx";
+import { closeShelf, ShelfHeader, ShelfToggle, useReveal } from "./shelves.tsx";
 
 const refreshAction = toAction({
   id: "pult-shell.refreshUsageLimits",
@@ -56,13 +56,11 @@ export function LimitsShelf({ now }: { now: number }) {
         actions={
           <>
             {shelf.toggle === null ? null : (
-              <button
-                type="button"
-                className="pult-shelf-action pult-shelf-action-text"
-                onClick={() => setLimitsShowAll(!showAll)}
-              >
-                {shelf.toggle === "all" ? "Show more" : "Show less"}
-              </button>
+              <ShelfToggle
+                label={shelf.toggle === "all" ? "Show more" : "Show less"}
+                icon={showAll ? "chevron-up" : "chevron-down"}
+                onToggle={() => setLimitsShowAll(!showAll)}
+              />
             )}
             <button
               type="button"
