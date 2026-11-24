@@ -24,7 +24,7 @@ import {
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { type ComponentProps, useEffect, useState, useSyncExternalStore } from "react";
 
 import {
   hasUsageProviderIcon,
@@ -292,9 +292,29 @@ function ProviderRows({
     setChosen(!open);
   };
   const write = (change: InstanceChange) => writeInstance(environmentId, key, provider, change);
-  const switchTo = (on: boolean) => {
+  // The value the user last asked the switch for, held over the config stream, which lags the
+  // write, until its write is answered and a config the stream sent since the click agrees (the
+  // one shown at the click may agree only by being stale); a failed write lets it go.
+  const [asked, setAsked] = useState<{
+    readonly on: boolean;
+    readonly since: ServerConfig;
+    readonly written: boolean;
+  }>();
+  if (asked?.written === true && config !== asked.since && asked.on === row.on) {
+    setAsked(undefined);
+  }
+  const on = asked?.on ?? row.on;
+  const switchTo = (value: boolean) => {
+    const ask = { on: value, since: config, written: false };
+    setAsked(ask);
     setError(null);
-    write({ kind: "enabled", on }).catch((failure: unknown) => setError(messageOf(failure)));
+    write({ kind: "enabled", on: value }).then(
+      () => setAsked((held) => (held === ask ? { ...ask, written: true } : held)),
+      (failure: unknown) => {
+        setError(messageOf(failure));
+        setAsked((held) => (held === ask ? undefined : held));
+      },
+    );
   };
 
   return (
@@ -325,9 +345,9 @@ function ProviderRows({
                 type="button"
                 role="switch"
                 className="pult-settings-switch"
-                aria-checked={row.on}
+                aria-checked={on}
                 aria-label={row.name}
-                onClick={() => switchTo(!row.on)}
+                onClick={() => switchTo(!on)}
               />
             ) : null}
           </div>
@@ -512,8 +532,7 @@ function FieldSubrow({
       </div>
       <div className="pult-settings-row-actions">
         {field.control === "select" ? (
-          <select
-            className="pult-settings-select"
+          <Select
             aria-label={field.label}
             value={field.value}
             onChange={(event) => commit(event.target.value)}
@@ -523,7 +542,7 @@ function FieldSubrow({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         ) : field.control === "text" ? (
           <TextInput field={field} commit={commit} />
         ) : (
@@ -531,6 +550,16 @@ function FieldSubrow({
         )}
       </div>
     </div>
+  );
+}
+
+/** A select in the page's neutral control, its arrow drawn, its list the platform's. */
+function Select(props: ComponentProps<"select">) {
+  return (
+    <span className="pult-settings-select">
+      <select {...props} />
+      <i className="codicon codicon-chevron-down" aria-hidden />
+    </span>
   );
 }
 
@@ -769,8 +798,7 @@ function AccountSubrows({
         </div>
         <div className="pult-settings-row-actions">
           {account.methods.length === 0 ? null : (
-            <select
-              className="pult-settings-select"
+            <Select
               aria-label="Sign-in method"
               value={methodId}
               disabled={pending}
@@ -782,7 +810,7 @@ function AccountSubrows({
                   {method.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           {url === null ? null : (
             <>
