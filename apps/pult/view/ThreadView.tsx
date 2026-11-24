@@ -537,6 +537,7 @@ const NO_ADDITIONS: Additions = {
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
 const composerBarEntries: ComposerControlsSlotEntries = {
+  showAbove: (item) => item.id.startsWith("usage-limit-recovery:"),
   Notices: ComposerBarNotices,
   Host: ComposerBarHost,
 };

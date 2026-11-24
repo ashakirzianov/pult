@@ -220,9 +220,10 @@ export const ComposerControlsSlot = createContext<HTMLElement | null>(null);
 /**
  * Pult: with a slot, what the composer renders there in place of what it shows
  * above itself (its notices), and the host that places the slot under its
- * message; the app provides both.
+ * message. The app may keep selected notices above the input.
  */
 export interface ComposerControlsSlotEntries {
+  readonly showAbove?: (item: ComposerBannerStackItem) => boolean;
   readonly Notices: ComponentType<{ readonly items: ReadonlyArray<ComposerBannerStackItem> }>;
   readonly Host: ComponentType<{ readonly slot: HTMLElement; readonly draft: boolean }>;
 }

@@ -2832,8 +2832,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 }),
           },
         ];
+  // Pult: keep wide interactive notices above the input while using the controls slot.
+  const showAbove = slotEntries?.showAbove;
   const shelfItems = controlsInSlot
-    ? []
+    ? showAbove === undefined
+      ? []
+      : bannerItems.filter(showAbove)
     : hasBlockingComposerTopDrawer
       ? bannerItems.filter(
           (item) =>
@@ -3747,7 +3751,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           <ComposerBannerStack items={shelfItems} />
           {controlsInSlot && slotEntries !== null ? (
             <ComposerControlsSlotItem item="notices">
-              <slotEntries.Notices items={bannerItems} />
+              <slotEntries.Notices
+                items={
+                  showAbove === undefined
+                    ? bannerItems
+                    : bannerItems.filter((item) => !showAbove(item))
+                }
+              />
             </ComposerControlsSlotItem>
           ) : null}
           {showComposerTopDrawer ? (
