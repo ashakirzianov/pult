@@ -6,6 +6,7 @@
 import {
   getService,
   ICommandService,
+  IInstantiationService,
   INotificationService,
   IQuickInputService,
 } from "@codingame/monaco-vscode-api";
@@ -20,13 +21,13 @@ import type { MountOptions, ViewTarget } from "../../view/main.tsx";
 import { connection } from "../connection/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { starById, starStore } from "../stars/model.ts";
-import { channelModel } from "../stars/model.ts";
+import { channelModel, starById, starStore, starTarget } from "../stars/model.ts";
 import { USER_CHANNEL } from "../stars/plugin.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { starName } from "../stars/stars.ts";
 import { afterDraftWake } from "../stars/tab.tsx";
-import { selectedStar, selectionTarget } from "../threads/selection.ts";
+import { StarThreadInput } from "../threads/pane.tsx";
+import { selectStar, selectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { type PageAsk, posterName, shownAsks } from "./asks.ts";
 import { actOnPageAsk, askById, askStore } from "./model.ts";
@@ -67,13 +68,7 @@ const posterOf = (ask: PageAsk) =>
         ?.title,
   );
 
-/**
- * The reply's send told to the plugin, which moves the ask to Working; the
- * strip keeps the poster's composer, so what follows goes where the reply
- * went. Nothing is told for a send that landed on another environment (a
- * draft moved there by hand), nor for an ask posted again since its row was
- * opened, whose new posting the reply never saw.
- */
+/** An accepted reply marks the posting it answered, provided it landed on the same environment. */
 async function replied(ask: PageAsk, environmentId: string): Promise<void> {
   if (environmentId !== ask.environmentId)
     return void (await getService(INotificationService)).warn(
@@ -81,6 +76,34 @@ async function replied(ask: PageAsk, environmentId: string): Promise<void> {
     );
   if (askById(ask.environmentId, ask.id)?.posted !== ask.posted) return;
   await actOnPageAsk(ask, { kind: "replied" });
+}
+
+/** Open the thread that accepted the send, even if its Star has another channel or home open. */
+async function openReplyThread(
+  poster: PageAsk["poster"],
+  environmentId: string,
+  threadId: string,
+): Promise<void> {
+  if ("thread" in poster) return selectThread(environmentId, threadId);
+
+  const star = starById(poster.star);
+  if (star === undefined) return selectThread(environmentId, threadId);
+  await selectStar(star.id);
+  if (selectedStar() !== star.id) return;
+  const current = starById(star.id) ?? star;
+  const lead = starTarget(current);
+  if (lead?.kind === "thread" && lead.environmentId === environmentId && lead.threadId === threadId)
+    return;
+
+  const [editors, instantiation] = await Promise.all([
+    getService(IEditorService),
+    getService(IInstantiationService),
+  ]);
+  // A channel can advance or fall asleep while the editor opens.
+  await editors.openEditor(
+    instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel),
+    { pinned: true, revealIfOpened: true },
+  );
 }
 
 const NO_SUGGESTIONS: ReadonlyArray<string> = [];
@@ -139,8 +162,6 @@ function replyTarget(ask: PageAsk) {
             subscribe: starStore.subscribe,
           }
         : channelModel(starId, environmentId, channel),
-      draftSent: (sentOn: string, threadId: string) =>
-        void afterDraftWake(starId, sentOn, threadId, user ? undefined : channel),
     } satisfies MountOptions,
   };
 }
@@ -180,7 +201,21 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
       reply: {
         prefix: ask.prefix,
         suggestions: replySuggestions(ask),
-        sent: (sentOn) => void replied(ask, sentOn),
+        sent: (sentOn, threadId) => {
+          if (found.target.kind === "draft" && "star" in ask.poster)
+            void afterDraftWake(
+              ask.poster.star,
+              sentOn,
+              threadId,
+              ask.poster.channel === USER_CHANNEL ? undefined : ask.poster.channel,
+            );
+          void replied(ask, sentOn);
+          void openReplyThread(ask.poster, sentOn, threadId).catch(async (error: unknown) => {
+            (await getService(INotificationService)).error(
+              `The reply was sent, but Pult could not open its thread: ${String(error)}`,
+            );
+          });
+        },
       },
     };
     kept.clear();
