@@ -94,9 +94,9 @@ async function openReplyThread(
     getService(IEditorService),
     getService(IInstantiationService),
   ]);
-  // A channel can advance or fall asleep while the editor opens.
+  // The channel's tab, as its row opens it, following the channel on this environment.
   await editors.openEditor(
-    instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel),
+    instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel, star.id),
     { pinned: true, revealIfOpened: true },
   );
 }
