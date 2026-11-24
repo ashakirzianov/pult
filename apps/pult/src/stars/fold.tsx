@@ -78,16 +78,28 @@ function listHeaderOf(element: HTMLElement): HTMLElement | null {
  * timeline, the fold alone, while its bottom was below the viewport's top.
  * Where the viewport's top was is the scroller's offset as its last scroll
  * event left it, before this frame's changes, LegendList's own adjustment's
- * among them. The fold placed into a timeline, as the view mounts or its
- * list mounts its header again, moves nothing.
+ * among them. The fold placed into a timeline's list, as the view mounts or
+ * its list mounts its header again, moves nothing. Placed over an empty
+ * timeline, a sleeping Star's draft, it takes the slot's scroller to its
+ * end, where the next message goes, unless a citation's reveal is pending,
+ * which places the scroller itself; placed again whenever the view puts the
+ * slot into another scroller, as a remount of the view's content does in the
+ * frame it shows a Star's draft again, which changes no size of the fold's.
  */
-function useAnchoredHeight(element: HTMLElement | null) {
+function useAnchoredHeight(element: HTMLElement | null, key: string) {
   useLayoutEffect(() => {
     if (element === null) return;
     // Undefined while the fold is in no timeline.
     let height = element.isConnected ? element.offsetHeight : undefined;
-    const initial = scrollerOf(element);
-    let settled = initial === null ? undefined : { scroller: initial, top: initial.scrollTop };
+    // Watched too, so its leaving the page tells the fold it was moved.
+    let placedIn = element.isConnected ? scrollerOf(element) : null;
+    let settled = placedIn === null ? undefined : { scroller: placedIn, top: placedIn.scrollTop };
+    const place = (scroller: HTMLElement) => {
+      if (listHeaderOf(element) !== null || pendingReveal(key) !== undefined) return;
+      scroller.scrollTop = scroller.scrollHeight;
+      settled = { scroller, top: scroller.scrollTop };
+    };
+    if (placedIn !== null) place(placedIn);
     const onScroll = (event: Event) => {
       const scroller = scrollerOf(element);
       if (event.target === scroller && scroller !== null)
@@ -97,10 +109,19 @@ function useAnchoredHeight(element: HTMLElement | null) {
     const observer = new ResizeObserver(() => {
       const previous = height;
       height = element.isConnected ? element.offsetHeight : undefined;
+      const scroller = element.isConnected ? scrollerOf(element) : null;
+      if (scroller !== placedIn) {
+        if (placedIn !== null) observer.unobserve(placedIn);
+        placedIn = scroller;
+        if (scroller !== null) {
+          observer.observe(scroller);
+          place(scroller);
+        }
+        return;
+      }
       if (previous === undefined || height === undefined || height === previous) return;
-      const change = height - previous;
-      const scroller = scrollerOf(element);
       if (scroller === null) return;
+      const change = height - previous;
       const before = settled?.scroller === scroller ? settled.top : scroller.scrollTop;
       const header = listHeaderOf(element);
       // The anchor's end before the change, in the scroller's content, which no scrolling moves.
@@ -113,11 +134,12 @@ function useAnchoredHeight(element: HTMLElement | null) {
       if (!listAdjusts && before <= end) scroller.scrollTop += change;
     });
     observer.observe(element);
+    if (placedIn !== null) observer.observe(placedIn);
     return () => {
       observer.disconnect();
       document.removeEventListener("scroll", onScroll, { capture: true });
     };
-  }, [element]);
+  }, [element, key]);
 }
 
 function Conversation({
@@ -190,11 +212,11 @@ export default function StarFold({
   const star = useSyncExternalStore(starStore.subscribe, () => starById(starId));
   useSyncExternalStore(foldStore.subscribe, foldStore.version);
   const [element, setElement] = useState<HTMLElement | null>(null);
-  useAnchoredHeight(element);
+  const key = channel ? JSON.stringify([starId, channel.environmentId, channel.slug]) : starId;
+  useAnchoredHeight(element, key);
   const home = channel
     ? star?.homes.find((each) => each.environmentId === channel.environmentId)
     : star && drawnHome(star);
-  const key = channel ? JSON.stringify([starId, channel.environmentId, channel.slug]) : starId;
   // Named while the page holds several environments.
   const environmentName = useSyncExternalStore(subscribeToThreads, () =>
     home === undefined ? undefined : threadStore.distinguishing(home.environmentId),
