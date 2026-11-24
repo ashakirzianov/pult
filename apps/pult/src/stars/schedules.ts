@@ -8,6 +8,10 @@ import type { RouteSchedule } from "./plugin.ts";
 /** A schedule's row on the card. */
 export interface ScheduleRow {
   readonly name: string;
+  /** What the row shows for it: the file's title, else its name. */
+  readonly label: string;
+  /** Its hover: a titled row's file, which names it, then any detail; an untitled row's detail, else its file. */
+  readonly hover: string;
   readonly path: string;
   /** The next run, in the page's zone, `tomorrow 09:00`; undefined where none is. */
   readonly next: string | undefined;
@@ -73,6 +77,23 @@ export function instantText(iso: string, now: number, zone: string): string {
   return `${date} ${clock}`;
 }
 
+/** A row's last run, or why its file will not run. */
+function statusOf(
+  schedule: RouteSchedule,
+  now: number,
+  pageZone: string,
+): Pick<ScheduleRow, "last" | "detail" | "warning"> {
+  if (schedule.problem !== null) {
+    const last = `${schedule.rule === null ? "not a schedule" : "will not run"}: ${schedule.problem}`;
+    return { last, detail: last, warning: true };
+  }
+  if (schedule.last === null) return { last: "not run yet", detail: undefined, warning: false };
+  const due = instantText(schedule.last.due, now, pageZone);
+  return schedule.last.result === "failed"
+    ? { last: `failed ${due}`, detail: schedule.last.error ?? undefined, warning: true }
+    : { last: `ran ${due}`, detail: undefined, warning: false };
+}
+
 /**
  * The card's rows of a home's schedules, in the plugin's order: a file
  * that is no schedule says so; a schedule that will not run says why; else
@@ -94,6 +115,7 @@ export function scheduleRows(
           : `${schedule.rule} (${cityOf(schedule.timezone)})`;
     const base = {
       name: schedule.name,
+      label: schedule.title ?? schedule.name,
       path: schedule.path,
       // A next run already past is due, firing on the home's next tick, or not at all where schedules are off.
       next:
@@ -105,15 +127,11 @@ export function scheduleRows(
       rule,
       spent: schedule.spent,
     };
-    if (schedule.problem !== null) {
-      const last = `${schedule.rule === null ? "not a schedule" : "will not run"}: ${schedule.problem}`;
-      return { ...base, last, detail: last, warning: true };
-    }
-    if (schedule.last === null)
-      return { ...base, last: "not run yet", detail: undefined, warning: false };
-    const due = instantText(schedule.last.due, now, pageZone);
-    return schedule.last.result === "failed"
-      ? { ...base, last: `failed ${due}`, detail: schedule.last.error ?? undefined, warning: true }
-      : { ...base, last: `ran ${due}`, detail: undefined, warning: false };
+    const status = statusOf(schedule, now, pageZone);
+    const hover =
+      schedule.title === null
+        ? (status.detail ?? schedule.path)
+        : [schedule.path, status.detail].filter((line) => line !== undefined).join("\n");
+    return { ...base, ...status, hover };
   });
 }

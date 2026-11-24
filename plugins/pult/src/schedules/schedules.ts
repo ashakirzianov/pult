@@ -49,6 +49,8 @@ const LATE_MS = 5 * 60_000;
 /** A schedule as `GET /stars` serves it, by name; `rule` and `timezone` null for a file that is no schedule. */
 export interface ScheduleView {
   readonly name: string;
+  /** The file's `title`, shown in place of the name; null where it has none or is no schedule. */
+  readonly title: string | null;
   readonly path: string;
   readonly rule: string | null;
   readonly timezone: string | null;
@@ -534,6 +536,7 @@ export const make = Effect.fn("Schedules.make")(function* (
       if (!file.parsed.ok)
         return {
           name: file.name,
+          title: null,
           path: file.path,
           rule: null,
           timezone: null,
@@ -548,6 +551,7 @@ export const make = Effect.fn("Schedules.make")(function* (
       const next = nextDue(schedule, now);
       return {
         name: file.name,
+        title: schedule.title ?? null,
         path: file.path,
         rule:
           schedule.command === undefined

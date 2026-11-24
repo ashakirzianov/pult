@@ -244,6 +244,7 @@ describe("the pass", () => {
       const [standup] = yield* h.view;
       assert.deepStrictEqual(standup, {
         name: "standup",
+        title: null,
         path: h.scheduleFile("standup"),
         rule: "every day 09:00",
         timezone: "UTC",
@@ -397,7 +398,7 @@ describe("the pass", () => {
       assert.strictEqual(told?.to, undefined);
       assert.strictEqual(
         told?.text,
-        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every, to and run. Fix the file or delete it; Pult tells you once per content.",
+        "`.pult/schedules/standup.md` will not run: `tme` is no key of a schedule's; they are timezone, time, days, date, every, to, run and title. Fix the file or delete it; Pult tells you once per content.",
       );
       assert.match(told?.key ?? "", /^schedule-problem:standup:[0-9a-f]{16}$/);
       const [standup] = yield* h.view;
@@ -499,7 +500,10 @@ describe("the pass", () => {
   it.effect("fires a one-off once and leaves its file, spent; one written too late is told", () =>
     Effect.gen(function* () {
       const h = yield* harness;
-      const once = STANDUP.replace('time: "09:00"', 'time: "09:00"\ndate: 2026-11-10');
+      const once = STANDUP.replace(
+        'time: "09:00"',
+        'time: "09:00"\ndate: 2026-11-10\ntitle: Release check',
+      );
       yield* h.write("once", once, "2026-11-10T08:00:00Z");
       yield* h.clock("2026-11-10T09:00:01Z");
       yield* h.pass;
@@ -512,6 +516,7 @@ describe("the pass", () => {
       assert.isTrue(yield* h.fs.exists(h.scheduleFile("once")));
       const [spent] = yield* h.view;
       assert.deepInclude(spent, {
+        title: "Release check",
         rule: "once, 10 Nov 09:00",
         next: null,
         spent: true,

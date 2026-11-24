@@ -32,6 +32,7 @@ const KEYS: ReadonlySet<string> = new Set([
   "every",
   "to",
   "run",
+  "title",
 ]);
 
 interface ClockTime {
@@ -67,6 +68,8 @@ export interface Schedule {
   readonly text: string;
   /** A watcher's command line, run at each due time; its run is delivered only when it printed. */
   readonly command: string | undefined;
+  /** What Pult shows the user in place of the name: one line of free text; undefined where empty or absent. */
+  readonly title: string | undefined;
 }
 
 export type Parsed =
@@ -130,7 +133,7 @@ export function parseSchedule(name: string, text: string): Parsed {
       return problem(`its front matter's line "${line}" is not \`key: value\``);
     if (!KEYS.has(parsed.key))
       return problem(
-        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date, every, to and run`,
+        `\`${parsed.key}\` is no key of a schedule's; they are timezone, time, days, date, every, to, run and title`,
       );
     if (fields.has(parsed.key)) return problem(`\`${parsed.key}\` is given twice`);
     fields.set(parsed.key, parsed.value);
@@ -151,13 +154,16 @@ export function parseSchedule(name: string, text: string): Parsed {
   if (command !== undefined && command.trim() === "")
     return problem("`run` is empty; it is the command to run, best a script of this folder");
 
+  // A label never makes a schedule invalid: a blank one is none.
+  const title = fields.get("title")?.trim() || undefined;
+
   const time = fields.get("time");
   const days = fields.get("days");
   const date = fields.get("date");
   const every = fields.get("every");
   const schedule = (rule: Rule): Parsed => ({
     ok: true,
-    schedule: { name, timezone, zone: zone.value, rule, to, text: message, command },
+    schedule: { name, timezone, zone: zone.value, rule, to, text: message, command, title },
   });
   if (time !== undefined && every !== undefined)
     return problem("it has both `time` and `every`; a schedule has one of them");

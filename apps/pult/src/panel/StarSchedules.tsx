@@ -24,7 +24,7 @@ function useFiring(environmentId: string | undefined): boolean | undefined {
  * that home's plugin serves them on its `stars` route: under a collapsible
  * "Schedules", in the warning colour while any failed or
  * will not run, adding "not run on this environment" where that home's
- * `about` lacks `star-schedules`. A row is the name and the next run, over
+ * `about` lacks `star-schedules`. A row is its title, else its file's name, and the next run, over
  * the rule in words and the last run, a spent one-off dimmed; a click opens
  * its file as a tab (`pult-shell.openStarSchedule`). Hidden with none.
  */
@@ -70,9 +70,9 @@ export function StarSchedules({ star, now }: { star: Star; now: number }) {
 function ScheduleButton({ row, open }: { row: ScheduleRow; open: () => void }) {
   const className = `pult-schedule${row.spent ? " pult-schedule-spent" : ""}`;
   return (
-    <button type="button" className={className} title={row.detail ?? row.path} onClick={open}>
+    <button type="button" className={className} title={row.hover} onClick={open}>
       <span className="pult-schedule-head">
-        <span className="pult-schedule-name">{row.name}</span>
+        <span className="pult-schedule-name">{row.label}</span>
         {row.next === undefined ? null : <span className="pult-schedule-next">{row.next}</span>}
       </span>
       <span className="pult-schedule-line">

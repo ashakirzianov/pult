@@ -11,6 +11,7 @@ const NOW = Date.parse("2026-11-11T13:00:00.000Z");
 
 const schedule = (overrides: Partial<RouteSchedule> = {}): RouteSchedule => ({
   name: "morning",
+  title: null,
   path: "/s/.pult/schedules/morning.md",
   rule: "weekdays 09:00",
   timezone: BUENOS_AIRES,
@@ -109,6 +110,30 @@ NodeTest.describe("scheduleRows", () => {
       ["once, 1 Nov 09:00", "will not run: it had passed", true],
     );
   });
+
+  NodeTest.test(
+    "labels a schedule by its title, else by its file's name, the file in a titled one's hover",
+    () => {
+      const path = "/s/.pult/schedules/morning.md";
+      const failed = {
+        last: {
+          due: "2026-11-10T12:00:00.000Z",
+          fired: "2026-11-10T12:00:04.000Z",
+          result: "failed",
+          error: "no conversation",
+          thread: null,
+        },
+      };
+      NodeAssert.deepEqual([row({}).label, row({}).hover], ["morning", path]);
+      NodeAssert.equal(row(failed).hover, "no conversation");
+      const titled = row({ title: "morning" });
+      NodeAssert.deepEqual([titled.label, titled.hover], ["morning", path]);
+      NodeAssert.equal(
+        row({ ...failed, title: "Morning brief" }).hover,
+        `${path}\nno conversation`,
+      );
+    },
+  );
 
   NodeTest.test("keeps a spent one-off's mark for the card to dim", () => {
     NodeAssert.equal(row({ rule: "once, 11 Nov 09:00", next: null, spent: true }).spent, true);

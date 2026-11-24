@@ -57,6 +57,25 @@ describe("parseSchedule", () => {
     assert.strictEqual(to(`timezone: UTC\nevery: 1h\nto: ${"a".repeat(51)}`), "a".repeat(51));
   });
 
+  it("reads `title` as one line of free text, an empty one as none, and a schedule valid either way", () => {
+    const title = (matter: string) => {
+      const parsed = parseSchedule("standup", file(matter));
+      return parsed.ok ? parsed.schedule.title : parsed.problem;
+    };
+    assert.strictEqual(title("timezone: UTC\ntime: 09:00"), undefined);
+    assert.strictEqual(
+      title("timezone: UTC\ntime: 09:00\ntitle: Morning stand-up, all hands"),
+      "Morning stand-up, all hands",
+    );
+    assert.strictEqual(
+      title('timezone: UTC\nevery: 1h\ntitle: "Inbox: new mail"'),
+      "Inbox: new mail",
+    );
+    assert.strictEqual(title("timezone: UTC\nevery: 1h\ntitle:"), undefined);
+    assert.strictEqual(title('timezone: UTC\nevery: 1h\ntitle: ""'), undefined);
+    assert.strictEqual(title('timezone: UTC\nevery: 1h\ntitle: "   "'), undefined);
+  });
+
   it("reads `run` as a watcher's command, as written, and none where absent", () => {
     const command = (matter: string) => {
       const parsed = parseSchedule("mail", file(matter));

@@ -122,8 +122,11 @@ async function openStarSchedule(
             await quickInput.pick(
               schedules.map((each) => ({
                 schedule: each,
-                label: each.name,
-                description: each.rule ?? "not a schedule",
+                label: each.title ?? each.name,
+                description:
+                  each.title === null
+                    ? (each.rule ?? "not a schedule")
+                    : `${each.name} · ${each.rule ?? "not a schedule"}`,
               })),
               { placeHolder: "Open a schedule of the Star's" },
             )

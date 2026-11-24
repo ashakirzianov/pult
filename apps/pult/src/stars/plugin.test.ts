@@ -192,6 +192,7 @@ const star = {
   schedules: [
     {
       name: "morning",
+      title: "Morning brief",
       path: "/Users/a/.pult/stars/star/.pult/schedules/morning.md",
       rule: "weekdays 09:00",
       timezone: "America/Argentina/Buenos_Aires",
@@ -208,6 +209,7 @@ const star = {
     },
     {
       name: "typo",
+      title: null,
       path: "/Users/a/.pult/stars/star/.pult/schedules/typo.md",
       rule: null,
       timezone: null,
@@ -232,6 +234,12 @@ NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads a plugin older than the schedules as serving none", () => {
     const { schedules: _, ...older } = star;
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
+  });
+
+  NodeTest.test("reads a schedule from a plugin older than titles as titled by none", () => {
+    const { title: _, ...older } = star.schedules[0] ?? {};
+    const answer = { ...stars, stars: [{ ...star, schedules: [older] }] };
+    NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.title, null);
   });
 
   NodeTest.test("reads a plugin older than the model as naming none", () => {
@@ -287,6 +295,7 @@ NodeTest.describe("decodeStars", () => {
       { ...stars, stars: [{ ...star, channels: null }] },
       { ...stars, stars: [{ ...star, schedules: null }] },
       { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[1], spent: "no" }] }] },
+      { ...stars, stars: [{ ...star, schedules: [{ ...star.schedules[0], title: 1 }] }] },
       {
         ...stars,
         stars: [

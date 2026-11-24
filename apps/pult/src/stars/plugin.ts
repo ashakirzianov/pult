@@ -190,6 +190,8 @@ export interface RouteRun {
 /** A schedule of a Star's, as the plugin parsed its file: the rule in words and the next due instant are the plugin's, the page only draws them. */
 export interface RouteSchedule {
   readonly name: string;
+  /** What to show in place of the name; null where the file sets none, or from a plugin older than titles. */
+  readonly title: string | null;
   /** The file, a host path. */
   readonly path: string;
   /** The rule in words, `weekdays 09:00`; null for a file that is no schedule. */
@@ -358,6 +360,7 @@ const channels: Decode<ReadonlyArray<RouteChannel>> = (value, at) =>
 
 const schedule = struct<RouteSchedule>({
   name: string,
+  title: optional(nullable(string)),
   path: string,
   rule: nullable(string),
   timezone: nullable(string),
