@@ -22,7 +22,7 @@ const decodeWake = Schema.decodeUnknownEffect(
   Schema.Struct({ runtimeMode: RuntimeMode, channel: Schema.optional(Schema.String) }),
 );
 const decodeSleep = Schema.decodeUnknownEffect(
-  Schema.Struct({ channel: Schema.optional(Schema.String) }),
+  Schema.fromJsonString(Schema.Struct({ channel: Schema.optional(Schema.String) })),
 );
 
 /** The reserved name of `GET stars/<id>/conversations/<name>` that looks a transcript up by its thread. */
@@ -89,7 +89,11 @@ export const starsRoute = (
   if (segments.length === 3 && id !== undefined && sub === "sleep" && method === "POST")
     return answer(
       Effect.gen(function* () {
-        const body = yield* bodyOf(request, decodeSleep);
+        // No body at all is the default channel's, as `{}` is.
+        const text = yield* request.text.pipe(Effect.orElseSucceed(() => ""));
+        const body = yield* (
+          text.trim() === "" ? Effect.succeed({ channel: undefined }) : decodeSleep(text)
+        ).pipe(Effect.option);
         const named = body._tag === "None" ? undefined : body.value.channel;
         if (body._tag === "None" || (named !== undefined && !isChannel(named)))
           return json({ error: "The body must be JSON: { channel? }." }, 400);

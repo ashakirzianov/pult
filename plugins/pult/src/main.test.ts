@@ -377,9 +377,9 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     // Refresh Context needs the write scope, and refuses a channel asleep already, the default's where the body names none.
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "reader", {})).status).toBe(403);
     expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", {})).status).toBe(409);
-    const sleeping = { channel: "work" };
-    expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", sleeping)).status).toBe(409);
-    for (const body of [undefined, { channel: "Not A Slug" }])
+    for (const body of [undefined, { channel: "work" }])
+      expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", body)).status).toBe(409);
+    for (const body of [[], { channel: "Not A Slug" }])
       expect((yield* send("POST", `/stars/${star.id}/sleep`, "writer", body)).status).toBe(400);
     expect((yield* send("POST", "/stars/nobody/sleep", "writer", {})).status).toBe(404);
 
