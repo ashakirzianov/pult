@@ -293,6 +293,23 @@ describe("a channel's model", () => {
       ]);
     }),
   );
+
+  it.effect("tells what the channel's file overrides in the shared one as well", () =>
+    Effect.gen(function* () {
+      const overridden = yield* resolveWith(
+        {
+          shared: "provider: gemini\nmodel: x\nrotate-on-context: 250000\n",
+          channels: { unit: `${SOL}rotate-on-context: never\n` },
+        },
+        "unit",
+      );
+      assert.strictEqual(overridden.from, "settings");
+      assert.deepStrictEqual(overridden.broken?.problems, [
+        '`rotate-on-context` in `.pult/channels/settings.yaml` "250000" is neither thousands of tokens written with a `k`, as `250k`, nor `never`; Pult reads it as `250k`',
+        '`provider` in `.pult/channels/settings.yaml` "gemini" is not a provider here; this environment serves "claudeAgent", "codex", "cursor", "codex-empty", "codex-narrow"',
+      ]);
+    }),
+  );
 });
 
 describe("a channel's rotate-on-context", () => {

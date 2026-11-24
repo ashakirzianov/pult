@@ -140,7 +140,10 @@ const readSettings = Effect.fn("Stars.readSettings")(function* (root: string, ch
   const ownFields =
     own === undefined ? new Map<string, Field>() : parseFile(own.file, own.text, problems);
   const merged = new Map([...sharedFields, ...ownFields]);
-  const rotateOnContext = parseRotate(merged.get("rotate-on-context"), problems);
+  // Each file's value is read, so an overridden one that Pult cannot read is told too.
+  const sharedRotate = parseRotate(sharedFields.get("rotate-on-context"), problems);
+  const ownRotate = parseRotate(ownFields.get("rotate-on-context"), problems);
+  const rotateOnContext = ownFields.has("rotate-on-context") ? ownRotate : sharedRotate;
   return {
     texts: [shared, own].filter((each) => each !== undefined),
     shared: sharedFields,
@@ -291,7 +294,8 @@ export const channelModel = Effect.fn("Stars.channelModel")(function* (
     (key) => read.merged.get(key)?.file === settingsFile(channel),
   );
   const merged = served(read.merged);
-  const shared = merged === null && ownChoice ? served(read.shared) : null;
+  // Served even where the merged choice is, so every problem of both files is told at once.
+  const shared = ownChoice ? served(read.shared) : null;
   const [selection, from]: [ModelSelection | null, ChannelModel["from"]] =
     merged !== null
       ? [merged, "settings"]
