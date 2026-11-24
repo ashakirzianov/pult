@@ -2,7 +2,10 @@
    on the thread view's canvas, sized to its content. */
 .pult-composer-strip {
   position: relative;
+  box-sizing: border-box;
   height: 100%;
+  /* Clear of the details column over its right end (`src/details/filePanel.tsx`). */
+  padding-right: var(--pult-file-details-width, 0px);
 }
 
 .pult-composer-strip-content {

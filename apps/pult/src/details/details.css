@@ -105,14 +105,23 @@
   pointer-events: none;
 }
 
-/* The workbench lays out the file, its status or composer, and this column side by side. */
+/* The column under the tab row, beside the file and its status or composer, placed by `filePanel.tsx`. */
 .pult-thread-view.pult-file-details {
-  position: relative;
+  position: absolute;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  padding: calc(var(--editor-group-tab-height, 35px) + 12px) 12px var(--pult-bar-height)
-    var(--pult-shelf-inset);
+  padding: 12px 12px var(--pult-bar-height) var(--pult-shelf-inset);
+  background: var(--vscode-editor-background);
+}
+
+.pult-thread-view.pult-file-details[hidden] {
+  display: none;
+}
+
+/* VS Code mode's status bar, under the file in place of the status strip (`src/status/`), clear of the column too. */
+.monaco-workbench .part.statusbar {
+  padding-right: var(--pult-file-details-width, 0px);
 }
 
 .pult-file-details-rows {

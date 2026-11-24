@@ -1,6 +1,7 @@
 import {
   getService,
   IContextKeyService,
+  IEditorGroupsService,
   IEditorService,
   IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
@@ -167,9 +168,10 @@ function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | nu
 
 /** Follow the active editor and the selection. Thread tabs host the cards on their canvas, files beside their editor. */
 export async function startDetails(): Promise<void> {
-  const [layout, editors, contextKeys] = await Promise.all([
+  const [layout, editors, groups, contextKeys] = await Promise.all([
     getService(IWorkbenchLayoutService),
     getService(IEditorService),
+    getService(IEditorGroupsService),
     getService(IContextKeyService),
   ]);
   openKey = contextKeys.createKey(OPEN_CONTEXT, open);
@@ -190,7 +192,7 @@ export async function startDetails(): Promise<void> {
     return () => queueMicrotask(() => root.unmount());
   });
 
-  const panel = fileDetailsPanel(layout);
+  const panel = fileDetailsPanel(layout, groups);
   update = () => {
     const editor = editors.activeEditor;
     const file =
