@@ -266,9 +266,11 @@ export function selectExplorer(showExplorerTab = false): Promise<void> {
 export function showExplorerFile(resource: URI): Promise<void> {
   return enqueue(async () => {
     await switchTo(EXPLORER);
+    // A switch cancelled over a modified file leaves the selection as it was, so the file is not opened among its tabs.
+    if (!explorerSelected()) return;
     await (
       await getService(IEditorService)
-    ).openEditor({ resource, options: { revealIfOpened: true, pinned: true } });
+    ).openEditor({ resource, options: { revealIfOpened: true } });
   });
 }
 

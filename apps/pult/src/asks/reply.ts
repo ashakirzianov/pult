@@ -97,7 +97,7 @@ async function openReplyThread(
   // The channel's tab, as its row opens it, following the channel on this environment.
   await editors.openEditor(
     instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel, star.id),
-    { pinned: true, revealIfOpened: true },
+    { revealIfOpened: true },
   );
 }
 

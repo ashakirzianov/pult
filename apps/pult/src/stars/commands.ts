@@ -92,7 +92,7 @@ async function editStarInstructions(star: Star): Promise<void> {
   ).openEditor({
     resource: pultResource(home.environmentId, toUriPath(home.instructions)),
     // Edit Star Instructions edits, so Source rather than the reader a Markdown file opens in.
-    options: { pinned: true, override: DEFAULT_EDITOR_ASSOCIATION.id },
+    options: { override: DEFAULT_EDITOR_ASSOCIATION.id },
   });
 }
 
@@ -139,7 +139,6 @@ async function openStarSchedule(
     await getService(IEditorService)
   ).openEditor({
     resource: pultResource(home.environmentId, toUriPath(schedule.path)),
-    options: { pinned: true },
   });
 }
 
@@ -194,11 +193,13 @@ async function openStarChannel(
         editor.environmentId === environmentId,
     );
     if (!old) continue;
-    await group.replaceEditors([{ editor: old, replacement: input, options: { pinned: true } }]);
-    await group.openEditor(input, { pinned: true });
+    await group.replaceEditors([
+      { editor: old, replacement: input, options: { pinned: group.isPinned(old) } },
+    ]);
+    await group.openEditor(input);
     return;
   }
-  await (await getService(IEditorService)).openEditor(input, { pinned: true });
+  await (await getService(IEditorService)).openEditor(input);
 }
 
 /**
@@ -219,7 +220,6 @@ async function openStarChild(star: Star, environmentId: string, threadId: string
       threadId,
       null,
     ),
-    { pinned: true },
   );
 }
 
