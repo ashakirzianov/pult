@@ -28,6 +28,8 @@ export interface ShellReply {
   readonly prefix: string;
   /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
   readonly suggestions: ShellValue<ReadonlyArray<string>>;
+  /** Told as a send starts, its message drawn, with the thread it goes to, a draft's new one included; `sent` or the composer's error follows. */
+  readonly sending: (environmentId: string, threadId: string) => void;
   /** Told once a send was accepted, with the thread it went to, a draft's new one included. */
   readonly sent: (environmentId: string, threadId: string) => void;
 }

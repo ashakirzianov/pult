@@ -86,6 +86,19 @@ export function heldDraft(
     : null;
 }
 
+/** Whether the project's remembered draft is being sent: its thread asked for, not yet created, its send not yet failed. */
+export function draftSending(
+  environmentId: string,
+  projectId: string,
+  tags?: ReadonlyArray<string>,
+): boolean {
+  const draftId = localStorage.getItem(draftKey(environmentId, projectId, tags)) as DraftId | null;
+  return (
+    draftId !== null &&
+    useComposerDraftStore.getState().getDraftSession(draftId)?.promotedTo != null
+  );
+}
+
 /** Whether the server thread the view went to is the one the project's draft created, on the draft's environment or another. */
 export function isPromotion(
   draft: {

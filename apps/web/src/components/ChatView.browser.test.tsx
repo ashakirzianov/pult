@@ -530,12 +530,14 @@ it("a draft's first send carries the app's creation tags and opens with its line
   expect(draft.launches[0]?.initialMessage?.text).toBe("[To your channel review]\n\nHello");
 });
 
-it("a draft's first send as a reply opens with its prefix in place of the line, and tells it sent", async () => {
+it("a draft's first send as a reply opens with its prefix in place of the line, and tells it sending, then sent", async () => {
+  const sending = vi.fn();
   const sent = vi.fn();
   const suggestions = ["Yes", "Not yet"];
   await using draft = await renderShellDraft({
     prefix: '[In reply to your ask a1 "Ship it?"]',
     suggestions: { get: () => suggestions, subscribe: () => () => {} },
+    sending,
     sent,
   });
   const { editor, launches, threadId } = draft;
@@ -546,6 +548,7 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
   await page.getByRole("button", { name: "Not yet" }).click();
   await expect.element(editor).toHaveTextContent("Not yet");
   await vi.waitFor(() => expect(document.activeElement).toBe(editor.element()));
+  expect(sending).not.toHaveBeenCalled();
   expect(sent).not.toHaveBeenCalled();
   expect(launches).toHaveLength(0);
   await userEvent.keyboard("{ControlOrMeta>}z{/ControlOrMeta}");
@@ -557,6 +560,8 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
 
   await vi.waitFor(() => expect(sent).toHaveBeenCalledWith(ENVIRONMENT_ID, threadId));
   expect(sent).toHaveBeenCalledTimes(1);
+  expect(sending).toHaveBeenCalledExactlyOnceWith(ENVIRONMENT_ID, threadId);
+  expect(sending.mock.invocationCallOrder[0]).toBeLessThan(sent.mock.invocationCallOrder[0]!);
   expect(launches).toHaveLength(1);
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
   expect(launches[0]?.initialMessage?.text).toBe('[In reply to your ask a1 "Ship it?"]\n\nYes');

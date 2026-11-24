@@ -191,21 +191,55 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
   ]);
   let options = kept.get(key);
   if (options === undefined) {
+    const { target } = found;
+    // While a sleeping channel's thread is being created by the send, which no tab can show yet.
+    let sending = false;
+    const sendingListeners = new Set<() => void>();
+    const setSending = (value: boolean) => {
+      sending = value;
+      for (const listener of sendingListeners) listener();
+    };
+    const openThread = (environmentId: string, threadId: string) =>
+      void openReplyThread(ask.poster, environmentId, threadId).catch(async (error: unknown) => {
+        (await getService(INotificationService)).error(
+          `Pult could not open the reply's thread: ${String(error)}`,
+        );
+      });
     options = {
       ...found.options,
-      placeholder: { get: () => `Reply to ${posterOf(ask)}`, subscribe: starStore.subscribe },
+      placeholder: {
+        get: () => (sending ? "Sending…" : `Reply to ${posterOf(ask)}`),
+        subscribe: (listener) => {
+          sendingListeners.add(listener);
+          const stop = starStore.subscribe(listener);
+          return () => {
+            sendingListeners.delete(listener);
+            stop();
+          };
+        },
+      },
       reply: {
         prefix: ask.prefix,
         suggestions: replySuggestions(ask),
+        // An awake thread's tab opens as the send starts; a draft's thread opens once the send creates it.
+        sending: (sentOn, threadId) => {
+          if (target.kind === "thread") return openThread(sentOn, threadId);
+          setSending(true);
+          void import("../../view/drafts.ts").then(({ draftSending, onDidChangeComposers }) => {
+            const settle = () => {
+              if (draftSending(target.environmentId, target.projectId, target.tags)) return;
+              setSending(false);
+              stop();
+            };
+            const stop = onDidChangeComposers(settle);
+            settle();
+          });
+        },
         sent: (sentOn, threadId) => {
-          if (found.target.kind === "draft" && "star" in ask.poster)
+          if (target.kind === "draft" && "star" in ask.poster)
             void afterDraftWake(ask.poster.star, sentOn, threadId, ask.poster.channel);
           void replied(ask, sentOn);
-          void openReplyThread(ask.poster, sentOn, threadId).catch(async (error: unknown) => {
-            (await getService(INotificationService)).error(
-              `The reply was sent, but Pult could not open its thread: ${String(error)}`,
-            );
-          });
+          if (target.kind === "draft") openThread(sentOn, threadId);
         },
       },
     };

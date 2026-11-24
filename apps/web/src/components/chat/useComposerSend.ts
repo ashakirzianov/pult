@@ -1419,6 +1419,8 @@ export function useComposerSend(input: ComposerSendInput) {
       optimisticBlobPreviews.release(optimisticMessage);
     }
     setOptimisticUserMessages((existing) => [...existing, optimisticMessage]);
+    // Pult: told as the message is drawn, before the send returns, so the app can show where it goes.
+    if (reply !== null) queueMicrotask(() => reply.sending(environmentId, threadIdForSend));
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
