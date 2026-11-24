@@ -6,7 +6,7 @@
 // Markdown file is parsed to the same tree (`markdown.ts`) and built the same.
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 
-import { markdownOrigins, markdownTree, type SourceLocation } from "./markdown.ts";
+import { markdownTree, type SourceLocation } from "./markdown.ts";
 import { type Passage, selectedPassage, type SourceText } from "./selection.ts";
 
 type Node = DefaultTreeAdapterTypes.ChildNode;
@@ -299,18 +299,21 @@ export function createReaderFrame(options?: {
       const wrapCode = options?.wrapCode === true;
       last = { source, markdown, wrapCode };
       rendering++;
-      let tree: DefaultTreeAdapterTypes.Document;
+      let parsed: { tree: DefaultTreeAdapterTypes.Document; origin: Built["origin"] };
       let doc: Document;
       try {
-        tree = markdown
+        parsed = markdown
           ? await markdownTree(source, element, wrapCode)
-          : parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true });
+          : {
+              tree: parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true }),
+              origin: htmlOrigins(source),
+            };
         doc = await frameDocument();
       } finally {
         rendering--;
       }
       if (revision !== latest) return undefined;
-      const origin = (markdown ? markdownOrigins : htmlOrigins)(source);
+      const { tree, origin } = parsed;
       const built: Built = { scripts: false, origins, origin };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;

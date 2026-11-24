@@ -27,6 +27,7 @@ import {
   CHAT_MARKDOWN_PROSE_CLASS,
   orderedListGutterStyle,
 } from "../../view/chatMarkdownClass.ts";
+import { markdownFrontmatter } from "./frontmatter.ts";
 import type { SourceText } from "./selection.ts";
 
 /** Where parse5 found a node in the source. */
@@ -249,6 +250,12 @@ body.pult-thread-view { display: block; width: auto; height: auto; box-sizing: b
 .chat-markdown-table-container { overflow-x: auto; }
 .math-display { margin: 0.65rem 0; overflow-x: auto; overflow-y: hidden; }
 .math-display > .katex-display { margin: 0; }
+.pult-reader-frontmatter { margin-bottom: 1rem; padding: 0.7em 1em; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+.pult-reader-frontmatter dl, .pult-reader-frontmatter dd, .pult-reader-frontmatter ul { margin: 0; }
+.pult-reader-frontmatter dl > div + div, .pult-reader-frontmatter li + li { margin-top: 0.25em; }
+.pult-reader-frontmatter dt { font-weight: 600; }
+.pult-reader-frontmatter dd { padding-inline-start: 1em; white-space: pre-wrap; }
+.pult-reader-frontmatter ul { list-style: disc; padding-inline-start: 1.25em; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--vscode-editor-background); }
 ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }
@@ -327,11 +334,7 @@ function boxBlocks(node: Root | Element, wrapCode: boolean): void {
  * it came from. `themed` inherits the workbench's colours; `wrapCode` is the
  * chat's line wrap for code.
  */
-export async function markdownTree(
-  source: string,
-  themed: globalThis.Element,
-  wrapCode: boolean,
-): Promise<DefaultTreeAdapterTypes.Document> {
+export async function markdownTree(source: string, themed: globalThis.Element, wrapCode: boolean) {
   const computed = getComputedStyle(themed);
   const theme = THEME.map((name) => [name, computed.getPropertyValue(name).trim()] as const)
     .filter(([, value]) => value !== "")
@@ -359,7 +362,8 @@ export async function markdownTree(
       ),
     ],
   };
-  const body = processor.runSync(processor.parse(source), source);
+  const { markdown, block, end } = markdownFrontmatter(source);
+  const body = processor.runSync(processor.parse(markdown), markdown);
   await colourCode(body, scheme.includes("dark") ? "dark" : "light");
   boxBlocks(body, wrapCode);
   const themeId = pageRoot.getAttribute("data-theme-id");
@@ -391,6 +395,7 @@ export async function markdownTree(
                 tagName: "div",
                 properties: { className: ["min-w-0", "px-1", "py-0.5"] },
                 children: [
+                  ...(block === undefined ? [] : [block]),
                   {
                     type: "element",
                     tagName: "div",
@@ -416,7 +421,7 @@ export async function markdownTree(
     defaultTreeAdapter.insertText(sheet, math);
     defaultTreeAdapter.appendChild(parsedHead!, sheet);
   }
-  return doc;
+  return { tree: doc, origin: markdownOrigins(source, end ?? 0) };
 }
 
 /**
@@ -427,14 +432,17 @@ export async function markdownTree(
  * it has lines of its own; its source text is its lines whole, but a last
  * one it ends at the start of.
  */
-export function markdownOrigins(source: string) {
+function markdownOrigins(source: string, frontmatterEnd: number) {
   const lines = source.split(LINE_BREAK);
   return (at: SourceLocation, value: string): SourceText => {
     const last = at.endCol === 1 && at.endLine > at.startLine ? at.endLine - 1 : at.endLine;
     return {
       line: at.startLine,
       source: lines.slice(at.startLine - 1, last).join("\n"),
-      literal: (value.match(LINE_BREAK)?.length ?? 0) === at.endLine - at.startLine,
+      // Decoding a YAML scalar can move line breaks even when their count stays the same.
+      literal:
+        at.startOffset >= frontmatterEnd &&
+        (value.match(LINE_BREAK)?.length ?? 0) === at.endLine - at.startLine,
     };
   };
 }

@@ -498,6 +498,59 @@ NodeTest.describe("the reader's frame", () => {
     NodeAssert.deepEqual(cited.uncoloured, { coloured: 0, nodes: 1 });
   });
 
+  NodeTest.it("lays out YAML frontmatter and keeps the body on its source lines", async () => {
+    const result = await page.evaluate(async () => {
+      const frame = window.reader.createReaderFrame();
+      document.body.append(frame.element);
+      const source = [
+        "---",
+        'title: "<script>Safe text</script>"',
+        "settings:",
+        "  tags: [one, two]",
+        "id: 9007199254740993",
+        'summary: "a\\nb',
+        '  c"',
+        "---",
+        "# Document",
+      ].join("\n");
+      const { scripts } = (await frame.show(source, { markdown: true }))!;
+      const doc = frame.element.contentDocument!;
+      const meta = doc.querySelector(".pult-reader-frontmatter")!;
+      const cite = (node: Element, start?: number) => {
+        const selection = doc.getSelection()!;
+        const range = doc.createRange();
+        if (start === undefined) range.selectNodeContents(node);
+        else {
+          range.setStart(node.firstChild!, start);
+          range.setEnd(node.firstChild!, start + 1);
+        }
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return frame.selection();
+      };
+      const rendered = {
+        scripts,
+        keys: [...meta.querySelectorAll("dt")].map((key) => key.textContent),
+        values: [...meta.querySelectorAll("dd > ul > li")].map((item) => item.textContent),
+        title: cite(meta.querySelector("dd")!),
+        id: meta.querySelectorAll(":scope > dl > div > dd")[2]!.textContent,
+        summary: cite(meta.querySelectorAll(":scope > dl > div > dd")[3]!, 2),
+        heading: cite(doc.querySelector("h1")!),
+      };
+      frame.element.remove();
+      return rendered;
+    });
+    NodeAssert.deepEqual(result, {
+      scripts: false,
+      keys: ["title", "settings", "tags", "id", "summary"],
+      values: ["one", "two"],
+      title: { text: "<script>Safe text</script>", lines: { start: 2, end: 2 } },
+      id: "9007199254740993",
+      summary: { text: "b", lines: { start: 6, end: 7 } },
+      heading: { text: "Document", lines: { start: 9, end: 9 } },
+    });
+  });
+
   NodeTest.it(
     "follows edits, and a frame put back in the page, at the reader's scroll position",
     async () => {

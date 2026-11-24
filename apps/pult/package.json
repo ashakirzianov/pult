@@ -98,7 +98,8 @@
     "remark-parse": "catalog:",
     "remark-rehype": "catalog:",
     "unified": "catalog:",
-    "vscode": "npm:@codingame/monaco-vscode-api@37.6.1"
+    "vscode": "npm:@codingame/monaco-vscode-api@37.6.1",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

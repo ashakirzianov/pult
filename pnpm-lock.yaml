@@ -1105,6 +1105,9 @@ importers:
       vscode:
         specifier: npm:@codingame/monaco-vscode-api@37.6.1
         version: '@codingame/monaco-vscode-api@37.6.1'
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.3.3
