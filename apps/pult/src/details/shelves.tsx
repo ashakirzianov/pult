@@ -17,7 +17,7 @@ export const DETAILS_SHELF_ICONS: Record<
   asks: { label: "Asks", icon: "comment-unresolved" },
   channels: { label: "Channels", icon: "comment-discussion" },
   schedules: { label: "Schedules", icon: "history" },
-  settings: { label: "Star Settings", icon: "gear" },
+  settings: { label: "Star Settings", icon: "settings" },
 };
 
 /** The right panel's shelves, one order for every Star, as the left panel's (`createShelves`). */
