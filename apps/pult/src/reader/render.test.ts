@@ -639,6 +639,7 @@ NodeTest.describe("the reader's frame", () => {
         "id: 9007199254740993",
         'summary: "a\\nb',
         '  c"',
+        `long: ${"a value too long for the line ".repeat(12)}`,
         "---",
         "# Document",
       ].join("\n");
@@ -657,8 +658,15 @@ NodeTest.describe("the reader's frame", () => {
         selection.addRange(range);
         return frame.selection();
       };
+      const box = (node: Element) => node.getBoundingClientRect();
+      const [titleEntry, , , , longEntry] = meta.querySelectorAll(":scope > dl > div");
       const rendered = {
         scripts,
+        // Each entry one line, its key and then its value; a long value wraps beside its key.
+        titleOnOneLine: box(titleEntry!.children[0]!).top === box(titleEntry!.children[1]!).top,
+        longBesideKey:
+          box(longEntry!.children[1]!).left > box(longEntry!.children[0]!).right &&
+          box(longEntry!.children[1]!).height > 2 * box(longEntry!.children[0]!).height,
         keys: [...meta.querySelectorAll("dt")].map((key) => key.textContent),
         values: [...meta.querySelectorAll("dd > ul > li")].map((item) => item.textContent),
         title: cite(meta.querySelector("dd")!),
@@ -671,12 +679,14 @@ NodeTest.describe("the reader's frame", () => {
     });
     NodeAssert.deepEqual(result, {
       scripts: false,
-      keys: ["title", "settings", "tags", "id", "summary"],
+      titleOnOneLine: true,
+      longBesideKey: true,
+      keys: ["title", "settings", "tags", "id", "summary", "long"],
       values: ["one", "two"],
       title: { text: "<script>Safe text</script>", lines: { start: 2, end: 2 } },
       id: "9007199254740993",
       summary: { text: "b", lines: { start: 6, end: 7 } },
-      heading: { text: "Document", lines: { start: 9, end: 9 } },
+      heading: { text: "Document", lines: { start: 10, end: 10 } },
     });
   });
 

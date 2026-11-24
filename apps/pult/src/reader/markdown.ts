@@ -269,8 +269,9 @@ body.pult-thread-view { display: block; width: auto; height: auto; box-sizing: b
 .pult-reader-frontmatter { margin-bottom: 1rem; padding: 0.7em 1em; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
 .pult-reader-frontmatter dl, .pult-reader-frontmatter dd, .pult-reader-frontmatter ul { margin: 0; }
 .pult-reader-frontmatter dl > div + div, .pult-reader-frontmatter li + li { margin-top: 0.25em; }
+.pult-reader-frontmatter dl > div { display: flex; gap: 0.75em; align-items: baseline; }
 .pult-reader-frontmatter dt { font-weight: 600; }
-.pult-reader-frontmatter dd { padding-inline-start: 1em; white-space: pre-wrap; }
+.pult-reader-frontmatter dd { flex: 1 1 0; min-width: 0; white-space: pre-wrap; }
 .pult-reader-frontmatter ul { list-style: disc; padding-inline-start: 1.25em; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--vscode-editor-background); }
