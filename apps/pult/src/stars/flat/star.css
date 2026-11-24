@@ -130,19 +130,16 @@
   opacity: 0.5;
 }
 
-/* Asleep, the disc is hollow: an outline only, smaller and dimmed; stirring is that with the brackets. */
+/* Asleep, the disc is hollow: an outline only, dimmed; stirring is that with the brackets. */
 .flat-star[data-state="asleep"] .core {
-  transform: scale(0.8);
   opacity: 0.55;
 }
 .flat-star[data-state="stirring"] .core {
-  transform: scale(0.8);
   opacity: 0.85;
 }
 .flat-star[data-state="asleep"] .disc,
 .flat-star[data-state="stirring"] .disc {
   opacity: 0;
-  transform: scale(0.3);
 }
 .flat-star[data-state="stirring"] .ears {
   opacity: 0.85;
