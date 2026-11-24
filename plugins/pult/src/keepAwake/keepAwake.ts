@@ -1,5 +1,5 @@
 // Keeps this Mac awake while agents work (xaxis `pult/tasks/keep-awake-while-agents-work.task`): while the server
-// is not at rest by `ServerActivity`, a `caffeinate -i -w <server pid>` child holds an idle-sleep assertion, which
+// is not at rest by `ServerActivity`, a `caffeinate -s -i -w <server pid>` child holds a sleep assertion, which
 // goes with the server's process however it ends. The switch is `<stateDir>/plugins/pult/keep-awake-off`, written
 // only by the route below.
 import {
@@ -31,8 +31,10 @@ function todo(reason: string): never {
 const holdCommand = (platform: NodeJS.Platform, pid: number): ChildProcess.Command => {
   switch (platform) {
     case "darwin":
-      // -i is PreventUserIdleSystemSleep; -w ends the assertion with the server's process.
-      return ChildProcess.make("/usr/bin/caffeinate", ["-i", "-w", String(pid)], {
+      // -s is PreventSystemSleep, which macOS honours on AC alone; -i, PreventUserIdleSystemSleep, is what holds on
+      // battery. On AC, -i alone taken inside a maintenance dark wake does not hold (xaxis
+      // `pult/tasks/keep-awake-does-not-hold-a-sleeping-mac.task`). -w ends both with the server's process.
+      return ChildProcess.make("/usr/bin/caffeinate", ["-s", "-i", "-w", String(pid)], {
         stdin: "ignore",
         stdout: "ignore",
         stderr: "ignore",

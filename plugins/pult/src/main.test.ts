@@ -246,7 +246,11 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     yield* keepAwake;
     yield* keepAwake;
     expect(server.children).toEqual([
-      { command: "/usr/bin/caffeinate", args: ["-i", "-w", String(process.pid)], running: true },
+      {
+        command: "/usr/bin/caffeinate",
+        args: ["-s", "-i", "-w", String(process.pid)],
+        running: true,
+      },
     ]);
     // One that exits on its own, as to an agent's `pkill caffeinate`, is held again by the next pass.
     server.children[0]!.running = false;
