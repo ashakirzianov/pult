@@ -5,6 +5,8 @@ codebase-url: https://github.com/ashakirzianov/pult
 
 # Pult
 
+A change outside `plugins/pult` and `apps/pult` that adds to the fork updates xaxis `pult/fork-additions`, the list of everything the fork adds over upstream, in the same change.
+
 Pult is a fork of T3 Code with its own client: the shell at `apps/pult`, on VS Code's workbench, and the server changes it needs in `apps/server`, kept additive so upstream merges stay easy.
 
 This repository is the **Pult track**'s (xaxis `pult/about`), beside `../pult-star` (the Stars' generative art, local only). Read xaxis `pult/rfc-0` (human-written, never edited by agents) before anything else, then `pult/rfc-2`, the current direction. The track's decisions are xaxis `pult/decisions`; its design principles `pult/taste`. Cross-track conventions live in xaxis `/ashakirzianov/axis/AGENTS.md` (read with `query`).
