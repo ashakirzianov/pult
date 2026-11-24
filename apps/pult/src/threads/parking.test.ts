@@ -2,7 +2,7 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
-import { nextAfterParking, parkActions, parseCustomSnooze } from "./parking.ts";
+import { cacheSnooze, nextAfterParking, parkActions, parseCustomSnooze } from "./parking.ts";
 import type { ShelfName } from "./store.ts";
 
 const list = (...threads: Array<[string, ShelfName | null]>) =>
@@ -101,3 +101,21 @@ NodeTest.test("a custom snooze is a duration or a local time, in the future", ()
   NodeAssert.equal(parseCustomSnooze("0m", now), null);
   NodeAssert.equal(parseCustomSnooze("soon", now), null);
 });
+
+NodeTest.test(
+  "Before cache expires wakes 5 minutes before the expiry, while that is a minute ahead",
+  () => {
+    const now = new Date("2026-11-24T12:00:00Z");
+    NodeAssert.equal(
+      cacheSnooze({ promptCacheExpiresAt: "2026-11-24T12:40:00Z" }, now)?.toISOString(),
+      "2026-11-24T12:35:00.000Z",
+    );
+    NodeAssert.equal(cacheSnooze({ promptCacheExpiresAt: null }, now), null);
+    NodeAssert.equal(cacheSnooze({ promptCacheExpiresAt: undefined }, now), null);
+    NodeAssert.equal(cacheSnooze({ promptCacheExpiresAt: "2026-11-24T12:05:59Z" }, now), null);
+    NodeAssert.equal(
+      cacheSnooze({ promptCacheExpiresAt: "2026-11-24T12:06:00Z" }, now)?.toISOString(),
+      "2026-11-24T12:01:00.000Z",
+    );
+  },
+);

@@ -36,7 +36,13 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 
 import { connection } from "../connection/index.ts";
-import { nextAfterParking, type ParkActions, parkActions, parseCustomSnooze } from "./parking.ts";
+import {
+  cacheSnooze,
+  nextAfterParking,
+  type ParkActions,
+  parkActions,
+  parseCustomSnooze,
+} from "./parking.ts";
 import { NO_THREAD_FEATURES } from "./presentation.ts";
 import { starStore } from "../stars/model.ts";
 import { isHiddenProject } from "../stars/hidden.ts";
@@ -267,9 +273,23 @@ function threadParkActions(target: ShellThread): ParkActions {
   return parkActions(target, features);
 }
 
-/** Upstream's snooze presets, each with its time, then Custom…, which asks the user for one; `snooze` takes the time picked. */
-function snoozeActions(snooze: (wake: string) => void): IAction[] {
+/** The time of day a snooze wakes, as upstream's presets read it. */
+const wakeTime = (wake: Date) =>
+  wake.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** A thread's Before cache expires, then upstream's snooze presets, each with its time, then Custom…, which asks the user for one; `snooze` takes the time picked. */
+function snoozeActions(snooze: (wake: string) => void, thread?: ShellThread): IAction[] {
+  const cache = thread === undefined ? null : cacheSnooze(thread, new Date());
   return [
+    ...(cache === null
+      ? []
+      : [
+          toAction({
+            id: "pult-shell.snooze.cache",
+            label: `Before cache expires (${wakeTime(cache)})`,
+            run: () => snooze(cache.toISOString()),
+          }),
+        ]),
     ...resolveSnoozePresets(new Date()).map((preset) =>
       toAction({
         id: `pult-shell.snooze.${preset.id}`,
@@ -290,13 +310,19 @@ type Anchor = HTMLElement | { x: number; y: number };
 
 /** The card's clock: the snooze presets under it. `onHide` once the menu closes. */
 export const showSnoozeMenu = (target: ThreadRef, anchor: HTMLElement, onHide: () => void) =>
-  showSnoozePresets(anchor, onHide, (wake) => void snoozeThread(target, wake));
+  showSnoozePresets(
+    anchor,
+    onHide,
+    (wake) => void snoozeThread(target, wake),
+    threadStore.thread(target.environmentId, target.id),
+  );
 
-/** The snooze presets under `anchor`, the time picked, Custom…'s asked for, given to `snooze`: an ask's card's clock (`src/panel/AskCard.tsx`). */
+/** The snooze presets under `anchor`, a thread's Before cache expires first, the time picked, Custom…'s asked for, given to `snooze`; an ask's card's clock (`src/panel/AskCard.tsx`) names no thread. */
 export async function showSnoozePresets(
   anchor: HTMLElement,
   onHide: () => void,
   snooze: (snoozedUntil: string) => void,
+  thread?: ShellThread,
 ): Promise<void> {
   const menus = await getService(IContextMenuService);
   menus.showContextMenu({
@@ -307,7 +333,7 @@ export async function showSnoozePresets(
         void customWake().then((until) => {
           if (until !== undefined) snooze(until);
         });
-      }),
+      }, thread),
     onHide,
   });
 }
@@ -334,7 +360,7 @@ export async function showThreadMenu(target: ShellThread, anchor: Anchor): Promi
         ? new SubmenuAction(
             "pult-shell.snoozeThread",
             "Snooze",
-            snoozeActions((wake) => void snoozeThread(target, wake)),
+            snoozeActions((wake) => void snoozeThread(target, wake), target),
           )
         : toAction({
             id: "pult-shell.snoozeThread",
@@ -450,8 +476,18 @@ export function registerParkCommands(): void {
     "Snooze Thread…",
     async (target, accessor) => {
       const quickInput = accessor.get(IQuickInputService);
+      const cache = cacheSnooze(target, new Date());
       const picked = await quickInput.pick(
         [
+          ...(cache === null
+            ? []
+            : [
+                {
+                  label: "Before cache expires",
+                  description: wakeTime(cache),
+                  wake: cache.toISOString(),
+                },
+              ]),
           ...resolveSnoozePresets(new Date()).map((preset) => ({
             label: preset.label,
             description: preset.whenLabel,

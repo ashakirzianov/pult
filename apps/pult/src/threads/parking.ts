@@ -58,6 +58,21 @@ export function nextAfterParking(
   );
 }
 
+/**
+ * Snooze's Before cache expires: 5 minutes before the thread's prompt cache
+ * expires, so it wakes while the cache is warm; null while the expiry is
+ * unknown or that wake is less than a minute ahead. It does not follow an
+ * expiry a later turn moves.
+ */
+export function cacheSnooze(
+  thread: Pick<ShellThread, "promptCacheExpiresAt">,
+  now: Date,
+): Date | null {
+  if (thread.promptCacheExpiresAt == null) return null;
+  const wake = Date.parse(thread.promptCacheExpiresAt) - 5 * 60_000;
+  return wake - now.getTime() < 60_000 ? null : new Date(wake);
+}
+
 const DURATION_UNITS = { m: "minutes", h: "hours", d: "days" } as const;
 
 /** A typed snooze, through upstream's resolver: "45m", "2h", "3d", or a local "YYYY-MM-DD HH:MM"; null unless in the future. */
