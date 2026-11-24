@@ -23,7 +23,7 @@ export interface FileLinkSources {
     environmentId: string,
     paths: ReadonlyArray<string>,
   ) => Promise<ReadonlyArray<unknown>>;
-  /** The thread's latest run's end: a change drops its `no` verdicts, since an agent names a file before it writes it. */
+  /** The thread's latest run's end: a change checks its `no` verdicts again, since an agent names a file before it writes it. */
   readonly runEnd: (environmentId: string, threadId: string) => string | null;
   /** The environment's checkouts and kept xaxis root, as one value: a change drops every verdict of the environment. */
   readonly roots: (environmentId: string) => string;
@@ -186,8 +186,11 @@ export function makeFileLinks(sources: FileLinkSources) {
         resolution.kind === "open" || resolution.kind === "pick" ? "yes" : failed ? "failed" : "no";
     }
     if (thread.revision !== revision) return;
+    const before = thread.states.get(ref.path);
+    // A `no` checked again after a run keeps its answer through a failure.
+    if (state === "failed" && before === "no") return;
     thread.states.set(ref.path, state);
-    if (state !== "failed") notify(ref);
+    if (state !== "failed" && state !== before) notify(ref);
   };
 
   /** A failed check leaves the chip, told once per environment. */
@@ -200,21 +203,41 @@ export function makeFileLinks(sources: FileLinkSources) {
     );
   };
 
-  /** Drops the thread's verdicts `which` keeps: a yes or no's gate re-asks as it changes; one read as unknown before and after, pending or failed, is asked again here while a gate shows it. */
-  const drop = (
-    environmentId: string,
-    threadId: string,
-    thread: Thread,
-    which: (state: State) => boolean,
-  ) => {
+  /** Drops the thread's verdicts: a yes or no's gate re-asks as it changes; one read as unknown before and after, pending or failed, is asked again here while a gate shows it. */
+  const drop = (environmentId: string, threadId: string, thread: Thread) => {
     thread.revision += 1;
     // A copy: `ask` puts a path back into the map.
     for (const [path, state] of Array.from(thread.states)) {
-      if (!which(state)) continue;
       thread.states.delete(path);
       const ref = { environmentId, threadId, path };
       if (state === "yes" || state === "no") notify(ref);
       else if (listeners.has(keyOf(ref))) ask(ref);
+    }
+  };
+
+  /** After the thread's run: a `no` a gate shows is checked again and reads `no` until its new answer is in, its gate told only if that differs; every other `no`, pending or failed verdict is dropped, asked again here while a gate shows it. */
+  const recheck = (
+    environmentId: string,
+    environment: Environment,
+    threadId: string,
+    thread: Thread,
+  ) => {
+    const revision = ++thread.revision;
+    // A copy: `ask` puts a path back into the map.
+    for (const [path, state] of Array.from(thread.states)) {
+      if (state === "yes") continue;
+      const ref = { environmentId, threadId, path };
+      const shown = listeners.has(keyOf(ref));
+      if (state === "no" && shown) {
+        // The server refreshes its index after the run without telling anyone: the check waits as
+        // long as a gate's own ask of a dropped verdict did, after the publish.
+        setTimeout(() => {
+          if (thread.revision === revision) void check(ref, environment, thread);
+        }, sources.publishMs);
+        continue;
+      }
+      thread.states.delete(path);
+      if (shown) ask(ref);
     }
   };
 
@@ -224,8 +247,7 @@ export function makeFileLinks(sources: FileLinkSources) {
       if (roots !== environment.roots) {
         environment.roots = roots;
         environment.searches = new Map();
-        for (const [threadId, thread] of environment.threads)
-          drop(environmentId, threadId, thread, () => true);
+        for (const [threadId, thread] of environment.threads) drop(environmentId, threadId, thread);
         continue;
       }
       for (const [threadId, thread] of environment.threads) {
@@ -234,7 +256,7 @@ export function makeFileLinks(sources: FileLinkSources) {
         thread.runEnd = runEnd;
         // The server refreshes its index after every run.
         environment.searches = new Map();
-        drop(environmentId, threadId, thread, (state) => state !== "yes");
+        recheck(environmentId, environment, threadId, thread);
       }
     }
   });

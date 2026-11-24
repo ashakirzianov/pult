@@ -18,7 +18,7 @@ const pult = checkout("/repos/pult", "pult");
 const axis = checkout("/repos/axis", "axis");
 
 /** One environment whose files are `files`, its threads in `/repos/pult`, its kept xaxis checkout at `/xaxis`. */
-function environment(files: ReadonlyArray<string>) {
+function environment(files: Array<string>) {
   const metadataCalls: Array<ReadonlyArray<string>> = [];
   const searched: Array<string> = [];
   const runEnds = new Map<string, string | null>();
@@ -65,20 +65,21 @@ function environment(files: ReadonlyArray<string>) {
     runEnds.set(threadId, at);
     for (const listener of changed) listener();
   };
-  return { verdicts, settle, metadataCalls, searched };
+  return { links, verdicts, settle, metadataCalls, searched };
 }
 
 NodeTest.test(
   "a path is a link only where the click would open it, its inputs asked once per batch",
   async () => {
-    const { verdicts, settle, metadataCalls, searched } = environment([
+    const files = [
       "/repos/pult/src/a.ts",
       "/repos/axis/docs/b.ts",
       "/repos/pult/x/c.ts",
       "/repos/pult/y/c.ts",
       "/etc/hosts",
       "/xaxis/owner/track/about.md",
-    ]);
+    ];
+    const { links, verdicts, settle, metadataCalls, searched } = environment(files);
     const paths = [
       "src/a.ts",
       "b.ts",
@@ -103,10 +104,31 @@ NodeTest.test(
       "each checkout searched once per key, across threads",
     );
 
+    // The gates stay on screen through the run's end; the agent wrote one of the missing files.
     metadataCalls.length = 0;
     searched.length = 0;
+    const refs = paths.map((path): FileLinkRef => ({ environmentId: "env", threadId: "t1", path }));
+    const notified: Array<string> = [];
+    let publish = () => {};
+    const published = new Promise<void>((resolve) => (publish = resolve));
+    for (const ref of refs)
+      links.subscribe(ref, () => {
+        notified.push(ref.path);
+        publish();
+      });
+    files.push("/xaxis/etc/hosts");
     settle("t1", "2026-11-24T12:00:00Z");
-    NodeAssert.deepEqual(await verdicts("t1", paths), [true, true, true, false, false, true]);
+    NodeAssert.deepEqual(
+      refs.map((ref) => links.verdict(ref)),
+      [true, true, true, false, false, true],
+      "a no reads as no while it is checked again",
+    );
+    await published;
+    NodeAssert.deepEqual(notified, ["/etc/hosts"], "only the path that now opens is told");
+    NodeAssert.deepEqual(
+      refs.map((ref) => links.verdict(ref)),
+      [true, true, true, true, false, true],
+    );
     NodeAssert.deepEqual(metadataCalls, [["/xaxis/etc/hosts", "/repos/pult/src/missing.ts"]]);
     NodeAssert.deepEqual(searched.toSorted(), [
       "/repos/axis src/missing.ts",
