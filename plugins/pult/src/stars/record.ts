@@ -1,6 +1,5 @@
 // A Star's folder and its record in `.pult/star.yaml`: the layout, the parse, the text, and the
-// rewrite that keeps the Star's other lines. Byte for byte the page's format
-// (`apps/pult/src/stars/record.ts`), which a released page still reads and writes.
+// rewrite that keeps the Star's other lines. The plugin is the format's only reader and writer.
 import { type Channel, isChannel } from "./channels.ts";
 
 /** Where a server's Stars live, beside its home (`directory.ts`). */
@@ -64,8 +63,6 @@ export interface RecordFields {
   readonly description?: string | undefined;
   readonly tint?: string | undefined;
 }
-
-const KIND = "star";
 
 /** How a Star is named where it has no name: its project's title, the page's card. */
 export const starName = (record: Pick<StarRecord, "name">) => record.name.trim() || "Star";
@@ -135,11 +132,11 @@ export const fieldsOf = (lines: ReadonlyArray<string>) =>
     }),
   );
 
-/** The Star's record in `.pult/star.yaml`; undefined for a file that is no Star's. */
+/** The Star's record in `.pult/star.yaml`, which is one wherever it holds an `id`; undefined for a file without. */
 export function parseRecord(text: string): StarRecord | undefined {
   const fields = fieldsOf(text.split(/\r?\n/));
   const id = fields.get("id");
-  if (fields.get("xaxis-kind") !== KIND || id === undefined || id === "") return undefined;
+  if (id === undefined || id === "") return undefined;
   const defaultChannel = fields.get("default-channel");
   return {
     id,
@@ -176,8 +173,7 @@ export function newRecord(id: string, created: string, name = ""): StarRecord {
 }
 
 export function recordText(record: StarRecord): string {
-  return `xaxis-kind: ${KIND}
-id: ${quoted(record.id)}
+  return `id: ${quoted(record.id)}
 name: ${quoted(record.name)}
 description: ${quoted(record.description)}
 tint: ${quoted(record.tint)}

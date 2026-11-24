@@ -523,7 +523,7 @@ it.effect(
       yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
       yield* fs.writeFileString(
         path.join(root, ".pult/star.yaml"),
-        'xaxis-kind: star\nid: "vega-id"\nname: "Vega"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n',
+        'id: "vega-id"\nname: "Vega"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n',
       );
       const starProject = yield* server.projects.service.create({
         projectId: ProjectId.make("p-star"),
@@ -669,7 +669,7 @@ it.effect(
           yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
           yield* fs.writeFileString(
             path.join(root, ".pult/star.yaml"),
-            `xaxis-kind: star\nid: "${id}"\nname: "${name}"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n${lines}`,
+            `id: "${id}"\nname: "${name}"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n${lines}`,
           );
           return yield* server.projects.service.create({
             projectId: ProjectId.make(`p-${id}`),
@@ -888,7 +888,7 @@ it.effect(
           yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
           yield* fs.writeFileString(
             path.join(root, ".pult/star.yaml"),
-            `xaxis-kind: star\nid: "${id}"\n${lines}tint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n`,
+            `id: "${id}"\n${lines}tint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n`,
           );
           yield* server.projects.service.create({
             projectId: ProjectId.make(`p-${id}`),

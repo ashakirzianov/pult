@@ -27,8 +27,7 @@ describe("parseRecord", () => {
   });
 
   it("reads plain, double- and single-quoted values, and no description line as none", () => {
-    const text =
-      "xaxis-kind: star\nid: abc\nname: 'Vega''s'\ntint: \"mint\"\ncreated: 2026-11-03\n";
+    const text = "id: abc\nname: 'Vega''s'\ntint: \"mint\"\ncreated: 2026-11-03\n";
     assert.deepStrictEqual(parseRecord(text), {
       id: "abc",
       name: "Vega's",
@@ -40,7 +39,7 @@ describe("parseRecord", () => {
   });
 
   it("reads default-channel as its slug, and main where it is absent or no slug", () => {
-    const text = (line: string) => `xaxis-kind: star\nid: abc\n${line}`;
+    const text = (line: string) => `id: abc\n${line}`;
     assert.strictEqual(parseRecord(text("default-channel: user\n"))?.defaultChannel, "user");
     assert.strictEqual(parseRecord(text('default-channel: "unit-2"\n'))?.defaultChannel, "unit-2");
     assert.strictEqual(parseRecord(text(""))?.misnamedDefaultChannel, undefined);
@@ -51,20 +50,25 @@ describe("parseRecord", () => {
     }
   });
 
-  it("finds no record in a file of another kind, or without an id", () => {
-    assert.strictEqual(parseRecord("xaxis-kind: note\nid: abc\n"), undefined);
-    assert.strictEqual(parseRecord("xaxis-kind: star\n"), undefined);
+  it("finds no record in a file without an id", () => {
+    assert.strictEqual(parseRecord('name: "Vega"\n'), undefined);
+    assert.strictEqual(parseRecord('id: ""\nname: "Vega"\n'), undefined);
+  });
+
+  it("reads a record that still carries the old kind line, and keeps the line through a rewrite", () => {
+    const text = 'xaxis-kind: star\nid: abc\nname: ""\n';
+    assert.strictEqual(parseRecord(text)?.id, "abc");
+    const written = withRecordFields(text, { name: "Vega" });
+    assert.strictEqual(written, 'xaxis-kind: star\nid: abc\nname: "Vega"\n');
+    assert.strictEqual(parseRecord(written)?.name, "Vega");
   });
 });
 
 describe("withRecordFields", () => {
   it("rewrites the fields in place and leaves every other line as it was", () => {
-    const text = 'xaxis-kind: star\nid: abc\nname: ""\n# kept\ntint: amber\ncreated: x\n';
+    const text = 'id: abc\nname: ""\n# kept\ntint: amber\ncreated: x\n';
     const written = withRecordFields(text, { name: "Vega", tint: "sky" });
-    assert.strictEqual(
-      written,
-      'xaxis-kind: star\nid: abc\nname: "Vega"\n# kept\ntint: "sky"\ncreated: x\n',
-    );
+    assert.strictEqual(written, 'id: abc\nname: "Vega"\n# kept\ntint: "sky"\ncreated: x\n');
     assert.deepStrictEqual(parseRecord(written), {
       id: "abc",
       name: "Vega",
@@ -76,8 +80,8 @@ describe("withRecordFields", () => {
   });
 
   it("adds a field the record lacks, and quotes what YAML would misread", () => {
-    const written = withRecordFields("xaxis-kind: star\nid: abc\n", { name: "a: b # c" });
-    assert.strictEqual(written, 'xaxis-kind: star\nid: abc\nname: "a: b # c"\n');
+    const written = withRecordFields("id: abc\n", { name: "a: b # c" });
+    assert.strictEqual(written, 'id: abc\nname: "a: b # c"\n');
     assert.strictEqual(parseRecord(written)?.name, "a: b # c");
   });
 

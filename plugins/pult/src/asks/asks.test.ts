@@ -132,7 +132,7 @@ it.effect(
       yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
       yield* fs.writeFileString(
         path.join(root, ".pult/star.yaml"),
-        'xaxis-kind: star\nid: "vega-id"\nname: "Vega"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n',
+        'id: "vega-id"\nname: "Vega"\ntint: "amber"\ncreated: "2026-11-10T09:00:00.000Z"\n',
       );
       const vega = yield* server.projects.service.create({
         projectId: ProjectId.make("p-star"),
