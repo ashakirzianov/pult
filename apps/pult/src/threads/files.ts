@@ -16,7 +16,14 @@ import { type Checkout, checkoutName, checkoutsOf } from "../changes/checkouts.t
 import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
 import { connection } from "../connection/index.ts";
 import { makeFileLinks } from "../files/linkable.ts";
-import { baseName, namesEnvironment, parentOf, toHostPath } from "../files/paths.ts";
+import {
+  baseName,
+  locate,
+  namesEnvironment,
+  parentOf,
+  toHostPath,
+  toUriPath,
+} from "../files/paths.ts";
 import { type Candidate, type ResolveInput, resolveThreadPath } from "../files/resolve.ts";
 import { environmentServer } from "../files/server.ts";
 import { pultResource, whenListed } from "../files/workspace.ts";
@@ -113,9 +120,39 @@ export async function openThreadFile(
 
 /** What a path the thread names resolves with but the path and `exists`: the click's, and the file link gate's (`threadFileLinks`). */
 function threadPathInput(environmentId: string, thread: ShellThread) {
+  return pathInput(environmentId, thread.checkoutRoot ?? thread.projectRoot, thread.projectId);
+}
+
+/**
+ * What a path a document the reader shows names resolves with but the path
+ * and `exists`, as a thread's would in the checkout holding the document, the
+ * innermost, else in the project holding it, as a thread of a hidden project
+ * (an ask's folder, a Star's) resolves in its own; with neither, in the
+ * environment's checkouts alone.
+ */
+export function documentPathInput(environmentId: string, documentPath: string) {
+  const input = pathInput(environmentId, null, "");
+  const projects = threadStore
+    .get()
+    .projects.filter((project) => namesEnvironment(project.environmentId, environmentId));
+  const owners = [
+    ...input.checkouts.map((checkout) => ({ root: checkout.root, projectId: checkout.projectId })),
+    ...projects.flatMap((project) =>
+      project.root === null ? [] : [{ root: project.root, projectId: project.id }],
+    ),
+  ];
+  const root = locate(
+    owners.map((owner) => toUriPath(owner.root)),
+    documentPath,
+  )?.root;
+  const own = owners.find((owner) => toUriPath(owner.root) === root);
+  return own === undefined ? input : { ...input, checkoutRoot: own.root, projectId: own.projectId };
+}
+
+function pathInput(environmentId: string, checkoutRoot: string | null, projectId: string) {
   return {
-    checkoutRoot: thread.checkoutRoot ?? thread.projectRoot,
-    projectId: thread.projectId,
+    checkoutRoot,
+    projectId,
     checkouts: environmentCheckouts(environmentId),
     xaxisRoot: keptRoot(environmentId),
     search: async (checkout: Checkout, key: string) => {

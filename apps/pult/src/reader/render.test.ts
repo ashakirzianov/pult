@@ -197,6 +197,69 @@ NodeTest.describe("the reader's frame", () => {
     },
   );
 
+  NodeTest.it(
+    "shows an image a file path names as the shell reads it, and says why it does not another",
+    async () => {
+      const before = requests.length;
+      const shown = await page.evaluate(
+        async ({ png, leak }) => {
+          const frame = window.reader.createReaderFrame();
+          document.body.append(frame.element);
+          const read: string[] = [];
+          const readImage = async (path: string) => {
+            read.push(path);
+            return path === "mocks/mock.png" ? { url: png } : { refused: "outside the projects" };
+          };
+          const unshown = (doc: Document) =>
+            [...doc.querySelectorAll(".pult-reader-unshown-image")].map((node) => node.textContent);
+          await frame.show(
+            [
+              `<img id="file" src=" mocks/mock.png" alt="the mock">`,
+              `<img src="${leak}/web.png" alt="from far">`,
+              `<img src="/elsewhere/far.png" alt="far">`,
+              `<img src="ftp://host/y.png">`,
+            ].join(""),
+            { readImage },
+          );
+          const page = frame.element.contentDocument!;
+          const file = page.getElementById("file") as HTMLImageElement;
+          await file.decode();
+          const html = { width: file.naturalWidth, alt: file.alt, unshown: unshown(page) };
+          await frame.show(`![md mock](mocks/mock.png) and ![](${leak}/md.png)`, {
+            markdown: true,
+            readImage,
+          });
+          const markdown = frame.element.contentDocument!;
+          const image = markdown.querySelector("img")!;
+          await image.decode();
+          const result = {
+            html,
+            markdown: { width: image.naturalWidth, unshown: unshown(markdown) },
+            read,
+          };
+          frame.element.remove();
+          return result;
+        },
+        { png: PNG, leak: LEAK },
+      );
+      await page.evaluate(() => fetch("http://leak.test/control").catch(() => undefined));
+      NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
+      NodeAssert.deepEqual(shown, {
+        html: {
+          width: 1,
+          alt: "the mock",
+          unshown: [
+            "from far not shown · from the web",
+            "far not shown · outside the projects",
+            "ftp://host/y.png not shown · not a file",
+          ],
+        },
+        markdown: { width: 1, unshown: [`${LEAK}/md.png not shown · from the web`] },
+        read: ["mocks/mock.png", "/elsewhere/far.png", "mocks/mock.png"],
+      });
+    },
+  );
+
   NodeTest.it("tells a page with scripts from one with data blocks", async () => {
     const scripts = await page.evaluate(
       async (sources) => {

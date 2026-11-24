@@ -57,7 +57,8 @@ import { toHostPath } from "../files/paths.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
-import { createReaderFrame, type ReaderFrame } from "./render.ts";
+import { readImage } from "./images.ts";
+import { createReaderFrame, type ImageShown, type ReaderFrame } from "./render.ts";
 import type { Passage } from "./selection.ts";
 
 const READER_ID = "pult.shell.reader";
@@ -143,6 +144,8 @@ class ReaderInput extends SimpleEditorInput {
   readonly markdown: boolean;
   /** Whether the scripts notice was closed in this tab. */
   noticeClosed = false;
+  /** The images the file's paths name, by `src`, read once for the tab's life; one not shown is read again at the next render. */
+  private readonly images = new Map<string, Promise<ImageShown>>();
 
   /**
    * `sourceIfEmpty`: an ordinary open's, whose pane hands an empty file, one
@@ -178,6 +181,19 @@ class ReaderInput extends SimpleEditorInput {
 
   override get typeId(): string {
     return READER_ID;
+  }
+
+  /** The image `src` names in the file, as the frame shows it (`images.ts`). */
+  readImage(src: string): Promise<ImageShown> {
+    const known = this.images.get(src);
+    if (known !== undefined) return known;
+    const read = readImage(this.file, src);
+    this.images.set(src, read);
+    const forget = () => {
+      if (this.images.get(src) === read) this.images.delete(src);
+    };
+    read.then((shown) => "refused" in shown && forget(), forget);
+    return read;
   }
 
   /** The file's text model, unsaved edits included. */
@@ -283,6 +299,7 @@ class ReaderPane extends SimpleEditorPane {
         fresh,
         markdown: input.markdown,
         wrapCode: view?.codeWrap() ?? false,
+        readImage: (src) => input.readImage(src),
       });
       if (shown === undefined || this.input !== input) return;
       this.version = version;

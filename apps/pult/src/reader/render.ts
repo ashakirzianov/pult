@@ -4,6 +4,8 @@
 // in JavaScript, and the frame's document built node by node from the tree,
 // so the browser never parses the page's markup nor sees a URL of it. A
 // Markdown file is parsed to the same tree (`markdown.ts`) and built the same.
+// An image a file path names is read by the shell (`images.ts`) and put in the
+// page as a `data:` URL; one that is not shows its alt text and why.
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 
 import { markdownTree, type SourceLocation } from "./markdown.ts";
@@ -84,8 +86,71 @@ function kept(element: string, name: string, value: string): string | undefined 
   return url.startsWith("data:") ? value : undefined;
 }
 
+/** An image a file path names as the page gets it: its bytes as a `data:` URL, or why it is not shown. */
+export type ImageShown = { readonly url: string } | { readonly refused: string };
+
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+/** Each `img` element's `src` under `nodes`, as written. */
+function imageSources(nodes: readonly Node[], sources: Set<string>): void {
+  for (const node of nodes) {
+    if (!("tagName" in node)) continue;
+    if (node.tagName === "img" && node.namespaceURI === HTML_NAMESPACE) {
+      const src = node.attrs.find((attr) => attr.name === "src" && attr.namespace === undefined);
+      if (src !== undefined) sources.add(src.value);
+    }
+    imageSources(node.childNodes, sources);
+  }
+}
+
+/**
+ * What the page shows for an image's `src`: undefined for one `kept` leaves
+ * as it is (`data:`, a fragment, none), a web or other URL refused, and a
+ * file path as `read` answers it.
+ */
+async function imageShown(
+  src: string,
+  read: ((path: string) => Promise<ImageShown>) | undefined,
+): Promise<ImageShown | undefined> {
+  const url = urlText(src);
+  if (url === "" || url.startsWith("data:") || url.startsWith("#")) return undefined;
+  if (/^(?:https?:)?\/\//.test(url)) return { refused: "from the web" };
+  if (/^[a-z][a-z\d+.-]*:/.test(url)) return { refused: "not a file" };
+  if (read === undefined) return { refused: "not read here" };
+  return read(src.replace(/[\t\n\r]/g, "").trim()).catch(() => ({ refused: "could not be read" }));
+}
+
+/** The images of the tree, each `src` with what it shows. */
+async function readImages(
+  tree: DefaultTreeAdapterTypes.Document,
+  read: ((path: string) => Promise<ImageShown>) | undefined,
+): Promise<ReadonlyMap<string, ImageShown>> {
+  const sources = new Set<string>();
+  imageSources(tree.childNodes, sources);
+  const shown = await Promise.all(
+    [...sources].map(async (src) => [src, await imageShown(src, read)] as const),
+  );
+  return new Map(shown.flatMap(([src, image]) => (image === undefined ? [] : [[src, image]])));
+}
+
+/** An image not shown: its alt text, else its `src`, and a muted "not shown" with the reason, in the page's own type. */
+function unshownImage(doc: Document, alt: string, src: string, reason: string): HTMLElement {
+  const element = doc.createElement("span");
+  element.className = "pult-reader-unshown-image";
+  element.title = src;
+  element.append(alt.trim() === "" ? src : alt, " ");
+  const note = doc.createElement("span");
+  note.style.opacity = "0.6";
+  note.style.fontSize = "0.85em";
+  note.textContent = `not shown · ${reason}`;
+  element.append(note);
+  return element;
+}
+
 interface Built {
   scripts: boolean;
+  /** The page's images a file path or another URL names, by `src`. */
+  readonly images: ReadonlyMap<string, ImageShown>;
   readonly origins: WeakMap<Text, SourceText>;
   /** Where a text node of `value` at `at` came from. */
   readonly origin: (at: SourceLocation, value: string) => SourceText;
@@ -115,6 +180,16 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
     if (node.attrs.some((attr) => attr.name.startsWith("on"))) built.scripts = true;
     if (DROPPED.has(name)) continue;
     if (name === "meta" && node.attrs.some((attr) => attr.name === "http-equiv")) continue;
+    const src =
+      name === "img" && node.namespaceURI === HTML_NAMESPACE
+        ? node.attrs.find((attr) => attr.name === "src" && attr.namespace === undefined)?.value
+        : undefined;
+    const image = src === undefined ? undefined : built.images.get(src);
+    if (image !== undefined && "refused" in image) {
+      const alt = node.attrs.find((attr) => attr.name === "alt")?.value ?? "";
+      parent.append(unshownImage(doc, alt, src!, image.refused));
+      continue;
+    }
     let element: Element;
     try {
       element = doc.createElementNS(node.namespaceURI, name);
@@ -124,7 +199,10 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
       continue;
     }
     for (const attr of node.attrs) {
-      const value = kept(name, attr.name, attr.value);
+      const value =
+        image !== undefined && attr.name === "src" && attr.namespace === undefined
+          ? image.url
+          : kept(name, attr.name, attr.value);
       if (value === undefined) continue;
       try {
         if (attr.namespace === undefined) element.setAttribute(attr.name, value);
@@ -159,6 +237,8 @@ export interface ReaderFrame {
       readonly markdown?: boolean;
       /** A Markdown file's code wraps its lines, the chat's setting. */
       readonly wrapCode?: boolean;
+      /** Reads an image a file path names, as an `img`'s `src` writes it; without it, none is shown. */
+      readonly readImage?: (path: string) => Promise<ImageShown>;
     },
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
@@ -220,7 +300,14 @@ export function createReaderFrame(options?: {
   let current: Document | undefined;
   let loading: Array<(doc: Document) => void> = [];
   let latest = 0;
-  let last: { source: string; markdown: boolean; wrapCode: boolean } | undefined;
+  let last:
+    | {
+        source: string;
+        markdown: boolean;
+        wrapCode: boolean;
+        readImage: ((path: string) => Promise<ImageShown>) | undefined;
+      }
+    | undefined;
   // Renders still parsing, not yet in a document.
   let rendering = 0;
   // Where the reader is in the page, kept across the document's reloads.
@@ -297,9 +384,11 @@ export function createReaderFrame(options?: {
       const revision = ++latest;
       const markdown = options?.markdown === true;
       const wrapCode = options?.wrapCode === true;
-      last = { source, markdown, wrapCode };
+      const readImage = options?.readImage;
+      last = { source, markdown, wrapCode, readImage };
       rendering++;
       let parsed: { tree: DefaultTreeAdapterTypes.Document; origin: Built["origin"] };
+      let images: Built["images"];
       let doc: Document;
       try {
         parsed = markdown
@@ -308,13 +397,14 @@ export function createReaderFrame(options?: {
               tree: parse(source, { scriptingEnabled: false, sourceCodeLocationInfo: true }),
               origin: htmlOrigins(source),
             };
+        images = await readImages(parsed.tree, readImage);
         doc = await frameDocument();
       } finally {
         rendering--;
       }
       if (revision !== latest) return undefined;
       const { tree, origin } = parsed;
-      const built: Built = { scripts: false, origins, origin };
+      const built: Built = { scripts: false, images, origins, origin };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;
       const root = doc.createElement("html");
