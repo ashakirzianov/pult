@@ -1006,7 +1006,8 @@
   -webkit-app-region: drag;
 }
 
-.part.sidebar > .composite.title :is(.title-actions, .global-actions) {
+/* The toolbar fills the row's free room, which still drags: its buttons alone do not. */
+.part.sidebar > .composite.title :is(.title-actions .action-item, .global-actions) {
   -webkit-app-region: no-drag;
 }
 

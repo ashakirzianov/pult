@@ -236,8 +236,8 @@ export function PanelTabs({ store, fit }: { store: PanelTabStore; fit?: TabFit }
 }
 
 /**
- * The tabs that do not fit, as the first group of the menu under the sidebar
- * title toolbar's "...", after the actions that do not fit: one "..." for the
+ * The tabs that do not fit, as a group of the menu under the sidebar title
+ * toolbar's "...", after the actions that do not fit: one "..." for the
  * header, the workbench's own (`responsiveSidebarToolbar`, `view.tsx`). Each
  * entry carries its tab's badge's count.
  */
