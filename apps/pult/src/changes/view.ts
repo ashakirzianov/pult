@@ -887,10 +887,10 @@ class ChangesView {
           (target !== undefined && extUri.isEqualOrParent(target.resource, root)),
       ),
     );
-    // What changed while the page was away (a terminal, another editor, a commit) shows on its return.
+    // What changed while the page was away (a terminal, another editor, a commit) shows on its return, in what the view shows, or in the filter's checkout, which the badge counts alone; the other checkouts wait for their next read (a run's end, a watched file, Refresh Changes, the view shown).
     host.onDidChangeFocus((focused) => {
       if (focused) {
-        view.refreshAll();
+        if (view.visible || view.filterThread() !== undefined) view.refreshScope(false);
         rereadKept();
       }
     });
@@ -1010,11 +1010,6 @@ class ChangesView {
       for (const entry of stale)
         if (this.entries.get(entry.key) === entry) void this.refresh(entry, true);
     }, FILE_CHANGE_DELAY_MS);
-  }
-
-  /** Reads every checkout again, for the badge as much as the view. */
-  refreshAll(): void {
-    for (const entry of this.entries.values()) void this.refresh(entry, false);
   }
 
   /** Reads what the view shows again; `force` asks anew even for a checkout already being read, and for its status within its interval. */
