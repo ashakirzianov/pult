@@ -2,7 +2,7 @@ import { openShelf } from "../panel/shelves.tsx";
 
 /**
  * Whether the Limits shelf shows everything, the windows that do not warn
- * too (its Show all, or Pult: Show Usage Limits), for its component and the
+ * too (its Show more, or Pult: Show Usage Limits), for its component and the
  * command; closing the shelf drops it, and a reload forgets it. Whether the
  * shelf is open is the panel's (`src/panel/shelves.tsx`).
  */
@@ -17,7 +17,7 @@ export const limitsShowAll = {
   },
 };
 
-/** Shows everything, or the warning windows alone (Show all, Show less). */
+/** Shows everything, or the warning windows alone (Show more, Show less). */
 export function setLimitsShowAll(next: boolean): void {
   if (next === showAll) return;
   showAll = next;

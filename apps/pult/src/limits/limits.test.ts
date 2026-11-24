@@ -115,7 +115,7 @@ NodeTest.describe("limitsShelf", () => {
   ];
 
   NodeTest.test(
-    "while any window warns, shows the warning windows alone, with Show all while others would show",
+    "while any window warns, shows the warning windows alone, with Show more while others would show",
     () => {
       NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, false, NONE)), {
         accounts: [["claude", ["session!"]]],
@@ -125,7 +125,7 @@ NodeTest.describe("limitsShelf", () => {
     },
   );
 
-  NodeTest.test("Show all shows every window with something spent, with Show less", () => {
+  NodeTest.test("Show more shows every window with something spent, with Show less", () => {
     NodeAssert.deepEqual(shape(limitsShelf(accounts, NOW, true, NONE)), {
       accounts: [
         ["claude", ["session!", "weekly"]],
@@ -136,7 +136,7 @@ NodeTest.describe("limitsShelf", () => {
     });
   });
 
-  NodeTest.test("with every shown window warning offers no Show all", () => {
+  NodeTest.test("with every shown window warning offers no Show more", () => {
     const warning = [account("claude", window("session", 99), window("weekly", 0))];
     NodeAssert.equal(limitsShelf(warning, NOW, false, NONE)?.toggle, null);
     NodeAssert.equal(limitsShelf(warning, NOW, true, NONE)?.toggle, null);

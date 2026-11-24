@@ -93,8 +93,8 @@ export interface LimitsShelf<Account extends AccountRef> {
 
 /**
  * The shelf, or null while it is gone, no window having anything spent:
- * while any window warns, the warning windows alone, with Show all while
- * others would show, and everything while `showAll` (its Show all, or Pult:
+ * while any window warns, the warning windows alone, with Show more while
+ * others would show, and everything while `showAll` (its Show more, or Pult:
  * Show Usage Limits), with Show less; while none warns, every window that
  * shows. An account shows while it has a window to show. The pace counts
  * no time on the `weekend` (`paceShare`).

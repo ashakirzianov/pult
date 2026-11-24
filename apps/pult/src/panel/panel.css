@@ -473,6 +473,13 @@
   opacity: 0;
 }
 
+.pult-shelf-action-text {
+  width: auto;
+  padding-inline: 5px;
+  font: inherit;
+  white-space: nowrap;
+}
+
 .pult-shelf-header:hover .pult-shelf-action,
 .pult-shelf-header:focus-within .pult-shelf-action {
   opacity: 1;

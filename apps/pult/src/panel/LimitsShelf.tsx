@@ -26,7 +26,7 @@ const refreshAction = toAction({
  * the provider accounts' usage windows with something spent, under its
  * header with the count of warning windows while any warns, open until closed, when its icon
  * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows
- * alone, with Show all, else every window with something spent, and gone
+ * alone, with Show more in the header, else every window with something spent, and gone
  * while none has (`limitsShelf`). Refresh is the header's hover action and in
  * its right-click, its tooltip when each environment's limits were last
  * checked and the notices. The rows are no jump targets and do nothing on
@@ -54,19 +54,30 @@ export function LimitsShelf({ now }: { now: number }) {
           closeShelf("limits");
         }}
         actions={
-          <button
-            type="button"
-            className="pult-shelf-action pult-limits-refresh"
-            title="Refresh Usage Limits"
-            aria-label="Refresh usage limits"
-            disabled={limits.refreshing}
-            onClick={() => void refreshLimits()}
-          >
-            <i
-              className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`}
-              aria-hidden
-            />
-          </button>
+          <>
+            {shelf.toggle === null ? null : (
+              <button
+                type="button"
+                className="pult-shelf-action pult-shelf-action-text"
+                onClick={() => setLimitsShowAll(!showAll)}
+              >
+                {shelf.toggle === "all" ? "Show more" : "Show less"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="pult-shelf-action pult-limits-refresh"
+              title="Refresh Usage Limits"
+              aria-label="Refresh usage limits"
+              disabled={limits.refreshing}
+              onClick={() => void refreshLimits()}
+            >
+              <i
+                className={`codicon codicon-refresh${limits.refreshing ? " codicon-modifier-spin" : ""}`}
+                aria-hidden
+              />
+            </button>
+          </>
         }
       />
       <ul className="pult-shelf-cards pult-limits">
@@ -80,17 +91,6 @@ export function LimitsShelf({ now }: { now: number }) {
             weekend={weekend}
           />
         ))}
-        {shelf.toggle === null ? null : (
-          <li className="pult-shelf-more">
-            <button
-              type="button"
-              className="pult-panel-button"
-              onClick={() => setLimitsShowAll(shelf.toggle === "all")}
-            >
-              {shelf.toggle === "all" ? "Show all" : "Show less"}
-            </button>
-          </li>
-        )}
       </ul>
     </li>
   );
