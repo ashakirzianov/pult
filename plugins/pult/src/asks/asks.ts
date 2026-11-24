@@ -277,6 +277,23 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     } satisfies Ask;
   });
 
+  /** One record file with its ask as served, removed where gone; undefined for a file that is no record, logged and left. */
+  const loadFile = Effect.fn("Asks.loadFile")(function* (file: string, now: number) {
+    const record = yield* fs.readFileString(file).pipe(
+      Effect.flatMap(decodeRecord),
+      Effect.catchCause((cause) =>
+        Effect.as(Effect.logWarning("An ask's record cannot be read.", { file, cause }), undefined),
+      ),
+    );
+    if (record === undefined) return undefined;
+    const ask = yield* served(record, now);
+    if (ask === undefined) {
+      yield* remove(record);
+      return undefined;
+    }
+    return { record, ask };
+  });
+
   /** Every record with its ask as served, the gone ones removed; a file that is no record is logged and left. Under the lock. */
   const load = Effect.gen(function* () {
     if (!(yield* fs.exists(records))) return [];
@@ -284,23 +301,23 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     const names = (yield* fs.readDirectory(records)).filter((name) => name.endsWith(".json"));
     const found: Array<{ readonly record: AskRecord; readonly ask: Ask }> = [];
     for (const name of names.toSorted()) {
-      const file = path.join(records, name);
-      const record = yield* fs.readFileString(file).pipe(
-        Effect.flatMap(decodeRecord),
-        Effect.catchCause((cause) =>
-          Effect.as(
-            Effect.logWarning("An ask's record cannot be read.", { file, cause }),
-            undefined,
-          ),
-        ),
-      );
-      if (record === undefined) continue;
-      const ask = yield* served(record, now);
-      if (ask === undefined) yield* remove(record);
-      else found.push({ record, ask });
+      const each = yield* loadFile(path.join(records, name), now);
+      if (each !== undefined) found.push(each);
     }
     return found;
   }).pipe(Effect.mapError(failed("read")));
+
+  /** The one record of `id` with its ask as served, as `load` finds it; undefined for an id of no record. Under the lock. */
+  const loadOne = Effect.fn("Asks.loadOne")(
+    function* (id: string) {
+      // An id names its record's file, so one that is no plain name is no record's.
+      if (!/^[0-9A-Za-z-]+$/.test(id) || !(yield* fs.exists(recordFile(id)))) return undefined;
+      const found = yield* loadFile(recordFile(id), DateTime.toEpochMillis(yield* DateTime.now));
+      // A case-insensitive disk finds the file of another case.
+      return found?.record.id === id ? found : undefined;
+    },
+    Effect.mapError(failed("read")),
+  );
 
   const byPosted = (left: Ask, right: Ask) =>
     left.posted.localeCompare(right.posted) || left.id.localeCompare(right.id);
@@ -536,15 +553,17 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
   });
 
   const act: Asks["act"] = Effect.fn("Asks.act")(function* (id, action) {
-    const find = Effect.map(load, (all) => all.find((each) => each.record.id === id));
-    const before = yield* lock.withPermits(1)(find);
-    if (before === undefined) return undefined;
+    const find = loadOne(id);
     // Told before it is written, so a notice that fails fails the settle, to be tried again.
-    if (action.kind === "settle" && before.ask.status !== "settled")
-      yield* tellSettled(before.record).pipe(
-        Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
-        Effect.mapError(failed("tell")),
-      );
+    if (action.kind === "settle") {
+      const before = yield* lock.withPermits(1)(find);
+      if (before === undefined) return undefined;
+      if (before.ask.status !== "settled")
+        yield* tellSettled(before.record).pipe(
+          Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
+          Effect.mapError(failed("tell")),
+        );
+    }
     const changed: undefined | { readonly refused: string } | { readonly record: AskRecord } =
       yield* lock.withPermits(1)(
         Effect.gen(function* () {

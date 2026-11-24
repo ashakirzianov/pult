@@ -37,6 +37,8 @@ interface Reading {
   timer: ReturnType<typeof setTimeout> | undefined;
   /** At the next snooze's end, when an ask comes back to Inbox. */
   wake: ReturnType<typeof setTimeout> | undefined;
+  /** The page's own snoozes in flight, each ask's status and end as drawn until its POST returns, over what a read answers. */
+  drawn: Map<string, { readonly status: "snoozed"; readonly snoozedUntil: string }>;
 }
 
 function errorMessage(error: unknown): string {
@@ -91,6 +93,7 @@ class AsksModel {
           generation: 0,
           timer: undefined,
           wake: undefined,
+          drawn: new Map(),
         };
         this.readings.set(environmentId, reading);
       }
@@ -181,9 +184,17 @@ class AsksModel {
     }
   }
 
-  /** The page's own action on an ask, its answer drawn at once, then the asks read again; a refusal told by a notification with the plugin's words. */
+  /** The page's own action on an ask, a snooze drawn at once and its answer when it comes, then the asks read again; a refusal told by a notification with the plugin's words, the row drawn as it was. */
   async act(ask: PageAsk, action: AskAction): Promise<boolean> {
     const reading = this.readings.get(ask.environmentId);
+    const drawn =
+      reading !== undefined && action.kind === "snooze" && action.until !== null
+        ? { status: "snoozed" as const, snoozedUntil: action.until }
+        : undefined;
+    if (drawn !== undefined) {
+      reading?.drawn.set(ask.id, drawn);
+      this.update();
+    }
     try {
       const acted = await actOnAsk(this.credential(ask.environmentId), ask.id, action);
       if (reading?.answer !== undefined)
@@ -193,7 +204,6 @@ class AsksModel {
             each.id === ask.id ? { ...acted, prefix: each.prefix } : each,
           ),
         };
-      this.update();
       return true;
     } catch (error) {
       (await getService(INotificationService)).error(
@@ -201,15 +211,19 @@ class AsksModel {
       );
       return false;
     } finally {
+      // A later act on the ask draws over this one's until it returns.
+      if (drawn !== undefined && reading?.drawn.get(ask.id) === drawn) reading.drawn.delete(ask.id);
+      this.update();
       void this.read(ask.environmentId);
     }
   }
 
   private update(): void {
     const next = connection.environments.flatMap((environment) => {
-      const answer = this.readings.get(environment.environmentId)?.answer;
-      return (answer?.asks ?? []).map((ask): PageAsk => ({
+      const reading = this.readings.get(environment.environmentId);
+      return (reading?.answer?.asks ?? []).map((ask): PageAsk => ({
         ...ask,
+        ...reading?.drawn.get(ask.id),
         environmentId: environment.environmentId,
       }));
     });
