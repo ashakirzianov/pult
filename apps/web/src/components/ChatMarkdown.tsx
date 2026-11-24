@@ -221,6 +221,7 @@ import {
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
+import { FileLinkGateContext } from "./chat/fileLinkGate";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { handleMarkdownFragmentClick } from "./chat/markdownFragments";
 import { hastHasText, hastPlainTextDeep, plainHastText } from "./chat/markdownHast.logic";
@@ -585,6 +586,8 @@ function useChatMarkdownState(
   const gt = useGT();
   const messages = useMessages();
   const resolvedTheme = useRenderedAppearance();
+  // Pult's file link gate (`chat/fileLinkGate.ts`); upstream's app provides none.
+  const FileLinkGate = use(FileLinkGateContext);
   const markdownRef = useRef<HTMLElement>(null);
   const mediaRequestId = useRef(0);
   const mediaScopeKey = [
@@ -928,26 +931,26 @@ function useChatMarkdownState(
     }
     return findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot);
   };
-  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
+  // The path the panel's open is handed, which Pult's file link gate checks too.
+  const panelOpenPath = (ref: ScopedThreadRef, path: string) => {
     // The panel reads relative paths from the thread's folder. A pull request body's `cwd` is the
     // checkout of its repository, which can be another folder.
-    const shell = readThreadShell(threadRef);
+    const shell = readThreadShell(ref);
     const panelRoot =
       shell?.worktreePath ??
       projects.find(
         (project) => project.environmentId === environmentId && project.id === shell?.projectId,
       )?.workspaceRoot;
+    return cwd && panelRoot !== undefined && cwd !== panelRoot
+      ? resolveWorkspaceFilePath(path, cwd)
+      : path;
+  };
+  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
+    if (!threadRef) return;
     const openAt = (path: string) =>
       useRightPanelStore
         .getState()
-        .openFile(
-          threadRef,
-          cwd && panelRoot !== undefined && cwd !== panelRoot
-            ? resolveWorkspaceFilePath(path, cwd)
-            : path,
-          fileLinkMeta.line,
-        );
+        .openFile(threadRef, panelOpenPath(threadRef, path), fileLinkMeta.line);
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
@@ -970,10 +973,12 @@ function useChatMarkdownState(
       openAt(match ?? panelPath);
     })();
   };
+  /** `fallback`: what Pult's file link gate draws in the chip's place, null for nothing; absent, no gate. */
   const fileLinkChip = (
     fileLinkMeta: MarkdownFileLinkMeta,
     copyMarkdown: string,
     mediaSource?: string,
+    fallback?: React.ReactNode,
   ) => {
     const resolveHostPath = () =>
       resolveMarkdownFileHostPath({
@@ -997,7 +1002,7 @@ function useChatMarkdownState(
       fileLinkMeta.workspaceRelativePath ??
       (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
-    return (
+    const chip = (
       <MarkdownFileLink
         environmentId={environmentId}
         href={fileLinkMeta.targetPath}
@@ -1065,6 +1070,21 @@ function useChatMarkdownState(
             : undefined
         }
       />
+    );
+    return FileLinkGate !== null &&
+      fallback !== undefined &&
+      threadRef !== undefined &&
+      !isAppBundle &&
+      panelPath !== null ? (
+      <FileLinkGate
+        threadRef={threadRef}
+        path={panelOpenPath(threadRef, panelPath)}
+        isStreaming={isStreaming}
+        chip={chip}
+        fallback={fallback}
+      />
+    ) : (
+      chip
     );
   };
 
@@ -1568,8 +1588,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
       source.startsWith("[") && source.includes("](")
         ? source
         : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
-    const chip = fileLinkChip(fileLinkMeta, copyMarkdown, normalizedHref);
-    return isMarkdownFileLinkLabel(label, normalizedHref) ? (
+    const standsAlone = isMarkdownFileLinkLabel(label, normalizedHref);
+    const chip = fileLinkChip(
+      fileLinkMeta,
+      copyMarkdown,
+      normalizedHref,
+      standsAlone ? label : null,
+    );
+    return standsAlone ? (
       chip
     ) : (
       <span data-markdown-copy={copyMarkdown}>
@@ -1592,6 +1618,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fileLinkMeta,
           `\`${codeText}\``,
           inlineCodeFilePathCandidate(codeText) ?? codeText.trim(),
+          <code {...props} className={className}>
+            {children}
+          </code>,
         );
       }
       return (

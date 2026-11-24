@@ -40,6 +40,7 @@ import {
   type ShellValue,
 } from "~/components/chat/ShellComposerOptions";
 import { ShellDetailsCardWidth } from "~/components/chat/ShellDetailsCardWidth";
+import { FileLinkGateContext } from "~/components/chat/fileLinkGate";
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
@@ -65,6 +66,7 @@ import {
 } from "./drafts.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
+import { FileLinkGate } from "./fileLinkGate.tsx";
 import { DetailsInFile, DetailsTarget } from "./ThreadDetailsCard.tsx";
 import { threadViewHost } from "./host.ts";
 
@@ -569,9 +571,11 @@ function ViewProviders({
         <ComposerControlsSlotEntries value={composerBarEntries}>
           <ShellComposerOptions value={additions.composer}>
             <ShellDetailsCardWidth value={detailsCardWidth}>
-              <TimelineHeaderSlot value={additions.header?.element ?? null}>
-                <RouterProvider router={router} />
-              </TimelineHeaderSlot>
+              <FileLinkGateContext value={FileLinkGate}>
+                <TimelineHeaderSlot value={additions.header?.element ?? null}>
+                  <RouterProvider router={router} />
+                </TimelineHeaderSlot>
+              </FileLinkGateContext>
             </ShellDetailsCardWidth>
           </ShellComposerOptions>
         </ComposerControlsSlotEntries>

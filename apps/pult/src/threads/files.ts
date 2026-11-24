@@ -9,14 +9,19 @@ import type { IQuickPickItem } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 
-import { checkoutName, checkoutsOf } from "../changes/checkouts.ts";
-import { keptRoot } from "../changes/kept.ts";
+import { request } from "@t3tools/client-runtime/rpc";
+import { WS_METHODS } from "@t3tools/contracts";
+
+import { type Checkout, checkoutName, checkoutsOf } from "../changes/checkouts.ts";
+import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
+import { connection } from "../connection/index.ts";
+import { makeFileLinks } from "../files/linkable.ts";
 import { baseName, namesEnvironment, parentOf, toHostPath } from "../files/paths.ts";
-import { type Candidate, resolveThreadPath } from "../files/resolve.ts";
+import { type Candidate, type ResolveInput, resolveThreadPath } from "../files/resolve.ts";
 import { environmentServer } from "../files/server.ts";
 import { pultResource, whenListed } from "../files/workspace.ts";
 import { isHiddenProject } from "../stars/hidden.ts";
-import { threadStore } from "./store.ts";
+import { type ShellThread, threadStore } from "./store.ts";
 
 /** As many entries as Go to File asks each root for. */
 const ENTRY_LIMIT = 50;
@@ -59,32 +64,10 @@ export async function openThreadFile(
   ]);
   const thread = threadStore.thread(environmentId, threadId);
   if (thread === undefined) return;
-  const state = threadStore.get();
-  const ofEnvironment = <Item extends { readonly environmentId: string }>(
-    items: ReadonlyArray<Item>,
-  ) => items.filter((item) => namesEnvironment(item.environmentId, environmentId));
   const resolution = await resolveThreadPath({
+    ...threadPathInput(environmentId, thread),
     path,
-    checkoutRoot: thread.checkoutRoot ?? thread.projectRoot,
-    projectId: thread.projectId,
-    checkouts: checkoutsOf(
-      {
-        projects: ofEnvironment(state.projects),
-        threads: ofEnvironment(state.threads),
-      },
-      isHiddenProject,
-    ),
-    xaxisRoot: keptRoot(environmentId),
     exists: (candidate) => files.exists(pultResource(environmentId, candidate)).catch(() => false),
-    search: async (checkout, key) => {
-      const { entries } = await environmentServer(environmentId).searchEntries({
-        cwd: toHostPath(checkout.root),
-        query: key.slice(0, 256),
-        limit: ENTRY_LIMIT,
-        kind: "file",
-      });
-      return entries.map((entry) => entry.path);
-    },
   });
   let opened: string | undefined;
   switch (resolution.kind) {
@@ -127,6 +110,69 @@ export async function openThreadFile(
           },
   });
 }
+
+/** What a path the thread names resolves with but the path and `exists`: the click's, and the file link gate's (`threadFileLinks`). */
+function threadPathInput(environmentId: string, thread: ShellThread) {
+  return {
+    checkoutRoot: thread.checkoutRoot ?? thread.projectRoot,
+    projectId: thread.projectId,
+    checkouts: environmentCheckouts(environmentId),
+    xaxisRoot: keptRoot(environmentId),
+    search: async (checkout: Checkout, key: string) => {
+      const { entries } = await environmentServer(environmentId).searchEntries({
+        cwd: toHostPath(checkout.root),
+        query: key.slice(0, 256),
+        limit: ENTRY_LIMIT,
+        kind: "file",
+      });
+      return entries.map((entry) => entry.path);
+    },
+  } satisfies Omit<ResolveInput, "path" | "exists">;
+}
+
+function environmentCheckouts(environmentId: string) {
+  const state = threadStore.get();
+  const ofEnvironment = <Item extends { readonly environmentId: string }>(
+    items: ReadonlyArray<Item>,
+  ) => items.filter((item) => namesEnvironment(item.environmentId, environmentId));
+  return checkoutsOf(
+    { projects: ofEnvironment(state.projects), threads: ofEnvironment(state.threads) },
+    isHiddenProject,
+  );
+}
+
+/**
+ * Whether the view's file chips open anything (`src/files/linkable.ts`), on
+ * the click's inputs, the literal paths through the server's
+ * `filesystem.getMetadata`; the view's host serves it as `fileLinks`.
+ */
+export const threadFileLinks = makeFileLinks({
+  whenListed,
+  input: (environmentId, threadId) => {
+    const thread = threadStore.thread(environmentId, threadId);
+    return thread === undefined ? undefined : threadPathInput(environmentId, thread);
+  },
+  getMetadata: async (environmentId, paths) =>
+    (
+      await connection.run(
+        environmentId,
+        request(WS_METHODS.filesystemGetMetadata, { paths: [...paths] }),
+      )
+    ).entries,
+  runEnd: (environmentId, threadId) =>
+    threadStore.thread(environmentId, threadId)?.latestRun?.finishedAt ?? null,
+  // A verdict's swap restyles the whole thread view, some 150 ms in a 300-path thread: a second's worth go at once.
+  publishMs: 1000,
+  roots: (environmentId) =>
+    JSON.stringify([
+      environmentCheckouts(environmentId).map((checkout) => checkout.root),
+      keptRoot(environmentId),
+    ]),
+  onDidChange: (listener) => {
+    threadStore.subscribe(listener);
+    onDidChangeKept(listener);
+  },
+});
 
 /** The quick pick among several files ending with the key, in Go to File's shape; Escape picks none. */
 async function pickCandidate(
