@@ -415,7 +415,7 @@ export function useComposerSend(input: ComposerSendInput) {
     respondingRequestIdsRef.current = respondingRequestIds;
   }, [pendingApprovals, respondingRequestIds]);
   // Pult: what the app around the view has this composer's sends carry (`ShellComposerOptions`).
-  const { creationTags, reply } = use(ShellComposerOptions);
+  const { creationTags, creationPrefix, reply } = use(ShellComposerOptions);
 
   const onSend = async (
     e?: { preventDefault: () => void },
@@ -1074,9 +1074,10 @@ export function useComposerSend(input: ComposerSendInput) {
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
-    // Pult: a reply opens with the line the app hands it.
+    // Pult: a reply opens with the line the app hands it, and so does the message creating a draft's thread.
+    const opening = reply?.prefix ?? (isLocalDraftThread ? (creationPrefix?.get() ?? null) : null);
     const outgoingMessageText =
-      reply === null ? formattedMessageText : `${reply.prefix}\n\n${formattedMessageText}`;
+      opening === null ? formattedMessageText : `${opening}\n\n${formattedMessageText}`;
     if (
       isCurrentRouteThread() &&
       composerRef.current?.validateProviderInput(outgoingMessageText) === false

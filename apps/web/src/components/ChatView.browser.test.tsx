@@ -28,7 +28,7 @@ import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform (React Compiler over ~4k lines)
 // takes 6-11s; importing it here keeps that out of the test's timeout.
 import "~/components/ChatView";
-import { ShellComposerOptions } from "~/components/chat/ShellComposerOptions";
+import { ShellComposerOptions, type ShellReply } from "~/components/chat/ShellComposerOptions";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
@@ -461,9 +461,9 @@ it("a failed image-only first send of a new thread keeps the new draft", async (
   expect(page.getByText("Copy message", { exact: true }).query()).toBeNull();
 });
 
-// Pult: the app around the view names a draft's creation tags and a reply (`ShellComposerOptions`).
-it("a draft's first send carries the app's creation tags and reply prefix, and tells it sent", async () => {
-  using _environment = installFakeEnvironment([]);
+// Pult: the app around the view names a draft's creation tags, its first message's line and a reply (`ShellComposerOptions`).
+async function renderShellDraft(reply: ShellReply | null) {
+  const environment = installFakeEnvironment([]);
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -475,7 +475,7 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
     .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId, { threadId });
   const launches: Array<{ readonly tags?: unknown; readonly initialMessage?: { text: string } }> =
     [];
-  using _launch = answerRpc(
+  const launch = answerRpc(
     ORCHESTRATION_V2_WS_METHODS.launchThread,
     (input: (typeof launches)[number]) => {
       launches.push(input);
@@ -486,21 +486,16 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
       });
     },
   );
-  const sent = vi.fn();
-  const suggestions = ["Yes", "Not yet"];
   const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
   await router.load();
-  await using _app = await render(
+  const app = await render(
     <ShellComposerOptions
       value={{
         draftHero: true,
         placeholder: null,
         creationTags: ["pult:channel:review"],
-        reply: {
-          prefix: '[In reply to your ask a1 "Ship it?"]',
-          suggestions: { get: () => suggestions, subscribe: () => () => {} },
-          sent,
-        },
+        creationPrefix: { get: () => "[To your channel review]", subscribe: () => () => {} },
+        reply,
       }}
     >
       <AppRoot router={router} />
@@ -512,6 +507,38 @@ it("a draft's first send carries the app's creation tags and reply prefix, and t
   await expect.element(editor).toBeVisible();
   // The send needs the project, which arrives with the shell snapshot.
   await expect.element(page.getByText("render", { exact: true }).first()).toBeVisible();
+  return {
+    editor,
+    threadId,
+    launches,
+    async [Symbol.asyncDispose]() {
+      await app[Symbol.asyncDispose]();
+      launch[Symbol.dispose]();
+      environment[Symbol.dispose]();
+    },
+  };
+}
+
+it("a draft's first send carries the app's creation tags and opens with its line", async () => {
+  await using draft = await renderShellDraft(null);
+  await userEvent.click(draft.editor);
+  await insertText("Hello");
+  await userEvent.keyboard("{Enter}");
+
+  await vi.waitFor(() => expect(draft.launches).toHaveLength(1));
+  expect(draft.launches[0]?.tags).toEqual(["pult:channel:review"]);
+  expect(draft.launches[0]?.initialMessage?.text).toBe("[To your channel review]\n\nHello");
+});
+
+it("a draft's first send as a reply opens with its prefix in place of the line, and tells it sent", async () => {
+  const sent = vi.fn();
+  const suggestions = ["Yes", "Not yet"];
+  await using draft = await renderShellDraft({
+    prefix: '[In reply to your ask a1 "Ship it?"]',
+    suggestions: { get: () => suggestions, subscribe: () => () => {} },
+    sent,
+  });
+  const { editor, launches, threadId } = draft;
 
   // A suggested reply fills the message over a draft, which Undo brings back, and sends nothing.
   await userEvent.click(editor);

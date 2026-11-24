@@ -17,6 +17,8 @@ export interface ShellComposerOptions {
   readonly placeholder: ShellValue<string> | null;
   /** The tags a thread created by this composer's draft is created with (a Star channel's); null for none. */
   readonly creationTags: ReadonlyArray<string> | null;
+  /** The line the message that creates a thread from this composer's draft opens with, above what the user wrote (a Star channel's); null for none. A reply's prefix stands in for it. */
+  readonly creationPrefix: ShellValue<string> | null;
   /** The reply this composer's sends are (an answer to a Star's ask); null for a plain message. */
   readonly reply: ShellReply | null;
 }
@@ -35,6 +37,7 @@ export const ShellComposerOptions = createContext<ShellComposerOptions>({
   draftHero: true,
   placeholder: null,
   creationTags: null,
+  creationPrefix: null,
   reply: null,
 });
 

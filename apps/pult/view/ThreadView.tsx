@@ -161,6 +161,7 @@ function makeMount() {
         next.kind === "draft" && next.tags !== undefined ? false : (options.draftHero ?? true);
       const placeholder = options.placeholder ?? null;
       const creationTags = next.kind === "draft" ? (next.tags ?? null) : null;
+      const creationPrefix = next.kind === "draft" ? (options.creationPrefix ?? null) : null;
       const reply = options.reply ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
       if (
@@ -169,12 +170,13 @@ function makeMount() {
         additions.composer.draftHero !== draftHero ||
         additions.composer.placeholder !== placeholder ||
         JSON.stringify(additions.composer.creationTags) !== JSON.stringify(creationTags) ||
+        additions.composer.creationPrefix !== creationPrefix ||
         additions.composer.reply !== reply
       )
         additions = {
           header: options.timelineHeader,
           draftModel: options.draftModel,
-          composer: { draftHero, placeholder, creationTags, reply },
+          composer: { draftHero, placeholder, creationTags, creationPrefix, reply },
         };
       changed();
     },
@@ -508,6 +510,8 @@ export interface MountOptions {
   readonly draftModel?: ShellValue<unknown>;
   /** The reply the mount's sends are, its prefix opening each and its `sent` told of each (an answer to a Star's ask). */
   readonly reply?: ShellReply;
+  /** The line the message that creates a thread from the mount's draft opens with, read as it is sent (a Star channel's first message, `[To your channel <slug>]`); a reply's prefix stands in for it. */
+  readonly creationPrefix?: ShellValue<string>;
   /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
   readonly draftSent?: (environmentId: string, threadId: string) => void;
   /**
@@ -532,7 +536,13 @@ interface Additions {
 const NO_ADDITIONS: Additions = {
   header: undefined,
   draftModel: undefined,
-  composer: { draftHero: true, placeholder: null, creationTags: null, reply: null },
+  composer: {
+    draftHero: true,
+    placeholder: null,
+    creationTags: null,
+    creationPrefix: null,
+    reply: null,
+  },
 };
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
