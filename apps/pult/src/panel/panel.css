@@ -995,6 +995,12 @@
   min-width: 24px;
 }
 
+/* The header's badges at the icon's bottom right, clear of the window's top edge; the tray's keep the top right. */
+.pult-panel-header .pult-panel-tab-badge {
+  top: auto;
+  bottom: -4px;
+}
+
 /* In the desktop the top row drags the window, as a title bar does, its buttons excepted; in
    VS Code mode a tab's title keeps its right-click menu, which a drag region would take. */
 .pult-panel-header,
