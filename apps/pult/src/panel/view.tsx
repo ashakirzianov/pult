@@ -7,6 +7,9 @@ import {
 import { KeyCode } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
 import {
   Action2,
+  isIMenuItem,
+  MenuId,
+  MenuRegistry,
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
@@ -23,6 +26,7 @@ import {
 import { createRoot } from "react-dom/client";
 
 import markUrl from "../../assets/pult/mark.svg?no-inline";
+import { modeChoice, VSCodeModeContext } from "../mode.ts";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import {
   followExplorerScope,
@@ -33,6 +37,7 @@ import {
 } from "./explorer.ts";
 import { mountFilterCard } from "./filterCard.tsx";
 import { registerJumps } from "./jump.ts";
+import { UNDESIGNED_TABS } from "./PanelTabs.tsx";
 import { PanelView } from "./PanelView.tsx";
 import "./panel.css";
 
@@ -69,6 +74,7 @@ export function registerPanel(): void {
     },
   });
   void showPultTabOnStart();
+  hideUndesignedTabs();
   registerCloseTabAction();
   registerExplorerCommands();
   registerExplorerHeaderActions();
@@ -98,6 +104,49 @@ async function showPultTabOnStart(): Promise<void> {
   )
     return;
   await panes.openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, false);
+}
+
+/**
+ * Pult mode's undesigned tabs (`UNDESIGNED_TABS`): their palette commands
+ * shown in VS Code mode alone, and the tab, opened any other way, giving way
+ * to the Pult tab, as it does when the mode turns to Pult with one open.
+ */
+function hideUndesignedTabs(): void {
+  const hidden = new Set<string>();
+  const tabsFound = new Set<string>();
+  // The views' own commands register once the workbench has started, so again as the palette's items change.
+  const hidePalette = () => {
+    for (const item of MenuRegistry.getMenuItems(MenuId.CommandPalette)) {
+      if (!isIMenuItem(item) || hidden.has(item.command.id)) continue;
+      const tab = [...UNDESIGNED_TABS].find(([, opens]) => opens(item.command.id))?.[0];
+      if (tab === undefined) continue;
+      item.when = ContextKeyExpr.and(item.when, VSCodeModeContext);
+      hidden.add(item.command.id);
+      tabsFound.add(tab);
+    }
+  };
+  hidePalette();
+  MenuRegistry.onDidChangeMenu((event) => {
+    if (event.has(MenuId.CommandPalette)) hidePalette();
+  });
+  void getService(ILifecycleService)
+    .then((lifecycle) => lifecycle.when(LifecyclePhase.Eventually))
+    .then(() => {
+      const missing = [...UNDESIGNED_TABS.keys()].filter((tab) => !tabsFound.has(tab));
+      if (missing.length > 0)
+        console.warn("[pult-shell] no palette commands found to hide for:", missing);
+    });
+  void (async () => {
+    const [panes, mode] = await Promise.all([getService(IPaneCompositePartService), modeChoice()]);
+    const leave = () => {
+      const open = panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
+      if (mode.current() === "pult" && open !== undefined && UNDESIGNED_TABS.has(open))
+        void panes.openPaneComposite(PANEL_ID, ViewContainerLocation.Sidebar, true);
+    };
+    panes.onDidPaneCompositeOpen(leave);
+    mode.onDidChange(leave);
+    leave();
+  })();
 }
 
 /** Escape goes back to Pult from a focused sidebar, after inputs and tree find have handled it. */

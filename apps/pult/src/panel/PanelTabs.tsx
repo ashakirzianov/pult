@@ -16,10 +16,48 @@ import { ViewContainerLocation } from "@codingame/monaco-vscode-api/vscode/vs/wo
 import { NumberBadge } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/activity/common/activity";
 import { useSyncExternalStore } from "react";
 
+import { modeChoice } from "../mode.ts";
+
 /** The stock activity bar's pins, which it keeps while shown, the user's own: unset, every tab is pinned, Search and Extensions too, and the mode leaves them alone. */
 const PINNED_KEY = "workbench.activity.pinnedViewlets2";
 /** Source Control's tab, which opens on every checkout's changes, whatever filter the changes view had (`src/changes/`). */
 const SCM_CONTAINER = "workbench.view.scm";
+
+/**
+ * The sidebar tabs Pult mode hides until they are designed (xaxis
+ * `pult/tasks/search-tab.task`, `pult/tasks/extensions-tab.task`), each with
+ * the palette's commands into it, which Pult mode hides too: no tab in the
+ * header, and opened any other way (a key, the settings page's Manage menu,
+ * an extension's command), the Pult tab instead (`view.tsx`). VS Code mode
+ * shows them. Remove an entry to bring its tab back.
+ */
+export const UNDESIGNED_TABS = new Map<string, (command: string) => boolean>([
+  [
+    "workbench.view.search",
+    (command) =>
+      [
+        "workbench.view.search",
+        "workbench.view.search.focus",
+        "workbench.action.findInFiles",
+        "workbench.action.replaceInFiles",
+      ].includes(command),
+  ],
+  [
+    "workbench.view.extensions",
+    (command) =>
+      [
+        "workbench.view.extensions",
+        "workbench.extensions.action.focusExtensionsView",
+        "workbench.extensions.action.installExtensions",
+        "workbench.extensions.action.installedExtensions",
+        "workbench.extensions.action.listBuiltInExtensions",
+        "workbench.extensions.action.recentlyPublishedExtensions",
+        "workbench.extensions.action.extensionUpdates",
+      ].includes(command) ||
+      command.startsWith("workbench.extensions.action.show") ||
+      command.startsWith("extensions.filter."),
+  ],
+]);
 
 interface PanelTab {
   readonly id: string;
@@ -34,7 +72,7 @@ interface PanelTab {
  * The sidebar's view containers as the left panel lists them:
  * those the stock activity bar would show (a container that is not hidden when
  * empty, Extensions among them, or one with a view to show), the user's
- * unpinned ones left out unless open,
+ * unpinned ones left out unless open, and in Pult mode `UNDESIGNED_TABS`,
  * in their order, each with its title, icon, whether it is open and its
  * number badge (Source Control's count). Any container counts, an
  * extension's as much as VS Code's, as the stock activity bar would list it.
@@ -42,17 +80,19 @@ interface PanelTab {
  * open one or the badges.
  */
 export async function panelTabStore() {
-  const [views, viewsService, panes, activities, storage, commands] = await Promise.all([
+  const [views, viewsService, panes, activities, storage, commands, mode] = await Promise.all([
     getService(IViewDescriptorService),
     getService(IViewsService),
     getService(IPaneCompositePartService),
     getService(IActivityService),
     getService(IStorageService),
     getService(ICommandService),
+    modeChoice(),
   ]);
 
   const read = (): PanelTab[] => {
     const active = panes.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
+    const pultMode = mode.current() === "pult";
     const stored = new Map<string, { pinned?: boolean; order?: number }>();
     try {
       for (const entry of JSON.parse(storage.get(PINNED_KEY, StorageScope.PROFILE) ?? "[]") as {
@@ -77,6 +117,7 @@ export async function panelTabStore() {
       .filter(
         ({ container }) =>
           viewsService.isViewContainerActive(container.id) &&
+          !(pultMode && UNDESIGNED_TABS.has(container.id)) &&
           (stored.get(container.id)?.pinned !== false || container.id === active),
       )
       .sort((a, b) => order(a.container) - order(b.container) || a.index - b.index)
@@ -121,6 +162,7 @@ export async function panelTabStore() {
   panes.onDidPaneCompositeOpen(refresh);
   panes.onDidPaneCompositeClose(refresh);
   activities.onDidChangeActivity(refresh);
+  mode.onDidChange(refresh);
   return {
     subscribe(listener: () => void) {
       listeners.add(listener);
