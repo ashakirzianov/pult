@@ -1,9 +1,13 @@
 import {
   getService,
   ICommandService,
+  IContextKeyService,
   IEditorService,
+  ILanguageFeaturesService,
   INotificationService,
 } from "@codingame/monaco-vscode-api";
+import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
+import { EditorContextKeys } from "@codingame/monaco-vscode-api/vscode/vs/editor/common/editorContextKeys";
 import {
   Action2,
   MenuId,
@@ -11,6 +15,7 @@ import {
   registerAction2,
 } from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
 import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+import { KeybindingWeight } from "@codingame/monaco-vscode-api/vscode/vs/platform/keybinding/common/keybindingsRegistry";
 import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/services/codeEditorService.service";
 
 import type { ICodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
@@ -106,6 +111,9 @@ function changesDiff(
  * page or its URL (`citeSource.ts`, `citeBrowserSelection`); in Pult.app the
  * page subscribes to the browser menu's Cite (`window.pultDesktop.onPreviewCite`).
  * Hidden for a file of the Explorer workspace, which has no thread.
+ * Also Cmd+Alt+K (Ctrl+Alt+K off the Mac) in an editor, and a Quick Fix
+ * (Cmd+.) on any non-empty selection in a thread's `pult:` file, first in the
+ * list unless the selection touches a misspelled word (`cite-quick-fix`).
  * Registered before the workbench starts.
  */
 export function registerCiteCommand(): void {
@@ -118,6 +126,11 @@ export function registerCiteCommand(): void {
           category: { value: "Pult", original: "Pult" },
           f1: true,
           precondition: CITABLE,
+          keybinding: {
+            primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyK,
+            when: EditorContextKeys.editorTextFocus,
+            weight: KeybindingWeight.WorkbenchContrib,
+          },
         });
       }
 
@@ -243,4 +256,20 @@ export function registerCiteCommand(): void {
     order: -1000,
     when: CITABLE,
   });
+  void Promise.all([getService(ILanguageFeaturesService), getService(IContextKeyService)]).then(
+    ([features, contextKeys]) =>
+      features.codeActionProvider.register("*", {
+        providedCodeActionKinds: ["quickfix"],
+        provideCodeActions(model, range) {
+          const citable =
+            !range.isEmpty() &&
+            model.uri.scheme === "pult" &&
+            HasComposerContext.getValue(contextKeys) === true;
+          const actions = citable
+            ? [{ title: "Cite", kind: "quickfix", command: { id: CITE_SELECTION, title: "Cite" } }]
+            : [];
+          return { actions, dispose() {} };
+        },
+      }),
+  );
 }
