@@ -15,6 +15,9 @@ const DAY_MINUTES = 24 * 60;
 /** A window shows only once something of it is spent. */
 const showsWindow = (window: ServerProviderUsageWindow) => window.usedPercent > 0;
 
+/** A window at 100% used is spent: out until its reset, known news, so no warning. */
+const isSpent = (window: ServerProviderUsageWindow) => window.usedPercent >= 100;
+
 /**
  * The share of a window's time gone, where even pace stands: for a window of
  * a day or longer, of its time outside the `weekend` (`Date.getDay` numbers,
@@ -76,7 +79,9 @@ interface AccountRef {
 
 export interface ShelfWindow {
   readonly window: ServerProviderUsageWindow;
+  /** False while `spent`. */
   readonly warning: boolean;
+  readonly spent: boolean;
 }
 
 export interface ShelfAccount<Account extends AccountRef> {
@@ -84,7 +89,7 @@ export interface ShelfAccount<Account extends AccountRef> {
   readonly windows: ReadonlyArray<ShelfWindow>;
 }
 
-/** The shelf as it shows: its accounts with their windows, the warning windows' count, and the row that shows more or less, if any. */
+/** The shelf as it shows: its accounts with their windows, the warning windows' count (the tray icon's badge), and the row that shows more or less, if any. */
 export interface LimitsShelf<Account extends AccountRef> {
   readonly accounts: ReadonlyArray<ShelfAccount<Account>>;
   readonly warnings: number;
@@ -93,11 +98,13 @@ export interface LimitsShelf<Account extends AccountRef> {
 
 /**
  * The shelf, or null while it is gone, no window having anything spent:
- * while any window warns, the warning windows alone, with Show more while
- * others would show, and everything while `showAll` (its Show more, or Pult:
- * Show Usage Limits), with Show less; while none warns, every window that
- * shows. An account shows while it has a window to show. The pace counts
- * no time on the `weekend` (`paceShare`).
+ * while any window warns, the warning and the spent windows alone, with Show
+ * more while others would show, and everything while `showAll` (its Show
+ * more, or Pult: Show Usage Limits), with Show less; while none warns, every
+ * window that shows. A spent window (100% used) is no warning: it neither
+ * counts in `warnings` nor by itself narrows the shelf. An account shows
+ * while it has a window to show. The pace counts no time on the `weekend`
+ * (`paceShare`).
  */
 export function limitsShelf<Account extends AccountRef>(
   accounts: ReadonlyArray<Account>,
@@ -108,25 +115,28 @@ export function limitsShelf<Account extends AccountRef>(
   const all = accounts
     .map((account) => ({
       account,
-      windows: account.limits.windows
-        .filter(showsWindow)
-        .map((window) => ({ window, warning: warns(window, now, weekend) })),
+      windows: account.limits.windows.filter(showsWindow).map((window) => {
+        const spent = isSpent(window);
+        return { window, spent, warning: !spent && warns(window, now, weekend) };
+      }),
     }))
     .filter((account) => account.windows.length > 0);
   if (all.length === 0) return null;
+  const listed = (window: ShelfWindow) => window.warning || window.spent;
   const shown = all.reduce((count, account) => count + account.windows.length, 0);
   const warnings = all.reduce(
     (count, account) => count + account.windows.filter((window) => window.warning).length,
     0,
   );
-  // Nothing to tell apart: every window that shows is a warning, or none is.
-  if (warnings === 0 || warnings === shown) return { accounts: all, warnings, toggle: null };
+  const narrowed = all.reduce((count, account) => count + account.windows.filter(listed).length, 0);
+  // Nothing to tell apart: every window that shows is a warning or spent, or none is a warning.
+  if (warnings === 0 || narrowed === shown) return { accounts: all, warnings, toggle: null };
   if (showAll) return { accounts: all, warnings, toggle: "less" };
   return {
     accounts: all
       .map((account) => ({
         ...account,
-        windows: account.windows.filter((window) => window.warning),
+        windows: account.windows.filter(listed),
       }))
       .filter((account) => account.windows.length > 0),
     warnings,

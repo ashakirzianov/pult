@@ -1332,3 +1332,8 @@
 .pult-limits-window-warning .pult-limits-bar-used {
   background: var(--warning, var(--vscode-editorWarning-foreground));
 }
+
+/* A spent window, out until its reset: dimmed as a spent schedule is; its bar stays full. */
+.pult-limits-window-spent .pult-limits-window-text {
+  opacity: 0.55;
+}

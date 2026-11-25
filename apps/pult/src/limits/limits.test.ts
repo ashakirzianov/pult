@@ -43,7 +43,9 @@ const shape = (shelf: ReturnType<typeof limitsShelf<ReturnType<typeof account>>>
   shelf && {
     accounts: shelf.accounts.map(({ account, windows }) => [
       account.key,
-      windows.map(({ window, warning }) => `${window.id}${warning ? "!" : ""}`),
+      windows.map(
+        ({ window, warning, spent }) => `${window.id}${warning ? "!" : ""}${spent ? "~" : ""}`,
+      ),
     ]),
     warnings: shelf.warnings,
     toggle: shelf.toggle,
@@ -156,6 +158,50 @@ NodeTest.describe("limitsShelf", () => {
           toggle: null,
         });
       }
+    },
+  );
+
+  NodeTest.test("a window at 100% is spent, no warning; 96% to 99% still warns", () => {
+    const windows = [100, 99, 96].map((used) => window(`w${used}`, used, 0.99));
+    NodeAssert.deepEqual(shape(limitsShelf([account("claude", ...windows)], NOW, false, NONE)), {
+      accounts: [["claude", ["w100~", "w99!", "w96!"]]],
+      warnings: 2,
+      toggle: null,
+    });
+  });
+
+  NodeTest.test(
+    "a spent window alone or beside no warning shows everything, with no Show more",
+    () => {
+      const spent = [account("claude", window("weekly", 100, 0.5))];
+      const quiet = [account("claude", window("weekly", 100, 0.5), window("session", 20, 0.5))];
+      for (const showAll of [false, true]) {
+        NodeAssert.deepEqual(shape(limitsShelf(spent, NOW, showAll, NONE)), {
+          accounts: [["claude", ["weekly~"]]],
+          warnings: 0,
+          toggle: null,
+        });
+        NodeAssert.deepEqual(shape(limitsShelf(quiet, NOW, showAll, NONE)), {
+          accounts: [["claude", ["weekly~", "session"]]],
+          warnings: 0,
+          toggle: null,
+        });
+      }
+    },
+  );
+
+  NodeTest.test(
+    "beside a warning window, a spent one is listed with it, the others behind Show more",
+    () => {
+      const mixed = [...accounts, account("other", window("weekly", 100, 0.5))];
+      NodeAssert.deepEqual(shape(limitsShelf(mixed, NOW, false, NONE)), {
+        accounts: [
+          ["claude", ["session!"]],
+          ["other", ["weekly~"]],
+        ],
+        warnings: 1,
+        toggle: "all",
+      });
     },
   );
 

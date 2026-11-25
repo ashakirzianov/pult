@@ -23,11 +23,12 @@ const refreshAction = toAction({
 
 /**
  * The Limits shelf (xaxis `pult/tasks/provider-limits-page.task`):
- * the provider accounts' usage windows with something spent, under its
- * header with the count of warning windows while any warns, open until closed, when its icon
- * goes to the tray (`TrayShelves.tsx`); while any warns the warning windows
- * alone, with Show more in the header, else every window with something spent, and gone
- * while none has (`limitsShelf`). Refresh is the header's hover action and in
+ * the provider accounts' usage windows with something spent, open until
+ * closed, when its icon goes to the tray (`TrayShelves.tsx`), badged with the
+ * count of warning windows; while any warns the warning and the spent windows
+ * alone, with Show more in the header, else every window with something
+ * spent, and gone while none has (`limitsShelf`). A spent window, at 100%,
+ * is no warning: its row is dimmed, not in the warning colour. Refresh is the header's hover action and in
  * its right-click, its tooltip when each environment's limits were last
  * checked and the notices. The rows are no jump targets and do nothing on
  * click. `now` is the panel's minute clock, which the pace moves with, but
@@ -147,7 +148,7 @@ function AccountRows({
         {account.sourceLabel === null ? null : <EnvironmentChip label={account.sourceLabel} />}
       </div>
       <ul className="pult-limits-windows">
-        {windows.map(({ window, warning }) => {
+        {windows.map(({ window, warning, spent }) => {
           const used = Math.round(window.usedPercent);
           const resets = formatResetsIn(window, now);
           const pace = paceShare(window, now, weekend);
@@ -161,7 +162,7 @@ function AccountRows({
           return (
             <li
               key={window.id}
-              className={`pult-limits-window${warning ? " pult-limits-window-warning" : ""}`}
+              className={`pult-limits-window${warning ? " pult-limits-window-warning" : ""}${spent ? " pult-limits-window-spent" : ""}`}
             >
               <span className="pult-limits-window-text">{text}</span>
               <span className="pult-limits-bar" aria-hidden>
