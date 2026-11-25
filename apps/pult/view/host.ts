@@ -153,6 +153,28 @@ export interface DetailsCards {
   readonly subject: DetailsCardsTarget | { readonly kind: "star"; readonly channel: string | null };
 }
 
+/**
+ * A model picker a Star's details ask the view for (`src/details/ChannelDetails.tsx`): the
+ * composer's, drawn by the view into `element`, an element of the shell's inside its cards, with
+ * the environment's models; `selection` is the model it shows, null for none.
+ */
+export interface DetailsModelPicker {
+  readonly element: HTMLElement;
+  readonly environmentId: string;
+  readonly projectId: string;
+  readonly selection: {
+    readonly instanceId: string;
+    readonly model: string;
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>;
+  } | null;
+  /** The user's pick, the model's options kept when it is the one shown, none for another. */
+  readonly onPick: (selection: {
+    readonly instanceId: string;
+    readonly model: string;
+    readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>;
+  }) => void;
+}
+
 /** The details cards live, and the shell's renderer of a Star's. */
 export interface DetailsCardsValue {
   get(): DetailsCards | null;
@@ -161,6 +183,10 @@ export interface DetailsCardsValue {
   renderStar(element: HTMLElement): () => void;
   /** Renders the right panel's tray into `element`, on the composer buttons' row; returns its removal. */
   renderTray(element: HTMLElement): () => void;
+  /** The model pickers a Star's cards show now, which the view portals into their elements. */
+  modelPickers(): ReadonlyArray<DetailsModelPicker>;
+  /** Calls `listener` when `modelPickers` changes; returns its removal. */
+  subscribeModelPickers(listener: () => void): () => void;
 }
 
 /**

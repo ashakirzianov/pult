@@ -18,6 +18,8 @@ export const CHANNEL_SLEEP_FEATURE = "star-channel-sleep";
 export const CHANNEL_MODELS_FEATURE = "star-channel-models";
 /** A channel's transcripts, listed by `GET stars/<id>/channels/<slug>/conversations` and read by their route. */
 export const CHANNEL_HISTORY_FEATURE = "star-channel-history";
+/** A channel's settings, read and written by `GET` and `POST stars/<id>/channels/<slug>/settings`, which its details shelf draws. */
+export const CHANNEL_SETTINGS_FEATURE = "star-channel-settings";
 
 const PLUGIN_PATH = "/api/plugins/pult";
 
@@ -150,6 +152,19 @@ export const channelTranscriptStars = (event: DirectoryChanges, answer: WatchedS
       (under === "conversations" || under.startsWith("conversations/")),
   );
 
+/**
+ * The Stars of `answer` a batch of changes may have changed a channel's
+ * settings for: a change to a Star's `.pult/channels/settings.yaml`, every
+ * channel's, or a `.pult/channels/<slug>/settings.yaml`, one channel's;
+ * every Star where more changed than the batch names.
+ */
+export const channelSettingsStars = (event: DirectoryChanges, answer: WatchedStars) =>
+  starsTouched(
+    event,
+    answer,
+    (_, slug, under) => (slug === "settings.yaml" && under === "") || under === "settings.yaml",
+  );
+
 /** An open channel of a Star's as the route reads it: its slug, its current conversation's thread, and the sleep rule's reading of it, a deadline or what holds it. */
 export interface RouteChannel {
   readonly slug: string;
@@ -204,6 +219,8 @@ export interface RouteSchedule {
   readonly kind: ScheduleKind | null;
   /** Its IANA zone; null for a file that is no schedule. */
   readonly timezone: string | null;
+  /** The channel its runs land in, its `to`, else the Star's default channel; null for a file that is no schedule, or from a plugin older than the field. */
+  readonly channel: string | null;
   /** The next due instant, ISO; null where none is. */
   readonly next: string | null;
   /** A one-off whose run has a record. */
@@ -278,6 +295,46 @@ export interface StarsAnswer {
   readonly hidden: ReadonlyArray<string>;
   readonly stars: ReadonlyArray<RouteStar>;
 }
+
+/** When a channel's conversation ends for its size: from this many tokens in its context, or never (`rotate-on-context`). */
+export type RotateOnContext = number | "never";
+
+/** A channel's settings as `GET stars/<id>/channels/<slug>/settings` serves them, at the runtime mode of its newest conversation. */
+export interface ChannelSettings {
+  /** The model a fresh conversation takes, its options kept for the view to decode; null where neither a file nor a conversation names one. */
+  readonly model: RouteModel | null;
+  /** The file of the `model` key, this channel's or every channel's, or its last conversation; null with no model. */
+  readonly modelFrom: "channel" | "shared" | "conversation" | null;
+  readonly rotateOnContext: RotateOnContext;
+  /** The file of the `rotate-on-context` key, or Pult's default where none says. */
+  readonly rotateFrom: "channel" | "shared" | "default";
+  /** Since when it sleeps, ISO; null while it is awake. */
+  readonly asleepSince: string | null;
+  /** What is wrong with the files, in the plugin's sentences. */
+  readonly problems: ReadonlyArray<string>;
+}
+
+/** What the shelf writes into a channel's own file: a key left out is left alone, null removes it. */
+export interface ChannelSettingsChanges {
+  readonly model?: RouteModel | null;
+  readonly rotateOnContext?: RotateOnContext | null;
+}
+
+/** `rotate-on-context` as the plugin reads it: thousands of tokens written with a `k`, `1k` to `999999k`, or `never`. */
+const ROTATE_THOUSANDS = /^([1-9][0-9]{0,5})k$/u;
+
+/** A typed `rotate-on-context`, as the plugin reads the key: tokens, `never`, or null for an empty one, which removes the key; undefined for one it refuses. */
+export function parseRotateOnContext(text: string): RotateOnContext | null | undefined {
+  const typed = text.trim();
+  if (typed === "") return null;
+  if (typed === "never") return "never";
+  const thousands = ROTATE_THOUSANDS.exec(typed)?.[1];
+  return thousands === undefined ? undefined : Number(thousands) * 1000;
+}
+
+/** `rotate-on-context` as a file says it: `400k`, or `never`. */
+export const rotateOnContextText = (value: RotateOnContext) =>
+  value === "never" ? "never" : `${value / 1000}k`;
 
 /** One entry of a transcript: a message of the user's or the Star's, or a tool call's line. */
 export interface TranscriptEntry {
@@ -377,6 +434,7 @@ const schedule = struct<RouteSchedule>({
   rule: nullable(string),
   kind: optional(nullable(scheduleKind)),
   timezone: nullable(string),
+  channel: optional(nullable(string)),
   next: nullable(string),
   spent: boolean,
   problem: nullable(string),
@@ -516,6 +574,28 @@ const namedTranscript: Decode<NamedTranscript> = (value, at) => ({
 export const decodeStars = (body: unknown): StarsAnswer => starsAnswer(body, "stars");
 /** A Star as the write routes answer it, decoded; a throw for any other shape. */
 const decodeStar = (body: unknown): WrittenStar => writtenStar(body, "star");
+const literal =
+  <T extends string>(values: ReadonlyArray<T>): Decode<T> =>
+  (value, at) =>
+    values.find((each) => each === value) ?? fail(at, `one of ${values.join(", ")}`);
+
+const rotateOnContext: Decode<RotateOnContext> = (value, at) =>
+  value === "never" || (typeof value === "number" && Number.isInteger(value) && value > 0)
+    ? value
+    : fail(at, "tokens or never");
+
+const channelSettings = struct<ChannelSettings>({
+  model,
+  modelFrom: nullable(literal(["channel", "shared", "conversation"] as const)),
+  rotateOnContext,
+  rotateFrom: literal(["channel", "shared", "default"] as const),
+  asleepSince: nullable(string),
+  problems: arrayOf(string),
+});
+
+/** A channel's settings' answer, decoded; a throw for any other shape. */
+const decodeChannelSettings = (body: unknown): ChannelSettings => channelSettings(body, "settings");
+
 /** A transcript's answer, decoded; a throw for any other shape. */
 const decodeAsks = (body: unknown): AsksAnswer => asksAnswer(body, "asks");
 const decodeAsk = (body: unknown): RouteAsk => routeAsk(body, "ask");
@@ -626,6 +706,21 @@ export const readStarChannelTranscripts = (credential: Credential, id: string, c
     `${starPath(id)}/channels/${encodeURIComponent(channel)}/conversations`,
     decodeChannelTranscripts,
   );
+
+const channelSettingsPath = (id: string, channel: string) =>
+  `${starPath(id)}/channels/${encodeURIComponent(channel)}/settings`;
+
+/** The settings of the Star's `channel` on this environment, as its shelf draws them. */
+export const readStarChannelSettings = (credential: Credential, id: string, channel: string) =>
+  ask(credential, "GET", channelSettingsPath(id, channel), decodeChannelSettings);
+
+/** Writes `changes` into the channel's own settings file on this environment, answering its settings after. */
+export const writeStarChannelSettings = (
+  credential: Credential,
+  id: string,
+  channel: string,
+  changes: ChannelSettingsChanges,
+) => ask(credential, "POST", channelSettingsPath(id, channel), decodeChannelSettings, changes);
 
 /** The transcript whose conversation was the thread `threadId`, with its name; a throw where the Star has none, as from an older plugin. */
 export const readStarTranscriptOfThread = (credential: Credential, id: string, threadId: string) =>

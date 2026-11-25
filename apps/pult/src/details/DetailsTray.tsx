@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { askStore } from "../asks/model.ts";
 import { closedShelves } from "../panel/order.ts";
 import { drawnHome } from "../stars/stars.ts";
+import { detailsCards } from "./cards.ts";
 import { useStarDetails } from "./DetailsView.tsx";
 import { DETAILS_SHELF_ICONS, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
 import { starAsks } from "./StarDetails.tsx";
@@ -30,6 +31,7 @@ export function DetailsTray() {
   const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
   const asks = useSyncExternalStore(askStore.subscribe, askStore.get);
   const details = useStarDetails();
+  const subject = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.subject;
   if (details === null || (closed.length === 0 && !dragging)) return null;
   const schedules = drawnHome(details.star)?.schedules ?? [];
   const countOf = (shelf: DetailsShelfName): number => {
@@ -38,6 +40,7 @@ export function DetailsTray() {
         return starAsks(asks, details.star.id).length;
       case "channels":
         return details.rows.channels.filter((row) => row.thread !== null).length;
+      case "channel":
       case "settings":
         return 0;
       case "schedules":
@@ -58,7 +61,9 @@ export function DetailsTray() {
             ? schedules.length === 0
             : shelf === "channels"
               ? details.rows.channels.length === 0
-              : shelf !== "settings" && count === 0;
+              : shelf === "channel"
+                ? subject?.kind !== "star" || subject.channel === null
+                : shelf !== "settings" && count === 0;
         return (
           <button
             key={shelf}

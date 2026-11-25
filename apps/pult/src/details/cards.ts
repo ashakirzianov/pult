@@ -1,9 +1,11 @@
-import type { DetailsCards, DetailsCardsValue } from "../../view/main.tsx";
+import type { DetailsCards, DetailsCardsValue, DetailsModelPicker } from "../../view/main.tsx";
 
 let current: DetailsCards | null = null;
 let starRenderer: ((element: HTMLElement) => () => void) | undefined;
 let trayRenderer: ((element: HTMLElement) => () => void) | undefined;
 const listeners = new Set<() => void>();
+let pickers: ReadonlyArray<DetailsModelPicker> = [];
+const pickerListeners = new Set<() => void>();
 
 /**
  * The details cards as the thread view reads them through its host
@@ -16,6 +18,8 @@ export const detailsCards: DetailsCardsValue & {
   set(next: DetailsCards | null): void;
   setStarRenderer(render: (element: HTMLElement) => () => void): void;
   setTrayRenderer(render: (element: HTMLElement) => () => void): void;
+  /** Asks the view for a model picker in `picker.element` until what it returns removes it. */
+  showModelPicker(picker: DetailsModelPicker): () => void;
 } = {
   get: () => current,
   subscribe(listener) {
@@ -49,5 +53,20 @@ export const detailsCards: DetailsCardsValue & {
   },
   setTrayRenderer(render) {
     trayRenderer = render;
+  },
+  modelPickers: () => pickers,
+  subscribeModelPickers(listener) {
+    pickerListeners.add(listener);
+    return () => {
+      pickerListeners.delete(listener);
+    };
+  },
+  showModelPicker(picker) {
+    pickers = [...pickers, picker];
+    for (const listener of pickerListeners) listener();
+    return () => {
+      pickers = pickers.filter((each) => each !== picker);
+      for (const listener of pickerListeners) listener();
+    };
   },
 };

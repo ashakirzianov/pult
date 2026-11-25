@@ -15,6 +15,7 @@ import { type CardRows, type Star, workingChannels } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { hasUsageProviderIcon, UsageProviderIcon } from "../../view/usageProviders.tsx";
 import { detailsCards } from "./cards.ts";
+import { ChannelDetails } from "./ChannelDetails.tsx";
 import { StarSettings } from "./StarSettings.tsx";
 import { DetailsShelf, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
 
@@ -26,8 +27,9 @@ function run(command: string, ...args: unknown[]): void {
  * A selected Star's details (`pult/decisions`, `star-card`,
  * `view-right-panel`): its shelves, in their order (`detailsShelves`), each
  * closing into the tray and left out while it holds nothing: its posted asks
- * (`StarAsks`), its channels with their threads (`StarChannels`) and its
- * schedules (`StarSchedules.tsx`), and its settings (`StarSettings`).
+ * (`StarAsks`), its channels with their threads (`StarChannels`), the
+ * selected channel's details (`ChannelDetails.tsx`), its schedules
+ * (`StarSchedules.tsx`), and its settings (`StarSettings`).
  */
 export function StarDetails({
   star,
@@ -69,6 +71,8 @@ export function StarDetails({
             now={now}
           />
         );
+      case "channel":
+        return <ChannelDetails key={name} star={star} rows={rows} now={now} />;
       case "settings":
         return <StarSettings key={name} star={star} />;
       case "schedules":

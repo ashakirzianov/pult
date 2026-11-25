@@ -16,6 +16,7 @@ const schedule = (overrides: Partial<RouteSchedule> = {}): RouteSchedule => ({
   rule: "weekdays 09:00",
   kind: "daily",
   timezone: BUENOS_AIRES,
+  channel: "main",
   next: "2026-11-12T12:00:00.000Z",
   spent: false,
   problem: null,

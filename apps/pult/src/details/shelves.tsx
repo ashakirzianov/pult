@@ -5,7 +5,7 @@ import { createShelves, readShelfOrder, ShelfHeaderFrame } from "../panel/shelve
 const SHELVES_KEY = "pult-shell.details.shelf-order";
 
 /** The right panel's shelves for a Star, in their default order. */
-const DETAILS_SHELVES = ["asks", "channels", "schedules", "settings"] as const;
+const DETAILS_SHELVES = ["asks", "channels", "channel", "schedules", "settings"] as const;
 
 export type DetailsShelfName = (typeof DETAILS_SHELVES)[number];
 
@@ -16,6 +16,7 @@ export const DETAILS_SHELF_ICONS: Record<
 > = {
   asks: { label: "Asks", icon: "comment-unresolved" },
   channels: { label: "Channels", icon: "comment-discussion" },
+  channel: { label: "Channel", icon: "info" },
   schedules: { label: "Schedules", icon: "calendar" },
   settings: { label: "Star Settings", icon: "settings" },
 };

@@ -12,11 +12,13 @@ import type { Disposable } from "../files/files.ts";
 import { environmentServer } from "../files/server.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
+import { refreshChannelSettings } from "./channelSettings.ts";
 import { refreshChannelTranscriptNames, refreshTranscripts } from "./foldState.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
   CHANNEL_MODELS_FEATURE,
   CHANNEL_SLEEP_FEATURE,
+  channelSettingsStars,
   channelTranscriptStars,
   createStarOn,
   type Credential,
@@ -448,6 +450,10 @@ class StarsModel {
             if (starIds.length > 0)
               for (const listener of this.channelTranscriptListeners)
                 listener({ environmentId, starIds });
+            // A channel's settings file, every channel's or its own, is read again where its shelf shows it.
+            if (reading.answer !== undefined)
+              for (const id of channelSettingsStars(event, reading.answer))
+                refreshChannelSettings(environmentId, id);
             this.askSoon(environmentId, reading);
           },
           gone: () => {

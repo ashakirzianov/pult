@@ -28,6 +28,7 @@ import type { PopoverCreateHandle } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { type DraftId, type DraftSessionState, useComposerDraftStore } from "~/composerDraftStore";
 import { selectThreadPanelOpen, useRightPanelStore } from "~/rightPanelStore";
+import { DetailsModelPickers } from "./DetailsModelPicker.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { draftKey, isDraftOf } from "./drafts.ts";
 import { type DetailsCards, type DetailsCardsTarget, threadViewHost } from "./host.ts";
@@ -265,6 +266,8 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
         <DetailsCardResizer width={placement.width} right={placement.right + placement.width - 3} />
       )}
       <DetailsTrayHost width={panelWidth} />
+      {/* A Star's cards' model pickers, drawn from the view's tree into the shell's elements. */}
+      {star ? <DetailsModelPickers /> : null}
     </>
   );
 }

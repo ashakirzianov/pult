@@ -4,6 +4,7 @@ import * as NodeTest from "node:test";
 
 import {
   actOnAsk,
+  channelSettingsStars,
   channelTranscriptStars,
   createStarOn,
   defaultTranscriptStars,
@@ -18,8 +19,12 @@ import {
   readStars,
   readStarTranscript,
   readStarTranscriptOfThread,
+  parseRotateOnContext,
+  readStarChannelSettings,
   readWakeModel,
+  rotateOnContextText,
   sleepChannelOn,
+  writeStarChannelSettings,
 } from "./plugin.ts";
 
 NodeTest.describe("the Stars directory's watch", () => {
@@ -86,6 +91,42 @@ NodeTest.describe("the Stars directory's watch", () => {
       NodeAssert.deepEqual(channelTranscriptStars(batch([], true), answer), ["one", "two"]);
     },
   );
+
+  NodeTest.test("channelSettingsStars names the Star whose channel settings file changed", () => {
+    NodeAssert.deepEqual(
+      channelSettingsStars(batch(["star-2/.pult/channels/settings.yaml"]), answer),
+      ["two"],
+    );
+    NodeAssert.deepEqual(
+      channelSettingsStars(batch(["star\\.pult\\channels\\work\\settings.yaml"]), answer),
+      ["one"],
+    );
+    NodeAssert.deepEqual(
+      channelSettingsStars(
+        batch([
+          transcript("star", "work"),
+          "star/.pult/channels/work",
+          "star/.pult/channels/work/notes/settings.yaml",
+          "star/settings.yaml",
+        ]),
+        answer,
+      ),
+      [],
+    );
+    NodeAssert.deepEqual(channelSettingsStars(batch([], true), answer), ["one", "two"]);
+  });
+});
+
+NodeTest.describe("rotate-on-context as typed", () => {
+  NodeTest.test("reads what the plugin reads, empty as removing the key", () => {
+    NodeAssert.equal(parseRotateOnContext("400k"), 400_000);
+    NodeAssert.equal(parseRotateOnContext(" never "), "never");
+    NodeAssert.equal(parseRotateOnContext(""), null);
+    for (const refused of ["300", "0k", "1000000k", "250K", "2.5k", "Never"])
+      NodeAssert.equal(parseRotateOnContext(refused), undefined, refused);
+    NodeAssert.equal(rotateOnContextText(400_000), "400k");
+    NodeAssert.equal(rotateOnContextText("never"), "never");
+  });
 });
 
 NodeTest.describe("decodeAbout", () => {
@@ -197,6 +238,7 @@ const star = {
       rule: "weekdays 09:00",
       kind: "daily",
       timezone: "America/Argentina/Buenos_Aires",
+      channel: "work",
       next: "2026-11-11T12:00:00.000Z",
       spent: false,
       problem: null,
@@ -215,6 +257,7 @@ const star = {
       rule: null,
       kind: null,
       timezone: null,
+      channel: null,
       next: null,
       spent: false,
       problem: "it has no `timezone`, an IANA name",
@@ -246,12 +289,16 @@ NodeTest.describe("decodeStars", () => {
     NodeAssert.deepEqual(decodeStars({ ...stars, stars: [older] }).stars[0]?.schedules, []);
   });
 
-  NodeTest.test("reads a schedule from a plugin older than titles and kinds as naming none", () => {
-    const { title: _, kind: __, ...older } = star.schedules[0] ?? {};
-    const answer = { ...stars, stars: [{ ...star, schedules: [older] }] };
-    NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.title, null);
-    NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.kind, null);
-  });
+  NodeTest.test(
+    "reads a schedule from a plugin older than titles, kinds and channels as naming none",
+    () => {
+      const { title: _, kind: __, channel: ___, ...older } = star.schedules[0] ?? {};
+      const answer = { ...stars, stars: [{ ...star, schedules: [older] }] };
+      NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.title, null);
+      NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.kind, null);
+      NodeAssert.equal(decodeStars(answer).stars[0]?.schedules[0]?.channel, null);
+    },
+  );
 
   NodeTest.test("reads a plugin older than the model as naming none", () => {
     const { model: _, ...older } = star;
@@ -619,6 +666,66 @@ NodeTest.describe("the Stars' routes", () => {
       NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
     },
   );
+
+  NodeTest.test("reads and writes a channel's settings, the model's options kept", async () => {
+    const settings = {
+      model: {
+        instanceId: "codex",
+        model: "gpt-6.2-sol",
+        options: [{ id: "reasoningEffort", value: "high" }],
+      },
+      modelFrom: "channel",
+      rotateOnContext: 400_000,
+      rotateFrom: "shared",
+      asleepSince: null,
+      problems: ['`rotate-on-context` in `.pult/channels/settings.yaml` "300" is neither…'],
+    };
+    const read = await askOver(
+      () => json({ ...settings, later: true }),
+      () => readStarChannelSettings(credential, "s1", "ui-batch-5"),
+    );
+    NodeAssert.deepEqual(
+      read.asked.map((each) => [each.method, each.url, each.body]),
+      [
+        [
+          "GET",
+          "http://127.0.0.1:3773/api/plugins/pult/stars/s1/channels/ui-batch-5/settings",
+          undefined,
+        ],
+      ],
+    );
+    NodeAssert.deepEqual(read.result, settings);
+    const written = await askOver(
+      () => json({ ...settings, rotateOnContext: "never", rotateFrom: "channel" }),
+      () => writeStarChannelSettings(credential, "s1", "ui-batch-5", { rotateOnContext: "never" }),
+    );
+    NodeAssert.deepEqual(
+      written.asked.map((each) => [each.method, each.url, each.body]),
+      [
+        [
+          "POST",
+          "http://127.0.0.1:3773/api/plugins/pult/stars/s1/channels/ui-batch-5/settings",
+          { rotateOnContext: "never" },
+        ],
+      ],
+    );
+    NodeAssert.deepEqual(written.result, {
+      ...settings,
+      rotateOnContext: "never",
+      rotateFrom: "channel",
+    });
+    for (const misshapen of [
+      { ...settings, modelFrom: "file" },
+      { ...settings, rotateOnContext: "250k" },
+      { ...settings, problems: undefined },
+    ]) {
+      const asked = await askOver(
+        () => json(misshapen),
+        () => readStarChannelSettings(credential, "s1", "main"),
+      );
+      NodeAssert.ok(asked.result instanceof PluginAnswerError);
+    }
+  });
 
   NodeTest.test("tells the plugin's refusal, and an answer that is no JSON", async () => {
     const refused = await askOver(
