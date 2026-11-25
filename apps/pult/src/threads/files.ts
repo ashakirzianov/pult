@@ -15,7 +15,7 @@ import { WS_METHODS } from "@t3tools/contracts";
 import { type Checkout, checkoutName, checkoutsOf } from "../changes/checkouts.ts";
 import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
 import { connection } from "../connection/index.ts";
-import { makeFileLinks } from "../files/linkable.ts";
+import { makeFileLinks, rootsKey } from "../files/linkable.ts";
 import {
   baseName,
   locate,
@@ -231,10 +231,10 @@ const linkSources = {
       )
     ).entries,
   roots: (environmentId: string) =>
-    JSON.stringify([
+    rootsKey(
       environmentCheckouts(environmentId).map((checkout) => checkout.root),
       keptRoot(environmentId),
-    ]),
+    ),
   onDidChange: (listener: () => void) => {
     threadStore.subscribe(listener);
     onDidChangeKept(listener);

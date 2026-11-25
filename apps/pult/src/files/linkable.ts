@@ -25,13 +25,17 @@ export interface FileLinkSources {
   ) => Promise<ReadonlyArray<unknown>>;
   /** The thread's latest run's end: a change checks its `no` verdicts again, since an agent names a file before it writes it. */
   readonly runEnd: (environmentId: string, threadId: string) => string | null;
-  /** The environment's checkouts and kept xaxis root, as one value: a change drops every verdict of the environment. */
+  /** The environment's checkouts and kept xaxis root, as one value (`rootsKey`): a change checks every verdict of the environment again. */
   readonly roots: (environmentId: string) => string;
   /** How long changed verdicts wait to reach their gates together: each publish restyles the thread view once, whatever it swaps. */
   readonly publishMs: number;
   /** Calls `listener` whenever `runEnd` or `roots` may have changed. */
   readonly onDidChange: (listener: () => void) => void;
 }
+
+/** `roots` of checkout roots in any order and a kept xaxis root: the store lists the same checkouts in another order as threads start and end their turns. */
+export const rootsKey = (checkoutRoots: ReadonlyArray<string>, keptRoot: string | null) =>
+  JSON.stringify([checkoutRoots.toSorted(), keptRoot]);
 
 /** Searches in flight per environment, at most. */
 const SEARCHES = 4;
@@ -40,7 +44,7 @@ type State = "pending" | "yes" | "no" | "failed";
 
 interface Thread {
   runEnd: string | null;
-  /** Moves on as its verdicts are dropped, so a check started before publishes nothing. */
+  /** Moves on as its verdicts are checked again, so a check started before publishes nothing. */
   revision: number;
   readonly states: Map<string, State>;
 }
@@ -187,8 +191,8 @@ export function makeFileLinks(sources: FileLinkSources) {
     }
     if (thread.revision !== revision) return;
     const before = thread.states.get(ref.path);
-    // A `no` checked again after a run keeps its answer through a failure.
-    if (state === "failed" && before === "no") return;
+    // A verdict checked again keeps its answer through a failure.
+    if (state === "failed" && (before === "yes" || before === "no")) return;
     thread.states.set(ref.path, state);
     if (state !== "failed" && state !== before) notify(ref);
   };
@@ -203,32 +207,26 @@ export function makeFileLinks(sources: FileLinkSources) {
     );
   };
 
-  /** Drops the thread's verdicts: a yes or no's gate re-asks as it changes; one read as unknown before and after, pending or failed, is asked again here while a gate shows it. */
-  const drop = (environmentId: string, threadId: string, thread: Thread) => {
-    thread.revision += 1;
-    // A copy: `ask` puts a path back into the map.
-    for (const [path, state] of Array.from(thread.states)) {
-      thread.states.delete(path);
-      const ref = { environmentId, threadId, path };
-      if (state === "yes" || state === "no") notify(ref);
-      else if (listeners.has(keyOf(ref))) ask(ref);
-    }
-  };
-
-  /** After the thread's run: a `no` a gate shows is checked again and reads `no` until its new answer is in, its gate told only if that differs; every other `no`, pending or failed verdict is dropped, asked again here while a gate shows it. */
+  /**
+   * After the thread's run its `no`s are checked again, after a change of roots its `yes`s too: one
+   * a gate shows reads as it did until its new answer is in, its gate told only if that differs;
+   * every other one, and every pending or failed verdict, is dropped, asked again here while a gate
+   * shows it.
+   */
   const recheck = (
     environmentId: string,
     environment: Environment,
     threadId: string,
     thread: Thread,
+    yesToo: boolean,
   ) => {
     const revision = ++thread.revision;
     // A copy: `ask` puts a path back into the map.
     for (const [path, state] of Array.from(thread.states)) {
-      if (state === "yes") continue;
+      if (state === "yes" && !yesToo) continue;
       const ref = { environmentId, threadId, path };
       const shown = listeners.has(keyOf(ref));
-      if (state === "no" && shown) {
+      if ((state === "yes" || state === "no") && shown) {
         // The server refreshes its index after the run without telling anyone: the check waits as
         // long as a gate's own ask of a dropped verdict did, after the publish.
         setTimeout(() => {
@@ -244,19 +242,18 @@ export function makeFileLinks(sources: FileLinkSources) {
   sources.onDidChange(() => {
     for (const [environmentId, environment] of environments) {
       const roots = sources.roots(environmentId);
-      if (roots !== environment.roots) {
+      const rerooted = roots !== environment.roots;
+      if (rerooted) {
         environment.roots = roots;
         environment.searches = new Map();
-        for (const [threadId, thread] of environment.threads) drop(environmentId, threadId, thread);
-        continue;
       }
       for (const [threadId, thread] of environment.threads) {
         const runEnd = sources.runEnd(environmentId, threadId);
-        if (runEnd === thread.runEnd) continue;
+        if (!rerooted && runEnd === thread.runEnd) continue;
         thread.runEnd = runEnd;
         // The server refreshes its index after every run.
         environment.searches = new Map();
-        recheck(environmentId, environment, threadId, thread);
+        recheck(environmentId, environment, threadId, thread, rerooted);
       }
     }
   });

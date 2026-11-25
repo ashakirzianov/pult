@@ -4,7 +4,7 @@ import * as NodeTest from "node:test";
 
 import type { FileLinkRef } from "../../view/host.ts";
 import type { Checkout } from "../changes/checkouts.ts";
-import { makeFileLinks } from "./linkable.ts";
+import { makeFileLinks, rootsKey } from "./linkable.ts";
 
 const checkout = (root: string, projectId: string): Checkout => ({
   environmentId: "env",
@@ -23,12 +23,13 @@ function environment(files: Array<string>) {
   const searched: Array<string> = [];
   const runEnds = new Map<string, string | null>();
   const changed: Array<() => void> = [];
+  let checkouts = [pult, axis];
   const links = makeFileLinks({
     whenListed: async () => {},
     input: () => ({
       checkoutRoot: "/repos/pult",
       projectId: "pult",
-      checkouts: [pult, axis],
+      checkouts,
       xaxisRoot: "/xaxis",
       search: async ({ root }, key) => {
         searched.push(`${root} ${key}`);
@@ -42,7 +43,11 @@ function environment(files: Array<string>) {
       return paths.map((path) => (files.includes(path) ? { kind: "file" } : null));
     },
     runEnd: (_environmentId, threadId) => runEnds.get(threadId) ?? null,
-    roots: () => "roots",
+    roots: () =>
+      rootsKey(
+        checkouts.map((checkout) => checkout.root),
+        "/xaxis",
+      ),
     publishMs: 0,
     onDidChange: (listener) => void changed.push(listener),
   });
@@ -65,7 +70,11 @@ function environment(files: Array<string>) {
     runEnds.set(threadId, at);
     for (const listener of changed) listener();
   };
-  return { links, verdicts, settle, metadataCalls, searched };
+  const reroot = (next: Array<Checkout>) => {
+    checkouts = next;
+    for (const listener of changed) listener();
+  };
+  return { links, verdicts, settle, reroot, metadataCalls, searched };
 }
 
 NodeTest.test(
@@ -79,7 +88,7 @@ NodeTest.test(
       "/etc/hosts",
       "/xaxis/owner/track/about.md",
     ];
-    const { links, verdicts, settle, metadataCalls, searched } = environment(files);
+    const { links, verdicts, settle, reroot, metadataCalls, searched } = environment(files);
     const paths = [
       "src/a.ts",
       "b.ts",
@@ -134,5 +143,30 @@ NodeTest.test(
       "/repos/axis src/missing.ts",
       "/repos/pult src/missing.ts",
     ]);
+
+    // A worktree thread ends its turn and the store lists the same checkouts in another order.
+    NodeAssert.equal(
+      rootsKey(["/repos/axis", "/repos/pult"], "/xaxis"),
+      rootsKey(["/repos/pult", "/repos/axis"], "/xaxis"),
+      "the same checkouts in another order are the same roots",
+    );
+    notified.length = 0;
+
+    // The axis checkout goes: what it held opens nowhere.
+    let republish = () => {};
+    const republished = new Promise<void>((resolve) => (republish = resolve));
+    links.subscribe(refs[1]!, () => republish());
+    reroot([pult]);
+    NodeAssert.deepEqual(
+      refs.map((ref) => links.verdict(ref)),
+      [true, true, true, true, false, true],
+      "a yes and a no read as they did while they are checked again",
+    );
+    await republished;
+    NodeAssert.deepEqual(notified, ["b.ts"], "only the path that no longer opens is told");
+    NodeAssert.deepEqual(
+      refs.map((ref) => links.verdict(ref)),
+      [true, false, true, true, false, true],
+    );
   },
 );
