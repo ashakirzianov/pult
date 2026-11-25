@@ -3,6 +3,7 @@
 // run what reads them: their shelves and their posters' names.
 import type { AskStatus, RouteAsk } from "../stars/plugin.ts";
 import { type Star, starName } from "../stars/stars.ts";
+import type { ShellThread } from "../threads/store.ts";
 
 /** An ask of an environment's plugin, with the line its reply opens with. */
 export interface PageAsk extends RouteAsk {
@@ -45,6 +46,39 @@ export function posterName(
   const star = starOf(ask.poster.star);
   const name = star === undefined ? "Star" : starName(star);
   return ask.poster.channel === star?.defaultChannel ? name : `${name} · ${ask.poster.channel}`;
+}
+
+/**
+ * Where a reply to the ask arrives, as its composer's line names it: the
+ * poster as its row names it, and what the page tells of it. `open` is
+ * whether a Star's channel has its conversation open on the ask's
+ * environment, null for a thread's ask; `thread`, whether the reply goes into
+ * a thread already there, which the name opens, rather than a sleeping
+ * channel's draft.
+ */
+export function replyDestination(
+  ask: Pick<PageAsk, "environmentId" | "poster">,
+  starOf: (starId: string) => Pick<Star, "name" | "defaultChannel"> | undefined,
+  threadOf: (
+    environmentId: string,
+    threadId: string,
+  ) => Pick<ShellThread, "title" | "settled"> | undefined,
+  open: boolean | null,
+): { readonly name: string; readonly note: string | null; readonly thread: boolean } {
+  const name = posterName(
+    ask,
+    starOf,
+    (environmentId, threadId) => threadOf(environmentId, threadId)?.title,
+  );
+  if ("thread" in ask.poster) {
+    if (open !== null) throw new Error("A thread's ask has no channel to be open or asleep.");
+    const settled = threadOf(ask.environmentId, ask.poster.thread)?.settled === true;
+    return { name, note: settled ? "settled, comes back with your reply" : null, thread: true };
+  }
+  if (open === null) throw new Error("A Star's ask needs whether its channel is open.");
+  return open
+    ? { name, note: "into its open conversation", thread: true }
+    : { name, note: "asleep, wakes in a new conversation", thread: false };
 }
 
 /** An ask's row as the panel's order reads it (`src/panel/order.ts`). */

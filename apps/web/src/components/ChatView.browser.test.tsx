@@ -534,13 +534,29 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
   const sending = vi.fn();
   const sent = vi.fn();
   const suggestions = ["Yes", "Not yet"];
+  // A sleeping channel's draft, its name plain text, until the channel wakes in a thread its name opens.
+  const openThread = vi.fn();
+  const asleep = { name: "Beta · review", note: "asleep, wakes in a new conversation", open: null };
+  const awake = { name: "Beta · review", note: "into its open conversation", open: openThread };
+  let destination: { name: string; note: string; open: (() => void) | null } = asleep;
+  const destinationListeners = new Set<() => void>();
   await using draft = await renderShellDraft({
     prefix: '[In reply to your ask a1 "Ship it?"]',
+    destination: {
+      get: () => destination,
+      subscribe: (listener) => {
+        destinationListeners.add(listener);
+        return () => destinationListeners.delete(listener);
+      },
+    },
     suggestions: { get: () => suggestions, subscribe: () => () => {} },
     sending,
     sent,
   });
   const { editor, launches, threadId } = draft;
+  const line = page.getByText("Reply to Beta · review · asleep, wakes in a new conversation");
+  await expect.element(line).toBeVisible();
+  expect(page.getByRole("button", { name: "Beta · review" }).query()).toBeNull();
 
   // A suggested reply fills the message over a draft, which Undo brings back, and sends nothing.
   await userEvent.click(editor);
@@ -553,6 +569,32 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
   expect(launches).toHaveLength(0);
   await userEvent.keyboard("{ControlOrMeta>}z{/ControlOrMeta}");
   await expect.element(editor).toHaveTextContent("My own draft");
+  // The line stays while the reply is written.
+  await expect.element(line).toBeVisible();
+
+  await act(() => {
+    destination = awake;
+    for (const listener of destinationListeners) listener();
+  });
+  await expect
+    .element(page.getByText("Reply to Beta · review · into its open conversation"))
+    .toBeVisible();
+  await page.getByRole("button", { name: "Beta · review" }).click();
+  expect(openThread).toHaveBeenCalledTimes(1);
+  // A name too long for the line is ellipsed itself, its link kept in view.
+  const long = "A thread title long enough to overflow the composer's line ".repeat(4).trim();
+  await act(() => {
+    destination = { ...awake, name: long };
+    for (const listener of destinationListeners) listener();
+  });
+  const link = page.getByRole("button", { name: long }).element().getBoundingClientRect();
+  const lineBox = document
+    .querySelector('[data-composer-reply-destination="true"]')!
+    .getBoundingClientRect();
+  expect(link.width).toBeGreaterThan(40);
+  expect(link.right).toBeLessThanOrEqual(lineBox.right);
+  expect(launches).toHaveLength(0);
+  await userEvent.click(editor);
 
   await page.getByRole("button", { name: "Yes" }).click();
   await expect.element(editor).toHaveTextContent("Yes");

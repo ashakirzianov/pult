@@ -26,12 +26,23 @@ export interface ShellComposerOptions {
 export interface ShellReply {
   /** The line the sent message opens with, above what the user wrote. */
   readonly prefix: string;
+  /** Where the reply arrives, named on a line above the message input (`ComposerReplySuggestions`) all the while it is written. */
+  readonly destination: ShellValue<ShellReplyDestination>;
   /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
   readonly suggestions: ShellValue<ReadonlyArray<string>>;
   /** Told as a send starts, its message drawn, with the thread it goes to, a draft's new one included; `sent` or the composer's error follows. */
   readonly sending: (environmentId: string, threadId: string) => void;
   /** Told once a send was accepted, with the thread it went to, a draft's new one included. */
   readonly sent: (environmentId: string, threadId: string) => void;
+}
+
+/** A reply's destination as its line names it: "Reply to <name> · <note>". */
+export interface ShellReplyDestination {
+  readonly name: string;
+  /** What the app tells of it after the name (a channel asleep, a thread settled); null for nothing. */
+  readonly note: string | null;
+  /** Opens the thread the reply goes into, the name drawn as its link; null while there is none yet (a sleeping channel's draft). */
+  readonly open: (() => void) | null;
 }
 
 /** Upstream's presentation, as its own app has it. */
@@ -54,6 +65,17 @@ const NO_SUGGESTIONS: ShellValue<ReadonlyArray<string>> = {
 /** The replies the app suggests for this composer's message; none outside a reply. */
 export function useShellReplySuggestions(): ReadonlyArray<string> {
   const source = use(ShellComposerOptions).reply?.suggestions ?? NO_SUGGESTIONS;
+  return useSyncExternalStore(source.subscribe, source.get);
+}
+
+const NO_DESTINATION: ShellValue<ShellReplyDestination | null> = {
+  get: () => null,
+  subscribe: () => () => {},
+};
+
+/** Where this composer's reply arrives; null outside a reply. */
+export function useShellReplyDestination(): ShellReplyDestination | null {
+  const source = use(ShellComposerOptions).reply?.destination ?? NO_DESTINATION;
   return useSyncExternalStore(source.subscribe, source.get);
 }
 

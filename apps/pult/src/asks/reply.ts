@@ -27,7 +27,7 @@ import { afterDraftWake } from "../stars/tab.tsx";
 import { StarThreadInput } from "../threads/pane.tsx";
 import { selectStar, selectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
-import { type PageAsk, posterName, shownAsks } from "./asks.ts";
+import { type PageAsk, posterName, replyDestination, shownAsks } from "./asks.ts";
 import { actOnPageAsk, askById, askStore } from "./model.ts";
 
 /** The ask being replied to: its file, a `pult:` resource, while its row last opened it, and how many times rows were opened, which a new composer is mounted for. */
@@ -56,11 +56,7 @@ const posterOf = (ask: PageAsk) =>
   posterName(
     ask,
     starById,
-    (environmentId, threadId) =>
-      threadStore
-        .get()
-        .threads.find((thread) => thread.environmentId === environmentId && thread.id === threadId)
-        ?.title,
+    (environmentId, threadId) => threadStore.thread(environmentId, threadId)?.title,
   );
 
 /** An accepted reply marks the posting it answered, provided it landed on the same environment. */
@@ -99,6 +95,40 @@ async function openReplyThread(
     instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel, star.id),
     { revealIfOpened: true },
   );
+}
+
+/** Where the reply to the ask arrives, read live, so a rename or a settle shows; its name opens the thread it goes into. */
+function replyDestinationOf(
+  ask: PageAsk,
+  target: ViewTarget,
+  openThread: (environmentId: string, threadId: string) => void,
+) {
+  const open = "thread" in ask.poster ? null : target.kind === "thread";
+  const openTarget =
+    target.kind === "thread" ? () => openThread(target.environmentId, target.threadId) : null;
+  // Kept while its strings are equal, as `useSyncExternalStore` needs.
+  let shown: ReturnType<NonNullable<MountOptions["reply"]>["destination"]["get"]> | undefined;
+  return {
+    get: () => {
+      const now = replyDestination(
+        ask,
+        starById,
+        (environmentId, threadId) => threadStore.thread(environmentId, threadId),
+        open,
+      );
+      if (shown === undefined || shown.name !== now.name || shown.note !== now.note)
+        shown = { name: now.name, note: now.note, open: now.thread ? openTarget : null };
+      return shown;
+    },
+    subscribe: (listener: () => void) => {
+      const stopStars = starStore.subscribe(listener);
+      const stopThreads = threadStore.subscribe(listener);
+      return () => {
+        stopStars();
+        stopThreads();
+      };
+    },
+  };
 }
 
 const NO_SUGGESTIONS: ReadonlyArray<string> = [];
@@ -208,18 +238,15 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
     options = {
       ...found.options,
       placeholder: {
-        get: () => (sending ? "Sending…" : `Reply to ${posterOf(ask)}`),
+        get: () => (sending ? "Sending…" : "Write your reply"),
         subscribe: (listener) => {
           sendingListeners.add(listener);
-          const stop = starStore.subscribe(listener);
-          return () => {
-            sendingListeners.delete(listener);
-            stop();
-          };
+          return () => sendingListeners.delete(listener);
         },
       },
       reply: {
         prefix: ask.prefix,
+        destination: replyDestinationOf(ask, target, openThread),
         suggestions: replySuggestions(ask),
         // An awake thread's tab opens as the send starts; a draft's thread opens once the send creates it.
         sending: (sentOn, threadId) => {
