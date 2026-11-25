@@ -44,6 +44,13 @@ const AUXILIARY_WINDOW_COMMANDS = new Set([
   "workbench.action.copyEditorGroupToNewWindow",
   "workbench.action.newEmptyEditorWindow",
 ]);
+/**
+ * New Window, kept in a browser tab, where it opens a second tab of the page,
+ * and hidden in the desktop app in both modes: it opens the page's `pult:`
+ * URL (`workspaceProvider.open`, `src/main.ts`), which the desktop app's
+ * windows deny.
+ */
+const NEW_WINDOW_COMMAND = "workbench.action.newWindow";
 const VSCODE_MODE_SUBMENUS = new Set([
   MenuId.EditorTabsBarShowTabsSubmenu,
   MenuId.EditorActionsPositionSubmenu,
@@ -84,9 +91,11 @@ function gateItems(
   return keys;
 }
 
-const gateEditorMenu = (item: IMenuItem | ISubmenuItem) =>
+const gateEditorMenu = (desktop: boolean) => (item: IMenuItem | ISubmenuItem) =>
   isIMenuItem(item)
-    ? VSCODE_MODE_COMMANDS.has(item.command.id) || AUXILIARY_WINDOW_COMMANDS.has(item.command.id)
+    ? VSCODE_MODE_COMMANDS.has(item.command.id) ||
+      AUXILIARY_WINDOW_COMMANDS.has(item.command.id) ||
+      (desktop && item.command.id === NEW_WINDOW_COMMAND)
       ? item.command.id
       : undefined
     : VSCODE_MODE_SUBMENUS.has(item.submenu)
@@ -102,15 +111,20 @@ const gateTitle = (item: IMenuItem | ISubmenuItem) =>
  * Shows those entries in VS Code mode alone: their registered items take
  * `pult.vscodeMode` into their `when`, and in the desktop app (`desktop`,
  * `window.pultDesktop` present) the auxiliary windows' a false one, hidden
- * in both modes, an empty group's New Window too. Called before the workbench starts,
+ * in both modes, an empty group's New Window too, and the workbench's New
+ * Window. Called before the workbench starts,
  * after the workbench's contributions have registered them, and the tab
  * bar's buttons as items are added to it; a command a VS Code bump renames
  * is reported, not fatal (a Markdown button's shows again instead).
  */
 export function gateEditorMenus(desktop: boolean): void {
   const condition = (key: string) =>
-    desktop && AUXILIARY_WINDOW_COMMANDS.has(key) ? ContextKeyExpr.false() : VSCodeModeContext;
-  const gated = new Set(MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu, condition)]));
+    desktop && (AUXILIARY_WINDOW_COMMANDS.has(key) || key === NEW_WINDOW_COMMAND)
+      ? ContextKeyExpr.false()
+      : VSCodeModeContext;
+  const gated = new Set(
+    MENUS.flatMap((menu) => [...gateItems(menu, gateEditorMenu(desktop), condition)]),
+  );
   // An empty group's menu offers New Empty Editor Window as New Window, in either mode.
   if (desktop)
     gateItems(
@@ -129,6 +143,7 @@ export function gateEditorMenus(desktop: boolean): void {
   const missing = [
     ...VSCODE_MODE_COMMANDS,
     ...AUXILIARY_WINDOW_COMMANDS,
+    ...(desktop ? [NEW_WINDOW_COMMAND] : []),
     ...[...VSCODE_MODE_SUBMENUS].map((submenu) => submenu.id),
   ].filter((id) => !gated.has(id));
   if (missing.length > 0) console.warn("[pult-shell] menu entries not found to gate:", missing);
