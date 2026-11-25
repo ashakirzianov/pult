@@ -55,7 +55,6 @@ export * as DispatchModeLimit from "./orchestration-v2/DispatchModeLimit.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
 // The Pult plugin's Star messages: work a fenced link started never messages a Star, whose threads carry no link.
 export * as McpLinkOrigin from "./mcp/linkOrigin.ts";
-export * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 // The Pult plugin's Star messages: pult_star_message is declared through the server's access wrapper.
 export * as McpToolAccess from "./mcp/McpToolAccess.ts";
 export { toolkitRegistration } from "./mcp/McpHttpServer.ts";
