@@ -255,6 +255,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "asks",
           "star-channel-models",
           "star-channel-history",
+          "star-channel-settings",
           "usage-limits",
           "xaxis-kept",
           "star-schedules",
@@ -304,9 +305,16 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       `${star.root}/.pult/schedules/standup.md`,
       '---\ntimezone: UTC\ntime: "09:00"\ndays: [mon, tue, wed, thu, fri]\n---\nStandup.\n',
     );
+    // A schedule's runs land in its `to`, else the Star's default channel.
+    yield* fs.writeFileString(
+      `${star.root}/.pult/schedules/ci.md`,
+      '---\ntimezone: UTC\ntime: "10:00"\nto: work\n---\nCI.\n',
+    );
     expect((yield* send("GET", "/stars", "reader")).body.stars[0].schedules).toMatchObject([
+      { name: "ci", channel: "work" },
       {
         name: "standup",
+        channel: "main",
         path: `${star.root}/.pult/schedules/standup.md`,
         rule: "weekdays 09:00",
         timezone: "UTC",
@@ -463,6 +471,152 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     );
     yield* write(`${folder}/2026-11-12T09-00-00Z-thread_2.md`, "thread:2");
     expect((yield* byThread("thread:2")).status).toBe(500);
+
+    // A channel's settings, as its shelf reads and writes them: the model a fresh conversation takes and the file of its key, when it rotates and which file says.
+    const settings = (slug: string, body?: unknown) =>
+      Effect.map(
+        send(
+          body === undefined ? "GET" : "POST",
+          `/stars/${star.id}/channels/${slug}/settings`,
+          "writer",
+          body,
+        ),
+        (answer) => answer.body,
+      );
+    const settingsOf = (slug: string) =>
+      fs
+        .readFileString(`${star.root}/.pult/channels/${slug}/settings.yaml`)
+        .pipe(Effect.orElseSucceed(() => undefined));
+    server.limits.providers = [
+      {
+        instanceId: ProviderInstanceId.make("codex"),
+        driver: "codex",
+        enabled: true,
+        installed: true,
+        version: "test",
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-11-10T12:00:00.000Z",
+        models: [
+          {
+            slug: "gpt-6.2-sol",
+            name: "Sol",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "reasoningEffort",
+                  label: "Effort",
+                  type: "select",
+                  options: [
+                    { id: "low", label: "Low", isDefault: true },
+                    { id: "high", label: "High" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+        slashCommands: [],
+        skills: [],
+      } as unknown as ServerProvider,
+    ];
+    // No file and no shared one: the channel's last conversation's model, Pult's default rotation, asleep since it settled.
+    server.threads.add(ProjectId.make(star.projectId), "work-1", {
+      tags: ["pult:channel:work"],
+      createdAt: at("2026-11-10T10:00:00.000Z"),
+      settledOverride: "settled",
+      settledAt: at("2026-11-10T11:00:00.000Z"),
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6.1" },
+    });
+    expect(yield* settings("work")).toEqual({
+      model: { instanceId: "codex", model: "gpt-6.1" },
+      modelFrom: "conversation",
+      rotateOnContext: 250_000,
+      rotateFrom: "default",
+      asleepSince: "2026-11-10T11:00:00.000Z",
+      problems: [],
+    });
+    // Every channel's file names the model and a rotation Pult cannot read; the default channel's own `never` wins, the problem still told.
+    yield* fs.writeFileString(
+      `${star.root}/.pult/channels/settings.yaml`,
+      "provider: codex\nmodel: gpt-6.2-sol\nrotate-on-context: 300\n",
+    );
+    expect(yield* settings("main")).toMatchObject({
+      model: { instanceId: "codex", model: "gpt-6.2-sol" },
+      modelFrom: "shared",
+      rotateOnContext: "never",
+      rotateFrom: "channel",
+      asleepSince: null,
+      problems: [expect.stringContaining('"300"')],
+    });
+    expect((yield* settings("main")).problems).toHaveLength(1);
+    // A model written to a channel with no file makes its file, the model's default effort no line.
+    expect(
+      yield* settings("scout", {
+        model: {
+          instanceId: "codex",
+          model: "gpt-6.2-sol",
+          options: [{ id: "reasoningEffort", value: "high" }],
+        },
+      }),
+    ).toMatchObject({
+      model: { model: "gpt-6.2-sol", options: [{ id: "reasoningEffort", value: "high" }] },
+      modelFrom: "channel",
+      rotateFrom: "shared",
+    });
+    expect(yield* settingsOf("scout")).toBe("provider: codex\nmodel: gpt-6.2-sol\neffort: high\n");
+    yield* settings("scout", {
+      model: {
+        instanceId: "codex",
+        model: "gpt-6.2-sol",
+        options: [{ id: "reasoningEffort", value: "low" }],
+      },
+      rotateOnContext: 400_000,
+    });
+    expect(yield* settingsOf("scout")).toBe(
+      "provider: codex\nmodel: gpt-6.2-sol\nrotate-on-context: 400k\n",
+    );
+    // A key removed keeps the file's other lines and comments; a file left empty is removed.
+    yield* fs.writeFileString(
+      `${star.root}/.pult/channels/work/settings.yaml`,
+      "# Kept by hand.\nrotate-on-context: 400k\nmodel: gpt-6.2-sol\n",
+    );
+    expect(yield* settings("work", { rotateOnContext: null })).toMatchObject({
+      modelFrom: "channel",
+      rotateOnContext: 250_000,
+      rotateFrom: "shared",
+    });
+    expect(yield* settingsOf("work")).toBe("# Kept by hand.\nmodel: gpt-6.2-sol\n");
+    expect(yield* settings("scout", { model: null, rotateOnContext: null })).toMatchObject({
+      modelFrom: "shared",
+    });
+    expect(yield* settingsOf("scout")).toBeUndefined();
+    // A body it cannot decode is a 400, an unknown Star a 404, and writing needs the write scope.
+    for (const body of [
+      [],
+      { model: 7 },
+      { model: { instanceId: "codex", model: "gpt-6.2-sol\nrotate-on-context: never" } },
+      { rotateOnContext: 300 },
+      { rotateOnContext: "250k" },
+    ])
+      expect(
+        (yield* send("POST", `/stars/${star.id}/channels/work/settings`, "writer", body)).status,
+      ).toBe(400);
+    // A channel folder linked out of the Star's is written through by no one.
+    expect(
+      (yield* send("POST", `/stars/${star.id}/channels/linked/settings`, "writer", {
+        rotateOnContext: "never",
+      })).status,
+    ).toBe(500);
+    expect(yield* fs.exists(`${outside}/settings.yaml`)).toBe(false);
+    expect((yield* send("GET", "/stars/nobody/channels/work/settings", "reader")).status).toBe(404);
+    expect((yield* send("POST", "/stars/nobody/channels/work/settings", "writer", {})).status).toBe(
+      404,
+    );
+    expect(
+      (yield* send("POST", `/stars/${star.id}/channels/work/settings`, "reader", {})).status,
+    ).toBe(403);
     expect((yield* send("POST", "/stars/upkeep", "writer")).body.stars).toHaveLength(1);
   }).pipe(Effect.scoped, Effect.provide(services)),
 );

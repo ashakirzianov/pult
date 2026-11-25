@@ -1,6 +1,6 @@
 // The Stars' routes under `/api/plugins/pult` (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, The routes):
 // each decodes, calls the Stars, and maps an unknown id to 404 and a failure to `{ error }`.
-import { RuntimeMode } from "@t3tools/contracts";
+import { ModelSelection, RuntimeMode } from "@t3tools/contracts";
 
 import { Effect, HttpServerRequest, HttpServerResponse, Schema } from "../host.ts";
 import type { Schedules } from "../schedules/schedules.ts";
@@ -23,6 +23,24 @@ const decodeWake = Schema.decodeUnknownEffect(
 );
 const decodeSleep = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ channel: Schema.optional(Schema.String) })),
+);
+
+/** A channel's settings as the shelf writes them: a key left out is left alone, null removes it; tokens as `rotate-on-context` reads them, thousands from `1k` to `999999k`. */
+const decodeChannelSettings = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    model: Schema.optional(Schema.NullOr(ModelSelection)),
+    rotateOnContext: Schema.optional(
+      Schema.NullOr(
+        Schema.Union([
+          Schema.Literal("never"),
+          Schema.Int.check(
+            Schema.isMultipleOf(1000),
+            Schema.isBetween({ minimum: 1000, maximum: 999_999_000 }),
+          ),
+        ]),
+      ),
+    ),
+  }),
 );
 
 /** The reserved name of `GET stars/<id>/conversations/<name>` that looks a transcript up by its thread. */
@@ -135,6 +153,41 @@ export const starsRoute = (
         const star = yield* stars.get(id);
         if (star === undefined) return notFound;
         return json({ names: yield* stars.channelTranscripts(star, name) });
+      }),
+    );
+  // A channel's settings, which its shelf draws and writes: `GET` and `POST stars/<id>/channels/<slug>/settings`.
+  if (
+    segments.length === 5 &&
+    id !== undefined &&
+    sub === "channels" &&
+    name !== undefined &&
+    isChannel(name) &&
+    segments[4] === "settings" &&
+    (method === "GET" || method === "POST")
+  )
+    return answer(
+      Effect.gen(function* () {
+        const body = method === "POST" ? yield* bodyOf(request, decodeChannelSettings) : undefined;
+        if (body?._tag === "None")
+          return json({ error: "The body must be JSON: { model?, rotateOnContext? }." }, 400);
+        const model = body?.value.model;
+        // Each value is one line of the file.
+        if (
+          model != null &&
+          [
+            model.instanceId,
+            model.model,
+            ...(model.options ?? []).map((option) => option.value),
+          ].some((value) => typeof value === "string" && /[\r\n]/u.test(value))
+        )
+          return json({ error: "The model's values must each be one line." }, 400);
+        const star = yield* stars.get(id);
+        if (star === undefined) return notFound;
+        return json(
+          body === undefined
+            ? yield* stars.channelSettings(star, name)
+            : yield* stars.setChannelSettings(star, name, body.value),
+        );
       }),
     );
   const channel =

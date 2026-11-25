@@ -263,7 +263,16 @@ export const channelModel = Effect.fn("Stars.channelModel")(function* (
   channel: Channel,
   runtimeMode: RuntimeMode,
 ) {
-  const read = yield* readSettings(star.root, channel);
+  return yield* modelOf(yield* readSettings(star.root, channel), star, channel, runtimeMode);
+});
+
+/** `channelModel` over the files as `readSettings` read them. */
+const modelOf = Effect.fn("Stars.modelOf")(function* (
+  read: SettingsRead,
+  star: { readonly projectId: ProjectId },
+  channel: Channel,
+  runtimeMode: RuntimeMode,
+) {
   if (read.texts.length === 0)
     return { selection: null, from: "history", broken: null } satisfies ChannelModel;
   const threads = yield* ThreadManagementService.ThreadManagementService;
@@ -334,3 +343,146 @@ export const wakeChannelModel = (
       ),
     ),
   );
+
+/** Which file a key is read from, as the channel's shelf names it. */
+const sourceOf = (field: Field | undefined, channel: Channel) =>
+  field === undefined ? undefined : field.file === settingsFile(channel) ? "channel" : "shared";
+
+/** A channel's settings as its shelf shows them: the files' model and the file of its `model` key, when it rotates and which file says, and every problem of both files. */
+interface ChannelSettings {
+  /** The files' choice at the runtime mode asked for; null where they make none, for the newest conversation's. */
+  readonly selection: ModelSelection | null;
+  readonly modelFrom: "channel" | "shared" | null;
+  readonly rotateOnContext: RotateOnContext;
+  readonly rotateFrom: "channel" | "shared" | "default";
+  readonly problems: ReadonlyArray<string>;
+}
+
+/** The channel's settings as its shelf shows them; nothing is told to the channel. A file that cannot be read fails. */
+export const channelSettings = Effect.fn("Stars.channelSettings")(function* (
+  star: { readonly root: string; readonly projectId: ProjectId },
+  channel: Channel,
+  runtimeMode: RuntimeMode,
+) {
+  const read = yield* readSettings(star.root, channel);
+  const model = yield* modelOf(read, star, channel, runtimeMode);
+  return {
+    selection: model.selection,
+    modelFrom:
+      model.from === "history"
+        ? null
+        : model.from === "shared"
+          ? "shared"
+          : (sourceOf(read.merged.get("model"), channel) ?? null),
+    rotateOnContext: read.rotateOnContext,
+    rotateFrom: sourceOf(read.merged.get("rotate-on-context"), channel) ?? "default",
+    problems: model.broken?.problems ?? [],
+  } satisfies ChannelSettings;
+});
+
+/** What the shelf writes into a channel's own file: a key left out is left alone, null removes it. */
+export interface ChannelSettingsChanges {
+  readonly model?: ModelSelection | null | undefined;
+  readonly rotateOnContext?: RotateOnContext | null | undefined;
+}
+
+/** `text` with each of `changes`' keys rewritten in place, its later lines dropped, null removing them all; a key not there added at the end. Every other line, comments included, kept. */
+function withSettings(text: string, changes: ReadonlyMap<string, string | null>): string {
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  const written = new Set<string>();
+  const lines = (text === "" ? [] : text.replace(/\r?\n$/, "").split(/\r?\n/)).flatMap((line) => {
+    const key = line.trimStart().startsWith("#") ? undefined : entry(line)?.key;
+    if (key === undefined || !changes.has(key)) return [line];
+    const value = changes.get(key);
+    if (value == null || written.has(key)) return [];
+    written.add(key);
+    return [`${key}: ${value}`];
+  });
+  for (const [key, value] of changes)
+    if (value !== null && !written.has(key)) lines.push(`${key}: ${value}`);
+  return lines.map((line) => line + newline).join("");
+}
+
+/** The effort line a selection writes: its effort option's value, none for the model's default or a selection with none. */
+const effortLine = (selection: ModelSelection, providers: ReadonlyArray<ServerProvider>) => {
+  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+  const ids =
+    provider === undefined
+      ? new Set(EFFORT_OPTION.values())
+      : new Set([EFFORT_OPTION.get(provider.driver)]);
+  const value = selection.options?.find((option) => ids.has(option.id))?.value;
+  if (typeof value !== "string") return null;
+  const descriptor = provider?.models
+    .find((model) => model.slug === selection.model)
+    ?.capabilities?.optionDescriptors?.find((candidate) => ids.has(candidate.id));
+  const fallback =
+    descriptor?.type === "select"
+      ? descriptor.options.find((option) => option.isDefault === true)?.id
+      : undefined;
+  return value === fallback ? null : value;
+};
+
+/** `250k` for tokens, as `parseRotate` reads it; a count it cannot read is a bug of the caller's decoding. */
+const rotateLine = (rotate: RotateOnContext) => {
+  if (rotate === "never") return "never";
+  if (!Number.isInteger(rotate / 1000) || rotate < 1000 || rotate > 999_999_000)
+    throw new Error(`unreachable: ${rotate} tokens is no \`rotate-on-context\` Pult reads`);
+  return `${rotate / 1000}k`;
+};
+
+/**
+ * Writes `changes` into the channel's own file key by key, over the file as it is read now: the
+ * model as its `provider`, `model` and `effort` lines, `rotateOnContext` as `rotate-on-context`.
+ * The file is made where absent and removed where the write leaves it empty; nothing is told to
+ * the channel, whose next conversation takes the choice as it takes a hand edit.
+ */
+export const writeChannelSettings = Effect.fn("Stars.writeChannelSettings")(function* (
+  root: string,
+  channel: Channel,
+  changes: ChannelSettingsChanges,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(root, settingsFile(channel));
+  // The channel's own file alone: a folder or file on its way linked out of the Star's is refused, loudly.
+  const real = yield* fs.realPath(root);
+  const relative = settingsFile(channel).split("/");
+  for (let depth = 1; depth <= relative.length; depth += 1) {
+    const each = path.join(root, ...relative.slice(0, depth));
+    if (
+      (yield* fs.exists(each)) &&
+      (yield* fs.realPath(each)) !== path.join(real, ...relative.slice(0, depth))
+    )
+      return yield* Effect.die(
+        new Error(
+          `todo: a channel's settings written through the link ${each}, which leaves its own file`,
+        ),
+      );
+  }
+  const text = yield* fs
+    .readFileString(file)
+    .pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined));
+  const lines = new Map<string, string | null>();
+  if (changes.model !== undefined) {
+    const selection = changes.model;
+    const providers =
+      selection === null ? [] : yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+    lines.set("provider", selection?.instanceId ?? null);
+    lines.set("model", selection?.model ?? null);
+    lines.set("effort", selection === null ? null : effortLine(selection, providers));
+  }
+  if (changes.rotateOnContext !== undefined)
+    lines.set(
+      "rotate-on-context",
+      changes.rotateOnContext === null ? null : rotateLine(changes.rotateOnContext),
+    );
+  if (lines.size === 0) return;
+  const written = withSettings(text ?? "", lines);
+  if (written === (text ?? "")) return;
+  if (written.trim() === "") {
+    if (text !== undefined) yield* fs.remove(file);
+    return;
+  }
+  yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+  yield* fs.writeFileString(file, written);
+});

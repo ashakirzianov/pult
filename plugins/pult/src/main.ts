@@ -42,6 +42,7 @@ const features: ReadonlyArray<string> = [
   "asks",
   "star-channel-models",
   "star-channel-history",
+  "star-channel-settings",
   "usage-limits",
   "xaxis-kept",
 ];

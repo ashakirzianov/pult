@@ -16,6 +16,7 @@ import {
   Stream,
   WorkspaceEntries,
 } from "../host.ts";
+import type { Channel } from "../stars/channels.ts";
 import type { Deliver } from "../stars/deliver.ts";
 import type { CommandOutcome, RunCommand } from "./command.ts";
 import type { Star, Stars, StarsView } from "../stars/stars.ts";
@@ -47,7 +48,7 @@ const BACKSTOP_MS = 10 * 60_000;
 /** A run delivered later than this says how late. */
 const LATE_MS = 5 * 60_000;
 
-/** A schedule as `GET /stars` serves it, by name; `rule` and `timezone` null for a file that is no schedule. */
+/** A schedule as `GET /stars` serves it, by name; `rule`, `timezone` and `channel` null for a file that is no schedule. */
 export interface ScheduleView {
   readonly name: string;
   /** The file's `title`, shown in place of the name; null where it has none or is no schedule. */
@@ -57,6 +58,8 @@ export interface ScheduleView {
   /** The rule's kind, which the page draws its icon by; null for a file that is no schedule. */
   readonly kind: Rule["kind"] | null;
   readonly timezone: string | null;
+  /** The channel its runs land in: its `to`, else the Star's default channel. */
+  readonly channel: Channel | null;
   /** The next due instant, ISO; null where none is. */
   readonly next: string | null;
   /** A one-off whose run has a record. */
@@ -533,7 +536,10 @@ export const make = Effect.fn("Schedules.make")(function* (
   );
   yield* scheduler.register("pult-schedules", pass);
 
-  const viewOf = (star: Star, now: number): ReadonlyArray<ScheduleView> =>
+  const viewOf = (
+    star: Pick<Star, "id" | "defaultChannel">,
+    now: number,
+  ): ReadonlyArray<ScheduleView> =>
     (known.find((each) => each.star.id === star.id)?.files ?? []).map((file) => {
       const last = file.last;
       if (!file.parsed.ok)
@@ -544,6 +550,7 @@ export const make = Effect.fn("Schedules.make")(function* (
           rule: null,
           kind: null,
           timezone: null,
+          channel: null,
           next: null,
           spent: false,
           problem: file.parsed.problem,
@@ -563,6 +570,7 @@ export const make = Effect.fn("Schedules.make")(function* (
             : `${ruleInWords(schedule.rule)}, runs ${schedule.command}`,
         kind: schedule.rule.kind,
         timezone: schedule.timezone,
+        channel: schedule.to ?? star.defaultChannel,
         next: passed !== undefined || next === undefined ? null : iso(next),
         spent:
           schedule.rule.kind === "once" &&

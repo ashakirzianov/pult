@@ -248,6 +248,7 @@ describe("the pass", () => {
         rule: "every day 09:00",
         kind: "daily",
         timezone: "UTC",
+        channel: "main",
         next: "2026-11-11T09:00:00.000Z",
         spent: false,
         problem: null,

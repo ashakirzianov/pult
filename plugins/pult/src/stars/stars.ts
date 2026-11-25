@@ -51,7 +51,14 @@ import {
   starName,
   withRecordFields,
 } from "./record.ts";
-import { rotateOnContext, settingsFile, wakeChannelModel } from "./settings.ts";
+import {
+  type ChannelSettingsChanges,
+  channelSettings as readChannelSettings,
+  rotateOnContext,
+  settingsFile,
+  wakeChannelModel,
+  writeChannelSettings,
+} from "./settings.ts";
 import {
   asleepBy,
   type RotateOnContext,
@@ -148,8 +155,22 @@ export interface StarsView {
   >;
 }
 
+/** A channel's settings as its shelf shows them, `GET stars/<id>/channels/<slug>/settings`, at the runtime mode of its newest conversation (`withConversation`'s, the default before the Star's first). */
+export interface ChannelSettingsView {
+  /** What a fresh conversation takes: the files' choice, else the newest conversation's, as a wake takes it; null where neither is. */
+  readonly model: ModelSelection | null;
+  /** The file of the `model` key, or the newest conversation; null with no model. */
+  readonly modelFrom: "channel" | "shared" | "conversation" | null;
+  readonly rotateOnContext: RotateOnContext;
+  readonly rotateFrom: "channel" | "shared" | "default";
+  /** Its newest conversation's settle while none is open; null while one is open, and before its first. */
+  readonly asleepSince: string | null;
+  /** What is wrong with the files, in the plugin's sentences; nothing is told to the channel. */
+  readonly problems: ReadonlyArray<string>;
+}
+
 export class StarsError extends Schema.TaggedError<StarsError>()("StarsError", {
-  operation: Schema.Literals(["find", "create", "write-record", "look", "read"]),
+  operation: Schema.Literals(["find", "create", "write-record", "write-settings", "look", "read"]),
   starId: Schema.optional(Schema.String),
   cause: Schema.Defect(),
 }) {
@@ -204,6 +225,17 @@ export interface Stars {
     star: Star,
     channel: Channel,
   ) => Effect.Effect<ReadonlyArray<string>, StarsError>;
+  /** The channel's settings as its shelf shows them. */
+  readonly channelSettings: (
+    star: Star,
+    channel: Channel,
+  ) => Effect.Effect<ChannelSettingsView, StarsError>;
+  /** Writes `changes` into the channel's own settings file, then answers as `channelSettings` does. */
+  readonly setChannelSettings: (
+    star: Star,
+    channel: Channel,
+    changes: ChannelSettingsChanges,
+  ) => Effect.Effect<ChannelSettingsView, StarsError>;
   readonly transcript: (
     star: Star,
     name: string,
@@ -881,6 +913,51 @@ export const make = Effect.gen(function* () {
       ),
   );
 
+  const channelSettings = Effect.fn("Stars.channelSettings")(
+    function* (star: Star, channel: Channel) {
+      const { current, newest } = yield* conversationsOf(star, channel);
+      const read = yield* readChannelSettings(
+        star,
+        channel,
+        newest?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      ).pipe(Effect.provide(resolving));
+      const fallback = newest?.modelSelection ?? null;
+      // Its newest conversation, ended, among the latest settled a wake searches (`WAKE_SEARCH`).
+      const last = newest?.settledAt != null && channelOf(newest) === channel ? newest : undefined;
+      return {
+        model: read.selection ?? fallback,
+        modelFrom:
+          read.selection !== null ? read.modelFrom : fallback === null ? null : "conversation",
+        rotateOnContext: read.rotateOnContext,
+        rotateFrom: read.rotateFrom,
+        asleepSince:
+          current !== null || last?.settledAt == null ? null : DateTime.formatIso(last.settledAt),
+        problems: read.problems,
+      } satisfies ChannelSettingsView;
+    },
+    (effect, star) =>
+      Effect.mapError(effect, (cause) =>
+        isStarsError(cause) ? cause : new StarsError({ operation: "read", starId: star.id, cause }),
+      ),
+  );
+
+  /** One settings write at a time, so two read the file as the other left it. */
+  const settingsLock = yield* Semaphore.make(1);
+  const setChannelSettings = Effect.fn("Stars.setChannelSettings")(function* (
+    star: Star,
+    channel: Channel,
+    changes: ChannelSettingsChanges,
+  ) {
+    yield* writeChannelSettings(star.root, channel, changes).pipe(
+      settingsLock.withPermits(1),
+      Effect.provide(resolving),
+      Effect.mapError(
+        (cause) => new StarsError({ operation: "write-settings", starId: star.id, cause }),
+      ),
+    );
+    return yield* channelSettings(star, channel);
+  });
+
   const transcript = Effect.fn("Stars.transcript")(
     function* (star: Star, name: string, channel = star.defaultChannel) {
       if (!isChannel(channel) || !isTranscriptName(name) || /[/\\]/.test(name)) return undefined;
@@ -1023,6 +1100,8 @@ export const make = Effect.gen(function* () {
     sleepByHand,
     view,
     channelTranscripts,
+    channelSettings,
+    setChannelSettings,
     transcript,
     transcriptOfThread,
     create,
