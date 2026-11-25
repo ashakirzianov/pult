@@ -78,10 +78,11 @@
   box-sizing: border-box;
 }
 
-/* The first shelf in the remembered order sits at the right edge. */
+/* The first shelf in the remembered order sits at the right edge; Tab goes left to right as they read. */
 .pult-details-tray .pult-tray-shelves {
   width: 100%;
   flex-direction: row-reverse;
+  reading-flow: flex-visual;
 }
 
 /* The full-height edge stays draggable. */

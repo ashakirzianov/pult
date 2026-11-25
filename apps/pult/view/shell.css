@@ -276,7 +276,13 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
    the thread's notices, a draft's environment and branch, the
    icons: the thread's Explorer and Source Control (the shell's,
    `data-chat-composer-slot-item="shell"`) and environment (the shell's), the
-   context window, access (upstream's runtime mode), attachments. */
+   context window, access (upstream's runtime mode), attachments. The items
+   come in the order they mount, upstream's and the shell's, so Tab
+   follows this order, not theirs. */
+.pult-composer-bar {
+  reading-flow: flex-visual;
+}
+
 .pult-composer-bar > [data-chat-composer-slot-item="controls"] {
   flex: 1 1 0;
 }

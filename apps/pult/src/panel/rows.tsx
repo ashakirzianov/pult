@@ -226,7 +226,8 @@ export async function startPanelRows(): Promise<void> {
 
   const expand = document.createElement("div");
   expand.className = "pult-panel-expand";
-  layout.mainContainer.append(expand);
+  // First, so Tab reaches it where it sits, at the window's top-left.
+  layout.mainContainer.prepend(expand);
   createRoot(expand).render(
     <RowButton
       title="Expand Panel"
