@@ -413,9 +413,18 @@ export function createReaderFrame(options?: {
     if (doc === null || !doc.URL.startsWith("about:srcdoc")) return;
     guard(doc, element);
     options?.onDocument?.(doc);
+    // The page's scrollbar shows while it scrolls and 650 ms after, as the
+    // thread view's does (`view/ThreadView.tsx`); Chromium draws the page's
+    // scrollbar by the body's style, so the body carries the attribute.
+    let idle: ReturnType<typeof setTimeout> | undefined;
     doc.addEventListener("scroll", () => {
       const scroller = doc.scrollingElement;
       if (scroller !== null) position = { top: scroller.scrollTop, left: scroller.scrollLeft };
+      const body = doc.body;
+      if (body === null) return;
+      body.setAttribute("data-pult-scrolling", "");
+      clearTimeout(idle);
+      idle = setTimeout(() => body.removeAttribute("data-pult-scrolling"), 650);
     });
     current = doc;
     const waiting = loading;

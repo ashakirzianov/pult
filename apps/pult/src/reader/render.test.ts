@@ -691,7 +691,7 @@ NodeTest.describe("the reader's frame", () => {
   });
 
   NodeTest.it(
-    "follows edits, and a frame put back in the page, at the reader's scroll position",
+    "follows edits, and a frame put back in the page, at the reader's scroll position, its scrollbar shown while it scrolls",
     async () => {
       const page_ = (text: string) =>
         `<!doctype html><body style="margin: 0"><div style="height: 3000px">${text}</div></body>`;
@@ -710,6 +710,14 @@ NodeTest.describe("the reader's frame", () => {
           // The reader reads on, then the workbench takes the hidden pane out of the page, and the browser loads the frame anew when it is back.
           edited.scrollingElement!.scrollTop = 700;
           await new Promise(requestAnimationFrame);
+          const scrolling = () => edited.body.hasAttribute("data-pult-scrolling");
+          const scrollbar = { scrolling: scrolling(), still: false };
+          await new Promise((resolve) =>
+            new MutationObserver(resolve).observe(edited.body, {
+              attributeFilter: ["data-pult-scrolling"],
+            }),
+          );
+          scrollbar.still = !scrolling();
           frame.element.remove();
           const reloaded = new Promise((resolve) =>
             frame.element.addEventListener("load", resolve, { once: true }),
@@ -721,6 +729,7 @@ NodeTest.describe("the reader's frame", () => {
           return {
             scripts,
             inPlace,
+            scrollbar,
             putBack: { text: back.body.textContent, top: back.scrollingElement!.scrollTop },
           };
         },
@@ -729,6 +738,7 @@ NodeTest.describe("the reader's frame", () => {
       NodeAssert.deepEqual(after, {
         scripts: false,
         inPlace: { text: "after", top: 500 },
+        scrollbar: { scrolling: true, still: true },
         putBack: { text: "after", top: 700 },
       });
     },

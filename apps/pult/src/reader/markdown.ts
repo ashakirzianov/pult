@@ -258,7 +258,8 @@ const THEME = [
  * What the reader adds to the thread view's stylesheets: the body, which
  * takes the thread view's root class for their rules, is a page that scrolls
  * rather than a pane that clips; a wide table or formula scrolls in its own
- * box; the document's scrollbars, which the view's scope does not reach.
+ * box; the document's scrollbars, which the view's scope does not reach,
+ * the page's own thumb shown only while it scrolls (`render.ts`).
  */
 const STYLE = `
 html { background: var(--vscode-editor-background); }
@@ -278,6 +279,7 @@ body.pult-thread-view { display: block; width: auto; height: auto; box-sizing: b
 ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }
 ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
 ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground); }
+body:not([data-pult-scrolling])::-webkit-scrollbar-thumb { background: transparent; }
 `;
 
 /** Each page stylesheet's text, read once: `""` for one that styles no chat Markdown. */
