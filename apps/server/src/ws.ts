@@ -2328,7 +2328,9 @@ export const layerWsRpc = (
                       new OrchestrationV2ThreadLaunchError({
                         commandId: input.commandId,
                         projectId: input.projectId,
-                        message: "Failed to launch thread",
+                        // Pult: a plugin's guard says why it refused (`ThreadLaunchGuard`).
+                        message:
+                          cause.operation === "guard" ? cause.message : "Failed to launch thread",
                         cause,
                       }),
                     ServerRuntimeStartupError: (cause) =>

@@ -324,6 +324,8 @@ export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(functi
         const notAccepted =
           error.operation === "resolve-project" ||
           error.operation === "read-receipt" ||
+          // Pult: a guard refuses a launch that has no receipt, before anything is dispatched.
+          error.operation === "guard" ||
           ((error.operation === "create-thread" || error.operation === "dispatch-message") &&
             (isOrchestratorError(error.cause) || isThreadManagementError(error.cause)) &&
             // Projection errors under create-thread can occur after the message commit.

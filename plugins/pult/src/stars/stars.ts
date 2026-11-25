@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 
 import {
+  Context,
   DateTime,
   Digest,
   Effect,
@@ -28,6 +29,7 @@ import {
   ServerConfig,
   SecureRandom,
   ServerEnvironment,
+  ThreadLaunchGuard,
   ThreadManagementService,
 } from "../host.ts";
 import { asksFolderOf } from "../asks/asks.ts";
@@ -79,6 +81,14 @@ const NEWEST_SETTLED = "9999-12-31T23:59:59.999Z";
 const SETTLED_PAGE = 25;
 /** How many of the project's latest settled threads the search for a wake's model reads at most. */
 const WAKE_SEARCH = 100;
+
+/**
+ * The Star's project whose lock the fiber holds inside `withConversation`, so a launch made there
+ * (`deliver`'s wake), decided under that lock already, passes the launch guard without a lookup.
+ */
+const HeldStarLock = Context.Reference<ProjectId | undefined>("pult/stars/HeldStarLock", {
+  defaultValue: () => undefined,
+});
 
 /** A conversation's channel, by its first valid channel tag, which `isConversation` holds it to. */
 const channelOf = (thread: Pick<OrchestrationV2ThreadShell, "id" | "tags">): Channel => {
@@ -210,6 +220,8 @@ export interface Stars {
   }) => Effect.Effect<Star, StarsError>;
   readonly upkeep: Effect.Effect<void>;
   readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
+  /** The launch hook point's guard: one open conversation per channel (xaxis `pult/decisions`, `star-channel-launches`). */
+  readonly guardLaunch: ThreadLaunchGuard.Guard;
 }
 
 /** The Stars directory resolved to the live install's, `~/.pult/stars`, for a server whose home is not `~/.t3`. */
@@ -562,12 +574,20 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * Sleep for each open conversation past its deadline, then the transcripts of the latest settled,
-   * oldest first; each failure logged. What became of the request's conversation, undefined where
-   * it is not open; its failure fails the look once the transcripts are written.
+   * Sleep for each open conversation past its deadline, each failure logged; what became of each.
+   * A channel with two open, which only an un-settle by hand makes, is logged: its newest is current.
    */
-  const look = Effect.fn("Stars.look")(function* (star: Star, request?: SleepRequest) {
-    const outcomes = yield* Effect.forEach(yield* openConversations(star), (thread) =>
+  const sleepDue = Effect.fn("Stars.sleepDue")(function* (star: Star, request?: SleepRequest) {
+    const open = yield* openConversations(star);
+    for (const [channel, conversations] of Map.groupBy(open, channelOf))
+      if (conversations.length > 1)
+        yield* Effect.logWarning("A Star's channel has more than one open conversation.", {
+          starId: star.id,
+          channel,
+          current: conversations[0]?.id,
+          threadIds: conversations.map((thread) => thread.id),
+        });
+    return yield* Effect.forEach(open, (thread) =>
       sleepIfDue(star, thread, thread.id === request?.threadId ? request : undefined).pipe(
         Effect.tapCause((cause) =>
           Effect.logWarning("Could not put a Star's conversation to sleep.", {
@@ -580,6 +600,15 @@ export const make = Effect.gen(function* () {
         Effect.map((exit) => ({ threadId: thread.id, exit })),
       ),
     );
+  });
+
+  /**
+   * `sleepDue`, then the transcripts of the latest settled, oldest first; each failure logged. What
+   * became of the request's conversation, undefined where it is not open; its failure fails the look
+   * once the transcripts are written.
+   */
+  const look = Effect.fn("Stars.look")(function* (star: Star, request?: SleepRequest) {
+    const outcomes = yield* sleepDue(star, request);
     const requested = outcomes.find((each) => each.threadId === request?.threadId)?.exit;
     for (const thread of (yield* settledConversations(star, TRANSCRIPTS_KEPT)).toReversed())
       yield* keepTranscript(star, thread).pipe(
@@ -625,9 +654,59 @@ export const make = Effect.gen(function* () {
           Effect.andThen(conversationsOf(star, channel)),
           Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
         );
-        return yield* use(conversations);
+        return yield* use(conversations).pipe(Effect.provideService(HeldStarLock, star.projectId));
       }),
     );
+
+  /** A launch the guard could not decide on fails, as a delivery that cannot look does. */
+  const undecided = (cause: { readonly message: string }) =>
+    new ThreadLaunchGuard.ThreadLaunchRefusal({
+      message: `Pult could not look at the Star this launch is for: ${cause.message}`,
+    });
+
+  const guardLaunch: Stars["guardLaunch"] = Effect.fn("Stars.guardLaunch")(
+    function* (input, launch) {
+      const channel = taggedChannel(input.tags);
+      // What `isConversation` counts: a launched thread is a root, and a fenced link's is no conversation.
+      if (
+        channel === undefined ||
+        (input.linkOrigin !== undefined && linkOriginIsFenced(input.linkOrigin))
+      )
+        return yield* launch;
+      if ((yield* HeldStarLock) === input.projectId) return yield* launch;
+      // A Star's project is a folder of the Stars directory; a worker's launch elsewhere reads no record.
+      const star = yield* Effect.gen(function* () {
+        const project = yield* projects.getShell(input.projectId);
+        if (
+          project._tag === "None" ||
+          path.dirname(path.resolve(project.value.workspaceRoot)) !== directory
+        )
+          return null;
+        return (yield* list).find((each) => each.projectId === input.projectId);
+      }).pipe(Effect.mapError(undecided));
+      if (star === null) return yield* launch;
+      // A folder of the Stars directory with no Star read: its record mid-write, broken, or one id in two folders.
+      if (star === undefined)
+        return yield* undecided({
+          message: "its folder in the Stars directory has no record Pult can read as a Star's",
+        });
+      return yield* lockOf(star).withPermits(1)(
+        Effect.gen(function* () {
+          // A conversation due to sleep sleeps first, as a delivery's look puts it.
+          const current = yield* sleepDue(star).pipe(
+            Effect.andThen(openConversations(star)),
+            Effect.map((open) => open.find((thread) => channelOf(thread) === channel)),
+            Effect.mapError(undecided),
+          );
+          if (current !== undefined)
+            return yield* new ThreadLaunchGuard.ThreadLaunchRefusal({
+              message: `Star "${starName(star)}"'s channel ${channel} has an open conversation, thread ${current.id}; send to it instead.`,
+            });
+          return yield* launch;
+        }),
+      );
+    },
+  );
 
   const sleepNow: Stars["sleepNow"] = (star, request) =>
     lockOf(star)
@@ -907,5 +986,6 @@ export const make = Effect.gen(function* () {
     create,
     upkeep,
     setRecord,
+    guardLaunch,
   } satisfies Stars;
 });

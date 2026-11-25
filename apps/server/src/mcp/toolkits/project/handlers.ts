@@ -478,6 +478,13 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 message: error.message,
               });
             }
+            // Pult: a plugin's guard refused it, and says why (`ThreadLaunchGuard`).
+            if (error._tag === "ThreadLaunchError" && error.operation === "guard") {
+              return new OrchestratorMcpFailure({
+                code: "invalid_request",
+                message: error.message,
+              });
+            }
             // The administrator's ceiling refuses the mode; say so rather than "unavailable".
             if (error._tag === "ThreadLaunchError" && isAboveCeilingError(error.cause)) {
               return new OrchestratorMcpFailure({

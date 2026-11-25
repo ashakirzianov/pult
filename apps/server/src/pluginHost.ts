@@ -79,6 +79,8 @@ export * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 export * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 // The Pult plugin's Star messages: a wake launches a Star's fresh conversation.
 export * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
+// The Pult plugin's Stars: one open conversation per channel, a launch into one that has it refused.
+export * as ThreadLaunchGuard from "./orchestration-v2/ThreadLaunchGuard.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 // The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
 export * as UsageLimitSources from "./usage/UsageLimitSources.ts";

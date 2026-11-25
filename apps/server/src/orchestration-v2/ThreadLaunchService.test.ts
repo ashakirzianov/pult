@@ -73,6 +73,7 @@ import {
   layerTaskFoldersWithGit,
   type TaskFoldersTestState,
 } from "../workspace/TaskFolders.testkit.ts";
+import * as ThreadLaunchGuard from "./ThreadLaunchGuard.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
@@ -297,6 +298,7 @@ function makeHarness(options: HarnessOptions = {}) {
             }),
       ),
     ),
+    Layer.provideMerge(ThreadLaunchGuard.layer),
   );
   const layerProjectedProjects = Layer.mock(ProjectStore.ProjectStoreV2)({
     get: (requestedProjectId) =>
@@ -2323,6 +2325,68 @@ it.effect("a launch with tags creates the thread already carrying them", () => {
   }).pipe(Effect.provide(harness.layer));
 });
 
+// Pult: the hook point a plugin's guard holds.
+it.effect(
+  "runs a fresh launch through the guard, which may refuse it, and replays an accepted one unguarded",
+  () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const guarded: Array<string> = [];
+      const guard = { mode: "pass" as "pass" | "refuse" | "accept-then-refuse" };
+      const refusal = new ThreadLaunchGuard.ThreadLaunchRefusal({ message: "Send to it instead." });
+      yield* (yield* ThreadLaunchGuard.ThreadLaunchGuard).register((input, launch) =>
+        Effect.suspend(() => {
+          guarded.push(input.commandId);
+          return guard.mode === "pass"
+            ? launch
+            : guard.mode === "refuse"
+              ? Effect.fail(refusal)
+              : // A launch of the same command, accepted while this one waited on the guard.
+                Effect.andThen(launch, Effect.fail(refusal));
+        }),
+      );
+      const input = launchInput({
+        command: "command:guard:fresh",
+        thread: "thread:guard:fresh",
+        message: "Hello",
+      });
+      assert.isFalse((yield* launches.launch(input)).resumed);
+      guard.mode = "refuse";
+      assert.isTrue((yield* launches.launch(input)).resumed);
+      assert.deepEqual(guarded, [input.commandId]);
+
+      const refused = yield* launches
+        .launch(
+          launchInput({
+            command: "command:guard:refused",
+            thread: "thread:guard:refused",
+            message: "Hello",
+          }),
+        )
+        .pipe(Effect.flip);
+      if (refused._tag !== "ThreadLaunchError") {
+        assert.fail(`expected ThreadLaunchError, got ${refused._tag}`);
+      }
+      assert.equal(refused.operation, "guard");
+      assert.equal(refused.message, "Send to it instead.");
+      assert.isNull(yield* threads.getThreadShell(ThreadId.make("thread:guard:refused")));
+
+      guard.mode = "accept-then-refuse";
+      const raced = yield* launches.launch(
+        launchInput({
+          command: "command:guard:raced",
+          thread: "thread:guard:raced",
+          message: "Hello",
+        }),
+      );
+      assert.equal(raced.threadId, ThreadId.make("thread:guard:raced"));
+      assert.isTrue(raced.resumed);
+    }).pipe(Effect.scoped, Effect.provide(harness.layer));
+  },
+);
+
 it.effect("an agent's launch never starts work above the modes it asks for", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {
@@ -2880,6 +2944,18 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
       projectId: ProjectId.make("missing-project"),
     }).pipe(Effect.flip);
     assert.equal(missingProject._tag, "ThreadLaunchError");
+    assert.equal((yield* claimedFiles).length, 1);
+    // Pult: a guard's refusal dispatched nothing, so the copies it claimed go too.
+    const refused = yield* Effect.gen(function* () {
+      yield* (yield* ThreadLaunchGuard.ThreadLaunchGuard).register(() =>
+        Effect.fail(new ThreadLaunchGuard.ThreadLaunchRefusal({ message: "Refused." })),
+      );
+      return yield* ThreadMessageIntake.launchThread({
+        ...input,
+        commandId: CommandId.make("intake-refused"),
+      }).pipe(Effect.flip);
+    }).pipe(Effect.scoped);
+    assert.equal(refused._tag === "ThreadLaunchError" && refused.operation, "guard");
     assert.equal((yield* claimedFiles).length, 1);
     const missingThread = yield* dispatchIntakeCommand({
       type: "message.dispatch",

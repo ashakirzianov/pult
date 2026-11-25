@@ -37,6 +37,7 @@ import {
   ServerEnvironment,
   ServerRuntimeStartup,
   Stream,
+  ThreadLaunchGuard,
   ThreadLaunchService,
   ThreadManagementService,
   UsageLimitSources,
@@ -341,52 +342,74 @@ export type FakeLaunch = Parameters<
 
 /**
  * Launches, in memory: the thread and its first message each take a receipt, so a repeat replays
- * (`resumed`) and one cut between the two (`cutNext`) finishes the message on the next call.
+ * (`resumed`) and one cut between the two (`cutNext`) finishes the message on the next call. A
+ * launch with no receipt runs through the registered guard, as the server's does; `launches` holds
+ * those that went ahead.
  */
-function fakeLaunches(threads: ReturnType<typeof fakeThreads>) {
+function fakeLaunches(
+  threads: ReturnType<typeof fakeThreads>,
+  guards: ThreadLaunchGuard.ThreadLaunchGuard["Service"],
+) {
   const launches: FakeLaunch[] = [];
   const threadOf = new Map<string, ThreadId>();
   const state = { cutNext: false };
+  const launchNow = Effect.fn("FakeLaunches.launchNow")(function* (input: FakeLaunch) {
+    launches.push(input);
+    const known = threadOf.get(input.commandId);
+    const thread =
+      known === undefined
+        ? threads.add(input.projectId, `launched-${threadOf.size + 1}`, {
+            title: input.title,
+            modelSelection: input.modelSelection,
+            runtimeMode: input.runtimeMode,
+            interactionMode: input.interactionMode,
+            createdAt: yield* DateTime.now,
+            createdBy: input.createdBy,
+            creationSource: input.creationSource,
+            tags: [...(input.tags ?? [])],
+          })
+        : threads.byId(known)!;
+    threadOf.set(input.commandId, thread.shell.id);
+    threads.receipts.add(input.commandId);
+    if (state.cutNext) {
+      state.cutNext = false;
+      return yield* new ThreadLaunchService.ThreadLaunchError({
+        operation: "dispatch-message",
+        commandId: input.commandId,
+        projectId: input.projectId,
+        cause: "cut short",
+      });
+    }
+    const messageCommandId = `${input.commandId}:initial-message` as CommandId;
+    const resumed = threads.receipts.has(messageCommandId);
+    if (!resumed && input.initialMessage !== undefined)
+      yield* threads.take(thread, {
+        commandId: messageCommandId,
+        messageId: input.initialMessage.messageId,
+        text: input.initialMessage.text,
+        senderThreadId: input.initialMessage.senderThreadId,
+        createdBy: input.createdBy,
+        creationSource: input.creationSource,
+      });
+    return { threadId: thread.shell.id, projection: v2Projection, resumed };
+  });
   const service = {
     launch: Effect.fn("FakeLaunches.launch")(function* (input: FakeLaunch) {
-      launches.push(input);
-      const known = threadOf.get(input.commandId);
-      const thread =
-        known === undefined
-          ? threads.add(input.projectId, `launched-${threadOf.size + 1}`, {
-              title: input.title,
-              modelSelection: input.modelSelection,
-              runtimeMode: input.runtimeMode,
-              interactionMode: input.interactionMode,
-              createdAt: yield* DateTime.now,
-              createdBy: input.createdBy,
-              creationSource: input.creationSource,
-              tags: [...(input.tags ?? [])],
-            })
-          : threads.byId(known)!;
-      threadOf.set(input.commandId, thread.shell.id);
-      threads.receipts.add(input.commandId);
-      if (state.cutNext) {
-        state.cutNext = false;
-        return yield* new ThreadLaunchService.ThreadLaunchError({
-          operation: "dispatch-message",
-          commandId: input.commandId,
-          projectId: input.projectId,
-          cause: "cut short",
-        });
-      }
-      const messageCommandId = `${input.commandId}:initial-message` as CommandId;
-      const resumed = threads.receipts.has(messageCommandId);
-      if (!resumed && input.initialMessage !== undefined)
-        yield* threads.take(thread, {
-          commandId: messageCommandId,
-          messageId: input.initialMessage.messageId,
-          text: input.initialMessage.text,
-          senderThreadId: input.initialMessage.senderThreadId,
-          createdBy: input.createdBy,
-          creationSource: input.creationSource,
-        });
-      return { threadId: thread.shell.id, projection: v2Projection, resumed };
+      const guard = threads.receipts.has(input.commandId) ? undefined : yield* guards.current;
+      if (guard === undefined) return yield* launchNow(input);
+      return yield* guard(input, launchNow(input)).pipe(
+        Effect.catchTags({
+          ThreadLaunchRefusal: (refusal) =>
+            Effect.fail(
+              new ThreadLaunchService.ThreadLaunchError({
+                operation: "guard",
+                commandId: input.commandId,
+                projectId: input.projectId,
+                cause: refusal,
+              }),
+            ),
+        }),
+      );
     }),
   };
   return { launches, state, service };
@@ -436,7 +459,9 @@ export const fakeServer = Effect.gen(function* () {
   const tmp = yield* fs.realPath(yield* fs.makeTempDirectoryScoped({ prefix: "pult-stars-" }));
   const projects = fakeProjects(fs);
   const threads = fakeThreads();
-  const launches = fakeLaunches(threads);
+  /** The server's launch hook point; the plugin's activation registers its guard here, a test of its own Stars with `guards.register`. */
+  const guards = yield* ThreadLaunchGuard.make;
+  const launches = fakeLaunches(threads, guards);
   const sources = new Map<string, Effect.Effect<void>>();
   /** Each subscription to the watch, in order: offer a batch to it, or end or fail it. */
   const watches: Array<{
@@ -461,6 +486,7 @@ export const fakeServer = Effect.gen(function* () {
       ThreadManagementService.ThreadManagementService,
       threads.service as unknown as ThreadManagementService.ThreadManagementService["Service"],
     ),
+    Layer.succeed(ThreadLaunchGuard.ThreadLaunchGuard, guards),
     Layer.succeed(
       ThreadLaunchService.ThreadLaunchService,
       launches.service as unknown as ThreadLaunchService.ThreadLaunchService["Service"],
@@ -526,6 +552,7 @@ export const fakeServer = Effect.gen(function* () {
     projects,
     threads,
     launches,
+    guards,
     limits,
     tmp,
     directory,

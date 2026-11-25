@@ -58,6 +58,7 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { isThreadLaunchRefusal, ThreadLaunchGuard } from "./ThreadLaunchGuard.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as EventSink from "./EventSink.ts";
@@ -167,6 +168,7 @@ export class ThreadLaunchError extends Schema.TaggedError<ThreadLaunchError>()(
       "dispatch-message",
       "release-run",
       "fail-run",
+      "guard", // Pult: a plugin's guard refused it (`ThreadLaunchGuard`).
     ]),
     commandId: CommandId,
     projectId: ProjectId,
@@ -175,6 +177,8 @@ export class ThreadLaunchError extends Schema.TaggedError<ThreadLaunchError>()(
   },
 ) {
   override get message(): string {
+    // Pult: a guard's refusal says why.
+    if (this.operation === "guard" && isThreadLaunchRefusal(this.cause)) return this.cause.message;
     return `Thread launch ${this.commandId} failed during ${this.operation}.`;
   }
 }
@@ -298,6 +302,7 @@ const make = Effect.gen(function* () {
   const eventSink = yield* EventSink.EventSinkV2;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
   const taskFolders = yield* TaskFolders.TaskFolders;
+  const launchGuard = yield* ThreadLaunchGuard; // Pult: a plugin's hook point on a fresh launch.
   // A project-folder launch that names no branch records the folder's checkout, as the composer does.
   const launchBranch = (strategy: ThreadLaunchWorkspaceStrategy, workspaceRoot: string) =>
     strategy.type === "root" && strategy.branch === undefined
@@ -1393,13 +1398,14 @@ const make = Effect.gen(function* () {
         )("Reusing an existing thread requires a thread id.");
       }
 
-      const launchReceipt = yield* readReceipt(input, input.commandId);
+      // Pult: read again where the guard refused, so a launch of this command accepted meanwhile replays.
+      let launchReceipt = yield* readReceipt(input, input.commandId);
       yield* threads.assertProviderInstanceEnabled({
         projectId: input.projectId,
         commandId: input.commandId,
         instanceId: input.modelSelection.instanceId,
       });
-      return yield* Effect.gen(function* () {
+      const proceed = Effect.gen(function* () {
         // Recover ids from accepted launch receipts before allocating; retries have no client id and new ids collide with receipts.
         const reusableLaunchReceipt =
           input.threadId === undefined &&
@@ -1640,6 +1646,18 @@ const make = Effect.gen(function* () {
           ...(messageSequence === undefined ? {} : { sequence: messageSequence }),
         };
       });
+      // Pult: a fresh launch runs through the plugin's guard, where one is registered.
+      const guard = Option.isNone(launchReceipt) ? yield* launchGuard.current : undefined;
+      if (guard === undefined) return yield* proceed;
+      return yield* guard(input, proceed).pipe(
+        Effect.catchTags({
+          ThreadLaunchRefusal: Effect.fn("ThreadLaunchService.refused")(function* (refusal) {
+            launchReceipt = yield* readReceipt(input, input.commandId);
+            if (Option.isSome(launchReceipt)) return yield* proceed;
+            return yield* mapError(input, "guard")(refusal);
+          }),
+        }),
+      );
     },
     // The message commits a preparing run that only this call schedules, so a
     // caller that goes away must not stop the launch between the two.

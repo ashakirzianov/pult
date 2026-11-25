@@ -7,7 +7,14 @@ import * as Asks from "./asks/asks.ts";
 import { tellRetiredAsks } from "./asks/retired.ts";
 import { asksRoute } from "./asks/routes.ts";
 import * as AskTools from "./asks/tools.ts";
-import { Effect, HttpServerResponse, Layer, type PluginHost, ProcessRunner } from "./host.ts";
+import {
+  Effect,
+  HttpServerResponse,
+  Layer,
+  type PluginHost,
+  ProcessRunner,
+  ThreadLaunchGuard,
+} from "./host.ts";
 import * as InstallAtRest from "./installAtRest/installAtRest.ts";
 import * as UsageLimitsTool from "./limits/usageLimitsTool.ts";
 import { runCommand } from "./schedules/command.ts";
@@ -43,6 +50,8 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const deliverTo = yield* Delivery.make;
   const stars = yield* Stars.make;
   const delivering = deliverTo(stars);
+  // One open conversation per channel: a launch into a channel that has one is refused.
+  yield* (yield* ThreadLaunchGuard.ThreadLaunchGuard).register(stars.guardLaunch);
   const asks = yield* Asks.make(stars, delivering.deliver);
   // Delivery waits for the server's commands, so the Stars with files left in `.pult/asks/` are told apart.
   yield* tellRetiredAsks(stars, delivering.deliver).pipe(

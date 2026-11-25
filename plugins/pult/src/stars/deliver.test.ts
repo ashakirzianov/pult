@@ -2,7 +2,10 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
+  CommandId,
+  MessageId,
   type OrchestrationV2ThreadShell,
+  ProjectId,
   type ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -11,9 +14,9 @@ import {
 import * as TestClock from "effect/testing/TestClock";
 
 import { DateTime, DispatchModeLimit, Effect, Exit, FileSystem, Layer, Path } from "../host.ts";
-import { type Channel, channelTag } from "./channels.ts";
+import { type Channel, channelTag, childTag } from "./channels.ts";
 import * as Delivery from "./deliver.ts";
-import { RECORD_FILE } from "./record.ts";
+import { RECORD_FILE, starName } from "./record.ts";
 import { SHARED_SETTINGS_FILE, settingsFile } from "./settings.ts";
 import * as Stars from "./stars.ts";
 import { at, fakeServer, run } from "./testing.ts";
@@ -95,6 +98,8 @@ const harness = Effect.gen(function* () {
   const { deliver, pageWakeModel } = (yield* Delivery.make.pipe(Effect.provide(server.layer)))(
     stars,
   );
+  // As the plugin's activation registers it.
+  yield* server.guards.register(stars.guardLaunch);
   const star = yield* stars.create({ ifNone: true });
   server.limits.providers = PROVIDERS;
   const fs = yield* FileSystem.FileSystem;
@@ -163,10 +168,34 @@ const harness = Effect.gen(function* () {
       key,
       sender: { thread: worker },
     }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, limit));
+  /** A launch as a channel's draft on the page makes one: into the Star's project, tagged with `to`, unless `options` name other. */
+  const pageLaunch = (
+    key: string,
+    to: Channel = "main",
+    options: { readonly projectId?: ProjectId; readonly tags?: ReadonlyArray<string> } = {},
+  ) =>
+    server.launches.service.launch({
+      commandId: CommandId.make(`page:${key}`),
+      projectId: options.projectId ?? star.projectId,
+      title: "From the page",
+      modelSelection: model("page-model"),
+      runtimeMode: "auto",
+      interactionMode: "default",
+      workspaceStrategy: { type: "root" },
+      tags: options.tags ?? [channelTag(to)],
+      initialMessage: {
+        messageId: MessageId.make(`page:${key}`),
+        text: "From the page.",
+        attachments: [],
+      },
+      createdBy: "user",
+      creationSource: "web",
+    });
   return {
     ...server,
     stars,
     star,
+    pageLaunch,
     deliver,
     pageWakeModel,
     ended,
@@ -463,6 +492,99 @@ describe("deliver", () => {
         [ThreadId.make("launched-1"), ThreadId.make("launched-1")],
       );
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "refuses a launch into a channel that has an open conversation, naming its thread",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.ended();
+        h.open();
+        const refused = yield* h.pageLaunch("p1").pipe(Effect.flip);
+        if (refused._tag !== "ThreadLaunchError")
+          return assert.fail(`expected ThreadLaunchError, got ${refused._tag}`);
+        assert.strictEqual(refused.operation, "guard");
+        assert.strictEqual(
+          refused.message,
+          `Star "${starName(h.star)}"'s channel main has an open conversation, thread open; send to it instead.`,
+        );
+        // Another channel of the Star's, asleep, launches.
+        assert.strictEqual(
+          (yield* h.pageLaunch("p2", "work")).threadId,
+          ThreadId.make("launched-1"),
+        );
+        assert.deepStrictEqual(
+          h.launches.launches.map((each) => each.tags),
+          [["pult:channel:work"]],
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("refuses a channel's launch into a Star's folder whose record it cannot read", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended();
+      h.open();
+      // As a write of the record caught between its truncation and its text.
+      yield* h.fs.writeFileString(h.path.join(h.star.root, RECORD_FILE), "");
+      const refused = yield* h.pageLaunch("p1").pipe(Effect.flip);
+      assert.include(refused.message, "has no record Pult can read as a Star's");
+      assert.strictEqual(h.launches.launches.length, 0);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("makes one thread of a launch racing a message into a sleeping channel", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended();
+      const [page, delivered] = yield* Effect.all(
+        [Effect.exit(h.pageLaunch("p1")), h.fromPlugin("k1")],
+        { concurrency: "unbounded" },
+      );
+      assert.strictEqual(h.launches.launches.length, 1);
+      const thread = ThreadId.make("launched-1");
+      // Whichever took the lock first launched; the other found its thread.
+      if (Exit.isSuccess(page)) {
+        assert.strictEqual(page.value.threadId, thread);
+        assert.deepStrictEqual(delivered, { outcome: "started", threadId: thread });
+      } else {
+        assert.deepStrictEqual(delivered, { outcome: "launched", threadId: thread });
+        assert.include(String(Exit.isFailure(page) && page.cause), "send to it instead");
+      }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("puts a conversation past its deadline to sleep, and the launch goes ahead", () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.ended();
+      h.open(undefined, "stale", { promptCacheExpiresAt: at("2026-11-10T12:55:00.000Z") });
+      assert.strictEqual((yield* h.pageLaunch("p1")).threadId, ThreadId.make("launched-1"));
+      assert.deepStrictEqual(h.threads.settles, [ThreadId.make("stale")]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "lets a Star's worker, tagged with its channel, launch into another project while the channel is open",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        h.ended();
+        h.open();
+        const elsewhere = yield* h.projects.service.create({
+          projectId: ProjectId.make("project-elsewhere"),
+          title: "Elsewhere",
+          workspaceRoot: h.path.join(h.tmp, "elsewhere"),
+          createWorkspaceRootIfMissing: true,
+        });
+        const launched = yield* h.pageLaunch("worker", "main", {
+          projectId: elsewhere.id,
+          tags: [childTag(h.star.id), channelTag("main")],
+        });
+        assert.strictEqual(launched.threadId, ThreadId.make("launched-1"));
+        assert.deepStrictEqual(h.threads.settles, []);
+      }).pipe(Effect.scoped),
   );
 
   it.effect(

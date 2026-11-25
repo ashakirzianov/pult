@@ -61,6 +61,7 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import * as WorkflowRuntime from "../workflows/WorkflowRuntime.ts";
 import * as ThreadIssueService from "./ThreadIssueService.ts";
+import * as ThreadLaunchGuard from "./ThreadLaunchGuard.ts";
 import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
@@ -469,5 +470,7 @@ export const layerProduction = Layer.mergeAll(
   Layer.provideMerge(layerProjectService),
   // Merged out so the server's plugins register on the same scheduler: the Pult plugin's Stars pass.
   Layer.provideMerge(Scheduler.layer),
+  // Pult: merged out so a plugin registers the guard every launch runs through.
+  Layer.provideMerge(ThreadLaunchGuard.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );
