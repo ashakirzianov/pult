@@ -139,6 +139,13 @@ describe("AGENTS.md", () => {
     assert.notInclude(AGENTS_TEXT, ".pult/asks");
   });
 
+  it("tells the Star that an answer to a reply goes into the ask, asked again", () => {
+    assert.include(
+      AGENTS_TEXT,
+      "So put the answer in the ask: change the ask's file so that it opens with your answer (or pass a new `text`, for an ask posted with `text`), then call `pult_ask` with its `id`, which returns it to their Inbox. Answering in the conversation as well is fine; alone it is not enough.",
+    );
+  });
+
   it("calls .pult/schedules/ the Star's, and names the runs' record", () => {
     assert.match(AGENTS_TEXT, /^- `\.pult\/schedules\/` is yours: /m);
     assert.include(AGENTS_TEXT, "record of the runs in `.pult/runs/`.");
@@ -208,6 +215,8 @@ describe("AGENTS.md", () => {
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION - 1} -->\n`), true);
     // Version 19 is the last with `user` and `work` special.
     assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 19 -->\n"), true);
+    // Version 22 is the last without where the answer to a reply goes.
+    assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 22 -->\n"), true);
     assert.strictEqual(agentsOutdated(AGENTS_TEXT), false);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);
   });
