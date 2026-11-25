@@ -108,7 +108,8 @@ NodeTest.describe("the reader's frame", () => {
   NodeTest.before(async () => {
     const script = await bundle();
     browser = await chromium.launch({ headless: true });
-    page = await browser.newPage();
+    // A `-time` frontmatter value reads in the machine's zone.
+    page = await browser.newPage({ timezoneId: "America/Argentina/Buenos_Aires" });
     await page.route("**/*", (route) => {
       const url = route.request().url();
       if (url === `${ORIGIN}/`)
@@ -270,12 +271,11 @@ NodeTest.describe("the reader's frame", () => {
         const asked: string[][] = [];
         const chips = (codes: ReadonlyArray<string>) => {
           asked.push([...codes]);
-          return new Map([
-            [
-              "src/a.ts:3",
-              `<a href="#" class="chip" onclick="top.ran.push('chip')"><svg viewBox="0 0 16 16"><path d="M0 0h16v16z"/></svg><span data-slot="context-chip-label">a.ts · L3</span></a>`,
-            ],
-          ]);
+          const markup = `<a href="#" class="chip" onclick="top.ran.push('chip')"><svg viewBox="0 0 16 16"><path d="M0 0h16v16z"/></svg><span data-slot="context-chip-label">a.ts · L3</span></a>`;
+          return {
+            codes: new Map([["src/a.ts:3", { markup, file: "src/a.ts:3" }]]),
+            refs: new Map(),
+          };
         };
         const source = [
           "# Paths",
@@ -767,68 +767,273 @@ NodeTest.describe("the reader's frame", () => {
     NodeAssert.deepEqual(cited.uncoloured, { coloured: 0, nodes: 1 });
   });
 
-  NodeTest.it("lays out YAML frontmatter and keeps the body on its source lines", async () => {
-    const result = await page.evaluate(async () => {
-      const frame = window.reader.createReaderFrame();
-      document.body.append(frame.element);
-      const source = [
-        "---",
-        'title: "<script>Safe text</script>"',
-        "settings:",
-        "  tags: [one, two]",
-        "id: 9007199254740993",
-        'summary: "a\\nb',
-        '  c"',
-        `long: ${"a value too long for the line ".repeat(12)}`,
-        "---",
-        "# Document",
-      ].join("\n");
-      const { scripts } = (await frame.show(source, { markdown: true }))!;
-      const doc = frame.element.contentDocument!;
-      const meta = doc.querySelector(".pult-reader-frontmatter")!;
-      const cite = (node: Element, start?: number) => {
-        const selection = doc.getSelection()!;
-        const range = doc.createRange();
-        if (start === undefined) range.selectNodeContents(node);
-        else {
-          range.setStart(node.firstChild!, start);
-          range.setEnd(node.firstChild!, start + 1);
-        }
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return frame.selection();
+  NodeTest.it(
+    "lays out YAML frontmatter as the xaxis front draws properties, cites each row's lines, and keeps the body on its own",
+    async () => {
+      const result = await page.evaluate(async () => {
+        const frame = window.reader.createReaderFrame();
+        document.body.append(frame.element);
+        const source = [
+          "---",
+          'title: "<script>Safe text</script>"',
+          "settings:",
+          "  tags: [one, two]",
+          "id: 9007199254740993",
+          'summary: "a\\nb',
+          '  c"',
+          `long: ${"a value too long for the line ".repeat(12)}`,
+          "opened-date: 2026-11-25",
+          "closed-date: someday",
+          "updated-time: 2026-11-25T13:04:05.000Z",
+          "done-flag: true",
+          "count-number: 3",
+          "extra-json: {a: 1, b: [2]}",
+          "blocked-by-ref-list: [../a.task, design.md]",
+          "design-ref: ./design.md",
+          "tag-list: [small, in-the-loop]",
+          "xaxis-title: Hello",
+          "date: 2026-01-02",
+          "empty:",
+          "none-ref-list: []",
+          "---",
+          "# Document",
+          "",
+          // Raw HTML in the body names no frontmatter ref.
+          '<span data-pult-ref="">../b.task</span>',
+        ].join("\n");
+        const asked: string[][] = [];
+        // The shell draws `../a.task` alone; `design.md` resolves to nothing, or is not yet decided.
+        const chips = (codes: ReadonlyArray<string>, refs: ReadonlyArray<string>) => {
+          asked.push([...codes], [...refs]);
+          const markup = `<a href="#"><span data-slot="context-chip-label">a.task</span></a>`;
+          return {
+            codes: new Map(),
+            refs: new Map([["../a.task", { markup, file: "/x/a.task/bundle.md" }]]),
+          };
+        };
+        const { scripts } = (await frame.show(source, { markdown: true, chips }))!;
+        const doc = frame.element.contentDocument!;
+        const meta = doc.querySelector(".pult-reader-frontmatter")!;
+        const rows = [...meta.querySelectorAll(":scope > dl > div")];
+        const select = (from: [Node, number], to: [Node, number]) => {
+          const range = doc.createRange();
+          range.setStart(...from);
+          range.setEnd(...to);
+          doc.getSelection()!.removeAllRanges();
+          doc.getSelection()!.addRange(range);
+          return frame.selection();
+        };
+        const whole = (node: Node) => select([node, 0], [node, node.childNodes.length]);
+        const textOf = (node: Element) => node.lastChild as Text;
+        const box = (node: Element) => node.getBoundingClientRect();
+        const [titleEntry, , , , longEntry] = rows;
+        const label = (row: number) => textOf(rows[row]!.querySelector("dt")!);
+        const date = rows[5]!.querySelector(".pult-reader-date")!;
+        const chip = rows[11]!.querySelector("[data-pult-file]")!;
+        const chipLabel = chip.querySelector('[data-slot="context-chip-label"]')!.firstChild!;
+        const json = rows[10]!.querySelector("details")!;
+        const rendered = {
+          scripts,
+          asked,
+          // Each entry one line, its label and then its value; a long value wraps beside its label.
+          titleOnOneLine: box(titleEntry!.children[0]!).top === box(titleEntry!.children[1]!).top,
+          longBesideKey:
+            box(longEntry!.children[1]!).left > box(longEntry!.children[0]!).right &&
+            box(longEntry!.children[1]!).height > 2 * box(longEntry!.children[0]!).height,
+          labels: rows.map((row) => row.querySelector(":scope > dt")!.textContent),
+          keys: rows.map((row) => row.getAttribute("title")),
+          // Each row's glyph, and a list's badge, by the start of their strokes.
+          icons: rows.map((row) => {
+            const [glyph, badge] = row.querySelectorAll(":scope > dt > svg path");
+            return [glyph?.getAttribute("d")?.slice(0, 8), badge?.getAttribute("d")?.slice(0, 8)];
+          }),
+          masked:
+            rows[11]!.querySelector("svg path")!.getAttribute("mask") ===
+            `url(#${rows[11]!.querySelector("svg mask")!.id})`,
+          values: rows.map((row) => row.querySelector(":scope > dd")!.textContent),
+          nested: [...meta.querySelectorAll("dd > dl dd > ul > li")].map(
+            (item) => item.textContent,
+          ),
+          dayOnHover: date.getAttribute("title"),
+          pills: [...rows[13]!.querySelectorAll(".pult-reader-pill")].map(
+            (pill) => pill.textContent,
+          ),
+          chipFile: chip.getAttribute("data-pult-file"),
+          unresolved: [...meta.querySelectorAll("[data-pult-ref]")].map((ref) => ref.textContent),
+          json: {
+            open: json.open,
+            summary: json.querySelector("summary")!.textContent,
+            text: json.querySelector("pre")!.textContent,
+          },
+          title: whole(meta.querySelector("dd")!),
+          summary: select(
+            [meta.querySelectorAll(":scope > dl > div > dd")[3]!.firstChild!, 2],
+            [meta.querySelectorAll(":scope > dl > div > dd")[3]!.firstChild!, 3],
+          ),
+          // A row whole; from inside a label into its date; from a date into a chip; a chip, a label and a time alone.
+          row: whole(rows[5]!)?.lines,
+          labelToDate: select([label(5), 2], [date.firstChild!, 4])?.lines,
+          dateToChip: select([date.firstChild!, 3], [chipLabel, 2])?.lines,
+          chip: whole(chipLabel.parentNode!),
+          label: select([label(11), 0], [label(11), 7]),
+          time: select(
+            [rows[7]!.querySelector(".pult-reader-time")!.firstChild!, 11],
+            [rows[7]!.querySelector(".pult-reader-time")!.firstChild!, 16],
+          ),
+          heading: whole(doc.querySelector("h1")!),
+        };
+        frame.element.remove();
+        return rendered;
+      });
+      const [string, json, day, time, flag, number, ref, list] = [
+        "M3 3h10 ",
+        "M6 2.5H5",
+        "M2.5 4h1",
+        "M8 2.5a5",
+        "M3 3h10v",
+        "M6 2v12 ",
+        "M9 3h4v4",
+        "M5.5 4h8",
+      ] as const;
+      NodeAssert.deepEqual(result, {
+        scripts: false,
+        asked: [[], ["../a.task", "design.md", "./design.md"]],
+        titleOnOneLine: true,
+        longBesideKey: true,
+        labels: [
+          "Title",
+          "Settings",
+          "Id",
+          "Summary",
+          "Long",
+          "Opened",
+          "Closed",
+          "Updated",
+          "Done",
+          "Count",
+          "Extra",
+          "Blocked By",
+          "Design",
+          "Tag",
+          "Title",
+          "Date",
+          "Empty",
+          "None",
+        ],
+        keys: [
+          "title",
+          "settings",
+          "id",
+          "summary",
+          "long",
+          "opened-date",
+          "closed-date",
+          "updated-time",
+          "done-flag",
+          "count-number",
+          "extra-json",
+          "blocked-by-ref-list",
+          "design-ref",
+          "tag-list",
+          "xaxis-title",
+          "date",
+          "empty",
+          "none-ref-list",
+        ],
+        icons: [
+          [string, undefined],
+          // A mapping and an integer under an untyped key read as JSON, as the front draws them; a date that is no day as a string.
+          [json, undefined],
+          [json, undefined],
+          [string, undefined],
+          [string, undefined],
+          [day, undefined],
+          [string, undefined],
+          [time, undefined],
+          [flag, undefined],
+          [number, undefined],
+          [json, undefined],
+          [list, "M1.5 7.5"],
+          [ref, undefined],
+          [list, "M1.5 1.5"],
+          [string, undefined],
+          [day, undefined],
+          [string, undefined],
+          [list, "M1.5 7.5"],
+        ],
+        masked: true,
+        values: [
+          "<script>Safe text</script>",
+          "tagsonetwo",
+          "9007199254740993",
+          "a\nb c",
+          "a value too long for the line ".repeat(12).trim(),
+          "25 Nov 2026",
+          "someday",
+          "2026-11-25 10:04:05",
+          "true",
+          "3",
+          'json{\n  "a": 1,\n  "b": [\n    2\n  ]\n}',
+          "a.taskdesign.md",
+          "./design.md",
+          "smallin-the-loop",
+          "Hello",
+          "2 Jan 2026",
+          "null",
+          "",
+        ],
+        nested: ["one", "two"],
+        dayOnHover: "2026-11-25",
+        pills: ["small", "in-the-loop"],
+        chipFile: "/x/a.task/bundle.md",
+        unresolved: ["design.md", "./design.md"],
+        json: { open: false, summary: "json", text: '{\n  "a": 1,\n  "b": [\n    2\n  ]\n}' },
+        title: { text: "<script>Safe text</script>", lines: { start: 2, end: 2 } },
+        summary: { text: "b", lines: { start: 6, end: 7 } },
+        row: { start: 9, end: 9 },
+        labelToDate: { start: 9, end: 9 },
+        dateToChip: { start: 9, end: 15 },
+        chip: { text: "a.task", lines: { start: 15, end: 15 } },
+        label: { text: "Blocked", lines: { start: 15, end: 15 } },
+        time: { text: "10:04", lines: { start: 11, end: 11 } },
+        heading: { text: "Document", lines: { start: 23, end: 23 } },
+      });
+    },
+  );
+
+  NodeTest.it(
+    "joins a frontmatter ref to its document's folder, from the xaxis root in the kept checkout",
+    async () => {
+      const { frontmatterRefPath } = await import("./frontmatter.ts");
+      const task = "/Users/a/.pult/xaxis/ann/pult/tasks/x.task/bundle.md";
+      const ref = (path: string, document = task) =>
+        frontmatterRefPath(path, document, "/Users/a/.pult/xaxis");
+      const design = {
+        named: "/ann/pult/tasks/x.task/design.md",
+        file: "/ann/pult/tasks/x.task/design.md",
       };
-      const box = (node: Element) => node.getBoundingClientRect();
-      const [titleEntry, , , , longEntry] = meta.querySelectorAll(":scope > dl > div");
-      const rendered = {
-        scripts,
-        // Each entry one line, its key and then its value; a long value wraps beside its key.
-        titleOnOneLine: box(titleEntry!.children[0]!).top === box(titleEntry!.children[1]!).top,
-        longBesideKey:
-          box(longEntry!.children[1]!).left > box(longEntry!.children[0]!).right &&
-          box(longEntry!.children[1]!).height > 2 * box(longEntry!.children[0]!).height,
-        keys: [...meta.querySelectorAll("dt")].map((key) => key.textContent),
-        values: [...meta.querySelectorAll("dd > ul > li")].map((item) => item.textContent),
-        title: cite(meta.querySelector("dd")!),
-        id: meta.querySelectorAll(":scope > dl > div > dd")[2]!.textContent,
-        summary: cite(meta.querySelectorAll(":scope > dl > div > dd")[3]!, 2),
-        heading: cite(doc.querySelector("h1")!),
-      };
-      frame.element.remove();
-      return rendered;
-    });
-    NodeAssert.deepEqual(result, {
-      scripts: false,
-      titleOnOneLine: true,
-      longBesideKey: true,
-      keys: ["title", "settings", "tags", "id", "summary", "long"],
-      values: ["one", "two"],
-      title: { text: "<script>Safe text</script>", lines: { start: 2, end: 2 } },
-      id: "9007199254740993",
-      summary: { text: "b", lines: { start: 6, end: 7 } },
-      heading: { text: "Document", lines: { start: 10, end: 10 } },
-    });
-  });
+      NodeAssert.deepEqual(
+        {
+          bare: ref("design.md"),
+          dot: ref("./design.md"),
+          up: ref("../y.task"),
+          root: ref("/ann/pult/decisions/a.md"),
+          outside: ref("../b.md", "/repo/docs/a.md"),
+          invalid: ["", "a:3", "a/", "a//b.md", "~/a.md", "/a/../b.md", "../../../../../b.md"].map(
+            (path) => ref(path),
+          ),
+        },
+        {
+          bare: design,
+          dot: design,
+          up: { named: "/ann/pult/tasks/y.task", file: "/ann/pult/tasks/y.task/bundle.md" },
+          root: { named: "/ann/pult/decisions/a.md", file: "/ann/pult/decisions/a.md" },
+          outside: { named: "/repo/b.md", file: "/repo/b.md" },
+          invalid: [undefined, undefined, undefined, undefined, undefined, undefined, undefined],
+        },
+      );
+    },
+  );
 
   NodeTest.it(
     "follows edits, and a frame put back in the page, at the reader's scroll position, its scrollbar shown while it scrolls",

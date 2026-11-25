@@ -7,7 +7,8 @@
 // An image a file path names is read by the shell (`images.ts`) and put in the
 // page as a `data:` URL; one that is not shows its alt text and why. A
 // Markdown file's inline code naming a file a click would open is drawn as the
-// thread view's file chip (`chips`), whose click the pane handles.
+// thread view's file chip (`chips`), whose click the pane handles, and so
+// is a frontmatter ref naming one (`frontmatter.ts`).
 import { parse, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 
 import { markdownTree, type SourceLocation } from "./markdown.ts";
@@ -151,14 +152,25 @@ function unshownImage(doc: Document, alt: string, src: string, reason: string): 
   return element;
 }
 
-/** A Markdown file's inline code spans' text (`markdown.ts` marks them), each once. */
-function inlineCodes(nodes: readonly Node[], codes: Set<string>): void {
+/** A Markdown file's inline code spans' text (`markdown.ts` marks them) and its frontmatter refs' (`frontmatter.ts`), each once. */
+function inlineCodes(nodes: readonly Node[], codes: Set<string>, refs: Set<string>): void {
   for (const node of nodes) {
     if (!("tagName" in node)) continue;
     const text = inlineCodeText(node);
+    const ref = text === undefined ? refText(node) : undefined;
     if (text !== undefined) codes.add(text.value);
-    else inlineCodes(node.childNodes, codes);
+    else if (ref !== undefined) refs.add(ref.value);
+    else inlineCodes(node.childNodes, codes, refs);
   }
+}
+
+/** The text of a Markdown file's frontmatter ref, none for another element. */
+function refText(node: DefaultTreeAdapterTypes.Element) {
+  if (!node.attrs.some((attr) => attr.name === "data-pult-ref")) return undefined;
+  const [text] = node.childNodes;
+  return node.childNodes.length === 1 && text?.nodeName === "#text"
+    ? (text as DefaultTreeAdapterTypes.TextNode)
+    : undefined;
 }
 
 /** The text of an inline code span of a Markdown file, none for another element. */
@@ -173,12 +185,13 @@ function inlineCodeText(node: DefaultTreeAdapterTypes.Element) {
 
 /**
  * The chip `markup` draws, built by the page's rules, in place of the inline
- * code `text`: `data-pult-file` the code's text, for the pane's click, and
- * its label, the `context-chip-label` slot's text, placed where the code was.
+ * code or ref `text`: `data-pult-file` the file it opens, for the pane's
+ * click, and its label, the `context-chip-label` slot's text, placed where
+ * the code or ref was.
  */
 function chip(
   doc: Document,
-  markup: string,
+  { markup, file }: Chip,
   text: DefaultTreeAdapterTypes.TextNode,
   built: Built,
 ): DocumentFragment {
@@ -186,7 +199,7 @@ function chip(
   build(doc, fragment, parseFragment(markup).childNodes, built);
   const root = fragment.firstElementChild;
   if (root === null) return fragment;
-  root.setAttribute("data-pult-file", text.value);
+  root.setAttribute("data-pult-file", file);
   const label = root.querySelector('[data-slot="context-chip-label"]')?.firstChild;
   const at = text.sourceCodeLocation;
   if (label?.nodeType === doc.TEXT_NODE && at)
@@ -194,10 +207,24 @@ function chip(
   return fragment;
 }
 
+/** A file chip's markup, and the file its click opens (`data-pult-file`). */
+export interface Chip {
+  readonly markup: string;
+  readonly file: string;
+}
+
+/** A Markdown file's inline code spans and frontmatter refs to draw as file chips: of their texts, the chips of those drawn. */
+export type Chips = (
+  codes: ReadonlyArray<string>,
+  refs: ReadonlyArray<string>,
+) => { readonly codes: ReadonlyMap<string, Chip>; readonly refs: ReadonlyMap<string, Chip> };
+
+const NO_CHIPS = { codes: new Map<string, Chip>(), refs: new Map<string, Chip>() };
+
 interface Built {
   scripts: boolean;
-  /** A Markdown file's inline code drawn as a file chip: its markup by the code's text. */
-  readonly chips: ReadonlyMap<string, string>;
+  /** A Markdown file's inline code and frontmatter refs drawn as file chips, by their text. */
+  readonly chips: ReturnType<Chips>;
   /** The page's images a file path or another URL names, by `src`. */
   readonly images: ReadonlyMap<string, ImageShown>;
   readonly origins: WeakMap<Text, SourceText>;
@@ -233,10 +260,16 @@ function build(doc: Document, parent: ParentNode, nodes: readonly Node[], built:
       name === "img" && node.namespaceURI === HTML_NAMESPACE
         ? node.attrs.find((attr) => attr.name === "src" && attr.namespace === undefined)?.value
         : undefined;
-    const code = built.chips.size === 0 ? undefined : inlineCodeText(node);
-    const chipped = code === undefined ? undefined : built.chips.get(code.value);
+    const code = built.chips.codes.size === 0 ? undefined : inlineCodeText(node);
+    const ref = built.chips.refs.size === 0 || code !== undefined ? undefined : refText(node);
+    const chipped =
+      code !== undefined
+        ? built.chips.codes.get(code.value)
+        : ref === undefined
+          ? undefined
+          : built.chips.refs.get(ref.value);
     if (chipped !== undefined) {
-      parent.append(chip(doc, chipped, code!, built));
+      parent.append(chip(doc, chipped, (code ?? ref)!, built));
       continue;
     }
     const image = src === undefined ? undefined : built.images.get(src);
@@ -294,8 +327,7 @@ export interface ReaderFrame {
       readonly wrapCode?: boolean;
       /** Reads an image a file path names, as an `img`'s `src` writes it; without it, none is shown. */
       readonly readImage?: (path: string) => Promise<ImageShown>;
-      /** A Markdown file's inline code spans to draw as file chips: of the spans' text, the chip's markup by the text of each drawn. */
-      readonly chips?: (codes: ReadonlyArray<string>) => ReadonlyMap<string, string>;
+      readonly chips?: Chips;
     },
   ): Promise<{ readonly scripts: boolean } | undefined>;
   /** The reader's selection in the page shown, with the lines of the source given to `show` it came from. */
@@ -475,7 +507,7 @@ export function createReaderFrame(options?: {
         markdown: boolean;
         wrapCode: boolean;
         readImage: ((path: string) => Promise<ImageShown>) | undefined;
-        chips: ((codes: ReadonlyArray<string>) => ReadonlyMap<string, string>) | undefined;
+        chips: Chips | undefined;
       }
     | undefined;
   // Renders still parsing, not yet in a document.
@@ -625,8 +657,9 @@ export function createReaderFrame(options?: {
       if (revision !== latest) return undefined;
       const { tree, origin } = parsed;
       const codes = new Set<string>();
-      if (markdown && chipsOf !== undefined) inlineCodes(tree.childNodes, codes);
-      const chips = codes.size === 0 ? new Map<string, string>() : chipsOf!([...codes]);
+      const refs = new Set<string>();
+      if (markdown && chipsOf !== undefined) inlineCodes(tree.childNodes, codes, refs);
+      const chips = codes.size + refs.size === 0 ? NO_CHIPS : chipsOf!([...codes], [...refs]);
       const built: Built = { scripts: false, images, chips, origins, origin };
       const html = tree.childNodes.find((node) => "tagName" in node && node.tagName === "html");
       if (html === undefined || !("tagName" in html)) return built;

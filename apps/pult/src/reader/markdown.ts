@@ -40,7 +40,8 @@ const processor = unified()
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(() => (tree: Root, file) => placeText(tree, String(file.value)))
   .use(() => (tree: Root) => markInlineCode(tree))
-  .use(rehypeRaw);
+  .use(rehypeRaw)
+  .use(() => (tree: Root) => unmarkRefs(tree));
 
 const LINE_BREAK = /\r\n?|\n/g;
 
@@ -88,6 +89,18 @@ function placeText(node: Root | Element, source: string): void {
       start: { line, column: 1, offset },
       end: { line: line + lines, column: 1, offset },
     };
+  }
+}
+
+/**
+ * Takes `data-pult-ref` off the body's raw HTML: only the frontmatter's refs
+ * are read from the document's folder (`frontmatter.ts`, `render.ts`).
+ */
+function unmarkRefs(node: Root | Element): void {
+  for (const child of node.children) {
+    if (child.type !== "element") continue;
+    delete child.properties.dataPultRef;
+    unmarkRefs(child);
   }
 }
 
@@ -274,6 +287,13 @@ body.pult-thread-view { display: block; width: auto; height: auto; box-sizing: b
 .pult-reader-frontmatter dt { font-weight: 600; }
 .pult-reader-frontmatter dd { flex: 1 1 0; min-width: 0; white-space: pre-wrap; }
 .pult-reader-frontmatter ul { list-style: disc; padding-inline-start: 1.25em; }
+.pult-reader-kind { display: inline-block; width: 1em; height: 1em; margin-inline-end: 0.4em; vertical-align: -0.125em; color: var(--muted-foreground); }
+.pult-reader-mono { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.9em; }
+.pult-reader-pills { display: inline-flex; flex-wrap: wrap; gap: 0.25em; white-space: normal; }
+.pult-reader-pill { padding: 0.05em 0.6em; border: 1px solid var(--border); border-radius: 9999px; font-size: 0.85em; }
+.pult-reader-pill:has(> [data-pult-file]) { padding: 0; border-color: transparent; font-size: inherit; }
+.pult-reader-json > summary { cursor: pointer; color: var(--muted-foreground); }
+.pult-reader-json > pre { margin: 0.25em 0 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.85em; white-space: pre-wrap; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--vscode-editor-background); }
 ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }

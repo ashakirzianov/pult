@@ -59,15 +59,19 @@ import {
 import { inlineCodeFilePathCandidate } from "@t3tools/shared/markdownLinks";
 
 import type { MountedReaderSelection } from "../../view/ReaderSelection.tsx";
+import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
 import { stripTarget } from "../composer/index.tsx";
-import { toHostPath } from "../files/paths.ts";
+import { toHostPath, toUriPath } from "../files/paths.ts";
 import { documentFileLinks, openDocumentFile, openedDocument } from "../threads/files.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
 import { ReaderFind } from "./find.ts";
+import { frontmatterRefPath } from "./frontmatter.ts";
 import { readImage } from "./images.ts";
 import {
+  type Chip,
+  type Chips,
   createReaderFrame,
   followImageClicks,
   type ImageShown,
@@ -362,35 +366,55 @@ class ReaderPane extends SimpleEditorPane {
     const following = new Map<string, () => void>();
     const theme = () =>
       getComputedStyle(document.documentElement).colorScheme.includes("dark") ? "dark" : "light";
-    const chips = (codes: ReadonlyArray<string>) => {
+    const chips: Chips = (codes, values) => {
       const files = codes.flatMap((code) => {
         const candidate = inlineCodeFilePathCandidate(code);
         return candidate === null ? [] : [{ code, position: splitFilePathPosition(candidate) }];
       });
+      // A frontmatter ref joined to the document's folder, its label the name it spells.
+      const kept = keptRoot(input.file.authority);
+      const refs = values.flatMap((value) => {
+        const named = frontmatterRefPath(
+          value,
+          input.file.path,
+          kept === null ? null : toUriPath(kept),
+        );
+        return named === undefined || inlineCodeFilePathCandidate(named.file) === null
+          ? []
+          : [{ value, ...named }];
+      });
       const suffixes = buildFileLinkParentSuffixByPath(files.map(({ position }) => position.path));
-      const drawn = new Map<string, string>();
+      const refSuffixes = buildFileLinkParentSuffixByPath(refs.map(({ named }) => named));
       // A path edited out of the file is followed no more.
-      const paths = new Set(files.map(({ position }) => position.path));
+      const paths = new Set([
+        ...files.map(({ position }) => position.path),
+        ...refs.map(({ file }) => file),
+      ]);
       for (const [path, stop] of following)
         if (!paths.has(path)) {
           stop();
           following.delete(path);
         }
-      for (const { code, position } of files) {
-        const ref = {
-          environmentId: input.file.authority,
-          threadId: input.file.path,
-          path: position.path,
-        };
-        if (!following.has(ref.path))
-          following.set(ref.path, documentFileLinks.subscribe(ref, changed));
+      /** Whether a click on `path` opens a file, the verdict followed. */
+      const opens = (path: string) => {
+        const ref = { environmentId: input.file.authority, threadId: input.file.path, path };
+        if (!following.has(path)) following.set(path, documentFileLinks.subscribe(ref, changed));
         documentFileLinks.ask(ref);
-        if (documentFileLinks.verdict(ref) === true)
-          drawn.set(
-            code,
-            view!.readerChip(position.path, fileLinkLabel(position, suffixes), theme()),
-          );
-      }
+        return documentFileLinks.verdict(ref) === true;
+      };
+      const drawn = { codes: new Map<string, Chip>(), refs: new Map<string, Chip>() };
+      for (const { code, position } of files)
+        if (opens(position.path))
+          drawn.codes.set(code, {
+            markup: view!.readerChip(position.path, fileLinkLabel(position, suffixes), theme()),
+            file: code,
+          });
+      for (const { value, named, file } of refs)
+        if (opens(file))
+          drawn.refs.set(value, {
+            markup: view!.readerChip(file, fileLinkLabel({ path: named }, refSuffixes), theme()),
+            file,
+          });
       return drawn;
     };
     const render = async () => {
@@ -421,6 +445,8 @@ class ReaderPane extends SimpleEditorPane {
     const themes = input.markdown
       ? StandaloneServices.get(IThemeService).onDidColorThemeChange(changed)
       : undefined;
+    // A frontmatter ref is joined from the xaxis root once the kept checkout is known.
+    const stopKept = input.markdown ? onDidChangeKept(changed) : undefined;
     await render();
     return {
       dispose: () => {
@@ -430,6 +456,7 @@ class ReaderPane extends SimpleEditorPane {
         changes.dispose();
         stopWrap?.();
         themes?.dispose();
+        stopKept?.();
         this.refresh = undefined;
         this.model = undefined;
         this.version = undefined;
