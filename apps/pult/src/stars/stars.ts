@@ -324,6 +324,27 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   };
 }
 
+/**
+ * The channels among `rows` (`cardRows`) that work, by slug: a channel's
+ * conversation works, or a thread below it does (`lineageWorks`), or one of
+ * its unsettled children works, or a thread below one does. One waiting on
+ * the user works no more than an idle one. Each is a planet on the Star's
+ * mark (`mark.ts`), and a channel's row shows its own.
+ */
+export function workingChannels<
+  Thread extends Pick<ShellThread, "environmentId" | "id" | "working">,
+>(
+  rows: CardRows<Thread>,
+  threads: ReadonlyArray<Pick<ShellThread, "environmentId" | "id" | "rootId" | "working">>,
+): ReadonlySet<string> {
+  const works = (thread: Thread) => thread.working || lineageWorks(thread, threads);
+  return new Set(
+    rows.channels.flatMap(({ slug, thread, children }) =>
+      (thread !== null && works(thread)) || children.some(works) ? [slug] : [],
+    ),
+  );
+}
+
 /** The threads below a conversation, its subagents' and theirs, as the store has them. */
 export function threadsBelow<Thread extends Pick<ShellThread, "environmentId" | "id" | "rootId">>(
   thread: Pick<ShellThread, "environmentId" | "id">,

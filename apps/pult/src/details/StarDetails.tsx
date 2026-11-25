@@ -11,7 +11,7 @@ import { StarSchedules } from "../panel/StarSchedules.tsx";
 import { starLook } from "../stars/look.ts";
 import { lookStillUrl, starMarks } from "../stars/mark.ts";
 import { canSleepChannel } from "../stars/model.ts";
-import type { CardRows, Star } from "../stars/stars.ts";
+import { type CardRows, type Star, workingChannels } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { hasUsageProviderIcon, UsageProviderIcon } from "../../view/usageProviders.tsx";
 import { detailsCards } from "./cards.ts";
@@ -172,14 +172,16 @@ function StarAsks({ star, now }: { star: Star; now: number }) {
   );
 }
 
-/** A channel's row's icon: the Star's mark, still, in the look its conversation alone would give the Star, asleep without one. */
+/** A channel's row's icon: the Star's mark, still, in the look its conversation alone would give the Star, asleep without one, with its own planet while it works (`workingChannels`). */
 function ChannelMark({
   star,
   thread,
+  works,
   threads,
 }: {
   star: Star;
   thread: ShellThread | null;
+  works: boolean;
   threads: ReadonlyArray<ShellThread>;
 }) {
   const marks = useSyncExternalStore(starMarks.subscribe, starMarks.get);
@@ -187,7 +189,7 @@ function ChannelMark({
   return (
     <img
       className="pult-channel-mark"
-      src={lookStillUrl(star.tint, look, marks)}
+      src={lookStillUrl(star.tint, look, works ? 1 : 0, marks)}
       alt=""
       draggable={false}
     />
@@ -242,6 +244,7 @@ function StarChannels({
   const starId = star.id;
   const subject = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.subject;
   const selected = subject?.kind === "star" ? subject.channel : null;
+  const working = workingChannels(rows, threads);
   return (
     <DetailsShelf name="channels">
       <ul className="pult-subagents-list" aria-label="Channels">
@@ -252,7 +255,12 @@ function StarChannels({
           ];
           const content = (
             <>
-              <ChannelMark star={star} thread={thread} threads={threads} />
+              <ChannelMark
+                star={star}
+                thread={thread}
+                works={working.has(slug)}
+                threads={threads}
+              />
               <span className="pult-subagent-title">{slug}</span>
               {thread === null ? (
                 <span className="pult-card-status pult-star-asleep">Asleep</span>

@@ -2,9 +2,9 @@ import type { State } from "./states.ts";
 
 // The flat Star: a mark in a 48-unit box, drawn as SVG in `currentColor`, flat, with no blur, glow or gradient. The disc is wakefulness (solid awake, a dimmed outline asleep), the halo behind it activity, and signs around it what involves someone else. `star.css` beside this is every state's look and motion, keyed on the mark's `data-state`, so setting that attribute moves the mark to another state with its motion carrying on. Nothing here depends on a page: Pult takes this directory as it is.
 //
-// `flatStar` answers the live mark: a `<span class="flat-star">` holding four SVGs stacked in its box: the halo, the body (the disc, the troubled ring and the brackets), delegating's orbit, and the waiting dot over it. The caller gives the span a width and a height, sets `color` (the mark's colour) and `--err` (the troubled ring's) on it or an ancestor, and moves it to another state by setting its `data-state`; nothing else. The waiting dot's gap is cut out of the mark, so it shows whatever lies behind. `flatStill` answers the same mark as one self-contained SVG, for an image: the caller hands it the stylesheet the image carries, `star.css` (it holds no markup characters) followed by a rule resolving `color` and `--err` on `.flat-star`, and nothing in it moves (the stylesheet pauses a `.still`), each circle of the halo standing where the live mark's stands at rest. Each call answers a mark with ids of its own (the gap's mask), so each mark shown in one document takes a call of its own: two copies of one answer would share the first one's mask, `url(#id)` taking the first in the document.
+// `flatStar` answers the live mark: a `<span class="flat-star">` holding four SVGs stacked in its box: the halo, the body (the disc, the troubled ring and the brackets), the orbit with its planets, and the waiting dot over it. The caller gives the span a width and a height, sets `color` (the mark's colour) and `--err` (the troubled ring's) on it or an ancestor, moves it to another state by setting its `data-state`, and changes its number of planets by setting its `data-planets` to `planets(count)`; nothing else. The orbit shows with one planet or more, in any state, and never with none. The waiting dot's gap is cut out of the mark, so it shows whatever lies behind. `flatStill` answers the same mark as one self-contained SVG, for an image: the caller hands it the stylesheet the image carries, `star.css` (it holds no markup characters) followed by a rule resolving `color` and `--err` on `.flat-star`, and nothing in it moves (the stylesheet pauses a `.still`), each circle of the halo standing where the live mark's stands at rest. Each call answers a mark with ids of its own (the gap's mask), so each mark shown in one document takes a call of its own: two copies of one answer would share the first one's mask, `url(#id)` taking the first in the document.
 //
-// Why four SVGs: every loop runs on the compositor, with no paint, only for an element whose parent is an `<svg>` root; under a `<g>`, even a plain one, Chromium (152, Electron 44's) animates it on the main thread and repaints the mark every frame. So each moving thing is a root's child carrying all its motion itself (a circle of the halo turns with `rotate` and with `transform`, its pulses added onto the latter through `animation-composition`), and what fades as a whole (the halo, the orbit) is a root of its own, its opacity on the `<svg>`; the waiting dot is one too only to stay over the orbit, as it was.
+// Why four SVGs: every loop runs on the compositor, with no paint, only for an element whose parent is an `<svg>` root; under a `<g>`, even a plain one, Chromium (152, Electron 44's) animates it on the main thread and repaints the mark every frame. So each moving thing is a root's child carrying all its motion itself (a circle of the halo turns with `rotate` and with `transform`, its pulses added onto the latter through `animation-composition`), and what fades as a whole (the halo, the orbit) is a root of its own, its opacity on the `<svg>`; the orbit's root also turns, carrying its planets, which move inside it only to ease to a new spacing; the waiting dot is one too only to stay over the orbit, as it was.
 
 // Anton's settings, 2026-11-10. The disc is a percentage of the box; the halo's size and its spread, the offsets, the pulse and the troubled ring's gap and weight are percentages of the disc's radius. Thinking's speed is a percentage of the halo's own turn and pulse, which talking shares; talking's of the extra turn and the pulse it adds, so the two differ in intensity alone.
 export const defaults = {
@@ -39,6 +39,12 @@ export const circles = [
 const calm = 3;
 
 const n = (value: number) => value.toFixed(2);
+
+// The most planets the orbit draws: more do not read at 16 px. `star.css` has a rule for each number up to it.
+export const mostPlanets = 4;
+
+// The mark's `data-planets` for `count` planets: the number the orbit draws, at most `mostPlanets`.
+export const planets = (count: number) => String(Math.max(0, Math.min(Math.floor(count), mostPlanets)));
 
 // The marks answered so far, which numbers each one's ids: `url(#id)` takes the first element in the document with that id, and a mark's mask follows its own state.
 let made = 0;
@@ -76,8 +82,8 @@ function parts(settings: Settings) {
   const ey = n(ear * Math.sin(0.61));
   const orbit = Math.min(R + 5.5, 21);
   const badge = n(R * Math.SQRT1_2);
-  // Delegating's two satellites, one path so one layer, each a circle of radius 2.5 on the orbit.
-  const sat = (x: number) => `M${n(x + 2.5)} 0A2.5 2.5 0 1 1 ${n(x - 2.5)} 0A2.5 2.5 0 1 1 ${n(x + 2.5)} 0`;
+  // The planets, each a circle of radius 2.5 on the orbit, the `--k`th of them, which the stylesheet spaces by the number shown; at rest the first stands at the top, so one or two keep clear of the brackets, which share the orbit's radius.
+  const planetCircles = Array.from({ length: mostPlanets }, (_, k) => `<circle class="dot planet" cy="-${n(orbit)}" r="2.5" style="--k: ${k}"/>`).join("");
   // The waiting dot's gap, a circle in a mask over the still parts, which it alone overlaps; never over anything that moves: Chromium draws a masked group holding an animation, even a paused one, at a lower resolution, blurred.
   const gap = `flat-star-gap-${++made}`;
   const ring = (R * (100 + settings.ringGap + settings.ringWeight / 2)) / 100;
@@ -89,6 +95,7 @@ function parts(settings: Settings) {
     "--pulse": ofRadius(settings.pulse),
     "--halo": String(settings.opacity / 100),
     "--ring-w": ofRadius(settings.ringWeight),
+    "--badge-at": `${n(50 + (R * Math.SQRT1_2 * 100) / 48)}% ${n(50 - (R * Math.SQRT1_2 * 100) / 48)}%`,
   };
   const style = Object.entries(properties)
     .map(([name, value]) => `${name}: ${value}`)
@@ -100,20 +107,20 @@ function parts(settings: Settings) {
       `<mask id="${gap}" maskUnits="userSpaceOnUse" x="-48" y="-48" width="96" height="96"><rect x="-48" y="-48" width="96" height="96" fill="#fff"/><g class="part badge"><circle cx="${badge}" cy="-${badge}" r="6" fill="#000"/></g></mask>` +
         `<g mask="url(#${gap})"><g class="core"><circle class="shell" r="${n(R - 1.25)}"/><circle class="disc" r="${n(R)}"/></g><g class="part tring"><circle class="ering" r="${n(ring)}"/></g><g class="part ears"><path class="line" d="M${ex} -${ey}A${n(ear)} ${n(ear)} 0 0 1 ${ex} ${ey}"/><path class="line" d="M-${ex} -${ey}A${n(ear)} ${n(ear)} 0 0 0 -${ex} ${ey}"/></g></g>`,
     ),
-    layer("part orbit", `<circle class="line faint" r="${n(orbit)}"/><path class="dot sats" d="${sat(orbit)}${sat(-orbit)}"/>`),
+    layer("part orbit", `<circle class="line faint" r="${n(orbit)}"/>${planetCircles}`),
     layer("over", `<g class="part badge"><circle class="dot" cx="${badge}" cy="-${badge}" r="4.4"/></g>`),
   ].join("");
   return { svgs, style };
 }
 
-// The live mark in a state, for a page: a span the caller sizes, its SVGs filling it.
-export function flatStar(state: State, settings = defaults) {
+// The live mark in a state with `count` planets, for a page: a span the caller sizes, its SVGs filling it.
+export function flatStar(state: State, count: number, settings = defaults) {
   const { svgs, style } = parts(settings);
-  return `<span class="flat-star" data-state="${state}" style="${style}">${svgs}</span>`;
+  return `<span class="flat-star" data-state="${state}" data-planets="${planets(count)}" style="${style}">${svgs}</span>`;
 }
 
-// The mark in a state as one SVG, still, for an image, carrying `stylesheet`: `star.css` and the colours.
-export function flatStill(state: State, stylesheet: string, settings = defaults) {
+// The mark in a state with `count` planets as one SVG, still, for an image, carrying `stylesheet`: `star.css` and the colours.
+export function flatStill(state: State, count: number, stylesheet: string, settings = defaults) {
   const { svgs, style } = parts(settings);
-  return `<svg xmlns="http://www.w3.org/2000/svg" class="flat-star still" viewBox="-24 -24 48 48" data-state="${state}" style="${style}"><style>${stylesheet}</style>${svgs}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="flat-star still" viewBox="-24 -24 48 48" data-state="${state}" data-planets="${planets(count)}" style="${style}"><style>${stylesheet}</style>${svgs}</svg>`;
 }

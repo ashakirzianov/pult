@@ -1,4 +1,4 @@
-/* The flat Star's look in each state and its motion, for the markup `star.ts` answers. It reads the colour from `color` and `--err` (the error colour) from its caller, and the settings from the custom properties `star.ts` sets on the mark. Only `transform`, `rotate` and `opacity` ever loop, and the halo's offset (`cx`) eases between states; every loop runs on an element whose parent is an SVG root, so the compositor runs it with no paint. A still inlines this stylesheet in its SVG, so it holds no markup characters. */
+/* The flat Star's look in each state and its motion, for the markup `star.ts` answers. It reads the colour from `color` and `--err` (the error colour) from its caller, and the settings from the custom properties `star.ts` sets on the mark. Only `transform`, `rotate` and `opacity` ever loop, and the halo's offset (`cx`) eases between states; every loop runs on an SVG root (the orbit's turn) or on an element whose parent is one, so the compositor runs it with no paint. A still inlines this stylesheet in its SVG, so it holds no markup characters. */
 .flat-star {
   display: block;
   position: relative;
@@ -148,15 +148,53 @@
 .flat-star[data-state="listening"] .ears {
   opacity: 1;
 }
-.flat-star[data-state="delegating"] .orbit {
-  opacity: 1;
-}
-.flat-star[data-state="delegating"] .sats {
-  animation: flat-star-spin 5s linear infinite;
+/* With planets, the brackets draw in to stirring's scale, off the orbit's radius, which they share, so a planet passes outside them. */
+.flat-star[data-state="listening"]:not([data-planets="0"]) .ears {
+  transform: scale(0.85);
 }
 .flat-star[data-state="waiting"] .badge {
   opacity: 1;
   transform: none;
+}
+/* A ring around the dot cut out of the whole mark while it waits, the dot's gap as the body's mask cuts it, so a planet passing under the dot goes behind it rather than merging with it: the dot's centre at --badge-at (percentages of the box), its radius 4.4 of the box's 48 units inside a gap of 6. */
+.flat-star[data-state="waiting"] {
+  mask-image: radial-gradient(12.5% 12.5% at var(--badge-at), #000 73.3%, transparent 73.3%, transparent 100%, #000 100%);
+}
+
+/* The orbit, in any state, with as many planets as `data-planets` says, up to `mostPlanets` in `star.ts`: --n of them, spaced evenly from the first, which stays put as the number changes while the others ease to their places; those past --n wait, unseen, where the first is. The orbit's root carries the turn, so the planets move only as they ease; hidden with none, like the halo, its turn paused. */
+.flat-star {
+  --n: 0;
+}
+.flat-star[data-planets="1"] {
+  --n: 1;
+}
+.flat-star[data-planets="2"] {
+  --n: 2;
+}
+.flat-star[data-planets="3"] {
+  --n: 3;
+}
+.flat-star[data-planets="4"] {
+  --n: 4;
+}
+.flat-star .orbit {
+  visibility: hidden;
+  transition:
+    opacity 0.6s ease,
+    visibility 0.6s;
+  animation: flat-star-spin 5s linear infinite paused;
+}
+.flat-star:is([data-planets="1"], [data-planets="2"], [data-planets="3"], [data-planets="4"]) .orbit {
+  opacity: 1;
+  visibility: visible;
+  animation-play-state: running;
+}
+.flat-star .planet {
+  opacity: clamp(0, var(--n) - var(--k), 1);
+  transform: rotate(calc(min(var(--k), var(--n)) * 360deg / max(var(--n), 1)));
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
 }
 
 /* Troubled: the disc as it is awake, and a still ring in the error colour around it. */
@@ -171,6 +209,10 @@
 .flat-star[data-state="troubled"] .tring {
   opacity: 1;
   transform: none;
+}
+/* The ring stands in for the orbit's faint line, which would run just outside it and double it; the planets ride on it. */
+.flat-star[data-state="troubled"] .orbit .faint {
+  opacity: 0;
 }
 
 /* With reduced motion, and in a still, nothing moves: every loop paused, so each circle of the halo stands where it stands at rest. */

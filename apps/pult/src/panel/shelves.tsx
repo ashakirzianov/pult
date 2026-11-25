@@ -30,7 +30,7 @@ const STAR_MARK = "pult-shelf-star-mark";
 
 /** The Star's mark awake, still, as a mask, so `ShelfIcon` draws it in its element's colour as a codicon is. */
 const starMarkMask = `url("data:image/svg+xml,${encodeURIComponent(
-  flatStill("awake", `${markCss}\n.flat-star { color: #000; --err: #000; }`),
+  flatStill("awake", 0, `${markCss}\n.flat-star { color: #000; --err: #000; }`),
 )}")`;
 
 /** Each shelf's label and icon, a codicon or `STAR_MARK`, its header's and its tray icon's (`TrayShelves.tsx`). */

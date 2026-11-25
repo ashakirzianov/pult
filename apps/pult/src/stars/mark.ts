@@ -7,7 +7,7 @@ import { flatStill } from "./flat/star.ts";
 import markCss from "./flat/star.css?raw";
 import { LOOK_STATES, type StarLook, starLook } from "./look.ts";
 import { starStore } from "./model.ts";
-import type { Star } from "./stars.ts";
+import { cardRows, type Star, workingChannels } from "./stars.ts";
 
 type Scheme = "light" | "dark";
 
@@ -36,19 +36,21 @@ export function tintColor(tint: string, scheme: Scheme): string {
 }
 
 /**
- * The Stars' looks, by id, and what the workbench theme gives their marks:
+ * The Stars' looks and their numbers of planets, the channels that work
+ * (`workingChannels`), by id, and what the workbench theme gives their marks:
  * its scheme, which picks the tint's colour, and its error colour, the
  * troubled ring's, which the tab's still resolves (the square's mark reads
  * `--vscode-errorForeground` itself).
  */
 export interface StarMarks {
   readonly looks: ReadonlyMap<string, StarLook>;
+  readonly planets: ReadonlyMap<string, number>;
   readonly scheme: Scheme;
   readonly error: string;
 }
 
 /** Dark 2026's, the shell's default theme (`src/configuration.json`), until the theme service is up. */
-let marks: StarMarks = { looks: new Map(), scheme: "dark", error: "#f48771" };
+let marks: StarMarks = { looks: new Map(), planets: new Map(), scheme: "dark", error: "#f48771" };
 const listeners = new Set<() => void>();
 let started = false;
 
@@ -56,16 +58,20 @@ function tell(): void {
   for (const listener of listeners) listener();
 }
 
-/** Derives every Star's look again, telling the listeners when one changed. */
+/** Whether two maps by Star id hold the same values. */
+const same = <Value>(left: ReadonlyMap<string, Value>, right: ReadonlyMap<string, Value>) =>
+  left.size === right.size && [...left].every(([id, value]) => right.get(id) === value);
+
+/** Derives every Star's look and number of planets again, telling the listeners when one changed. */
 function update(): void {
   const { threads } = threadStore.get();
-  const looks = new Map(starStore.get().map((star) => [star.id, starLook(star, threads)]));
-  if (
-    looks.size === marks.looks.size &&
-    [...looks].every(([id, look]) => marks.looks.get(id) === look)
-  )
-    return;
-  marks = { ...marks, looks };
+  const stars = starStore.get();
+  const looks = new Map(stars.map((star) => [star.id, starLook(star, threads)]));
+  const planets = new Map(
+    stars.map((star) => [star.id, workingChannels(cardRows(star, threads), threads).size]),
+  );
+  if (same(looks, marks.looks) && same(planets, marks.planets)) return;
+  marks = { ...marks, looks, planets };
   tell();
 }
 
@@ -101,14 +107,20 @@ export const starMarks = {
   },
 };
 
+/** The number of planets `star`'s mark shows now, by `starMarks`' latest: its channels that work. */
+export function starPlanetsOf(star: Pick<Star, "id">, current: StarMarks = marks): number {
+  return current.planets.get(star.id) ?? 0;
+}
+
 /** The look `star` wears now, by `starMarks`' latest; asleep until its threads are read. */
 export function starLookOf(star: Pick<Star, "id">, current: StarMarks = marks): StarLook {
   return current.looks.get(star.id) ?? "asleep";
 }
 
 /**
- * The tab's stills, by what each resolves: one URL per colour, error colour
- * and look, so the tab's label, which is keyed on it, changes only with them.
+ * The tab's stills, by what each resolves: one URL per colour, error colour,
+ * look and number of planets, so the tab's label, which is keyed on it,
+ * changes only with them.
  */
 const stills = new Map<string, string>();
 
@@ -117,12 +129,13 @@ const stills = new Map<string, string>();
  * background image (`src/threads/pane.tsx`): the mark's still, one SVG with
  * nothing moving, carrying the mark's stylesheet and its colours resolved.
  */
-function still(color: string, error: string, look: StarLook): string {
-  const key = JSON.stringify([color, error, look]);
+function still(color: string, error: string, look: StarLook, planets: number): string {
+  const key = JSON.stringify([color, error, look, planets]);
   const known = stills.get(key);
   if (known !== undefined) return known;
   const svg = flatStill(
     LOOK_STATES[look],
+    planets,
     `${markCss}\n.flat-star { color: ${color}; --err: ${error}; }`,
   );
   const url = `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -130,12 +143,17 @@ function still(color: string, error: string, look: StarLook): string {
   return url;
 }
 
-/** The still of `look` in `tint` and the theme's colours: a channel's row's (`src/details/StarDetails.tsx`). */
-export function lookStillUrl(tint: string, look: StarLook, current: StarMarks = marks): string {
-  return still(tintColor(tint, current.scheme), current.error, look);
+/** The still of `look` with `planets` in `tint` and the theme's colours: a channel's row's (`src/details/StarDetails.tsx`), its own planet or none. */
+export function lookStillUrl(
+  tint: string,
+  look: StarLook,
+  planets: number,
+  current: StarMarks = marks,
+): string {
+  return still(tintColor(tint, current.scheme), current.error, look, planets);
 }
 
-/** The still `star` shows now in the tab, by `starMarks`' latest: its look in its tint and the theme's colours. */
+/** The still `star` shows now, by `starMarks`' latest: its look and its planets in its tint and the theme's colours, wherever its mark is an image (the tab, a poster's card). */
 export function starStillUrl(star: Pick<Star, "id" | "tint">, current: StarMarks = marks): string {
-  return lookStillUrl(star.tint, starLookOf(star, current), current);
+  return lookStillUrl(star.tint, starLookOf(star, current), starPlanetsOf(star, current), current);
 }

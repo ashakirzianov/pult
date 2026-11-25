@@ -3,10 +3,10 @@ import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/act
 import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextview/browser/contextView.service";
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
-import { flatStar } from "../stars/flat/star.ts";
+import { flatStar, planets as planetsAttribute } from "../stars/flat/star.ts";
 import "../stars/flat/star.css";
 import { LOOK_STATES, LOOK_WORDS, type StarLook } from "../stars/look.ts";
-import { starLookOf, starMarks, tintColor } from "../stars/mark.ts";
+import { starLookOf, starMarks, starPlanetsOf, tintColor } from "../stars/mark.ts";
 import { type Star, starName } from "../stars/stars.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { starKey } from "./order.ts";
@@ -38,18 +38,22 @@ async function showStarMenu(star: Star, anchor: { x: number; y: number }): Promi
 /**
  * The Star's mark, drawn live (`src/stars/flat/`): the mark's span made once
  * per square, since each holds ids of its own, and a change of look set on its
- * `data-state`, so the halo's motion carries on from where it was. Its colour
- * is the tint's in the theme's scheme, set on the element around it.
+ * `data-state` and of its number of planets on its `data-planets`, so the
+ * halo's and the orbit's motion carry on from where they were. Its colour is
+ * the tint's in the theme's scheme, set on the element around it.
  */
-function StarMark({ look, color }: { look: StarLook; color: string }) {
+function StarMark({ look, planets, color }: { look: StarLook; planets: number; color: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null) return;
     const mark = element.querySelector(".flat-star");
-    if (mark === null) element.innerHTML = flatStar(LOOK_STATES[look]);
-    else mark.setAttribute("data-state", LOOK_STATES[look]);
-  }, [look]);
+    if (mark === null) element.innerHTML = flatStar(LOOK_STATES[look], planets);
+    else {
+      mark.setAttribute("data-state", LOOK_STATES[look]);
+      mark.setAttribute("data-planets", planetsAttribute(planets));
+    }
+  }, [look, planets]);
   return <span ref={ref} className="pult-star-mark" style={{ color }} aria-hidden />;
 }
 
@@ -85,7 +89,11 @@ export function StarCard({ star, selected }: { star: Star; selected: boolean }) 
           void showStarMenu(star, { x: event.clientX, y: event.clientY });
         }}
       >
-        <StarMark look={look} color={tintColor(star.tint, marks.scheme)} />
+        <StarMark
+          look={look}
+          planets={starPlanetsOf(star, marks)}
+          color={tintColor(star.tint, marks.scheme)}
+        />
         <span className="pult-star-name">{starName(star)}</span>
         <JumpHint rowKey={starKey(star.id)} />
       </div>

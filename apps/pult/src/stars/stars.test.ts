@@ -15,6 +15,7 @@ import {
   starsOf,
   starsSignature,
   wakeHome,
+  workingChannels,
 } from "./stars.ts";
 
 const CREATED = "2026-11-01T00:00:00.000Z";
@@ -48,11 +49,13 @@ const thread = (
     settled: boolean;
     settledAt: string | null;
     working: boolean;
+    rootId: string;
     tags: ReadonlyArray<string>;
   }> = {},
 ) => ({
   environmentId,
   id,
+  rootId: id,
   projectId: "star-project",
   parentId: null,
   settled: false,
@@ -379,6 +382,38 @@ NodeTest.describe("cardRows", () => {
           ["work", null, ["builder"]],
         ],
       });
+    },
+  );
+
+  NodeTest.test(
+    "counts a channel as working by its conversation, a thread below it, or an unsettled child or a thread below one",
+    () => {
+      const threads = [
+        conversation("u", "main"),
+        conversation("i", "idle"),
+        conversation("w", "busy", { working: true }),
+        conversation("s", "spawning"),
+        thread("a", "s-sub", CREATED, { rootId: "s", working: true }),
+        // A sleeping channel whose child works.
+        { ...child("builder", CREATED, ["pult:channel:review"]), working: true },
+        // A child with no channel tag belongs to the default channel; a thread below it works.
+        child("untagged", CREATED, []),
+        thread("a", "untagged-sub", CREATED, { rootId: "untagged", working: true }),
+        // A settled child's work counts for nothing.
+        { ...child("done", CREATED, ["pult:channel:idle"], true), working: true },
+      ];
+      const star = starWith(
+        [open("main", "u"), open("idle", "i"), open("busy", "w"), open("spawning", "s")],
+        threads,
+      );
+      NodeAssert.deepEqual([...workingChannels(cardRows(star, threads), threads)].toSorted(), [
+        "busy",
+        "main",
+        "review",
+        "spawning",
+      ]);
+      const idle = threads.map((each) => ({ ...each, working: false }));
+      NodeAssert.equal(workingChannels(cardRows(star, idle), idle).size, 0);
     },
   );
 });
