@@ -5,6 +5,8 @@
   font-size: 13px;
   /* The one radius of the panels' cards and shelves and the composer. */
   --pult-radius: 8px;
+  /* The thread view's bar's height (view/shell.css), here since a file's Details panel lines up with it before any thread view has loaded. */
+  --pult-bar-height: 35px;
 }
 
 html,

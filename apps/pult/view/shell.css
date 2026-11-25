@@ -166,9 +166,9 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 
 /* The bar's measures, shared with the composer and the timeline: the
    message's text inset by upstream's padding inside the box's 1px edge,
-   and the bar's entries from the box's left edge to its right. */
+   and the bar's entries from the box's left edge to its right. Its height,
+   `--pult-bar-height`, is the page's (`src/style.css`). */
 .pult-thread-view {
-  --pult-bar-height: 35px;
   --pult-bar-item-padding: 6px;
   --pult-bar-gap: 2px;
   --pult-bar-button-size: 26px;
