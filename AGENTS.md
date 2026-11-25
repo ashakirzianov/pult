@@ -44,6 +44,7 @@ This repository is the **Pult track**'s (xaxis `pult/about`), beside `../pult-st
 - Node 26 and pnpm 12, through `vp`. `vp i` installs; a worktree gets it from the `t3.json` setup action (`scripts/setup-worktree.ts`), so wait for `.t3/setup-done` rather than racing it.
 - The shell: `apps/pult/AGENTS.md`, Running. The server and upstream's apps: `docs/upstream/AGENTS.md`, Dev servers.
 - `vp run typecheck` in the packages you changed, `vp lint` and knip over them; a hook point in `apps/web` is checked by both `apps/web`'s and `apps/pult`'s typecheck. **Do not run repo-wide checks** unless asked. There is no CI of ours yet; upstream's inherited workflows are disabled.
+- On macOS, eight of upstream's `apps/server` tests are red on upstream's own tree too, so do not chase them: three in `UsageService.test.ts` and one in `AgentSessionScanner.test.ts` (`/var` is a symlink to `/private/var`), three bulk-staging cases in `GitVcsDriver.test.ts` (Apple Git nests the pack directory), and the background-lane case in `GitVcsDriverCore.test.ts` (a race in the test). Verdicts: `pult/tasks/server-tests-red-on-main-on-this-mac.task`.
 
 ## Upstream merges
 
