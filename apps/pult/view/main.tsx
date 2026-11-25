@@ -33,6 +33,7 @@ import {
 import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./PreviewMount.tsx";
 import { mountReaderSelection } from "./ReaderSelection.tsx";
 import { readerChip } from "./readerChip.tsx";
+import { showReaderImage } from "./ReaderImage.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
 import { toggleTerminal } from "./terminal.ts";
 import {
@@ -97,6 +98,8 @@ export interface ThreadViewMounts {
   mountReaderSelection: typeof mountReaderSelection;
   /** The thread view's file chip as markup, for the reader's frame (`readerChip.tsx`). */
   readerChip: typeof readerChip;
+  /** The thread view's lightbox for an image of a reader's page (`ReaderImage.tsx`). */
+  showImage: typeof showReaderImage;
   /** The chat's line wrap for code, which the reader's code follows. */
   codeWrap(): boolean;
   /** Calls `listener` when `codeWrap` changes; returns its removal. */
@@ -181,6 +184,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     mountPreview,
     mountReaderSelection,
     readerChip,
+    showImage: showReaderImage,
     codeWrap: () => getClientSettings().wordWrap,
     onDidChangeCodeWrap: (listener) => {
       let wrap = getClientSettings().wordWrap;

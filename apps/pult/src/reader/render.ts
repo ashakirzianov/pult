@@ -808,3 +808,49 @@ function guard(doc: Document, element: HTMLIFrameElement): void {
     if (!element.dispatchEvent(forwarded)) event.preventDefault();
   });
 }
+
+/** An image the page shows, as the lightbox takes it: its `data:` URL and its alt text, else "image", as a message's image is named. */
+export interface LightboxImage {
+  readonly src: string;
+  readonly name: string;
+}
+
+/** The page's own images that may open on a click: those outside a link, which takes the click. */
+const OPENS = "img[src]:not(a img)";
+
+/** The images that open: those the page shows, whose `src`, as `kept` reads it, is a `data:` URL. */
+const openingImages = (doc: Document) =>
+  [...doc.querySelectorAll<HTMLImageElement>(OPENS)].filter((image) =>
+    image.src.startsWith("data:"),
+  );
+
+/**
+ * Calls `open` on a plain click on an image of `doc` that opens
+ * (`openingImages`), with every such image of the page in order and the
+ * clicked one's index, and shows the zoom cursor over those `OPENS` names, a sheet adopted by the document, which
+ * outlives each render, under the page's own rules. A refused image is
+ * text, so it never opens; a click while a selection stands is the
+ * selection's (Cite's).
+ */
+export function followImageClicks(
+  doc: Document,
+  open: (images: readonly LightboxImage[], index: number) => void,
+): void {
+  const view = doc.defaultView!;
+  const sheet = new view.CSSStyleSheet();
+  sheet.replaceSync(`:where(${OPENS}) { cursor: zoom-in; }`);
+  doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+  doc.addEventListener("click", (event) => {
+    const image = event.target as HTMLImageElement | null;
+    if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+      return;
+    // A click on an image leaves a selection standing, and a drag's click lands on no image.
+    if (doc.getSelection()?.isCollapsed === false || image?.matches?.(OPENS) !== true) return;
+    const images = openingImages(doc);
+    if (!images.includes(image)) return;
+    open(
+      images.map((shown) => ({ src: shown.src, name: shown.alt || "image" })),
+      images.indexOf(image),
+    );
+  });
+}

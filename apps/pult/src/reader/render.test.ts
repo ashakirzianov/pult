@@ -326,6 +326,146 @@ NodeTest.describe("the reader's frame", () => {
     },
   );
 
+  NodeTest.it(
+    "opens a shown image on a plain click, with the page's others, but not a linked or refused one, nor over a selection",
+    async () => {
+      const before = requests.length;
+      await page.evaluate(
+        async ({ png, leak }) => {
+          const opened: unknown[] = [];
+          (window as unknown as { opened: unknown[] }).opened = opened;
+          const frame = window.reader.createReaderFrame({
+            onDocument: (doc) =>
+              window.reader.followImageClicks(doc, (images, index) =>
+                opened.push({
+                  images: images.map(({ src, name }) => [name, src === png]),
+                  index,
+                }),
+              ),
+          });
+          frame.element.id = "images";
+          frame.element.style.cssText = "width: 600px; height: 400px";
+          document.body.append(frame.element);
+          await frame.show(
+            [
+              `Some text before ![first](${png}) and after.`,
+              "",
+              `[![linked](${png})](#top)`,
+              "",
+              `![second](${png}) ![](${leak}/refused.png) <img alt="written" src=" DATA:${png.slice(5)}">`,
+            ].join("\n"),
+            { markdown: true },
+          );
+          // A 1-pixel image is too small to take a click.
+          for (const image of frame.element.contentDocument!.images)
+            image.style.cssText = "width: 40px; height: 40px";
+        },
+        { png: PNG, leak: LEAK },
+      );
+      const frame = page.frameLocator("#images");
+      const opened = () => page.evaluate(() => (window as unknown as { opened: unknown[] }).opened);
+      const collapsed = () =>
+        frame
+          .locator("p")
+          .first()
+          .evaluate((p) => p.ownerDocument.getSelection()!.isCollapsed);
+      const cursor = (selector: string) =>
+        frame.locator(selector).evaluate((node) => getComputedStyle(node).cursor);
+      NodeAssert.deepEqual(
+        [await cursor('img[alt="first"]'), await cursor('img[alt="linked"]')],
+        ["zoom-in", "pointer"],
+      );
+
+      await frame.locator('img[alt="second"]').click();
+      await frame.locator('img[alt="linked"]').click();
+      await frame.locator(".pult-reader-unshown-image").click();
+      NodeAssert.deepEqual(await opened(), [
+        {
+          images: [
+            ["first", true],
+            ["second", true],
+            ["written", true],
+          ],
+          index: 1,
+        },
+      ]);
+
+      // A `src` written in another case or spaced, which the page shows, opens too.
+      await frame.locator('img[alt="written"]').click();
+      NodeAssert.equal(((await opened()) as Array<{ index: number }>)[1]?.index, 2);
+
+      // A click with a selection standing is the selection's, which it leaves standing; once it is gone, a click opens.
+      await frame
+        .locator("p")
+        .first()
+        .evaluate((paragraph) => {
+          const range = paragraph.ownerDocument.createRange();
+          range.selectNodeContents(paragraph.firstChild!);
+          paragraph.ownerDocument.getSelection()!.removeAllRanges();
+          paragraph.ownerDocument.getSelection()!.addRange(range);
+        });
+      await frame.locator('img[alt="first"]').click();
+      NodeAssert.equal((await opened()).length, 2);
+      NodeAssert.equal(await collapsed(), false);
+      await frame
+        .locator("p")
+        .first()
+        .click({ position: { x: 2, y: 5 } });
+      NodeAssert.equal(await collapsed(), true);
+      await frame.locator('img[alt="first"]').click();
+      NodeAssert.equal((await opened()).length, 3);
+
+      // A drag selecting text that ends on an image.
+      const text = await page.evaluate(() => {
+        const element = document.getElementById("images") as HTMLIFrameElement;
+        const range = element.contentDocument!.createRange();
+        range.selectNodeContents(element.contentDocument!.querySelector("p")!.firstChild!);
+        const [frameBox, textBox] = [
+          element.getBoundingClientRect(),
+          range.getBoundingClientRect(),
+        ];
+        return {
+          x: frameBox.left + textBox.left,
+          y: frameBox.top + textBox.top,
+          height: textBox.height,
+        };
+      });
+      const image = (await frame.locator('img[alt="first"]').boundingBox())!;
+      // Playwright's own drag waits on a script in every frame, which this one runs none of.
+      const input = await page.context().newCDPSession(page);
+      const mouse = (
+        type: "mousePressed" | "mouseMoved" | "mouseReleased",
+        x: number,
+        y: number,
+        buttons: number,
+      ) =>
+        input.send("Input.dispatchMouseEvent", {
+          type,
+          x,
+          y,
+          button: "left",
+          buttons,
+          clickCount: 1,
+        });
+      await mouse("mousePressed", text.x + 2, text.y + text.height / 2, 1);
+      for (const step of [0.25, 0.5, 0.75, 1])
+        await mouse(
+          "mouseMoved",
+          text.x + 2 + (image.x + image.width / 2 - text.x - 2) * step,
+          text.y + text.height / 2 + (image.y + image.height / 2 - text.y - text.height / 2) * step,
+          1,
+        );
+      await mouse("mouseReleased", image.x + image.width / 2, image.y + image.height / 2, 0);
+      await input.detach();
+      NodeAssert.equal((await opened()).length, 3);
+      NodeAssert.equal(await collapsed(), false);
+
+      await page.evaluate(() => document.getElementById("images")!.remove());
+      await page.evaluate(() => fetch("http://leak.test/control").catch(() => undefined));
+      NodeAssert.deepEqual(requests.slice(before), [`${LEAK}/control`]);
+    },
+  );
+
   NodeTest.it("tells a page with scripts from one with data blocks", async () => {
     const scripts = await page.evaluate(
       async (sources) => {

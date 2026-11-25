@@ -67,7 +67,12 @@ import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
 import { ReaderFind } from "./find.ts";
 import { readImage } from "./images.ts";
-import { createReaderFrame, type ImageShown, type ReaderFrame } from "./render.ts";
+import {
+  createReaderFrame,
+  followImageClicks,
+  type ImageShown,
+  type ReaderFrame,
+} from "./render.ts";
 import type { Passage } from "./selection.ts";
 
 const READER_ID = "pult.shell.reader";
@@ -237,6 +242,11 @@ class ReaderPane extends SimpleEditorPane {
     onDocument: (doc) => {
       doc.addEventListener("contextmenu", (event) => this.showContextMenu(event));
       doc.addEventListener("click", (event) => this.openChip(event));
+      // An image opens in the thread view's lightbox, as a message's does.
+      followImageClicks(
+        doc,
+        (images, index) => void threadView().then((view) => view.showImage(images, index)),
+      );
       doc.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || !this.find?.opened) return;
         event.preventDefault();
