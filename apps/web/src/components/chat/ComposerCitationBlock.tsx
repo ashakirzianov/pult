@@ -463,9 +463,9 @@ function CitationBlock({
 
   /**
    * Puts the editor's caret before or after the block, on its bar where
-   * the block has its line to itself (`citationCaret`); with `newLine`, on
-   * an empty line after it, the next line when that is empty, else a new
-   * one.
+   * the block has its line to itself (`citationCaret`); with `newLine`, at
+   * the start of the next line when the block ends its line and one
+   * exists (on the bar of a citation that opens it), else on a new one.
    */
   const leave = (side: "before" | "after", newLine = false) => {
     if (comment.trim() === "") {
@@ -485,8 +485,8 @@ function CitationBlock({
       tr.setSelection(
         TextSelection.create(doc, side === "before" ? canonicalCaret(doc, found.pos) : end),
       );
-    } else if (atLineEnd && next?.type.name === "paragraph" && next.content.size === 0) {
-      tr.setSelection(TextSelection.create(doc, $pos.after(1) + 1));
+    } else if (atLineEnd && next?.type.name === "paragraph") {
+      tr.setSelection(TextSelection.create(doc, canonicalCaret(doc, $pos.after(1) + 1)));
     } else {
       tr.split(end).setSelection(TextSelection.create(tr.doc, end + 2));
     }

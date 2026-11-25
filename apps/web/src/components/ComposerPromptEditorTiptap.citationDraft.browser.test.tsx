@@ -133,3 +133,23 @@ it("types into a citation's comment in a scrolled composer without a page error"
     window.removeEventListener("error", onError);
   }
 });
+
+// Pult: Enter out of a citation's comment goes to the next line when one is there; when that line opens with a citation, to the bar between the two.
+it("adds no line on Enter out of a comment when a citation follows", async () => {
+  const editorRef = createRef<ComposerPromptEditorHandle>();
+  const commented = (comment: string) =>
+    serializeAssistantCitation(withAssistantCitationComment(citation, comment));
+  const twoCitations = `${commented("one")}\n${commented("two")}`;
+  await using screen = await render(
+    <Composer question={false} editorRef={editorRef} initialPrompt={twoCitations} />,
+  );
+  const drafts = () => screen.container.querySelector("output")?.dataset;
+
+  const first = page.getByLabelText("Comment on the quoted text").first();
+  await first.click();
+  await expect.element(first).toHaveFocus();
+  await userEvent.keyboard("{Enter}");
+
+  await expect.element(first).not.toHaveFocus();
+  expect(drafts()?.prompt).toBe(twoCitations);
+});
