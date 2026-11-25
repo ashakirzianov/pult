@@ -9,6 +9,7 @@ import {
   ProviderInstanceId,
   RunId,
 } from "@t3tools/contracts";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as TestClock from "effect/testing/TestClock";
 
 // The real loader, bundled list, MCP server and routes, which the plugin itself never imports.
@@ -347,5 +348,15 @@ it.effect(
         tool("pult_ask_list", scopeOf({ client: "full-access" }), {}),
       );
       expect(Exit.isFailure(outside) && Cause.pretty(outside.cause)).toContain("not found");
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+    }).pipe(
+      Effect.scoped,
+      // A server's environment, not the process's: an agent's shell carries its desktop app's.
+      Effect.provide(
+        Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+        ),
+      ),
+    ),
 );

@@ -14,6 +14,7 @@ import {
   type ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as TestClock from "effect/testing/TestClock";
@@ -21,11 +22,14 @@ import * as TestClock from "effect/testing/TestClock";
 // The real runtime, loader, bundled list and routes, which the plugin itself never imports.
 import * as AnalyticsService from "../../../apps/server/src/telemetry/AnalyticsService.ts";
 import * as CheckpointStore from "../../../apps/server/src/checkpointing/CheckpointStore.ts";
+import * as DesktopAppUpdate from "../../../apps/server/src/desktopUpdate/DesktopAppUpdate.ts";
+import * as DesktopTelemetryReceiver from "../../../apps/server/src/resourceTelemetry/DesktopTelemetryReceiver.ts";
 import * as DeviceService from "../../../apps/server/src/device/DeviceService.ts";
 import * as DocumentText from "../../../apps/server/src/provider/DocumentText.ts";
 import * as ManagedEndpoint from "../../../apps/server/src/cloud/ManagedEndpointRuntime.ts";
 import * as GitVcsDriver from "../../../apps/server/src/vcs/GitVcsDriver.ts";
 import * as GitWorkflow from "../../../apps/server/src/git/GitWorkflowService.ts";
+import * as HostPowerMonitor from "../../../apps/server/src/background/HostPowerMonitor.ts";
 import * as ManagedPolicy from "../../../apps/server/src/policy/ManagedPolicy.ts";
 import * as McpSessions from "../../../apps/server/src/mcp/McpSessionRegistry.testkit.ts";
 import * as ModelManifest from "../../../apps/server/src/provider/ModelManifest.ts";
@@ -78,6 +82,11 @@ import {
 } from "./host.ts";
 import * as Stars from "./stars/stars.ts";
 import { at, fakeServer, run } from "./stars/testing.ts";
+
+/** A server's environment, not the process's: an agent's shell carries its desktop app's. */
+const serverEnv = (env: Record<string, string>) =>
+  ConfigProvider.layer(ConfigProvider.fromEnv({ env }));
+const services = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, serverEnv({}));
 
 const SESSIONS: Record<string, ReadonlyArray<AuthEnvironmentScope>> = {
   "Bearer reader": [AuthOrchestrationReadScope],
@@ -157,7 +166,8 @@ it.effect("the plugin activates over the production orchestration services", () 
         ),
       ),
       Layer.provide(SqlitePersistence.layerMemory),
-      Layer.provide(ServerSettings.layerTest()),
+      // Merged out, as the server merges its settings out beside the runtime.
+      Layer.provideMerge(ServerSettings.layerTest()),
       Layer.provide(platform),
     );
     const context = yield* Layer.build(runtime);
@@ -171,6 +181,12 @@ it.effect("the plugin activates over the production orchestration services", () 
             // Not the runtime's either: the server's source control layers sit beside it.
             Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
             Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+            // Nor its desktop layers, which install-at-rest asks for: one receiver under both, as the server has it.
+            Layer.merge(HostPowerMonitor.layer, DesktopAppUpdate.layer).pipe(
+              Layer.provideMerge(DesktopTelemetryReceiver.layer),
+              Layer.provide(Layer.succeedContext(context)),
+              Layer.provide(platform),
+            ),
           ),
         ),
       ),
@@ -182,7 +198,14 @@ it.effect("the plugin activates over the production orchestration services", () 
   }).pipe(
     Effect.scoped,
     Effect.provideService(ServerActivation.ServerActivation, Effect.never),
-    Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    // Install-at-rest on, so the services it asks for are resolved here whatever the shell carries.
+    Effect.provide(
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        serverEnv({ T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST: "true" }),
+      ),
+    ),
   ),
 );
 
@@ -441,7 +464,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     yield* write(`${folder}/2026-11-12T09-00-00Z-thread_2.md`, "thread:2");
     expect((yield* byThread("thread:2")).status).toBe(500);
     expect((yield* send("POST", "/stars/upkeep", "writer")).body.stars).toHaveLength(1);
-  }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+  }).pipe(Effect.scoped, Effect.provide(services)),
 );
 
 const mcpClient = McpSchema.McpServerClient.of({
@@ -635,7 +658,7 @@ it.effect(
       expect(yield* refusal(scopeOf({ thread: "worker" }), { star: "vega-id", message: "x" })).toBe(
         "runtime_mode_escalation_denied",
       );
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+    }).pipe(Effect.scoped, Effect.provide(services)),
 );
 
 it.effect(
@@ -761,7 +784,7 @@ it.effect(
       );
       expect(invalid).toBeInstanceOf(McpSchema.InvalidParams);
       expect(server.threads.messages.length).toBe(count);
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+    }).pipe(Effect.scoped, Effect.provide(services)),
 );
 
 it.effect(
@@ -861,7 +884,7 @@ it.effect(
       // The request's fiber settles the conversation once the turn has ended.
       yield* server.threads.settled(1);
       expect(server.threads.settles).toEqual([own.shell.id]);
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+    }).pipe(Effect.scoped, Effect.provide(services)),
 );
 
 it.effect(
@@ -928,7 +951,7 @@ it.effect(
       expect(yield* call(scopeOf({ thread: fenced.shell.id }))).toEqual({
         refused: "capability_denied",
       });
-    }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+    }).pipe(Effect.scoped, Effect.provide(services)),
 );
 
 it.effect("pult_usage_limits refreshes stale limits, then paces each window on working days", () =>
@@ -1206,5 +1229,5 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window on w
     expect(friday.accounts[0].windows).toEqual([
       expect.objectContaining({ id: "seven_day", evenPercent: 73.1, warning: false }),
     ]);
-  }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
+  }).pipe(Effect.scoped, Effect.provide(services)),
 );
