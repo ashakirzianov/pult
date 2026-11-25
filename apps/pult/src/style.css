@@ -462,6 +462,7 @@ html.dark[data-theme-id="t3-chat"] {
    element keeps the `normal` scheme with a white canvas behind the page, as a browser tab shows a page
    with no background of its own; a page declaring a dark scheme gets Chromium's opaque dark backdrop. */
 .pult-reader {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;

@@ -19,6 +19,7 @@ import {
 } from "@codingame/monaco-vscode-api";
 import { toAction } from "@codingame/monaco-vscode-api/vscode/vs/base/common/actions";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
+import { isMacintosh } from "@codingame/monaco-vscode-api/vscode/vs/base/common/platform";
 import { isCodeEditor } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorBrowser";
 import { basename, isEqual } from "@codingame/monaco-vscode-api/vscode/vs/base/common/resources";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
@@ -64,6 +65,7 @@ import { documentFileLinks, openDocumentFile, openedDocument } from "../threads/
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
+import { ReaderFind } from "./find.ts";
 import { readImage } from "./images.ts";
 import { createReaderFrame, type ImageShown, type ReaderFrame } from "./render.ts";
 import type { Passage } from "./selection.ts";
@@ -235,14 +237,24 @@ class ReaderPane extends SimpleEditorPane {
     onDocument: (doc) => {
       doc.addEventListener("contextmenu", (event) => this.showContextMenu(event));
       doc.addEventListener("click", (event) => this.openChip(event));
+      doc.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !this.find?.opened) return;
+        event.preventDefault();
+        this.find.hide();
+      });
       // Focus inside the frame never reaches the workbench's own tracking, so its group is
       // activated here, and Cite reads this reader rather than another group's editor.
       doc.defaultView?.addEventListener("focus", () =>
         StandaloneServices.get(IEditorGroupsService).activateGroup(this.group),
       );
     },
-    onRendered: (doc) => this.followSelection(doc),
+    onRendered: (doc) => {
+      this.followSelection(doc);
+      this.find?.refresh();
+    },
   });
+  /** The find bar, made with the pane's element. */
+  private find: ReaderFind | undefined;
   /** The thread's selection action on the frame's document, mounted on its first render. */
   private selectionAction:
     | { readonly doc: Document; readonly mounted: Promise<MountedReaderSelection> }
@@ -264,8 +276,45 @@ class ReaderPane extends SimpleEditorPane {
     element.className = "pult-reader";
     this.notice.className = "pult-reader-notice";
     this.notice.hidden = true;
-    element.append(this.notice, this.frame.element);
+    this.find = new ReaderFind(this.frame, element, () => this.focus());
+    this._register(this.find);
+    element.append(this.notice, this.frame.element, this.find.getDomNode());
+    // The frame passes its chords to its element (`render.ts`), so they reach here from inside it too.
+    element.addEventListener("keydown", (event) => this.findKey(event));
     return element;
+  }
+
+  /**
+   * The find bar's keys, ahead of the workbench's keybindings, which the
+   * reader's page has no editor for: Cmd+F opens it, with the page's
+   * selection as its text; while it is open Cmd+G and Cmd+Shift+G, and Enter
+   * and Shift+Enter in its input, go to the next and the previous match.
+   */
+  private findKey(event: KeyboardEvent): void {
+    const find = this.find!;
+    const chord = isMacintosh
+      ? event.metaKey && !event.ctrlKey && !event.altKey
+      : event.ctrlKey && !event.metaKey && !event.altKey;
+    const key = event.key.toLowerCase();
+    let act: () => void;
+    if (chord && !event.shiftKey && key === "f") {
+      const selected = this.frame.selection()?.text.replace(/\s+/g, " ").trim();
+      act = () => find.open(selected === "" ? undefined : selected);
+    } else if (find.opened && chord && key === "g") act = () => find.find(event.shiftKey);
+    else if (
+      find.opened &&
+      event.key === "Enter" &&
+      !event.isComposing &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      find.getFindInputDomNode().contains(event.target as Node)
+    )
+      act = () => find.find(event.shiftKey);
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
+    act();
   }
 
   async renderInput(input: EditorInput, options?: IEditorOptions) {
@@ -365,6 +414,7 @@ class ReaderPane extends SimpleEditorPane {
     await render();
     return {
       dispose: () => {
+        this.find?.dismiss();
         clearTimeout(timer);
         for (const stop of following.values()) stop();
         changes.dispose();
@@ -526,6 +576,11 @@ class ReaderPane extends SimpleEditorPane {
 
   override focus(): void {
     this.frame.element.contentWindow?.focus();
+  }
+
+  override layout(dimension: Parameters<SimpleEditorPane["layout"]>[0]): void {
+    super.layout(dimension);
+    this.find?.layout(dimension.width);
   }
 
   override setVisible(visible: boolean): void {

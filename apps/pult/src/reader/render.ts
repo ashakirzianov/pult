@@ -308,6 +308,115 @@ export interface ReaderFrame {
   topLine(): number | undefined;
   /** Scrolls the page so the text of the source's `line`, else the nearest earlier text, is at the top of the view: the page shown, or the next one rendered while the frame loads. */
   reveal(line: number): void;
+  /**
+   * Finds `query` in the page shown (`foldedText`), case-insensitive, its
+   * whitespace collapsed, and highlights the matches, the current one in
+   * colours of its own: the first at or after the current match of the last
+   * find while it is still in the page, else the same place in the list as
+   * it (the page rendered again), else the selection, else the view's top.
+   * `reveal` scrolls the current match into view. None for an empty query.
+   */
+  find(query: string, options: { readonly colors: FindColors; readonly reveal: boolean }): Found;
+  /** Moves the current match `by` one, next or previous, wrapping, and scrolls it into view. */
+  findStep(by: 1 | -1): Found;
+  /** Takes the find's highlights off the page. */
+  clearFind(): void;
+}
+
+/** The matches of a find in the page: how many, and the current one's index, -1 for none. */
+export interface Found {
+  readonly count: number;
+  readonly current: number;
+}
+
+/** The background colours of a find's matches, as CSS colours. */
+export interface FindColors {
+  readonly match: string;
+  readonly current: string;
+}
+
+const FIND_HIGHLIGHT = "pult-find";
+const FIND_CURRENT = "pult-find-current";
+
+/** A display that keeps its element in the line of the text around it. */
+const INLINE_DISPLAY = /^(?:inline|contents|ruby)/;
+
+/** A character lower-cased where that keeps it one code unit, so a match's place is the page's. */
+const foldChar = (char: string) => {
+  const lower = char.toLowerCase();
+  // A word's final sigma is the same letter as its other sigma, which `Σ` lower-cases to.
+  if (lower === "ς") return "σ";
+  return lower.length === 1 ? lower : char;
+};
+
+/** `query` as a find matches it: lower-cased and its whitespace runs one space. */
+const foldQuery = (query: string) => query.replace(/\s+/g, " ").split("").map(foldChar).join("");
+
+/**
+ * The page's text as a find reads it: its visible text nodes in document
+ * order, lower-cased, each run of whitespace one space, and a space where a
+ * line break or a block of the layout separates two texts; each character
+ * with the text node and the offsets in it it stands for (a space between
+ * two texts, the end of the earlier one).
+ */
+function foldedText(doc: Document) {
+  let text = "";
+  const nodes: Text[] = [];
+  const node: number[] = [];
+  const start: number[] = [];
+  const end: number[] = [];
+  const view = doc.defaultView!;
+  const blocks = new Map<Element, Element | null>();
+  const blockOf = (element: Element | null): Element | null => {
+    if (element === null) return null;
+    const known = blocks.get(element);
+    if (known !== undefined) return known;
+    const block = INLINE_DISPLAY.test(view.getComputedStyle(element).display)
+      ? blockOf(element.parentElement)
+      : element;
+    blocks.set(element, block);
+    return block;
+  };
+  const separate = () => {
+    if (text === "" || text.endsWith(" ")) return;
+    const last = text.length - 1;
+    text += " ";
+    node.push(node[last]!);
+    start.push(end[last]!);
+    end.push(end[last]!);
+  };
+  let block: Element | null | undefined;
+  const walker = doc.createTreeWalker(
+    doc.body ?? doc.documentElement,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+  );
+  for (let at = walker.nextNode(); at !== null; at = walker.nextNode()) {
+    if (at.nodeType === Node.ELEMENT_NODE) {
+      if ((at as Element).localName === "br") separate();
+      continue;
+    }
+    const data = at as Text;
+    if (data.parentElement?.checkVisibility({ visibilityProperty: true }) !== true) continue;
+    const ownBlock = blockOf(data.parentElement);
+    if (block !== undefined && ownBlock !== block) separate();
+    block = ownBlock;
+    const index = nodes.push(data) - 1;
+    for (let offset = 0; offset < data.data.length; offset++) {
+      const char = data.data[offset]!;
+      if (/\s/.test(char)) {
+        if (text === "") continue;
+        if (text.endsWith(" ")) {
+          if (node[text.length - 1] === index) end[text.length - 1] = offset + 1;
+          continue;
+        }
+        text += " ";
+      } else text += foldChar(char);
+      node.push(index);
+      start.push(offset);
+      end.push(offset + 1);
+    }
+  }
+  return { text, nodes, node, start, end };
 }
 
 /** The page's rendered text nodes, in document order, each with where it came from, if anywhere. */
@@ -335,6 +444,9 @@ function boxOf(text: Text, from: number, to: number): DOMRect {
   range.setEnd(text, to);
   return range.getBoundingClientRect();
 }
+
+/** The stylesheet of a find's highlights in each document it highlighted, which outlives a render's root. */
+const findSheets = new WeakMap<Document, CSSStyleSheet>();
 
 /**
  * A frame for a page, to be attached before its first `show`: sandboxed with
@@ -374,6 +486,46 @@ export function createReaderFrame(options?: {
   const origins = new WeakMap<Text, SourceText>();
   // A line to bring the page shown to once it renders.
   let revealing: number | undefined;
+  // The page's text as a find reads it, for the root it was read from.
+  let folded: { root: Element; text: ReturnType<typeof foldedText> } | undefined;
+  // The last find's matches in the page shown, the root they are in, and the current one's index.
+  let finding: { root: Element; matches: Range[]; current: number } | undefined;
+
+  /** The current match, highlighted, and scrolled into view when it is not in it. */
+  const showCurrent = (reveal: boolean): Found => {
+    const doc = shown!;
+    const view = doc.defaultView!;
+    const { matches, current } = finding!;
+    const highlight = new view.Highlight();
+    for (const match of matches) highlight.add(match);
+    view.CSS.highlights.set(FIND_HIGHLIGHT, highlight);
+    const match = matches[current];
+    if (match === undefined) view.CSS.highlights.delete(FIND_CURRENT);
+    else {
+      const currentHighlight = new view.Highlight(match);
+      currentHighlight.priority = 1;
+      view.CSS.highlights.set(FIND_CURRENT, currentHighlight);
+    }
+    // Each box that scrolls around the match, innermost first, the page last, brings it to its middle when it shows it not whole.
+    for (
+      let box = reveal ? (match?.startContainer.parentElement ?? null) : null;
+      box !== null;
+      box = box.parentElement
+    ) {
+      const page = box === doc.scrollingElement;
+      const style = view.getComputedStyle(box);
+      if (!page && !/auto|scroll/.test(style.overflowX + style.overflowY)) continue;
+      const shown = page
+        ? { top: 0, left: 0, bottom: view.innerHeight, right: view.innerWidth }
+        : box.getBoundingClientRect();
+      const at = match!.getBoundingClientRect();
+      if (at.top < shown.top || at.bottom > shown.bottom)
+        box.scrollTop += (at.top + at.bottom - shown.top - shown.bottom) / 2;
+      if (at.left < shown.left || at.right > shown.right)
+        box.scrollLeft += (at.left + at.right - shown.left - shown.right) / 2;
+    }
+    return { count: matches.length, current };
+  };
 
   /** Brings the page shown to the line `reveal` asked for. */
   const revealShown = () => {
@@ -531,6 +683,75 @@ export function createReaderFrame(options?: {
       // A frame the workbench has just put in the page loads and renders again first.
       revealing = line;
       if (shown !== undefined && shown === element.contentDocument) revealShown();
+    },
+    find(query, { colors, reveal }) {
+      const doc = shown;
+      if (doc === undefined || doc !== element.contentDocument) return { count: 0, current: -1 };
+      const view = doc.defaultView!;
+      const sheet = findSheets.get(doc) ?? new view.CSSStyleSheet();
+      if (!findSheets.has(doc)) {
+        findSheets.set(doc, sheet);
+        doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+      }
+      sheet.replaceSync(
+        `::highlight(${FIND_HIGHLIGHT}) { background-color: ${colors.match}; } ::highlight(${FIND_CURRENT}) { background-color: ${colors.current}; }`,
+      );
+      const needle = foldQuery(query);
+      const root = doc.documentElement;
+      if (folded?.root !== root) folded = { root, text: foldedText(doc) };
+      const { text, nodes, node, start, end } = folded.text;
+      const matches: Range[] = [];
+      for (
+        let at = needle === "" ? -1 : text.indexOf(needle);
+        at !== -1;
+        at = text.indexOf(needle, at + needle.length)
+      ) {
+        const last = at + needle.length - 1;
+        const range = doc.createRange();
+        range.setStart(nodes[node[at]!]!, start[at]!);
+        range.setEnd(nodes[node[last]!]!, end[last]!);
+        matches.push(range);
+      }
+      const previous = finding;
+      const was = previous?.matches[previous.current];
+      const selection = doc.getSelection();
+      // A render replaces the root, which collapses the last matches onto the document.
+      const anchor =
+        was !== undefined && previous!.root === root
+          ? was
+          : previous !== undefined
+            ? undefined
+            : selection !== null && selection.rangeCount > 0 && !selection.isCollapsed
+              ? selection.getRangeAt(0)
+              : undefined;
+      let current: number;
+      if (anchor !== undefined)
+        current = matches.findIndex(
+          (match) => match.compareBoundaryPoints(Range.START_TO_START, anchor) >= 0,
+        );
+      else if (previous !== undefined && previous.current >= 0)
+        current = Math.min(previous.current, matches.length - 1);
+      else current = matches.findIndex((match) => match.getBoundingClientRect().bottom > 0);
+      if (current === -1) current = matches.length === 0 ? -1 : 0;
+      finding = { root, matches, current };
+      return showCurrent(reveal);
+    },
+    findStep(by) {
+      if (
+        finding === undefined ||
+        shown !== element.contentDocument ||
+        finding.matches.length === 0
+      )
+        return { count: finding?.matches.length ?? 0, current: finding?.current ?? -1 };
+      const count = finding.matches.length;
+      finding.current = (finding.current + by + count) % count;
+      return showCurrent(true);
+    },
+    clearFind() {
+      finding = undefined;
+      const view = shown?.defaultView;
+      view?.CSS.highlights.delete(FIND_HIGHLIGHT);
+      view?.CSS.highlights.delete(FIND_CURRENT);
     },
   };
   return frame;

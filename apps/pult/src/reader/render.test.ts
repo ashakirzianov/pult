@@ -743,6 +743,86 @@ NodeTest.describe("the reader's frame", () => {
       });
     },
   );
+  NodeTest.it("finds the page's text, highlights it and steps through it, wrapping", async () => {
+    const page_ = (extra: string) =>
+      `<!doctype html><body style="margin: 0"><p>Alpha <b>be</b>ta gamma</p><p style="display: none">alpha beta hidden</p><p style="visibility: hidden">alpha beta unseen</p><p>end</p><p>start</p><p style="margin-top: 3000px">ALPHA&nbsp; beta</p>${extra}</body>`;
+    const found = await page.evaluate(
+      async ([first, second]) => {
+        const frame = window.reader.createReaderFrame();
+        document.body.append(frame.element);
+        await frame.show(first!);
+        const doc = frame.element.contentDocument!;
+        const view = doc.defaultView!;
+        const markup = doc.body.innerHTML;
+        const colors = { match: "rgb(1, 2, 3)", current: "rgb(4, 5, 6)" };
+        const find = (query: string, reveal = true) => frame.find(query, { colors, reveal });
+        const highlighted = () => ({
+          all: [...(view.CSS.highlights.get("pult-find") ?? [])].map(String),
+          current: [...(view.CSS.highlights.get("pult-find-current") ?? [])].map(String),
+        });
+        const top = () => doc.scrollingElement!.scrollTop;
+        const result = {
+          first: find("alpha  BETA"),
+          highlighted: highlighted(),
+          sheet: doc.adoptedStyleSheets
+            .flatMap((sheet) => [...sheet.cssRules])
+            .map((rule) => rule.cssText),
+          acrossBlocks: [find("end start").count, find("endstart").count],
+          next: (find("alpha beta"), frame.findStep(1)),
+          scrolled: top() > 0,
+          wrapped: frame.findStep(1),
+          back: [frame.findStep(-1), top() > 0],
+          // The highlights leave the page's DOM, which the citations read, as it was.
+          untouched: doc.body.innerHTML === markup,
+          // The file changes while the bar is open: the pane finds again, staying where the reader is.
+          rendered: await frame.show(second!).then(() => find("alpha beta", false)),
+          selection: (() => {
+            frame.clearFind();
+            doc.scrollingElement!.scrollTop = 0;
+            const range = doc.createRange();
+            range.selectNodeContents(doc.body.lastElementChild!);
+            doc.getSelection()!.removeAllRanges();
+            doc.getSelection()!.addRange(range);
+            return find("alpha");
+          })(),
+          empty: find(""),
+          // A match in a box of its own that scrolls is brought into it; Greek's final sigma matches its capital.
+          clipped: await frame
+            .show(
+              `<!doctype html><pre id="wide" style="width: 100px; overflow: auto">${"x ".repeat(200)}far end</pre><p>ΟΔΟΣ</p>`,
+            )
+            .then(() => [
+              find("far end").count,
+              doc.getElementById("wide")!.scrollLeft > 0,
+              find("οδος").count,
+            ]),
+          cleared: (frame.clearFind(), highlighted()),
+        };
+        frame.element.remove();
+        return result;
+      },
+      [page_(""), page_("<p>alpha beta again</p><p>alpha last</p>")],
+    );
+    NodeAssert.deepEqual(found, {
+      first: { count: 2, current: 0 },
+      highlighted: { all: ["Alpha beta", "ALPHA\u00a0 beta"], current: ["Alpha beta"] },
+      sheet: [
+        "::highlight(pult-find) { background-color: rgb(1, 2, 3); }",
+        "::highlight(pult-find-current) { background-color: rgb(4, 5, 6); }",
+      ],
+      acrossBlocks: [1, 0],
+      next: { count: 2, current: 1 },
+      scrolled: true,
+      wrapped: { count: 2, current: 0 },
+      back: [{ count: 2, current: 1 }, true],
+      rendered: { count: 3, current: 1 },
+      selection: { count: 4, current: 3 },
+      empty: { count: 0, current: -1 },
+      clipped: [1, true, 1],
+      untouched: true,
+      cleared: { all: [], current: [] },
+    });
+  });
   NodeTest.it("opens at a source line, and tells the line at the top of the view", async () => {
     // Paragraph k on line 2k - 1, to line 79; lines 81 to 102 a fence of one text node, its code on 82 to 101.
     const source = [
