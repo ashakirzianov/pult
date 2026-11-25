@@ -26,9 +26,13 @@ const state = (overrides: Partial<DesktopUpdateState>): DesktopUpdateState => ({
   ...overrides,
 });
 
-/** A step while the server installs at rest, as it does by default. */
-const step = (current: DesktopUpdateState, downloadTried: boolean, installsAtRest = true) =>
-  nextUpdateStep(current, downloadTried, installsAtRest);
+/** A step while the server installs at rest, as it does by default, and the page downloads nothing. */
+const step = (
+  current: DesktopUpdateState,
+  downloadTried: boolean,
+  installsAtRest = true,
+  pageDownloading = false,
+) => nextUpdateStep(current, downloadTried, installsAtRest, pageDownloading);
 
 const answer = (severity: "info" | "error", message: string) => ({
   kind: "answer",
@@ -90,6 +94,17 @@ NodeTest.test("a check or a download running, whoever started it, is waited for"
   NodeAssert.deepEqual(step(state({ status: "downloading", availableVersion: "0.0.2" }), false), {
     kind: "wait",
   });
+  // The page's automatic download reads `available` through its refresh check, refusing ours.
+  const available = state({ status: "available", availableVersion: "0.0.2" });
+  NodeAssert.deepEqual(step(available, false, true, true), { kind: "wait" });
+  NodeAssert.deepEqual(step(available, true, true, true), { kind: "wait" });
+  NodeAssert.deepEqual(
+    step(
+      state({ status: "downloaded", availableVersion: "0.0.2", downloadedVersion: "0.0.2" }),
+      true,
+    ),
+    answer("info", "Pult 0.0.2 downloaded; it installs when Pult rests."),
+  );
 });
 
 NodeTest.test("a download already waiting is answered without another", () => {

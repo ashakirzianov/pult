@@ -3,8 +3,8 @@ import type { DesktopUpdateState } from "@t3tools/contracts";
 /**
  * What Pult: Check for Updates does next with the state of upstream's updater
  * (`apps/desktop/src/updates/DesktopUpdates.ts`): wait while a check or a
- * download runs, whoever started it; download an update found, once; else
- * answer with one notification.
+ * download runs, whoever started it, or while the page's own download runs;
+ * download an update found, once; else answer with one notification.
  */
 export type UpdateStep =
   | { readonly kind: "wait" }
@@ -25,13 +25,16 @@ export function updateRunning(state: DesktopUpdateState): boolean {
 }
 
 /**
- * The next step; `downloadTried` once a download this run started has ended, `installsAtRest`
- * while the server installs updates on its own (`autoUpdateDesktopApp`).
+ * The next step; `downloadTried` once a download this run started has ended or was refused,
+ * `installsAtRest` while the server installs updates on its own (`autoUpdateDesktopApp`),
+ * `pageDownloading` while a download the page started (the automatic one, the tray's) is in
+ * flight, which reads `available` until its refresh check ends and the updater refuses another beside.
  */
 export function nextUpdateStep(
   state: DesktopUpdateState,
   downloadTried: boolean,
   installsAtRest: boolean,
+  pageDownloading: boolean,
 ): UpdateStep {
   const downloaded = installableVersion(state);
   if (downloaded !== null) {
@@ -54,7 +57,7 @@ export function nextUpdateStep(
       message: state.message ?? "Updates are not available in this build.",
     };
   }
-  if (updateRunning(state)) return { kind: "wait" };
+  if (updateRunning(state) || pageDownloading) return { kind: "wait" };
   switch (state.status) {
     case "available":
       if (!downloadTried) return { kind: "download" };

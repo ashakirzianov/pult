@@ -121,7 +121,12 @@ async function checkForUpdates(host: DesktopBridge): Promise<void> {
         let state = (await host.checkForUpdate()).state;
         let downloadTried = false;
         for (;;) {
-          const step = nextUpdateStep(state, downloadTried, updateOffer.automatic() === true);
+          const step = nextUpdateStep(
+            state,
+            downloadTried,
+            updateOffer.automatic() === true,
+            updateOffer.downloading() !== undefined,
+          );
           if (step.kind === "answer") return step;
           if (step.kind === "wait") {
             state = await settled(host);
@@ -130,7 +135,8 @@ async function checkForUpdates(host: DesktopBridge): Promise<void> {
           progress.report({ message: `downloading Pult ${state.availableVersion ?? ""}` });
           const result = await host.downloadUpdate();
           state = result.state;
-          // Refused while another check or download runs, it is tried again once that ends.
+          // Refused while another check or download runs, it is tried again once that ends;
+          // refused beside the page's own download, that download's outcome is the answer.
           downloadTried = result.accepted || !updateRunning(state);
         }
       },
@@ -146,8 +152,12 @@ async function checkForUpdates(host: DesktopBridge): Promise<void> {
   else notifications.error(answer.message);
 }
 
-/** The updater's state once no check or download runs. */
-function settled(host: DesktopBridge): Promise<DesktopUpdateState> {
+/** The updater's state once no check or download runs, the page's own download included. */
+async function settled(host: DesktopBridge): Promise<DesktopUpdateState> {
+  for (let download = updateOffer.downloading(); download !== undefined;) {
+    await download;
+    download = updateOffer.downloading();
+  }
   return new Promise((resolve, reject) => {
     const done = (state: DesktopUpdateState) => {
       if (updateRunning(state)) return;
@@ -221,6 +231,7 @@ class UpdateOffer {
   private offer: TrayOffer | null = null;
   private setting: boolean | null = null;
   private readonly downloadsTried = new Set<string>();
+  private inFlight: Promise<void> | undefined;
   private readonly listeners = new Set<() => void>();
   private followed: { readonly environmentId: string; readonly stop: () => void } | undefined;
 
@@ -228,6 +239,9 @@ class UpdateOffer {
 
   /** The local server's setting, null while the page holds no local server or has not read it. */
   readonly automatic = (): boolean | null => this.setting;
+
+  /** The page's own download while it is in flight, settled (never rejected) once it ends. */
+  readonly downloading = (): Promise<void> | undefined => this.inFlight;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -290,7 +304,15 @@ class UpdateOffer {
   }
 
   private async download(host: DesktopBridge, asked: boolean): Promise<void> {
-    const { state } = await host.downloadUpdate();
+    // The tray offers Download while the automatic one is in its refresh check; that one is the answer.
+    if (this.inFlight !== undefined) return this.inFlight;
+    const download = host.downloadUpdate();
+    const ended = () => {
+      if (this.inFlight === inFlight) this.inFlight = undefined;
+    };
+    const inFlight = download.then(ended, ended);
+    this.inFlight = inFlight;
+    const { state } = await download;
     // An automatic download's failure is told by the tray, which offers Download again.
     if (asked && state.status === "error" && state.errorContext === "download") {
       (await getService(INotificationService)).error(
