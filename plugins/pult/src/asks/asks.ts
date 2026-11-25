@@ -299,12 +299,13 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     if (!(yield* fs.exists(records))) return [];
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const names = (yield* fs.readDirectory(records)).filter((name) => name.endsWith(".json"));
-    const found: Array<{ readonly record: AskRecord; readonly ask: Ask }> = [];
-    for (const name of names.toSorted()) {
-      const each = yield* loadFile(path.join(records, name), now);
-      if (each !== undefined) found.push(each);
-    }
-    return found;
+    // Eight at a time, as `Stars.find` reads the records, so a load does not grow one read at a time with the asks.
+    const loaded = yield* Effect.forEach(
+      names.toSorted(),
+      (name) => loadFile(path.join(records, name), now),
+      { concurrency: 8 },
+    );
+    return loaded.filter((each) => each !== undefined);
   }).pipe(Effect.mapError(failed("read")));
 
   /** The one record of `id` with its ask as served, as `load` finds it; undefined for an id of no record. Under the lock. */

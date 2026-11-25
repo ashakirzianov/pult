@@ -120,6 +120,23 @@ export const starsRoute = (
         });
       }),
     );
+  // A channel's transcripts' names, which its tab's fold draws: `GET stars/<id>/channels/<slug>/conversations`.
+  if (
+    segments.length === 5 &&
+    id !== undefined &&
+    sub === "channels" &&
+    name !== undefined &&
+    isChannel(name) &&
+    segments[4] === "conversations" &&
+    method === "GET"
+  )
+    return answer(
+      Effect.gen(function* () {
+        const star = yield* stars.get(id);
+        if (star === undefined) return notFound;
+        return json({ names: yield* stars.channelTranscripts(star, name) });
+      }),
+    );
   const channel =
     segments.length === 6 && sub === "channels" && segments[4] === "conversations"
       ? name

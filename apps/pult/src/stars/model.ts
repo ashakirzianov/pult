@@ -12,7 +12,7 @@ import type { Disposable } from "../files/files.ts";
 import { environmentServer } from "../files/server.ts";
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import { onDidChangePluginFeatures, pluginFeatures } from "./about.ts";
-import { refreshTranscripts } from "./foldState.ts";
+import { refreshChannelTranscriptNames, refreshTranscripts } from "./foldState.ts";
 import { hiddenProjects, setHiddenProjects } from "./hidden.ts";
 import {
   CHANNEL_MODELS_FEATURE,
@@ -441,7 +441,10 @@ class StarsModel {
             // A channel transcript can be rewritten under the same name.
             const starIds =
               reading.answer === undefined ? [] : channelTranscriptStars(event, reading.answer);
-            for (const id of starIds) refreshTranscripts(environmentId, id);
+            for (const id of starIds) {
+              refreshTranscripts(environmentId, id);
+              refreshChannelTranscriptNames(environmentId, id);
+            }
             if (starIds.length > 0)
               for (const listener of this.channelTranscriptListeners)
                 listener({ environmentId, starIds });

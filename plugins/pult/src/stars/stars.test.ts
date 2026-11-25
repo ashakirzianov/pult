@@ -385,10 +385,19 @@ describe("the pass", () => {
         assert.deepStrictEqual(view?.channels, [
           { slug: "main", threadId: held.shell.id, sleeps: { heldBy: "run" } },
         ]);
-        assert.strictEqual(view?.asleepSince, "2026-11-10T13:01:30.000Z");
+        // `main`'s newest conversation is the open one, so it reads as asleep since the Star's creation;
+        // the page draws an awake Star from its open conversation.
+        assert.strictEqual(view?.asleepSince, star.created);
         assert.deepStrictEqual(view?.conversations, names);
         assert.deepStrictEqual((yield* h.stars.transcript(star, names[0]!))?.threadId, "ended");
         assert.strictEqual(yield* h.stars.transcript(star, "../../../etc/passwd"), undefined);
+        // Once its newest has ended too, asleep since that conversation's end.
+        held.shell = {
+          ...held.shell,
+          settledOverride: "settled",
+          settledAt: at("2026-11-10T13:02:00.000Z"),
+        };
+        assert.strictEqual((yield* h.stars.view).stars[0]?.asleepSince, "2026-11-10T13:02:00.000Z");
       }).pipe(Effect.scoped),
   );
 

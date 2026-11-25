@@ -37,7 +37,6 @@ import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
 import { type Channel, isChannel, taggedChannel } from "./channels.ts";
 import {
   AGENTS_FILE,
-  CHANNELS_DIRECTORY,
   starFolder,
   INSTRUCTIONS_FILE,
   isStarRoot,
@@ -143,10 +142,7 @@ export interface StarsView {
       readonly asleepSince: string;
       /** The model a wake into the default channel takes: the Star's choice for it at the `newest` of `withConversation`'s runtime mode (the default runtime mode before the Star's first conversation), else that conversation's; null where neither is. */
       readonly model: ModelSelection | null;
-      readonly histories: ReadonlyArray<{
-        readonly slug: string;
-        readonly names: ReadonlyArray<string>;
-      }>;
+      /** The default channel's transcripts' names; another channel's are `channelTranscripts`'. */
       readonly conversations: ReadonlyArray<string>;
     }
   >;
@@ -203,6 +199,11 @@ export interface Stars {
   /** The user's request, Refresh Context: the look under the Star's lock with the channel's current conversation's deadline taken as passed, every hold applying; the default channel where it names none. */
   readonly sleepByHand: (star: Star, channel?: Channel) => Effect.Effect<SleepByHand, StarsError>;
   readonly view: Effect.Effect<StarsView, StarsError>;
+  /** The names of the channel's transcripts on this server, oldest first, which a channel's fold draws. */
+  readonly channelTranscripts: (
+    star: Star,
+    channel: Channel,
+  ) => Effect.Effect<ReadonlyArray<string>, StarsError>;
   readonly transcript: (
     star: Star,
     name: string,
@@ -313,14 +314,18 @@ export const make = Effect.gen(function* () {
   const directory = yield* starsDirectory(config, yield* HostProcess.HomeDirectory, path);
   const environmentId = yield* environment.getEnvironmentId;
   const serverLock = yield* Semaphore.make(1);
-  const starLocks = new Map<string, Semaphore.Semaphore>();
-  const lockOf = (star: Star) => {
-    const known = starLocks.get(star.id);
+  /** The lock of `locks` for the Star, made at its first use. */
+  const lockIn = (locks: Map<string, Semaphore.Semaphore>, star: Star) => {
+    const known = locks.get(star.id);
     if (known !== undefined) return known;
     const lock = Semaphore.makeUnsafe(1);
-    starLocks.set(star.id, lock);
+    locks.set(star.id, lock);
     return lock;
   };
+  const starLocks = new Map<string, Semaphore.Semaphore>();
+  const lockOf = (star: Star) => lockIn(starLocks, star);
+  /** A Star's transcripts' own lock: they are written after its lock is released (`look`). */
+  const transcriptLocks = new Map<string, Semaphore.Semaphore>();
   const random = yield* SecureRandom.SecureRandom;
   const newId = random.uuidV4();
 
@@ -602,32 +607,66 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  /**
-   * `sleepDue`, then the transcripts of the latest settled, oldest first; each failure logged. What
-   * became of the request's conversation, undefined where it is not open; its failure fails the look
-   * once the transcripts are written.
-   */
-  const look = Effect.fn("Stars.look")(function* (star: Star, request?: SleepRequest) {
+  /** What became of the request's conversation as `sleepDue` left it, undefined where it is not open; its failure fails. */
+  const sleepRequested = Effect.fn("Stars.sleepRequested")(function* (
+    star: Star,
+    request: SleepRequest,
+  ) {
     const outcomes = yield* sleepDue(star, request);
-    const requested = outcomes.find((each) => each.threadId === request?.threadId)?.exit;
-    for (const thread of (yield* settledConversations(star, TRANSCRIPTS_KEPT)).toReversed())
-      yield* keepTranscript(star, thread).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Could not write a Star's transcript.", {
-            starId: star.id,
-            threadId: thread.id,
-            cause,
-          }),
-        ),
-      );
+    const requested = outcomes.find((each) => each.threadId === request.threadId)?.exit;
     return requested === undefined ? undefined : yield* requested;
   });
 
+  /**
+   * The transcripts of the latest settled, oldest first, under the Star's transcript lock. Settled
+   * threads alone, which no delivery or settle contends for. Best effort: each failure, the listing
+   * of the settled threads' among them, is logged and fails nothing, since what the look did under
+   * the lock (a send, a wake, a settle) has happened by then.
+   */
+  const keepTranscripts = Effect.fn("Stars.keepTranscripts")(
+    function* (star: Star) {
+      for (const thread of (yield* settledConversations(star, TRANSCRIPTS_KEPT)).toReversed())
+        yield* keepTranscript(star, thread).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Could not write a Star's transcript.", {
+              starId: star.id,
+              threadId: thread.id,
+              cause,
+            }),
+          ),
+        );
+    },
+    (effect, star) => lockIn(transcriptLocks, star).withPermits(1)(effect),
+    (effect, star) =>
+      Effect.catchCause(effect, (cause) =>
+        Effect.logWarning("Could not read a Star's settled conversations for its transcripts.", {
+          starId: star.id,
+          cause,
+        }),
+      ),
+  );
+
+  /**
+   * A look: `locked` under the Star's lock, its sleeping part (`sleepDue`) among it, then, once the
+   * lock is released, the transcripts (`keepTranscripts`), so the hold does not wait on them.
+   * `locked`'s failure fails the look once the transcripts are written.
+   */
+  const look = Effect.fn("Stars.look")(function* <A, E, R>(
+    star: Star,
+    locked: Effect.Effect<A, E, R>,
+  ) {
+    const exit = yield* Effect.exit(lockOf(star).withPermits(1)(locked));
+    yield* keepTranscripts(star);
+    return yield* exit;
+  });
+
+  /** The conversations of `channel`, among `open` where the caller has read the open ones. */
   const conversationsOf = Effect.fn("Stars.conversationsOf")(function* (
     star: Star,
     channel: Channel,
+    known?: ReadonlyArray<OrchestrationV2ThreadShell>,
   ) {
-    const open = yield* openConversations(star);
+    const open = known ?? (yield* openConversations(star));
     /** Its newest conversation, open or else ended among the latest settled; of any channel where it names none. */
     const newestOf = (of?: Channel) => {
       const current = open.find((thread) => of === undefined || channelOf(thread) === of);
@@ -648,9 +687,10 @@ export const make = Effect.gen(function* () {
   });
 
   const withConversation: Stars["withConversation"] = (star, channel, use) =>
-    lockOf(star).withPermits(1)(
+    look(
+      star,
       Effect.gen(function* () {
-        const conversations = yield* look(star).pipe(
+        const conversations = yield* sleepDue(star).pipe(
           Effect.andThen(conversationsOf(star, channel)),
           Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
         );
@@ -709,36 +749,33 @@ export const make = Effect.gen(function* () {
   );
 
   const sleepNow: Stars["sleepNow"] = (star, request) =>
-    lockOf(star)
-      .withPermits(1)(look(star, request))
-      .pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),
-        ),
-        Effect.withSpan("Stars.sleepNow"),
-      );
+    look(star, sleepRequested(star, request)).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),
+      ),
+      Effect.withSpan("Stars.sleepNow"),
+    );
 
   const sleepByHand: Stars["sleepByHand"] = (star, channel = star.defaultChannel) =>
-    lockOf(star)
-      .withPermits(1)(
-        Effect.gen(function* () {
-          const current = (yield* openConversations(star)).find(
-            (thread) => channelOf(thread) === channel,
-          );
-          if (current === undefined) return { slept: false, asleep: true } as const;
-          const outcome = yield* look(star, { threadId: current.id });
-          // A conversation no longer open was settled by someone since the read: asleep all the same.
-          if (outcome === undefined || outcome.slept) return { slept: true } as const;
-          // The user's request waives the deadline, so only a hold leaves it awake.
-          if (outcome.heldBy === undefined)
-            return yield* Effect.die("A request by hand left an unheld conversation awake.");
-          return { slept: false, heldBy: outcome.heldBy } as const;
-        }),
-      )
-      .pipe(
-        Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
-        Effect.withSpan("Stars.sleepByHand"),
-      );
+    look(
+      star,
+      Effect.gen(function* () {
+        const current = (yield* openConversations(star)).find(
+          (thread) => channelOf(thread) === channel,
+        );
+        if (current === undefined) return { slept: false, asleep: true } as const;
+        const outcome = yield* sleepRequested(star, { threadId: current.id });
+        // A conversation no longer open was settled by someone since the read: asleep all the same.
+        if (outcome === undefined || outcome.slept) return { slept: true } as const;
+        // The user's request waives the deadline, so only a hold leaves it awake.
+        if (outcome.heldBy === undefined)
+          return yield* Effect.die("A request by hand left an unheld conversation awake.");
+        return { slept: false, heldBy: outcome.heldBy } as const;
+      }),
+    ).pipe(
+      Effect.mapError((cause) => new StarsError({ operation: "look", starId: star.id, cause })),
+      Effect.withSpan("Stars.sleepByHand"),
+    );
 
   const ofThread = Effect.fn("Stars.ofThread")(function* (threadId: ThreadId) {
     const shell = yield* threads
@@ -785,9 +822,10 @@ export const make = Effect.gen(function* () {
       .map((project) => project.id);
     const stars = yield* Effect.forEach(yield* list, ({ misnamedDefaultChannel: _, ...star }) =>
       Effect.gen(function* () {
-        // Newest first, so a channel's first is its current conversation.
+        // Read once for the Star. Newest first, so a channel's first is its current conversation.
+        const open = yield* openConversations(star);
         const current = new Map<Channel, OrchestrationV2ThreadShell>();
-        for (const thread of yield* openConversations(star))
+        for (const thread of open)
           if (!current.has(channelOf(thread))) current.set(channelOf(thread), thread);
         const channels = yield* Effect.forEach(
           [...current].toSorted(([left], [right]) => left.localeCompare(right)),
@@ -806,24 +844,18 @@ export const make = Effect.gen(function* () {
             }),
         );
         const { defaultChannel } = star;
-        const last = (yield* settledConversations(star, 1, { channel: defaultChannel }))[0];
-        const { newest } = yield* conversationsOf(star, defaultChannel);
+        const { newest } = yield* conversationsOf(star, defaultChannel, open);
+        // Its newest conversation, ended, among the latest settled a wake searches (`WAKE_SEARCH`).
+        const last =
+          newest?.settledAt != null && channelOf(newest) === defaultChannel ? newest : undefined;
         // What the page's draft shows and wakes at, its first conversation's too; the page's wake tells the channel of a broken file.
         const chosen = yield* wakeChannelModel(
           star,
           defaultChannel,
           newest?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         ).pipe(Effect.provide(resolving));
-        const directory = yield* archivePath(star, CHANNELS_DIRECTORY);
-        const histories = [];
-        for (const slug of directory !== undefined ? yield* fs.readDirectory(directory) : []) {
-          if (slug === defaultChannel || !isChannel(slug)) continue;
-          const names = yield* transcriptNames(star, slug);
-          if (names.length > 0) histories.push({ slug, names });
-        }
         return {
           ...star,
-          histories,
           instructions: path.join(star.root, INSTRUCTIONS_FILE),
           channels,
           asleepSince: last?.settledAt == null ? star.created : DateTime.formatIso(last.settledAt),
@@ -836,6 +868,17 @@ export const make = Effect.gen(function* () {
   }).pipe(
     Effect.mapError((cause) => new StarsError({ operation: "read", cause })),
     Effect.withSpan("Stars.view"),
+  );
+
+  const channelTranscripts = Effect.fn("Stars.channelTranscripts")(
+    function* (star: Star, channel: Channel) {
+      return yield* transcriptNames(star, channel);
+    },
+    (effect, star) =>
+      Effect.mapError(
+        effect,
+        (cause) => new StarsError({ operation: "read", starId: star.id, cause }),
+      ),
   );
 
   const transcript = Effect.fn("Stars.transcript")(
@@ -962,13 +1005,11 @@ export const make = Effect.gen(function* () {
     lastPass = now;
     yield* upkeep;
     for (const star of yield* list)
-      yield* lockOf(star)
-        .withPermits(1)(look(star))
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),
-          ),
-        );
+      yield* look(star, sleepDue(star)).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Could not look at a Star.", { starId: star.id, cause }),
+        ),
+      );
   }).pipe(Effect.withSpan("Stars.pass"));
   yield* scheduler.register("pult-stars", pass);
 
@@ -981,6 +1022,7 @@ export const make = Effect.gen(function* () {
     sleepNow,
     sleepByHand,
     view,
+    channelTranscripts,
     transcript,
     transcriptOfThread,
     create,

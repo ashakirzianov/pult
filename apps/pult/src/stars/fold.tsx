@@ -11,10 +11,12 @@ import {
 } from "../../view/StarTranscript.tsx";
 import { threadStore } from "../threads/store.ts";
 import {
+  channelTranscriptNames,
   foldStore,
   foldView,
   keepFoldPlace,
   pendingReveal,
+  followChannelTranscriptNames,
   readTranscript,
   setFoldOpen,
   showOlder,
@@ -221,12 +223,25 @@ export default function StarFold({
   const environmentName = useSyncExternalStore(subscribeToThreads, () =>
     home === undefined ? undefined : threadStore.distinguishing(home.environmentId),
   );
-  const names =
-    channel && !pluginFeatures(channel.environmentId)?.has(CHANNEL_HISTORY_FEATURE)
+  // A channel's tab lists its own transcripts while its fold is mounted (`foldState.ts`); an older
+  // plugin's answer carries them all, as `histories`.
+  const hasHistory =
+    channel !== undefined &&
+    pluginFeatures(channel.environmentId)?.has(CHANNEL_HISTORY_FEATURE) === true;
+  const listsChannel = hasHistory && home?.histories === undefined;
+  const channelEnvironment = channel?.environmentId;
+  const channelSlug = channel?.slug;
+  useEffect(() => {
+    if (channelEnvironment === undefined || channelSlug === undefined || !listsChannel) return;
+    return followChannelTranscriptNames(channelEnvironment, starId, channelSlug);
+  }, [channelEnvironment, channelSlug, starId, listsChannel]);
+  const names = !channel
+    ? (home?.conversations ?? [])
+    : !hasHistory
       ? []
-      : channel
-        ? (home?.histories?.find((each) => each.slug === channel.slug)?.names ?? [])
-        : (home?.conversations ?? []);
+      : listsChannel
+        ? channelTranscriptNames(channel.environmentId, starId, channel.slug)
+        : (home?.histories?.find((each) => each.slug === channel.slug)?.names ?? []);
   const view = foldView(key);
   // Oldest first, the newest right above the live view.
   const shown = view.open ? names.slice(-view.shown) : [];

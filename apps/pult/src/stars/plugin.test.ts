@@ -8,6 +8,7 @@ import {
   createStarOn,
   defaultTranscriptStars,
   decodeAbout,
+  decodeChannelTranscripts,
   decodeStars,
   decodeTranscript,
   writeStarRecord,
@@ -187,7 +188,6 @@ const star = {
     model: "claude-opus-5-5",
     options: [{ id: "effort", value: "high" }],
   },
-  histories: [{ slug: "demo", names: ["2026-11-01T10-00-00Z-t0.md"] }],
   conversations: ["2026-11-01T10-00-00Z-t0.md"],
   schedules: [
     {
@@ -223,14 +223,22 @@ const star = {
   ],
 };
 const stars = { directory: "/Users/a/.pult/stars", hidden: ["p1", "p2"], stars: [star] };
+/** `stars` as decoded: a newer plugin serves no `histories`. */
+const decoded = { ...stars, stars: [{ ...star, histories: undefined }] };
 
 NodeTest.describe("decodeStars", () => {
   NodeTest.test("reads the route's answer, a newer plugin's fields let be", () => {
-    NodeAssert.deepEqual(decodeStars(stars), stars);
+    NodeAssert.deepEqual(decodeStars(stars), decoded);
     NodeAssert.deepEqual(
       decodeStars({ ...stars, stars: [{ ...star, mood: "calm" }], build: 4 }),
-      stars,
+      decoded,
     );
+    // An older plugin's channel histories, read where its answer has them; a newer one lists a channel's on its own route.
+    const histories = [{ slug: "demo", names: ["2026-11-01T10-00-00Z-t0.md"] }];
+    NodeAssert.deepEqual(decodeStars({ ...stars, stars: [{ ...star, histories }] }), {
+      ...stars,
+      stars: [{ ...star, histories }],
+    });
   });
 
   NodeTest.test("reads a plugin older than the schedules as serving none", () => {
@@ -324,6 +332,15 @@ NodeTest.describe("decodeStars", () => {
   });
 });
 
+NodeTest.describe("decodeChannelTranscripts", () => {
+  NodeTest.test("reads a channel's names, and fails loudly on any other shape", () => {
+    const names = ["2026-11-01T10-00-00Z-t0.md", "2026-11-02T10-00-00Z-t1.md"];
+    NodeAssert.deepEqual(decodeChannelTranscripts({ names }), names);
+    for (const body of [null, names, { names: [1] }, {}])
+      NodeAssert.throws(() => decodeChannelTranscripts(body), PluginAnswerError);
+  });
+});
+
 NodeTest.describe("decodeTranscript", () => {
   const transcript = {
     threadId: "t0",
@@ -411,7 +428,7 @@ NodeTest.describe("the Stars' routes", () => {
       () => json(stars),
       () => readStars(credential),
     );
-    NodeAssert.deepEqual(result, stars);
+    NodeAssert.deepEqual(result, decoded);
     NodeAssert.deepEqual(asked, [
       {
         method: "GET",

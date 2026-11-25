@@ -5,7 +5,12 @@ import { connection } from "../connection/index.ts";
 import { pluginFeatures } from "./about.ts";
 import { CHANNEL_HISTORY_FEATURE } from "./plugin.ts";
 import { starById } from "./model.ts";
-import { readStarTranscript, readStarTranscriptOfThread, type Transcript } from "./plugin.ts";
+import {
+  readStarChannelTranscripts,
+  readStarTranscript,
+  readStarTranscriptOfThread,
+  type Transcript,
+} from "./plugin.ts";
 import { drawnHome } from "./stars.ts";
 
 /** A transcript as the fold has it: being read, read, or not. */
@@ -248,6 +253,71 @@ export function readTranscript(
     readings.set(key, reading);
     changed();
   });
+}
+
+/** Each channel tab's transcripts' names, by environment, Star and channel, as the plugin listed them last. */
+const channelNames = new Map<string, ReadonlyArray<string>>();
+/** How many folds show each channel now, by the same key: only those are listed again. */
+const channelFolds = new Map<string, number>();
+/** Each channel's latest listing asked for, so an earlier one answering late is dropped. */
+const channelListings = new Map<string, number>();
+let listings = 0;
+const channelKeyOf = (environmentId: string, starId: string, channel: string) =>
+  JSON.stringify([environmentId, starId, channel]);
+
+/** The names of the transcripts of a channel's tab's fold, oldest first; none until listed. */
+export const channelTranscriptNames = (environmentId: string, starId: string, channel: string) =>
+  channelNames.get(channelKeyOf(environmentId, starId, channel)) ?? [];
+
+/**
+ * Lists the transcripts of the Star's `channel` on `environmentId` as its tab's fold mounts, and
+ * again while it is mounted as the directory's watch tells of one written
+ * (`refreshChannelTranscriptNames`); the names listed last shown meanwhile, and kept where a
+ * listing fails. What it returns stops following, as the fold unmounts.
+ */
+export function followChannelTranscriptNames(
+  environmentId: string,
+  starId: string,
+  channel: string,
+): () => void {
+  const key = channelKeyOf(environmentId, starId, channel);
+  channelFolds.set(key, (channelFolds.get(key) ?? 0) + 1);
+  listChannel(environmentId, starId, channel);
+  return () => {
+    const left = (channelFolds.get(key) ?? 1) - 1;
+    if (left > 0) channelFolds.set(key, left);
+    else channelFolds.delete(key);
+  };
+}
+
+function listChannel(environmentId: string, starId: string, channel: string): void {
+  const key = channelKeyOf(environmentId, starId, channel);
+  const credential = connection.credential(environmentId);
+  if (credential === undefined) return;
+  listings += 1;
+  const listing = listings;
+  channelListings.set(key, listing);
+  void readStarChannelTranscripts(credential, starId, channel).then(
+    (names) => {
+      if (channelListings.get(key) !== listing) return;
+      if (names.join("\n") === channelNames.get(key)?.join("\n")) return;
+      channelNames.set(key, names);
+      changed();
+    },
+    (error: unknown) =>
+      console.warn(
+        `[pult-shell] could not list the transcripts of ${starId}'s channel ${channel}: ${errorMessage(error)}`,
+      ),
+  );
+}
+
+/** Lists again every channel of the Star on `environmentId` a mounted fold shows. */
+export function refreshChannelTranscriptNames(environmentId: string, starId: string): void {
+  for (const key of channelFolds.keys()) {
+    const [environment, star, channel] = JSON.parse(key) as [string, string, string];
+    if (environment === environmentId && star === starId)
+      listChannel(environmentId, starId, channel);
+  }
 }
 
 /** Reads again every transcript of the Star on `environmentId` the fold has read, as one may have been rewritten; the old ones shown meanwhile. */

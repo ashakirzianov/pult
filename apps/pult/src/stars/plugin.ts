@@ -16,7 +16,7 @@ export const CHANNEL_SLEEP_FEATURE = "star-channel-sleep";
 
 /** The plugin's feature of a Star's model per channel (`.pult/channel-models.json`): `POST stars/<id>/model`, asked only where `about` lists it. */
 export const CHANNEL_MODELS_FEATURE = "star-channel-models";
-/** The channel histories in the Stars view and their transcript route. */
+/** A channel's transcripts, listed by `GET stars/<id>/channels/<slug>/conversations` and read by their route. */
 export const CHANNEL_HISTORY_FEATURE = "star-channel-history";
 
 const PLUGIN_PATH = "/api/plugins/pult";
@@ -262,7 +262,7 @@ export interface RouteStar extends WrittenStar {
   readonly asleepSince: string;
   /** The model the default channel's next conversation takes, the one a wake by message into it takes; null before its first. */
   readonly model: RouteModel | null;
-  /** The names of every other channel's transcripts on this environment, by channel, oldest first. */
+  /** An older plugin's names of every other channel's transcripts, by channel, oldest first; a newer one lists a channel's by `readStarChannelTranscripts`. */
   readonly histories?: ReadonlyArray<{
     readonly slug: string;
     readonly names: ReadonlyArray<string>;
@@ -520,6 +520,9 @@ const decodeStar = (body: unknown): WrittenStar => writtenStar(body, "star");
 const decodeAsks = (body: unknown): AsksAnswer => asksAnswer(body, "asks");
 const decodeAsk = (body: unknown): RouteAsk => routeAsk(body, "ask");
 export const decodeTranscript = (body: unknown): Transcript => transcript(body, "transcript");
+/** A channel's transcripts' names, `{ names }`, oldest first; a throw for any other shape. */
+export const decodeChannelTranscripts = (body: unknown): ReadonlyArray<string> =>
+  struct<{ names: ReadonlyArray<string> }>({ names: arrayOf(string) })(body, "channel").names;
 
 /**
  * Asks a route of the plugin with the environment's bearer and decodes its
@@ -613,6 +616,15 @@ export const readStarTranscript = (
     "GET",
     `${starPath(id)}${channel === undefined ? "" : "/channels/" + encodeURIComponent(channel)}/conversations/${encodeURIComponent(name)}`,
     decodeTranscript,
+  );
+
+/** The names of the transcripts of the Star's `channel` on this environment, oldest first. */
+export const readStarChannelTranscripts = (credential: Credential, id: string, channel: string) =>
+  ask(
+    credential,
+    "GET",
+    `${starPath(id)}/channels/${encodeURIComponent(channel)}/conversations`,
+    decodeChannelTranscripts,
   );
 
 /** The transcript whose conversation was the thread `threadId`, with its name; a throw where the Star has none, as from an older plugin. */

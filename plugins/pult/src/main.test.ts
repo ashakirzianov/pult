@@ -403,9 +403,15 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       "thread-3",
     );
     const workName = "2026-11-11T10-00-00Z-thread-3.md";
-    expect((yield* send("GET", "/stars", "reader")).body.stars[0].histories).toEqual([
-      { slug: "work", names: [workName] },
-    ]);
+    // A channel's names are its own route's, read as its tab's fold mounts; `GET /stars` walks no channel folder.
+    const channelNames = (slug: string) =>
+      Effect.map(
+        send("GET", `/stars/${star.id}/channels/${slug}/conversations`, "reader"),
+        (answer) => answer.body,
+      );
+    expect((yield* send("GET", "/stars", "reader")).body.stars[0].histories).toBeUndefined();
+    expect(yield* channelNames("work")).toEqual({ names: [workName] });
+    expect(yield* channelNames("quiet")).toEqual({ names: [] });
     expect(
       (yield* send("GET", `/stars/${star.id}/channels/work/conversations/${workName}`, "reader"))
         .body.threadId,
@@ -415,9 +421,8 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     yield* fs.makeDirectory(outsideFolder, { recursive: true });
     yield* write(`${outsideFolder}/${name}`, "outside");
     yield* fs.symlink(outside, `${star.root}/.pult/channels/linked`);
-    expect((yield* send("GET", "/stars", "reader")).body.stars[0].histories).toEqual([
-      { slug: "work", names: [workName] },
-    ]);
+    // A channel folder linked out of the Star's lists nothing, as its transcripts read nothing.
+    expect(yield* channelNames("linked")).toEqual({ names: [] });
     yield* fs.symlink(
       `${outsideFolder}/${name}`,
       `${star.root}/.pult/channels/work/conversations/env-1/${name}`,

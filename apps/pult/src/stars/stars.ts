@@ -22,7 +22,7 @@ export interface StarHome {
   readonly model: RouteModel | null;
   /** Since when the default channel sleeps here: its last conversation's settlement, else the Star's creation. */
   readonly asleepSince: string;
-  /** The names of every other channel's transcripts of this environment, by channel, oldest first. */
+  /** An older plugin's names of every other channel's transcripts of this environment (`RouteStar`'s). */
   readonly histories?: ReadonlyArray<{
     readonly slug: string;
     readonly names: ReadonlyArray<string>;
