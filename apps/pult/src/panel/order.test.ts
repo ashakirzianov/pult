@@ -7,6 +7,7 @@ import {
   closedShelves,
   closeIn,
   DEFAULT_SHELF_ORDER,
+  dockStatusShelves,
   draftCards,
   explorerEntries,
   jumpTargets,
@@ -187,7 +188,7 @@ NodeTest.describe("shelf order", () => {
     NodeAssert.deepEqual(closedShelves(restored), ["explorer", "working"]);
     const reopened = openIn(openIn(restored, "working"), "explorer");
     NodeAssert.deepEqual(openShelves(reopened, "top"), docked.top);
-    NodeAssert.deepEqual(openShelves(reopened, "bottom"), ["working"]);
+    NodeAssert.deepEqual(openShelves(reopened, "bottom"), docked.bottom);
   });
 
   NodeTest.test("moves a shelf within and across groups, including while closed", () => {
@@ -207,6 +208,35 @@ NodeTest.describe("shelf order", () => {
     ]);
     NodeAssert.equal(moveIn(order, "stars", "top", "inbox"), order);
   });
+
+  NodeTest.test(
+    "docks Working, Snoozed and Limits at the bottom, by default and once in a saved order",
+    () => {
+      NodeAssert.deepEqual(DEFAULT_SHELF_ORDER, {
+        top: ["stars", "explorer", "inbox", "settled"],
+        bottom: ["working", "snoozed", "limits"],
+        closed: [],
+      });
+      const saved = {
+        top: ["limits", "inbox", "stars", "working", "settled"],
+        bottom: ["explorer", "snoozed"],
+        closed: ["limits", "stars"],
+      } as const;
+      const docked = dockStatusShelves(saved);
+      NodeAssert.deepEqual(docked, {
+        top: ["inbox", "stars", "settled"],
+        bottom: ["explorer", "snoozed", "working", "limits"],
+        closed: saved.closed,
+      });
+      const restored = parseShelfOrder(JSON.parse(JSON.stringify(docked)), PANEL_SHELVES);
+      NodeAssert.ok(restored);
+      const raised = moveIn(restored, "working", "top", "inbox");
+      NodeAssert.deepEqual(
+        parseShelfOrder(JSON.parse(JSON.stringify(raised)), PANEL_SHELVES)?.top,
+        ["working", "inbox", "stars", "settled"],
+      );
+    },
+  );
 
   NodeTest.test("migrates the previous open and tray orders and adds new shelves", () => {
     NodeAssert.deepEqual(

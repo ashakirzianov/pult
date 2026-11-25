@@ -23,7 +23,27 @@ export interface ShelfOrder<Name extends string = PanelShelf> {
   readonly closed: ReadonlyArray<Name>;
 }
 
-export const DEFAULT_SHELF_ORDER: ShelfOrder = { top: PANEL_SHELVES, bottom: [], closed: [] };
+/** The shelves of the threads' and the limits' status, which sit in the bottom group by default. */
+const STATUS_SHELVES: ReadonlyArray<PanelShelf> = ["working", "snoozed", "limits"];
+
+/**
+ * Move the status shelves still in the top group to the bottom group's end,
+ * in their order; the rest of `order`, closed shelves included, stays as it is.
+ */
+export function dockStatusShelves(order: ShelfOrder): ShelfOrder {
+  const moving = STATUS_SHELVES.filter((shelf) => order.top.includes(shelf));
+  return {
+    ...order,
+    top: order.top.filter((shelf) => !moving.includes(shelf)),
+    bottom: [...order.bottom, ...moving],
+  };
+}
+
+export const DEFAULT_SHELF_ORDER: ShelfOrder = dockStatusShelves({
+  top: PANEL_SHELVES,
+  bottom: [],
+  closed: [],
+});
 
 export function openIn<Name extends string>(
   order: ShelfOrder<Name>,

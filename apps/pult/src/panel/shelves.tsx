@@ -14,6 +14,7 @@ import {
   closedShelves,
   closeIn,
   DEFAULT_SHELF_ORDER,
+  dockStatusShelves,
   groupOf,
   moveIn,
   openIn,
@@ -59,7 +60,8 @@ export function ShelfIcon({ icon, className = "" }: { icon: string; className?: 
 
 /** Where the shelves' order is kept, as upstream keeps its shelves' state. */
 const OLD_ORDER_KEY = "pult-shell.panel.shelves";
-const ORDER_KEY = "pult-shell.panel.shelves.v2";
+const V2_ORDER_KEY = "pult-shell.panel.shelves.v2";
+const ORDER_KEY = "pult-shell.panel.shelves.v3";
 /** Where each shelf kept whether it was closed before the order, read once as the first closed list. */
 const legacyClosedKey = (shelf: PanelShelf) => `pult-shell.panel.${shelf}-closed`;
 
@@ -80,6 +82,15 @@ export function readShelfOrder<Name extends string>(
 function loadOrder(): ShelfOrder {
   if (localStorage.getItem(ORDER_KEY) !== null)
     return readShelfOrder(ORDER_KEY, PANEL_SHELVES, DEFAULT_SHELF_ORDER);
+  const migrated = dockStatusShelves(loadV2Order());
+  localStorage.setItem(ORDER_KEY, JSON.stringify(migrated));
+  return migrated;
+}
+
+/** The order as v2 kept it, or as v2 migrated it from what came before; v3 docks its status shelves once. */
+function loadV2Order(): ShelfOrder {
+  if (localStorage.getItem(V2_ORDER_KEY) !== null)
+    return readShelfOrder(V2_ORDER_KEY, PANEL_SHELVES, DEFAULT_SHELF_ORDER);
   if (localStorage.getItem(OLD_ORDER_KEY) !== null) {
     const order = readShelfOrder(OLD_ORDER_KEY, PANEL_SHELVES, DEFAULT_SHELF_ORDER);
     const orderedOpen = openShelves(order, "top");
@@ -87,18 +98,15 @@ function loadOrder(): ShelfOrder {
     const previous = [...PANEL_SHELVES.slice(0, -2), "settled", "limits"].filter((name) =>
       orderedOpen.includes(name as PanelShelf),
     );
-    const migrated = previous.every((name, index) => orderedOpen[index] === name)
+    return previous.every((name, index) => orderedOpen[index] === name)
       ? { ...order, top: [...open, ...closedShelves(order)] }
       : order;
-    localStorage.setItem(ORDER_KEY, JSON.stringify(migrated));
-    return migrated;
   }
   const order = PANEL_SHELVES.reduce(
     (each, shelf) =>
       localStorage.getItem(legacyClosedKey(shelf)) === "true" ? closeIn(each, shelf) : each,
     DEFAULT_SHELF_ORDER,
   );
-  localStorage.setItem(ORDER_KEY, JSON.stringify(order));
   for (const shelf of PANEL_SHELVES) localStorage.removeItem(legacyClosedKey(shelf));
   return order;
 }
