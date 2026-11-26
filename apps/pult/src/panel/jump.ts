@@ -9,9 +9,8 @@ import { LifecyclePhase } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 
 import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
-import { askRef, shownAsks } from "../asks/asks.ts";
-import { askStore } from "../asks/model.ts";
 import { extensionRows } from "../extensions/index.ts";
+import { shownPosted } from "./poster.ts";
 import { rowRef, shownRows } from "../extensions/ui.ts";
 import { secretStore } from "../secrets/model.ts";
 import {
@@ -85,8 +84,7 @@ function currentTargets(): JumpTarget<URI>[] {
   const environmentIds = environments.map((environment) => environment.id);
   return jumpTargets({
     stars: starsOnShelf(starStore.get()).map((star) => star.id),
-    secrets: shownAsks(secretStore.get(), starEnabled.get()),
-    asks: shownAsks(askStore.get(), starEnabled.get()).map(askRef),
+    secrets: shownPosted(secretStore.get(), starEnabled.get()),
     extensions: shownRows(extensionRows.get(), starEnabled.get()).map(rowRef),
     environmentIds,
     files: openExplorerFiles.get().files,
@@ -210,14 +208,6 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
           "pult-shell.openSecret",
           target.secret.environmentId,
           target.secret.threadId,
-        ),
-      );
-    case "ask":
-      return getService(ICommandService).then((commands) =>
-        commands.executeCommand<void>(
-          "pult-shell.openAsk",
-          target.ask.environmentId,
-          target.ask.id,
         ),
       );
     case "extension":

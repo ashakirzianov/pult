@@ -49,6 +49,9 @@ export * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 // The Pult plugin's Stars: the user's home, against which the live install's Stars directory is refused to other homes.
 export * as HostProcess from "@t3tools/shared/HostProcess";
 // The Pult plugin's Star messages: a thread sender's limits, checked again under the target's lock.
+// The user's message into a thread or a Star's wake, its uploads claimed, which reads a text upload with `DocumentText` (`plugins/pult/src/stars/deliver.ts`).
+export * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
+export * as DocumentText from "./provider/DocumentText.ts";
 export * as DispatchModeLimit from "./orchestration-v2/DispatchModeLimit.ts";
 export * as McpInvocationContext from "./mcp/McpInvocationContext.ts";
 // The Pult plugin's Star messages: work a fenced link started never messages a Star, whose threads carry no link.

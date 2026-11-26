@@ -10,4 +10,5 @@ export * as FileSystem from "effect/FileSystem";
 export * as Path from "effect/Path";
 export * as Schema from "effect/Schema";
 export * as Semaphore from "effect/Semaphore";
+export * as Stream from "effect/Stream";
 export { Tool, Toolkit } from "effect/ai";

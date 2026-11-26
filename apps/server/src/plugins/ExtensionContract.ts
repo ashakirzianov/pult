@@ -20,6 +20,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 // oxlint-disable-next-line t3code/no-raw-mcp-registration -- read for the names it already has; registration goes through toolkitRegistration.
 import { McpSchema, McpServer, type Tool, Toolkit } from "effect/ai";
@@ -30,6 +31,7 @@ import * as McpToolAccess from "../mcp/McpToolAccess.ts";
 import { fencingLinkOrigin } from "../mcp/linkOrigin.ts";
 import { loadCaller } from "../mcp/threadAccess.ts";
 import * as DispatchModeLimit from "../orchestration-v2/DispatchModeLimit.ts";
+import * as ThreadMessageIntake from "../orchestration-v2/ThreadMessageIntake.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import {
@@ -37,6 +39,7 @@ import {
   HostCallError,
   type Project,
   type Thread,
+  type ThreadEvent,
   type ThreadMessage,
   type ToolCaller,
   type ToolHandler,
@@ -158,21 +161,51 @@ const send = Effect.fn("ExtensionContract.send")(function* (
   if (shell === null) return yield* failed(`there is no thread "${message.threadId}"`);
   const id = `${name}:${message.key}`;
   if (yield* threads.hasReceipt(CommandId.make(id))) return;
-  yield* threads
-    .sendToThread({
-      projectId: shell.projectId,
-      threadId: shell.id,
-      commandId: CommandId.make(id),
-      messageId: MessageId.make(id),
-      text: message.text,
-      attachments: [],
-      ...(header === undefined ? {} : { context: withMessageHeader(undefined, header) }),
-      mode: "queue",
-      createdBy: "agent",
-      creationSource: "server",
-    })
-    .pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined));
+  const base = {
+    projectId: shell.projectId,
+    threadId: shell.id,
+    commandId: CommandId.make(id),
+    messageId: MessageId.make(id),
+    mode: "queue" as const,
+  };
+  if ("text" in message) {
+    yield* threads
+      .sendToThread({
+        ...base,
+        text: message.text,
+        attachments: [],
+        ...(header === undefined ? {} : { context: withMessageHeader(undefined, header) }),
+        createdBy: "agent",
+        creationSource: "server",
+      })
+      .pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined));
+    return;
+  }
+  const { composed } = message;
+  if (composed.runtimeMode !== null || composed.interactionMode !== null)
+    return yield* Effect.die(
+      new Error("todo: a handled message's runtime or interaction mode, which a send cannot apply"),
+    );
+  const context =
+    header === undefined ? composed.context : withMessageHeader(composed.context, header);
+  // Through the intake, which claims the uploaded attachments into the thread.
+  yield* ThreadMessageIntake.sendToThread({
+    ...base,
+    text: composed.text,
+    attachments: composed.attachments,
+    ...(context === undefined ? {} : { context }),
+    ...(composed.model === null ? {} : { modelSelection: composed.model }),
+    createdBy: "user",
+    creationSource: "web",
+  }).pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined));
 });
+
+const THREAD_EVENTS = {
+  "thread.settled": "settled",
+  "thread.unsettled": "unsettled",
+  "thread.archived": "archived",
+  "thread.deleted": "deleted",
+} as const;
 
 const projectOf = (project: {
   readonly id: string;
@@ -210,12 +243,25 @@ export const make = (
       ),
     send: (message) =>
       send(name, threads, message).pipe(
+        // The intake's services: the loader's context is the server's whole one.
+        Effect.provide(
+          context as unknown as Context.Context<Effect.Services<ReturnType<typeof send>>>,
+        ),
         Effect.catchIf(
           (error) => !isHostCallError(error),
           (error) => Effect.fail(failedAs("threads.send")(error)),
         ),
       ),
   },
+  threadEvents: threads.streamDomainEvents.pipe(
+    Stream.filter((event) => Object.hasOwn(THREAD_EVENTS, event.type)),
+    Stream.map((event): ThreadEvent => ({
+      _tag: THREAD_EVENTS[event.type as keyof typeof THREAD_EVENTS],
+      threadId: event.threadId,
+    })),
+    // Upstream's own stream fails only as the server stops; an extension's subscriber ends with it.
+    Stream.catchCause(() => Stream.empty),
+  ),
   projects: {
     list: () =>
       projects.listShells().pipe(

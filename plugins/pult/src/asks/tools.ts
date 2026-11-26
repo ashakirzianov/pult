@@ -12,6 +12,7 @@ import {
 } from "../extension.ts";
 import { CHANNEL_PATTERN } from "../stars/channels.ts";
 import { Ask, AskRefused, type Asks, type AskStars, AskThreadId, type Poster } from "./asks.ts";
+import type { AskRows } from "./rows.ts";
 
 const AskTool = Tool.make("pult_ask", {
   description:
@@ -90,6 +91,7 @@ export const register = Effect.fn("PultTools.registerAsks")(function* (
   host: ExtensionHost,
   stars: AskStars,
   asks: Asks,
+  rows: AskRows,
 ) {
   const unavailable = (error: { readonly message: string }) =>
     new AskRefused({ code: "orchestration_error", message: error.message });
@@ -140,12 +142,14 @@ export const register = Effect.fn("PultTools.registerAsks")(function* (
       handle: (input, caller) =>
         Effect.flatMap(posterOf(caller), (poster) =>
           asks.post(poster, caller.folder ?? undefined, input),
-        ),
+        ).pipe(Effect.tap(() => rows.publish)),
     },
     pult_ask_settle: {
       access: "acts-as-caller",
       handle: (input, caller) =>
-        Effect.flatMap(posterOf(caller), (poster) => asks.settleOwn(input.id, isOwn(poster))),
+        Effect.flatMap(posterOf(caller), (poster) => asks.settleOwn(input.id, isOwn(poster))).pipe(
+          Effect.tap(() => rows.publish),
+        ),
     },
     pult_ask_list: { access: "reads-as-caller", handle: list },
   });

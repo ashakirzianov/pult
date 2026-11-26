@@ -46,7 +46,6 @@ function panel(
     files: [],
     drafts: [],
     secrets: [],
-    asks: [],
     extensions: [],
     threads: [],
     selection: undefined,
@@ -61,7 +60,7 @@ const keys = (targets: ReadonlyArray<{ readonly key: string }>) =>
 
 NodeTest.describe("jumpTargets", () => {
   NodeTest.test(
-    "reaches the Explorer's files, then the drafts and the secrets, then shelf by shelf the asks, the extensions' rows and the threads, as the panel lists them",
+    "reaches the Explorer's files, then the drafts and the secrets, then shelf by shelf the extensions' rows and the threads, as the panel lists them",
     () => {
       const targets = jumpTargets(
         panel({
@@ -69,13 +68,6 @@ NodeTest.describe("jumpTargets", () => {
           files: [file("other", "/b.ts"), file("env", "/a.ts")],
           drafts: [draft("project")],
           secrets: [{ environmentId: "other", threadId: "asker", id: "card" }],
-          asks: [
-            { environmentId: "env", id: "review", shelf: "inbox" },
-            { environmentId: "env", id: "spend", shelf: "settled" },
-            { environmentId: "other", id: "access", shelf: "inbox" },
-            { environmentId: "env", id: "sent", shelf: "working" },
-            { environmentId: "env", id: "later", shelf: "snoozed" },
-          ],
           extensions: (["inbox", "working", "snoozed", "settled"] as const).map((shelf) => ({
             environmentId: "env",
             extension: "x",
@@ -97,18 +89,13 @@ NodeTest.describe("jumpTargets", () => {
         "pult://other/b.ts",
         "draft:env/project",
         "secret:other/asker/card",
-        "ask:env/review",
-        "ask:other/access",
         'extension:["env","x","inbox"]',
         "env/pinned",
         "env/active",
-        "ask:env/sent",
         'extension:["env","x","working"]',
         "env/working",
-        "ask:env/later",
         'extension:["env","x","snoozed"]',
         "env/snoozed",
-        "ask:env/spend",
         'extension:["env","x","settled"]',
         "env/settled",
       ]);
@@ -141,7 +128,6 @@ NodeTest.describe("jumpTargets", () => {
           panel({
             stars: ["one"],
             files,
-            asks: [{ environmentId: "env", id: "ask", shelf: "inbox" }],
             extensions: [{ environmentId: "env", extension: "x", key: "row", shelf: "snoozed" }],
             threads,
             open: [],

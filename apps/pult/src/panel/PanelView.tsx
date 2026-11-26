@@ -1,11 +1,10 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { askRef, type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
-import { askStore } from "../asks/model.ts";
 import { extensionRows } from "../extensions/index.ts";
 import { type PageRow, rowRef, shownRows } from "../extensions/ui.ts";
 import { ExtensionRow } from "./ExtensionRow.tsx";
+import { shownPosted } from "./poster.ts";
 import { secretStore } from "../secrets/model.ts";
 import type { PageSecret } from "../secrets/secrets.ts";
 
@@ -32,7 +31,6 @@ import {
   type ThreadState,
   threadStore,
 } from "../threads/store.ts";
-import { AskCard } from "./AskCard.tsx";
 import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
 import {
@@ -46,7 +44,6 @@ import { selectionSnapshot, showingSettled } from "./jump.ts";
 import { JumpHint } from "./JumpHint.tsx";
 import { LimitsShelf } from "./LimitsShelf.tsx";
 import {
-  askKey,
   extensionRowKey,
   draftCards as draftCardsOf,
   draftKey,
@@ -164,9 +161,9 @@ export function subagentsByRoot(
  * under Inbox, whose first cards are the projects' drafts of new threads
  * that hold something (`drafts.ts`), newest first, and the selected draft,
  * then the secrets threads' agents wait for (`SecretCard.tsx`) and the
- * posted asks (`AskCard.tsx`), a Star's while Show Star is on, the rows
+ * extensions' rows (`ExtensionRow.tsx`), a Star's while Show Star is on, the rows
  * Inbox's order lists (`inboxRows`);
- * then the Working, Snoozed and Settled shelves, each led by its asks. While the page holds
+ * then the Working, Snoozed and Settled shelves, each led by its extensions' rows. While the page holds
  * several environments, each card names its own. The selected thread's card
  * expands with its details and its subagents (a Star's details are the
  * details cards', `src/details/`); a subagent has no card, so while one
@@ -244,12 +241,7 @@ export function PanelView() {
       now={now}
     />
   );
-  // The asks' rows, each on its status's shelf before its threads; a Star's none while Show Star is off.
-  const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
-  const askCard = (ask: PageAsk) => (
-    <AskCard key={askKey(ask)} ask={ask} environment={chip(ask.environmentId)} now={now} />
-  );
-  // Extensions' rows, each on its shelf after its asks; a `star-mark` poster's none while Show Star is off.
+  // Extensions' rows (the asks'), each on its shelf before its threads; a `star-mark` poster's none while Show Star is off.
   const extensions = shownRows(
     useSyncExternalStore(extensionRows.subscribe, extensionRows.get),
     starsShown,
@@ -265,7 +257,7 @@ export function PanelView() {
   );
   const extensionsOn = (shelf: PageRow["row"]["shelf"]) =>
     extensions.filter((page) => page.row.shelf === shelf);
-  const secrets = shownAsks(
+  const secrets = shownPosted(
     useSyncExternalStore(secretStore.subscribe, secretStore.get),
     starsShown,
   );
@@ -280,13 +272,11 @@ export function PanelView() {
   // Inbox's rows in its order, each drawn as its kind's card.
   const byKey = <Row,>(rows: ReadonlyArray<Row>, key: (row: Row) => string) =>
     new Map(rows.map((row) => [key(row), row] as const));
-  const asksByKey = byKey(asks, askKey);
   const secretsByKey = byKey(secrets, secretKey);
   const extensionsByKey = byKey(extensions, extensionKeyOf);
   const inbox = inboxRows({
     drafts: draftCards,
     secrets,
-    asks: asks.map(askRef),
     extensions: extensions.map(rowRef),
     threads: state.threads,
     environmentIds: [...environments.keys()],
@@ -296,8 +286,6 @@ export function PanelView() {
         return draftCard(row.draft);
       case "secret":
         return secretCard(found(secretsByKey, row.key));
-      case "ask":
-        return askCard(found(asksByKey, row.key));
       case "extension":
         return extensionRow(found(extensionsByKey, row.key));
       case "thread":
@@ -352,11 +340,9 @@ export function PanelView() {
       case "working":
       case "snoozed": {
         const threads = name === "working" ? working : snoozed;
-        const shelved = asksOn(asks, name);
-        const count = threads.length + shelved.length + extensionsOn(name).length;
+        const count = threads.length + extensionsOn(name).length;
         return (
           <Shelf key={name} name={name} empty={count === 0}>
-            {shelved.map(askCard)}
             {extensionsOn(name).map(extensionRow)}
             {threads.map(card)}
           </Shelf>
@@ -370,11 +356,9 @@ export function PanelView() {
             empty={
               settled.length === 0 &&
               state.settled.count === 0 &&
-              asksOn(asks, "settled").length === 0 &&
               extensionsOn("settled").length === 0
             }
           >
-            {asksOn(asks, "settled").map(askCard)}
             {extensionsOn("settled").map(extensionRow)}
             <SettledTail
               threads={settled}

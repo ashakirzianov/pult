@@ -259,7 +259,6 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-sleep-request",
           "star-sleep",
           "star-channel-sleep",
-          "asks",
           "star-channel-models",
           "star-channel-history",
           "star-channel-settings",

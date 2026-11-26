@@ -72,6 +72,8 @@ export class ExtensionItems {
   /** The action in flight on each row, by `rowId`. */
   private readonly pending = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
+  /** The environments whose stream sent anything since they were last forgotten: their rows are this connect's. */
+  private readonly answered = new Set<string>();
   private shown: ReadonlyArray<PageRow> = [];
 
   private readonly warn: (message: string) => void;
@@ -108,6 +110,7 @@ export class ExtensionItems {
 
   /** One extension's whole list for one slot, as the environment's stream sends it. */
   apply(environmentId: string, published: ExtensionUiPublished): void {
+    this.answered.add(environmentId);
     const key = listKey(environmentId, published.extension, published.slot);
     if (!isSlot(published.slot)) {
       this.warnOnce(
@@ -134,9 +137,15 @@ export class ExtensionItems {
 
   /** The environment's lists gone, as when it disconnects: its stream sends the whole set again. */
   forget(environmentId: string): void {
+    this.answered.delete(environmentId);
     for (const key of this.lists.keys())
       if ((JSON.parse(key) as ReadonlyArray<string>)[0] === environmentId) this.lists.delete(key);
     this.update();
+  }
+
+  /** Whether the environment's rows are this connect's, which the notices take as their baseline (`src/stars/notify.ts`). */
+  answeredOn(environmentId: string): boolean {
+    return this.answered.has(environmentId);
   }
 
   /** The environments' order changed. */

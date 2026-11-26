@@ -75,7 +75,18 @@ const layerThreads = Layer.mergeAll(
     sendToThread: (input: Record<string, unknown>) =>
       Effect.sync(() => {
         recorded.sent.push(input);
+        return { message: { attachments: input.attachments } };
       }),
+    // A thread created, then one of each event an extension is told of.
+    streamDomainEvents: Stream.fromIterable(
+      [
+        "thread.created",
+        "thread.settled",
+        "thread.unsettled",
+        "thread.archived",
+        "thread.deleted",
+      ].map((type) => ({ type, threadId: THREAD })),
+    ),
   } as unknown as ThreadManagementService["Service"]),
   Layer.succeed(ProjectService, {
     getShell: (projectId: ProjectId) =>
@@ -137,7 +148,7 @@ const mcpClient = McpSchema.McpServerClient.of({
  * import, activation and disposal; `activate` replaces its activation's body.
  */
 const extensionSource = (name: string, options: { readonly activate?: string } = {}) => `
-import { ActionRefused, Effect, HostCallError, Schema, SendRefused, Tool, Toolkit } from ${JSON.stringify(HOST_IMPORT)};
+import { ActionRefused, Effect, HostCallError, Schema, SendRefused, Stream, Tool, Toolkit } from ${JSON.stringify(HOST_IMPORT)};
 const events = globalThis.__pluginLoaderTestEvents;
 events.push("import ${name}");
 const Whoami = Tool.make("${name}_whoami", {
@@ -465,12 +476,25 @@ const THREADS_ACTIVATE = `
   yield* note("send empty key", host.threads.send({ ...message, key: "" }));
   yield* note("send broken line", host.threads.send({ ...message, key: "x", header: { line: "a\\nb", caption: null } }));
   yield* note("send unknown", host.threads.send({ ...message, threadId: "nobody" }));
+  yield* note("send composed", host.threads.send({
+    threadId: "thread-1",
+    key: "reply",
+    header: { line: "[A reply]", caption: null },
+    composed: {
+      text: "Yes",
+      attachments: [{ type: "image", id: "attachment-1", name: "a.png", mimeType: "image/png", sizeBytes: 3 }],
+      model: { instanceId: "codex", model: "picked" },
+      runtimeMode: null,
+      interactionMode: null,
+    },
+  }));
+  yield* note("events", Effect.map(Stream.runCollect(Stream.take(host.threadEvents, 4)), (events) => Array.from(events)));
   yield* note("create", Effect.map(host.projects.create({ title: "Asks", workspaceRoot: "/work/asks" }), (project) => project.workspaceRoot));
   yield* note("list", Effect.map(host.projects.list(), (projects) => projects.map((project) => project.workspaceRoot)));
 `;
 
 it.effect(
-  "an extension reads a thread, sends its own message once per key under a header naming it, and creates and lists projects; an empty key, a header line that breaks and an unknown thread fail the call",
+  "an extension reads a thread, sends its own message once per key under a header naming it and the user's with its attachments, follows threads' events, and creates and lists projects; an empty key, a header line that breaks and an unknown thread fail the call",
   () =>
     Effect.gen(function* () {
       events().length = 0;
@@ -488,10 +512,22 @@ it.effect(
           /^send broken line HostCallError threads\.send: the header does not decode/,
         ),
         'send unknown HostCallError threads.send: there is no thread "nobody"',
+        "send composed undefined",
+        `events ${JSON.stringify(["settled", "unsettled", "archived", "deleted"].map((_tag) => ({ _tag, threadId: THREAD })))}`,
         'create "/work/asks"',
         'list ["/work/asks"]',
       ]);
-      expect(recorded.sent).toHaveLength(1);
+      expect(recorded.sent).toHaveLength(2);
+      // The user's message, its attachment and picked model carried, the header added to its context.
+      expect(recorded.sent[1]).toMatchObject({
+        commandId: "alpha:reply",
+        text: "Yes",
+        attachments: [{ id: "attachment-1" }],
+        modelSelection: { model: "picked" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      expect(messageHeaderOf(recorded.sent[1]?.context as never)?.line).toBe("[A reply]");
       expect(recorded.sent[0]).toMatchObject({
         threadId: THREAD,
         commandId: "alpha:hello",
@@ -677,6 +713,7 @@ it("the extension entry exports the contract and the Effect namespaces, and noth
     "Schema",
     "Semaphore",
     "SendRefused",
+    "Stream",
     "Thread",
     "Tool",
     "ToolAccess",

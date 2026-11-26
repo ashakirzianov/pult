@@ -40,7 +40,7 @@ const sameTarget = (left: StarTarget | undefined, right: StarTarget | undefined)
  * it shows, the choice the plugin resolved for it, unless one was picked in
  * it; the answer is not used.
  */
-export async function afterDraftWake(
+async function afterDraftWake(
   starId: string,
   environmentId: string,
   threadId: string,

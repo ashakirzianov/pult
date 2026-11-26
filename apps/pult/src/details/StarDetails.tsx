@@ -4,7 +4,8 @@ import { IContextMenuService } from "@codingame/monaco-vscode-api/vscode/vs/plat
 import { limitsStore } from "../limits/model.ts";
 import { useSyncExternalStore } from "react";
 
-import { askStore } from "../asks/model.ts";
+import { extensionRows } from "../extensions/index.ts";
+import type { PageRow } from "../extensions/ui.ts";
 import { keyOf, openShelves } from "../panel/order.ts";
 import { type Activity, age, Status } from "../panel/PanelView.tsx";
 import { StarSchedules } from "../panel/StarSchedules.tsx";
@@ -136,38 +137,37 @@ function ChannelThreads({
   ));
 }
 
-/** A Star's posted asks, across its environments. */
-export function starAsks<Ask extends { status: string; poster: object }>(
-  asks: ReadonlyArray<Ask>,
-  starId: string,
-): Ask[] {
-  return asks.filter(
-    (ask) => ask.status === "posted" && "star" in ask.poster && ask.poster.star === starId,
+/** A Star's rows on Inbox, its asks among them, across its environments: those whose `star-mark` poster names it. */
+export function starRows(rows: ReadonlyArray<PageRow>, starId: string): PageRow[] {
+  return rows.filter(
+    ({ row }) => row.shelf === "inbox" && "named" in row.poster && row.poster.star === starId,
   );
 }
 
 /**
- * A Star's posted asks on their shelf: a row each in the subagents' look, its
- * title and its age, opening it as its Inbox row does (`pult-shell.openAsk`).
+ * A Star's Inbox rows on their shelf: a row each in the subagents' look, its
+ * title and its age, opening it as its Inbox row does (`pult-shell.openExtensionRow`).
  * Hidden with none.
  */
 function StarAsks({ star, now }: { star: Star; now: number }) {
-  const asks = starAsks(useSyncExternalStore(askStore.subscribe, askStore.get), star.id);
+  const asks = starRows(useSyncExternalStore(extensionRows.subscribe, extensionRows.get), star.id);
   if (asks.length === 0) return null;
   return (
     <DetailsShelf name="asks">
       <ul className="pult-subagents-list" aria-label="Asks">
-        {asks.map((ask) => (
-          <li key={`${ask.environmentId}:${ask.id}`}>
+        {asks.map(({ environmentId, extension, row }) => (
+          <li key={JSON.stringify([environmentId, extension, row.key])}>
             <button
               type="button"
               className="pult-subagent"
-              title={ask.title}
-              onClick={() => run("pult-shell.openAsk", ask.environmentId, ask.id)}
+              title={row.title}
+              onClick={() => run("pult-shell.openExtensionRow", environmentId, extension, row.key)}
             >
               <i className="codicon codicon-comment-unresolved" aria-hidden />
-              <span className="pult-subagent-title">{ask.title}</span>
-              <span className="pult-card-status">{age(ask.posted, now)}</span>
+              <span className="pult-subagent-title">{row.title}</span>
+              <span className="pult-card-status">
+                {row.status.time === undefined ? null : age(row.status.time.at, now)}
+              </span>
             </button>
           </li>
         ))}

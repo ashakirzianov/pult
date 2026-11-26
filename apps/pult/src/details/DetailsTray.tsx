@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-import { askStore } from "../asks/model.ts";
+import { extensionRows } from "../extensions/index.ts";
 import { closedShelves } from "../panel/order.ts";
 import { drawnHome } from "../stars/stars.ts";
 import { detailsCards } from "./cards.ts";
 import { useStarDetails } from "./DetailsView.tsx";
 import { DETAILS_SHELF_ICONS, type DetailsShelfName, detailsShelves } from "./shelves.tsx";
-import { starAsks } from "./StarDetails.tsx";
+import { starRows } from "./StarDetails.tsx";
 
 const {
   ShelfDropLine,
@@ -29,7 +29,7 @@ const {
 export function DetailsTray() {
   const closed = closedShelves(useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get));
   const dragging = useSyncExternalStore(shelfDrag.subscribe, shelfDrag.get) !== null;
-  const asks = useSyncExternalStore(askStore.subscribe, askStore.get);
+  const rows = useSyncExternalStore(extensionRows.subscribe, extensionRows.get);
   const details = useStarDetails();
   const subject = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.subject;
   if (details === null || (closed.length === 0 && !dragging)) return null;
@@ -37,7 +37,7 @@ export function DetailsTray() {
   const countOf = (shelf: DetailsShelfName): number => {
     switch (shelf) {
       case "asks":
-        return starAsks(asks, details.star.id).length;
+        return starRows(rows, details.star.id).length;
       case "channels":
         return details.rows.channels.filter((row) => row.thread !== null).length;
       case "channel":

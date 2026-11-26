@@ -3,14 +3,16 @@
 // none), else the channel wakes fresh, tagged, at the modes of its newest conversation, else the Star's
 // newest, and the model the Star chose for it, else that conversation's.
 import {
+  type ChatAttachment,
   type ModelSelection,
+  type OrchestrationMessageContext,
   type RuntimeMode,
   CommandId,
   type MessageHeaderCaption,
   MessageId,
   OrchestratorMcpFailure,
   type OrchestrationV2ThreadShell,
-  type ThreadId,
+  ThreadId,
   withMessageHeader,
 } from "@t3tools/contracts";
 
@@ -18,14 +20,17 @@ import {
   Cause,
   Digest,
   DispatchModeLimit,
+  DocumentText,
   Effect,
   FileSystem,
   McpThreadAccess,
   Path,
   ProviderRegistry,
+  ServerConfig,
   ServerRuntimeStartup,
   ThreadLaunchService,
   ThreadManagementService,
+  ThreadMessageIntake,
 } from "../host.ts";
 import {
   type BrokenFile,
@@ -38,11 +43,20 @@ import { RECORD_FILE, starName } from "./record.ts";
 import type { Conversations, Star, Stars } from "./stars.ts";
 
 /**
- * Who sends: a thread, held to upstream's rule that its target's modes be no broader than its own,
- * which it reads from the `DispatchModeLimit` `McpToolAccess.writesThreads` provides; or the plugin
- * itself, for schedules, with no ceiling.
+ * Who sends: a thread, its target's modes no broader than its own (`DispatchModeLimit`); the plugin,
+ * for schedules, with no ceiling; or the user, an ask's reply, with no ceiling, its uploads claimed,
+ * its picked model applied, its header's line `from.line` as it stands.
  */
-export type Sender = { readonly thread: ThreadId } | "plugin";
+export type Sender =
+  | { readonly thread: ThreadId }
+  | "plugin"
+  | {
+      readonly user: {
+        readonly attachments: ReadonlyArray<ChatAttachment>;
+        readonly context: OrchestrationMessageContext | undefined;
+        readonly model: ModelSelection | null;
+      };
+    };
 
 /** Who a delivery names as its sender, in its header (`messageHeader.ts`): the line `[From <line>, to your channel <to>]` the Star reads, and the caption the page draws. */
 export interface From {
@@ -101,6 +115,12 @@ export type PageWakeModel = (
 export interface Delivering {
   readonly deliver: Deliver;
   readonly pageWakeModel: PageWakeModel;
+  /** The model a fresh conversation of `channel` starts at `runtimeMode`, the Star's choice, telling nothing; null for none. */
+  readonly wakeModel: (
+    star: Star,
+    channel: Channel,
+    runtimeMode: RuntimeMode,
+  ) => Effect.Effect<ModelSelection | null>;
 }
 
 /** As the web composer seeds a launch's title before the server regenerates it. */
@@ -127,6 +147,10 @@ export const make = Effect.gen(function* () {
   const launches = yield* ThreadLaunchService.ThreadLaunchService;
   const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
   const digest = yield* Digest.Digest;
+  // What the intake reads as it claims the user's uploads.
+  const claiming = yield* Effect.context<
+    DocumentText.DocumentText | FileSystem.FileSystem | ServerConfig.ServerConfig
+  >();
   const resolving = yield* Effect.context<
     | FileSystem.FileSystem
     | Path.Path
@@ -230,8 +254,10 @@ export const make = Effect.gen(function* () {
         const to = named ?? star.defaultChannel;
         if (!isChannel(to)) return yield* Effect.die(new Error(`"${to}" is no channel's slug.`));
         yield* startup.awaitCommandReady.pipe(Effect.mapError(failed));
-        const limit = sender === "plugin" ? undefined : yield* DispatchModeLimit.DispatchModeLimit;
-        if (sender !== "plugin" && limit === undefined)
+        const thread = typeof sender === "object" && "thread" in sender ? sender.thread : null;
+        const user = typeof sender === "object" && "user" in sender ? sender.user : null;
+        const limit = thread === null ? undefined : yield* DispatchModeLimit.DispatchModeLimit;
+        if (thread !== null && limit === undefined)
           return yield* Effect.die(
             new Error("A thread's delivery runs inside McpToolAccess.writesThreads."),
           );
@@ -240,16 +266,20 @@ export const make = Effect.gen(function* () {
             ? Effect.void
             : McpThreadAccess.assertTargetWithinLimits(limit, target);
 
-        const context = withMessageHeader(undefined, {
+        const context = withMessageHeader(user?.context, {
           extension: "pult",
-          line: `[From ${from.line}, to your channel ${to}]`,
+          line: user === null ? `[From ${from.line}, to your channel ${to}]` : from.line,
           caption: from.caption,
         });
-        const senderField = sender === "plugin" ? {} : { senderThreadId: sender.thread };
-        const creation = {
-          createdBy: "agent" as const,
-          creationSource: sender === "plugin" ? ("server" as const) : ("mcp" as const),
-        };
+        const senderField = thread === null ? {} : { senderThreadId: thread };
+        const creation =
+          user !== null
+            ? { createdBy: "user" as const, creationSource: "web" as const }
+            : {
+                createdBy: "agent" as const,
+                creationSource: thread === null ? ("server" as const) : ("mcp" as const),
+              };
+        const attachments = user?.attachments ?? [];
         const base = `pult:star-message:${star.id}:${key}`;
         const send = {
           commandId: CommandId.make(`${base}:send`),
@@ -285,36 +315,38 @@ export const make = Effect.gen(function* () {
           yield* withinLimit(newest);
           // A resumed launch's thread is the channel's newest, created at the model the launch chose.
           const modelSelection: ModelSelection = fresh
-            ? yield* chosen(newest)
+            ? (user?.model ?? (yield* chosen(newest)))
             : newest.modelSelection;
-          const launched = yield* launches
-            .launch({
-              commandId: wake.commandId,
-              projectId: star.projectId,
-              title: titleSeed(text),
-              generateTitle: true,
-              modelSelection,
-              runtimeMode: newest.runtimeMode,
-              interactionMode: newest.interactionMode,
-              workspaceStrategy: { type: "root" },
-              // Created tagged with its channel: an untagged thread is no conversation.
-              tags: [channelTag(to)],
-              initialMessage: {
-                messageId: wake.messageId,
-                text,
-                attachments: [],
-                context,
-                ...senderField,
-              },
-              ...creation,
-            })
-            .pipe(
-              Effect.mapError((error) =>
-                error._tag === "ThreadManagementProviderInstanceDisabledError"
-                  ? failure("invalid_request", error.message)
-                  : failed(error),
-              ),
-            );
+          // The user's uploads are claimed into the thread, whose id the launch mints first.
+          const launched = yield* ThreadMessageIntake.launchThread({
+            commandId: wake.commandId,
+            projectId: star.projectId,
+            title: titleSeed(text),
+            generateTitle: true,
+            modelSelection,
+            runtimeMode: newest.runtimeMode,
+            interactionMode: newest.interactionMode,
+            workspaceStrategy: { type: "root" },
+            // Created tagged with its channel: an untagged thread is no conversation.
+            tags: [channelTag(to)],
+            ...(user === null ? {} : { threadId: ThreadId.make(`${base}:thread`) }),
+            initialMessage: {
+              messageId: wake.messageId,
+              text,
+              attachments,
+              context,
+              ...senderField,
+            },
+            ...creation,
+          }).pipe(
+            Effect.provideService(ThreadLaunchService.ThreadLaunchService, launches),
+            Effect.provideContext(claiming),
+            Effect.mapError((error) =>
+              error._tag === "ThreadManagementProviderInstanceDisabledError"
+                ? failure("invalid_request", error.message)
+                : failed(error),
+            ),
+          );
           return {
             outcome: launched.resumed ? "replayed" : "launched",
             threadId: launched.threadId,
@@ -331,19 +363,22 @@ export const make = Effect.gen(function* () {
           if (yield* threads.hasReceipt(wake.commandId)) return yield* wakeAt(newest, false);
           if (current === null) return wakes ? yield* wakeAt(newest, true) : null;
           yield* withinLimit(current);
-          const sent = yield* threads
-            .sendToThread({
-              projectId: star.projectId,
-              threadId: current.id,
-              ...send,
-              text,
-              attachments: [],
-              context,
-              mode: "queue",
-              ...senderField,
-              ...creation,
-            })
-            .pipe(Effect.mapError(failed));
+          const sent = yield* ThreadMessageIntake.sendToThread({
+            projectId: star.projectId,
+            threadId: current.id,
+            ...send,
+            text,
+            attachments,
+            context,
+            ...(user?.model == null ? {} : { modelSelection: user.model }),
+            mode: "queue",
+            ...senderField,
+            ...creation,
+          }).pipe(
+            Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
+            Effect.provideContext(claiming),
+            Effect.mapError(failed),
+          );
           if (sent.delivery !== "started" && sent.delivery !== "queued")
             return yield* Effect.die(new Error(`A queued send was ${sent.delivery}.`));
           return { outcome: sent.delivery, threadId: current.id } satisfies Delivered;
@@ -382,6 +417,8 @@ export const make = Effect.gen(function* () {
           ),
         ),
       pageWakeModel,
+      wakeModel: (star, channel, runtimeMode) =>
+        Effect.map(chosenFor(star, channel, runtimeMode), (model) => model?.selection ?? null),
     };
   };
 });

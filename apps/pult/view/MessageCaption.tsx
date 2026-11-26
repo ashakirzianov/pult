@@ -32,10 +32,7 @@ export function MessageCaption({
         ? thread === null
           ? null
           : () => threadViewHost().openThread(environmentId, open.thread)
-        : // Until asks are published rows (`asks-onto-contract`), a row of Pult's is an ask.
-          extension === "pult"
-          ? () => threadViewHost().openAsk(environmentId, open.row)
-          : null;
+        : () => threadViewHost().openRow(environmentId, extension, open.row);
   return (
     <p
       className="me-1 flex min-w-0 max-w-[80%] items-center gap-1 text-2xs whitespace-nowrap text-muted-foreground/70"

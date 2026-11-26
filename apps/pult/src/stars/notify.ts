@@ -6,8 +6,9 @@
 // `startThreadNotifications` is not started. The logic is `notices.ts`.
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 
-import { posterName, shownAsks } from "../asks/asks.ts";
-import { askStore, asksAnsweredOn } from "../asks/model.ts";
+import { extensionRows, rowsAnsweredOn, rowPoster } from "../extensions/index.ts";
+import { shownRows } from "../extensions/ui.ts";
+import { posterName, shownPosted } from "../panel/poster.ts";
 import { connection } from "../connection/index.ts";
 import { desktopHost } from "../desktop/host.ts";
 import { secretStore } from "../secrets/model.ts";
@@ -17,7 +18,7 @@ import { starById, starsAnsweredOn, starStore } from "./model.ts";
 import {
   NOTHING_SEEN,
   type Notice,
-  type NoticeAsks,
+  type NoticeRows,
   type NoticeSecrets,
   type NoticeStar,
   notices,
@@ -86,20 +87,22 @@ function noticeStars(): NoticeStar[] {
   });
 }
 
-/** Each held environment's posted asks the panel shows, a Star's only while Show Star is on, each with its poster's name as its row has it. */
-function noticeAsks(): NoticeAsks[] {
+/** Each held environment's extension rows on Inbox the panel shows, a `star-mark` poster's only while Show Star is on, each with its poster's name as its row has it and its status's time. */
+function noticeRows(): NoticeRows[] {
   if (!starSettingKnown()) return [];
-  const asks = shownAsks(askStore.get(), starEnabled.get());
+  const rows = shownRows(extensionRows.get(), starEnabled.get());
   return connection.environments.map(({ environmentId }) => ({
     environmentId,
-    current: ready(environmentId) && asksAnsweredOn(environmentId),
-    posted: asks.flatMap((ask) =>
-      ask.environmentId === environmentId && ask.status === "posted"
+    current: ready(environmentId) && rowsAnsweredOn(environmentId),
+    posted: rows.flatMap((page) =>
+      page.environmentId === environmentId && page.row.shelf === "inbox"
         ? [
             {
-              id: ask.id,
-              title: ask.title,
-              poster: nameOf(ask),
+              extension: page.extension,
+              key: page.row.key,
+              title: page.row.title,
+              poster: nameOf({ environmentId, poster: rowPoster(page) }),
+              since: page.row.status.time?.at ?? null,
             },
           ]
         : [],
@@ -111,7 +114,7 @@ function noticeAsks(): NoticeAsks[] {
 function noticeSecrets(): NoticeSecrets[] {
   if (!starSettingKnown()) return [];
   const { environments } = threadStore.get();
-  const secrets = shownAsks(secretStore.get(), starEnabled.get());
+  const secrets = shownPosted(secretStore.get(), starEnabled.get());
   const unread = [...secretStore.unread()];
   return connection.environments.map(({ environmentId }) => ({
     environmentId,
@@ -140,7 +143,7 @@ function noticeSecrets(): NoticeSecrets[] {
 /** Sends the badge, shows what is new while the page is hidden or lacks focus, and closes what has gone. */
 function update(): void {
   scheduled = false;
-  const next = notices(noticeStars(), noticeAsks(), noticeSecrets(), seen);
+  const next = notices(noticeStars(), noticeRows(), noticeSecrets(), seen);
   seen = next.seen;
   if (next.badge !== badge) sendBadge(next.badge);
   for (const [tag, notification] of shown) {
@@ -189,18 +192,19 @@ function unreachable(value: never): never {
   throw new Error(`unreachable: ${JSON.stringify(value)}`);
 }
 
-/** The window revealed, then the ask or the secret opened, or the Star selected. */
+/** The window revealed, then the row or the secret opened, or the Star selected. */
 async function open(notice: Notice): Promise<void> {
   const host = desktopHost();
   if (host === undefined) window.focus();
   else await host.revealWindow();
   const commands = await getService(ICommandService);
   switch (notice.kind) {
-    case "ask":
+    case "row":
       return void (await commands.executeCommand(
-        "pult-shell.openAsk",
+        "pult-shell.openExtensionRow",
         notice.environmentId,
-        notice.ask,
+        notice.extension,
+        notice.key,
       ));
     case "secret":
       return void (await commands.executeCommand(
@@ -215,10 +219,10 @@ async function open(notice: Notice): Promise<void> {
   }
 }
 
-/** Starts the notices, after `startStars()`, `startAsks()` and `startSecrets()`: on the Stars, the asks, the secrets, the threads, Show Star and the connection. */
+/** Starts the notices, after `startStars()`, `startExtensionUi()` and `startSecrets()`: on the Stars, the extensions' rows, the secrets, the threads, Show Star and the connection. */
 export function startStarNotices(): void {
   starStore.subscribe(schedule);
-  askStore.subscribe(schedule);
+  extensionRows.subscribe(schedule);
   secretStore.subscribe(schedule);
   threadStore.subscribe(schedule);
   starEnabled.subscribe(schedule);

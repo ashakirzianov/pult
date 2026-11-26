@@ -1,6 +1,6 @@
+import { getService, ICommandService } from "@codingame/monaco-vscode-api";
 import { useSyncExternalStore } from "react";
 
-import { posterName } from "../asks/asks.ts";
 import { starMarks, starStillUrl } from "../stars/mark.ts";
 import type { RoutePoster } from "../stars/plugin.ts";
 import { starById, starStore } from "../stars/model.ts";
@@ -9,6 +9,12 @@ import { projectIconUri, threadProjectIcon, useProjectIcons } from "../threads/p
 import { type ShellThread, threadStore } from "../threads/store.ts";
 import { EnvironmentChip } from "./DraftCard.tsx";
 import { JumpHint } from "./JumpHint.tsx";
+import { posterName } from "./poster.ts";
+
+/** Runs a workbench command, as a row's click does. */
+export function run(command: string, ...args: unknown[]): void {
+  void getService(ICommandService).then((commands) => commands.executeCommand(command, ...args));
+}
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
 const threadsSnapshot = () => threadStore.get();
@@ -31,7 +37,7 @@ function PosterIcon({ star, thread }: { star: Star | undefined; thread: ShellThr
 }
 
 /**
- * A row an agent posted for the user, an ask's or a secret's, in a thread
+ * A row posted for the user, an extension's or a secret's, in a thread
  * card's look: its poster in the project's place, a Star's mark and name
  * with its channel but its default one, or the posting thread's project icon and
  * title, its environment's chip while there are several, its `slot` where a

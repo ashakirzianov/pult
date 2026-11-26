@@ -14,6 +14,7 @@ import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import type * as Stream from "effect/Stream";
 import type { Tool, Toolkit } from "effect/ai";
 
 /** The contract number this server serves; an extension's `extension.json` names the one it was built against. */
@@ -48,14 +49,23 @@ export const Project = Schema.Struct({
 });
 export type Project = typeof Project.Type;
 
-/** The extension's own message into a thread (`threads.send`). */
-export interface ThreadMessage {
+/**
+ * A message into a thread (`threads.send`): the extension's own `text`, or the user's message from a
+ * composer the extension handles, `composed`, its attachments claimed into the thread and a model
+ * picked there applied.
+ */
+export type ThreadMessage = {
   readonly threadId: string;
   /** Non-empty: the message's command and id are `<name>:<key>`, and a key sent again sends nothing. */
   readonly key: string;
   /** The line its agent reads above the text, one line, and the caption the page draws over it; the server names the extension in it. */
   readonly header?: { readonly line: string; readonly caption: MessageHeaderCaption | null };
-  readonly text: string;
+} & ({ readonly text: string } | { readonly composed: Composed });
+
+/** What befell a thread, from upstream's committed events, live from the subscription on. */
+export interface ThreadEvent {
+  readonly _tag: "settled" | "unsettled" | "archived" | "deleted";
+  readonly threadId: string;
 }
 
 /** Who calls a tool: always a thread, since no extension tool is offered to an outside client. */
@@ -140,9 +150,11 @@ export interface ExtensionHost {
   readonly threads: {
     /** The thread, or null for an id of none. */
     readonly get: (id: string) => Effect.Effect<Thread | null, HostCallError>;
-    /** The extension's own message, queued behind the thread's work, under no mode ceiling. */
+    /** A message queued behind the thread's work, under no mode ceiling: the extension's own as an agent's from the server, the user's as from the web. */
     readonly send: (message: ThreadMessage) => Effect.Effect<void, HostCallError>;
   };
+  /** Each thread settled, un-settled, archived or deleted; each subscriber its own. */
+  readonly threadEvents: Stream.Stream<ThreadEvent>;
   readonly projects: {
     readonly list: () => Effect.Effect<ReadonlyArray<Project>, HostCallError>;
     /** A new project of the folder, its id minted by the server. */

@@ -511,8 +511,7 @@ export default defineConfig({
         // Pult's features moved onto the extension contract take it, and Effect, from the plugin's
         // ./extension.ts alone, as an installed extension would (xaxis `pult/decisions`, `pult-plugin`).
         files: ["plugins/pult/src/asks/**"],
-        // The routes stay on the raw tier until the asks' rows replace them.
-        excludeFiles: ["plugins/pult/src/asks/**/*.test.ts", "plugins/pult/src/asks/routes.ts"],
+        excludeFiles: ["plugins/pult/src/asks/**/*.test.ts"],
         rules: {
           "eslint/no-restricted-imports": [
             "error",

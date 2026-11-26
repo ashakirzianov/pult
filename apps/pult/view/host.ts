@@ -21,8 +21,8 @@ import type { ShellConnectionServices } from "./connectionRuntime.ts";
 export interface ThreadViewHost {
   readonly connection: () => Promise<Context.Context<ShellConnectionServices>>;
   readonly openThread: (environmentId: string, threadId: string) => void;
-  /** Pult's ask, as its row opens it (a message header's caption naming it), until asks are published rows (`asks-onto-contract`). */
-  readonly openAsk: (environmentId: string, id: string) => void;
+  /** A row the extension publishes, as its click opens it (a message header's caption naming it, `src/extensions/`). */
+  readonly openRow: (environmentId: string, extension: string, key: string) => void;
   /**
    * A new thread in the project, which the view went to (upstream's New
    * thread on branch, send and new): the shell selects the project's draft,

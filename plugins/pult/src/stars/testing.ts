@@ -3,9 +3,11 @@
 // xaxis checkout's suite bringing the real driver), for the Stars' tests and the plugin's: a server whose home is
 // `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
+  type ChatAttachment,
   type CommandId,
   type DiscoveredLocalServer,
   type MessageHeader,
+  type ModelSelection,
   messageHeaderOf,
   MessageId,
   type OrchestrationMessageContext,
@@ -33,6 +35,7 @@ import {
 import {
   DateTime,
   DispatchModeLimit,
+  DocumentText,
   Effect,
   FileSystem,
   Layer,
@@ -152,6 +155,9 @@ export interface FakeMessage {
   readonly createdBy: string;
   readonly creationSource: string;
   readonly limit: DispatchModeLimit.DispatchModeLimitValue | undefined;
+  /** A message's attachments and its picked model, which only the user's carry. */
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
+  readonly modelSelection?: ModelSelection | undefined;
 }
 
 /**
@@ -218,6 +224,8 @@ function fakeThreads() {
       messageId: MessageId;
       senderThreadId?: ThreadId;
       text: string;
+      attachments: ReadonlyArray<ChatAttachment>;
+      modelSelection?: ModelSelection;
       context?: OrchestrationMessageContext;
       mode: string;
       createdBy: string;
@@ -228,7 +236,7 @@ function fakeThreads() {
         return yield* Effect.die(new Error("unexpected send"));
       if (receipts.has(input.commandId))
         return yield* Effect.die(new Error("a replayed send reached the store"));
-      return yield* take(thread, {
+      const taken = yield* take(thread, {
         commandId: input.commandId,
         messageId: input.messageId,
         text: input.text,
@@ -236,7 +244,11 @@ function fakeThreads() {
         senderThreadId: input.senderThreadId,
         createdBy: input.createdBy,
         creationSource: input.creationSource,
+        attachments: input.attachments,
+        modelSelection: input.modelSelection,
       });
+      // The message as stored, which the intake reads to release the uploads it did not keep.
+      return { ...taken, message: { attachments: input.attachments } };
     }),
     getShellSnapshot: (options: {
       location?: "active" | "archive";
@@ -626,6 +638,8 @@ export const fakeServer = Effect.gen(function* () {
         }),
     }),
     Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+    // Read only to claim a text upload, which no test sends.
+    Layer.mock(DocumentText.DocumentText)({}),
     Layer.succeed(WorkspaceEntries.WorkspaceEntries, {
       watch: (input: { cwd: string }) =>
         Stream.callback<ProjectWatchEntriesEvent>((queue) =>

@@ -4,7 +4,7 @@
  * `host.serve` dispatch below; its tools register last.
  */
 import * as Asks from "./asks/asks.ts";
-import { asksRoute } from "./asks/routes.ts";
+import * as AskRows from "./asks/rows.ts";
 import * as AskTools from "./asks/tools.ts";
 import {
   Effect,
@@ -42,7 +42,6 @@ const features: ReadonlyArray<string> = [
   "star-sleep-request",
   "star-sleep",
   "star-channel-sleep",
-  "asks",
   "star-channel-models",
   "star-channel-history",
   "star-channel-settings",
@@ -58,8 +57,9 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const delivering = deliverTo(stars);
   // One open conversation per channel: a launch into a channel that has one is refused.
   yield* (yield* ThreadLaunchGuard.ThreadLaunchGuard).register(stars.guardLaunch);
-  const askStars = forAsks(stars, delivering.deliver, yield* Path.Path);
+  const askStars = forAsks(stars, delivering, yield* Path.Path);
   const asks = yield* Asks.make(host.extension, askStars);
+  const askRows = yield* AskRows.make(host.extension, askStars, asks);
   // Delivery waits for the server's commands, so the Stars with files left in `.pult/asks/` are told apart.
   yield* tellRetiredAsks(stars, delivering.deliver).pipe(
     Effect.catch((error) =>
@@ -98,11 +98,10 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
       );
     return (
       starsRoute(stars, schedules, delivering.pageWakeModel, request, path) ??
-      asksRoute(asks, request, path) ??
       Effect.succeed(HttpServerResponse.empty({ status: 404 }))
     );
   });
   // A tool is replaced by name on every activation and never removed, so the tools register last.
   yield* Layer.build(tools);
-  yield* AskTools.register(host.extension, askStars, asks);
+  yield* AskTools.register(host.extension, askStars, asks, askRows);
 });

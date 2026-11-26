@@ -18,9 +18,9 @@ export interface ShellComposerOptions {
   readonly placeholder: ShellValue<string> | null;
   /** The tags a thread created by this composer's draft is created with (a Star channel's); null for none. */
   readonly creationTags: ReadonlyArray<string> | null;
-  /** The header the message that creates a thread from this composer's draft carries (a Star channel's, `messageHeader.ts`); null for none. A reply's header stands in for it. */
+  /** The header the message that creates a thread from this composer's draft carries (a Star channel's, `messageHeader.ts`); null for none. */
   readonly creationHeader: ShellValue<MessageHeader> | null;
-  /** The reply this composer's sends are (an answer to a Star's ask); null for a plain message. */
+  /** The reply this composer writes (an answer to an ask): where it goes and the replies suggested; null for a plain message. */
   readonly reply: ShellReply | null;
   /**
    * Hands each send to the app, which answers with the thread it landed in (a composer an
@@ -32,16 +32,10 @@ export interface ShellComposerOptions {
 }
 
 export interface ShellReply {
-  /** The header the sent message carries (`messageHeader.ts`): the line its agent reads above what the user wrote, the caption drawn over it; null where the app's `send` writes it. */
-  readonly header: MessageHeader | null;
   /** Where the reply arrives, named on a line above the message input (`ComposerReplySuggestions`) all the while it is written. */
   readonly destination: ShellValue<ShellReplyDestination>;
   /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
   readonly suggestions: ShellValue<ReadonlyArray<string>>;
-  /** Told as a send starts, its message drawn, with the thread it goes to, a draft's new one included; `sent` or the composer's error follows. */
-  readonly sending: (environmentId: string, threadId: string) => void;
-  /** Told once a send was accepted, with the thread it went to, a draft's new one included. */
-  readonly sent: (environmentId: string, threadId: string) => void;
 }
 
 /** A reply's destination as its line names it: "Reply to <name> · <note>". */

@@ -1065,8 +1065,8 @@ export function useComposerSend(input: ComposerSendInput) {
           attachmentId: attachmentIds[index] ?? attachment.id,
         })),
       });
-    // Pult: a reply carries the header the app hands it (`messageHeader.ts`), and so does the message creating a draft's thread.
-    const header = reply?.header ?? (isLocalDraftThread ? (creationHeader?.get() ?? null) : null);
+    // Pult: the message creating a draft's thread carries the header the app hands it (`messageHeader.ts`).
+    const header = isLocalDraftThread ? (creationHeader?.get() ?? null) : null;
     const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) => {
       const context = buildComposerMessageContext(attachmentIds);
       return header === null ? context : withMessageHeader(context, header);
@@ -1471,8 +1471,6 @@ export function useComposerSend(input: ComposerSendInput) {
       optimisticBlobPreviews.release(optimisticMessage);
     }
     setOptimisticUserMessages((existing) => [...existing, optimisticMessage]);
-    // Pult: told as the message is drawn, before the send returns, so the app can show where it goes.
-    if (reply !== null) queueMicrotask(() => reply.sending(environmentId, threadIdForSend));
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -1663,8 +1661,6 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
-        // Pult: told after the send's own work, so a throw of the app's never leaves the composer locked.
-        if (reply !== null) queueMicrotask(() => reply.sent(environmentId, threadIdForSend));
         if (checkoutPullRequestUrl) {
           linkCheckoutPullRequest(
             scopeThreadRef(environmentId, threadIdForSend),

@@ -10,6 +10,8 @@ import {
   RunId,
 } from "@t3tools/contracts";
 import * as ConfigProvider from "effect/ConfigProvider";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 // The real loader, bundled list, MCP server and routes, which the plugin itself never imports.
@@ -70,7 +72,7 @@ const scopeOf = (
 const DAY = 24 * 60 * 60_000;
 
 it.effect(
-  "threads post, settle and list asks with the pult_ask tools, and the page serves and acts on them by its routes",
+  "threads post, settle and list asks with the pult_ask tools, and the page draws them as rows it acts on and replies to through the extension's handlers",
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-11-10T13:00:00.000Z"));
@@ -124,11 +126,58 @@ it.effect(
           const text = yield* Effect.promise(() => HttpServerResponse.toWeb(response).text());
           return { status: response.status, body: text === "" ? undefined : JSON.parse(text) };
         });
-      const page = Effect.map(send("GET", "/asks"), (each) => each.body);
-
-      expect((yield* send("GET", "/about")).body.features).toEqual(
-        expect.arrayContaining(["asks"]),
+      // The rows as a page follows them (`extensions.subscribeUi`), the last list the asks published.
+      const ui = Context.get(context, ExtensionUi.ExtensionUi);
+      let published: ReadonlyArray<Record<string, any>> = [];
+      yield* Effect.forkScoped(
+        Stream.runForEach(ui.published, (list) =>
+          Effect.sync(() => {
+            if (list.extension === "pult" && list.slot === "shelf-row")
+              published = list.items as typeof published;
+          }),
+        ),
       );
+      const rows = Effect.map(
+        Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow),
+        () => published,
+      );
+      const act = (key: string, action: string, value?: string) =>
+        ui
+          .act({
+            extension: "pult",
+            slot: "shelf-row",
+            key,
+            action,
+            ...(value === undefined ? {} : { value }),
+          })
+          .pipe(
+            Effect.flip,
+            Effect.map((error) => error.message),
+            Effect.orElseSucceed(() => "done"),
+          );
+      const reply = (key: string, text: string) =>
+        ui.send({
+          extension: "pult",
+          slot: "shelf-row",
+          key,
+          message: { text, attachments: [], model: null, runtimeMode: null, interactionMode: null },
+        });
+      const commit = (
+        type: "thread.settled" | "thread.unsettled" | "thread.archived",
+        threadId: string,
+      ) =>
+        Effect.forEach(server.threads.events.items, ({ queue }) =>
+          Queue.offer(queue, {
+            type,
+            id: `event:${type}:${threadId}`,
+            threadId,
+            occurredAt: at("2026-11-10T13:00:00.000Z"),
+            payload: {},
+          } as never),
+        );
+
+      // An older page reads `asks` gone from `about` as no asks.
+      expect((yield* send("GET", "/about")).body.features).not.toContain("asks");
 
       // What agents see of the asks, pinned: the three tools as `tools/list` lists them, and a refusal's text.
       expect(
@@ -476,48 +525,64 @@ it.effect(
       expect(
         yield* work.ask({ file: `${tree}/notes/q.md`, title: "Ship it?", replies: ["Ship it"] }),
       ).toEqual(filed);
-      expect(yield* page).toEqual({
-        folder: path.join(server.tmp, ".pult", "asks"),
-        projectId: folder?.id,
-        asks: [
+      const starRow = {
+        key: posted.id,
+        shelf: "inbox",
+        title: "Which crate?",
+        poster: {
+          named: "star-mark",
+          star: "vega-id",
+          channel: "main",
+          fallback: { icon: "account", label: "Star" },
+        },
+        status: {
+          icon: "comment-unresolved",
+          label: "Ask",
+          time: { at: "2026-11-10T13:00:00.000Z", as: "age" },
+        },
+        actions: [
           {
-            id: posted.id,
-            title: "Which crate?",
-            status: "posted",
-            file: kept,
-            poster: { star: "vega-id", channel: "main" },
-            posted: "2026-11-10T13:00:00.000Z",
-            replied: null,
-            snoozedUntil: null,
-            settled: null,
-            replies: ["serde", "miniserde"],
-            // The header the page's composer attaches to the reply (`messageHeader.ts`), its line as `prefix` for an older page.
-            header: {
-              extension: "pult",
-              line: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
-              caption: {
-                reply: true,
-                lead: "Reply to the ask",
-                name: "Which crate?",
-                open: { row: posted.id },
-                note: null,
+            id: "snooze",
+            label: "Snooze",
+            icon: "clock",
+            input: { kind: "instant", label: "Snooze until" },
+          },
+          { id: "settle", label: "Settle", icon: "check", text: true },
+        ],
+        open: {
+          file: kept,
+          reply: {
+            // The Star's home, at its open conversation's model.
+            target: {
+              handled: {
+                project: vega.id,
+                placeholder: "Write your reply",
+                model: expect.objectContaining({ model: expect.any(String) }),
               },
             },
-            prefix: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
+            note: "into its open conversation",
+            chips: [
+              { label: "serde", text: "serde" },
+              { label: "miniserde", text: "miniserde" },
+            ],
           },
-          expect.objectContaining({
-            id: filed.id,
-            title: "Ship it?",
+        },
+      };
+      expect(yield* rows).toEqual([
+        starRow,
+        expect.objectContaining({
+          key: filed.id,
+          title: "Ship it?",
+          poster: { thread: "worker" },
+          open: {
             file: `${tree}/notes/q.md`,
-            poster: { thread: "worker" },
-            replies: ["Ship it"],
-            header: expect.objectContaining({
-              line: `[In reply to your ask ${filed.id} "Ship it?"]`,
-            }),
-            prefix: `[In reply to your ask ${filed.id} "Ship it?"]`,
-          }),
-        ],
-      });
+            reply: {
+              target: { handled: { project: repo.id, placeholder: "Write your reply" } },
+              chips: [{ label: "Ship it", text: "Ship it" }],
+            },
+          },
+        }),
+      ]);
 
       // What a post refuses; a named file is one of the poster's folder, which the page opens it in.
       yield* fs.writeFileString(`${server.tmp}/outside.md`, "Out");
@@ -561,29 +626,51 @@ it.effect(
       expect((yield* star.list({ thread: "worker" })).asks).toHaveLength(1);
       expect((yield* work.list({ channel: "user" })).refused).toBe("invalid_request");
 
-      // The page's actions: replied, snoozed until a time and woken, settled telling the poster, un-settled.
-      expect((yield* send("POST", "/asks/nobody/replied")).status).toBe(404);
-      expect((yield* send("POST", `/asks/${posted.id}/snooze`, { until: "later" })).status).toBe(
-        400,
+      // The rows' actions: snoozed until a time and woken, a reply sent from the row's composer,
+      // settled telling the poster, un-settled; what asks do not have refused by name.
+      expect(yield* act(posted.id, "wave")).toBe(
+        'The item "' + posted.id + '" has no action "wave".',
       );
-      const snooze = { until: "2026-11-11T09:00:00Z" };
-      expect((yield* send("POST", `/asks/${posted.id}/snooze`, snooze)).body).toMatchObject({
-        status: "snoozed",
-        snoozedUntil: "2026-11-11T09:00:00.000Z",
+      expect(yield* act("nobody", "settle")).toContain('no item "nobody"');
+      const until = "2026-11-11T09:00:00.000Z";
+      expect(yield* act(posted.id, "snooze", "2026-11-11T09:00:00Z")).toBe("done");
+      expect((yield* rows)[0]).toMatchObject({
+        shelf: "snoozed",
+        status: { icon: "bell-slash", time: { at: until, as: "clock" } },
+        actions: [{ id: "wake" }],
       });
-      // A reply moves it to Working, from Snoozed too.
-      expect((yield* send("POST", `/asks/${posted.id}/replied`)).body).toMatchObject({
-        status: "replied",
-        replied: "2026-11-10T13:00:01.000Z",
-        snoozedUntil: null,
+      // A reply goes into the Star's open conversation under the ask's header, as the user's, and moves it to Working, from Snoozed too.
+      yield* TestClock.adjust(1000);
+      expect(yield* reply(posted.id, "serde")).toEqual({ thread: "vega-user" });
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "vega-user",
+        text: "serde",
+        header: {
+          extension: "pult",
+          line: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
+          caption: {
+            reply: true,
+            lead: "Reply to the ask",
+            name: "Which crate?",
+            open: { row: posted.id },
+          },
+        },
+        createdBy: "user",
+        creationSource: "web",
       });
-      yield* send("POST", `/asks/${posted.id}/snooze`, snooze);
-      expect((yield* send("POST", `/asks/${posted.id}/snooze`, { until: null })).body.status).toBe(
-        "replied",
-      );
-      expect((yield* send("POST", `/asks/${posted.id}/settle`)).body).toMatchObject({
-        status: "settled",
-        settled: "2026-11-10T13:00:01.000Z",
+      expect((yield* rows)[0]).toMatchObject({
+        shelf: "working",
+        status: { icon: "comment", time: { at: "2026-11-10T13:00:02.000Z" } },
+        open: { reply: { chips: [] } },
+      });
+      yield* act(posted.id, "snooze", until);
+      expect(yield* act(posted.id, "wake")).toBe("done");
+      expect((yield* rows)[0]).toMatchObject({ shelf: "working" });
+      expect(yield* act(posted.id, "settle")).toBe("done");
+      expect((yield* rows)[0]).toMatchObject({
+        shelf: "settled",
+        status: { icon: "check", time: { at: "2026-11-10T13:00:02.000Z" } },
+        actions: [{ id: "unsettle" }],
       });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
@@ -603,16 +690,25 @@ it.effect(
       });
       // Told once: a settle of a settled ask changes nothing.
       const told = server.threads.messages.length;
-      yield* send("POST", `/asks/${posted.id}/settle`);
+      yield* act(posted.id, "settle");
       expect(server.threads.messages).toHaveLength(told);
       expect((yield* star.list()).asks).toEqual([]);
       expect((yield* star.list({ settled: true })).asks).toMatchObject([{ status: "settled" }]);
-      expect((yield* send("POST", `/asks/${posted.id}/unsettle`)).body.status).toBe("replied");
+      expect(yield* act(posted.id, "unsettle")).toBe("done");
+      expect((yield* star.list()).asks).toMatchObject([{ status: "replied" }]);
       // A plain thread is told in its own thread, here of a settle with no reply.
-      yield* send("POST", `/asks/${filed.id}/settle`);
+      // A thread's reply goes into its own thread; its settle is told there, here after that reply.
+      expect(yield* reply(filed.id, "Ship it")).toEqual({ thread: "worker" });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "worker",
-        text: "The user settled this ask without replying to it. `pult_ask` with its id reopens it for 7 days.",
+        text: "Ship it",
+        header: { line: `[In reply to your ask ${filed.id} "Ship it?"]` },
+        createdBy: "user",
+      });
+      yield* act(filed.id, "settle");
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "worker",
+        text: "The user settled this ask after replying to it. `pult_ask` with its id reopens it for 7 days.",
         header: {
           extension: "pult",
           line: `[From Pult, about your ask ${filed.id} "Ship it?"]`,
@@ -628,7 +724,8 @@ it.effect(
 
       // The poster's own settle is silent, and asking again with the id reopens it, a new text replacing the old.
       expect(yield* star.settle(posted.id)).toEqual({ id: posted.id, status: "settled" });
-      expect(server.threads.messages).toHaveLength(told + 1);
+      // The thread's reply and its settle's notice since, and nothing more.
+      expect(server.threads.messages).toHaveLength(told + 2);
       expect((yield* work.settle(posted.id)).refused).toBe("invalid_request");
       expect(yield* star.ask({ id: posted.id, text: "# Which crate, now?" })).toEqual(posted);
       expect((yield* star.list()).asks).toMatchObject([
@@ -636,30 +733,33 @@ it.effect(
       ]);
       expect(yield* fs.readFileString(kept)).toBe("# Which crate, now?");
 
-      // A plain thread's asks follow it: settled while it is, gone once archived.
+      // A plain thread's asks follow it: settled while it is, gone once archived, each told by its event.
+      expect(yield* act(filed.id, "unsettle")).toBe("done");
       worker.shell = {
         ...worker.shell,
         settledOverride: "settled",
         settledAt: at("2026-11-10T12:30:00.000Z"),
       };
-      expect(yield* send("POST", `/asks/${filed.id}/unsettle`)).toMatchObject({ status: 200 });
-      expect((yield* page).asks.find((each: { id: string }) => each.id === filed.id)).toMatchObject(
-        {
-          status: "settled",
-          settled: "2026-11-10T12:30:00.000Z",
-        },
+      yield* commit("thread.settled", "worker");
+      expect((yield* rows).find((each) => each.key === filed.id)).toMatchObject({
+        shelf: "settled",
+        status: { time: { at: "2026-11-10T12:30:00.000Z" } },
+      });
+      expect(yield* act(filed.id, "unsettle")).toBe(
+        "The ask reads as settled because its thread is: un-settle the thread.",
       );
-      expect((yield* send("POST", `/asks/${filed.id}/unsettle`)).status).toBe(409);
       worker.shell = { ...worker.shell, archivedAt: at("2026-11-10T12:40:00.000Z") };
-      expect((yield* page).asks.map((each: { id: string }) => each.id)).toEqual([posted.id]);
+      yield* commit("thread.archived", "worker");
+      expect((yield* rows).map((each) => each.key)).toEqual([posted.id]);
       expect(yield* fs.exists(`${tree}/notes/q.md`)).toBe(true);
 
       // A settled ask goes 7 days after its settle, with Pult's Markdown, and its id is then unknown.
+      // Its row goes then too, republished at the expiry with no write.
       yield* star.settle(posted.id);
       yield* TestClock.adjust(7 * DAY - 1);
-      expect((yield* page).asks).toHaveLength(1);
-      yield* TestClock.adjust(1);
-      expect((yield* page).asks).toEqual([]);
+      expect(yield* rows).toHaveLength(1);
+      yield* TestClock.adjust(1001);
+      expect(yield* rows).toEqual([]);
       expect(yield* fs.exists(kept)).toBe(false);
       expect((yield* star.ask({ id: posted.id })).refused).toBe("invalid_request");
 

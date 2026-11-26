@@ -26,7 +26,7 @@ import { connection } from "../connection/index.ts";
 import { followServerConfig } from "../connection/serverConfig.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { posterName } from "../asks/asks.ts";
+import { posterName } from "../panel/poster.ts";
 import type { RoutePoster } from "../stars/plugin.ts";
 import { starById, starStore, starTarget } from "../stars/model.ts";
 import { StarThreadInput } from "../threads/pane.tsx";
@@ -57,6 +57,9 @@ export const extensionRows = {
 };
 
 export const pendingAction = (page: PageRow) => items.pendingOf(page);
+
+/** Whether the environment's rows are this connect's, the notices' baseline. */
+export const rowsAnsweredOn = (environmentId: string) => items.answeredOn(environmentId);
 
 /** The row's action, `value` its input's; a refusal notified, the row drawn as published. */
 export async function actOnRow(page: PageRow, action: string, value?: string): Promise<void> {
@@ -118,7 +121,7 @@ export function startExtensionUi(): void {
 }
 
 /** Open the thread a reply landed in, even if its Star has another channel or home open. */
-export async function openPosterThread(
+async function openPosterThread(
   poster: RoutePoster,
   environmentId: string,
   threadId: string,
@@ -205,7 +208,6 @@ function handledComposer(page: PageRow, key: string) {
       placeholder: constant(handled.placeholder ?? "Write your reply"),
       ...(handled.model == null ? {} : { draftModel: constant(handled.model) }),
       reply: {
-        header: null,
         destination: {
           get: () => {
             const now = destination.get();
@@ -226,8 +228,6 @@ function handledComposer(page: PageRow, key: string) {
           },
           subscribe: (listener) => items.subscribe(listener),
         },
-        sending: () => {},
-        sent: () => {},
       },
       send: async (message) => {
         const answer = await transport.send(page.environmentId, {

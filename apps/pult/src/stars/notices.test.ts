@@ -5,7 +5,7 @@ import * as NodeTest from "node:test";
 import type { LookThread } from "./look.ts";
 import {
   NOTHING_SEEN,
-  type NoticeAsks,
+  type NoticeRows,
   type NoticeSecrets,
   type NoticeStar,
   notices,
@@ -13,12 +13,25 @@ import {
   waitingThread,
 } from "./notices.ts";
 
-const ask = (id: string) => ({ id, title: `Title of ${id}`, poster: "Vega" });
-const on = (environmentId: string, ids: ReadonlyArray<string>, current = true): NoticeAsks => ({
+const row = (key: string, since = "2026-11-10T13:00:00.000Z") => ({
+  extension: "pult",
+  key,
+  title: `Title of ${key}`,
+  poster: "Vega",
+  since,
+});
+const on = (
+  environmentId: string,
+  keys: ReadonlyArray<string>,
+  current = true,
+  since?: string,
+): NoticeRows => ({
   environmentId,
   current,
-  posted: ids.map(ask),
+  posted: keys.map((key) => row(key, since)),
 });
+const tag = (environmentId: string, key: string) =>
+  `pult-row:${environmentId}:${JSON.stringify(["pult", key])}`;
 
 const secrets = (
   environmentId: string,
@@ -43,13 +56,13 @@ const star = (overrides: Partial<NoticeStar> = {}): NoticeStar => ({
 function readings(
   ...each: ReadonlyArray<{
     readonly stars?: ReadonlyArray<NoticeStar>;
-    readonly asks?: ReadonlyArray<NoticeAsks>;
+    readonly rows?: ReadonlyArray<NoticeRows>;
     readonly secrets?: ReadonlyArray<NoticeSecrets>;
   }>
 ) {
   let seen: Seen = NOTHING_SEEN;
-  return each.map(({ stars = [], asks = [], secrets = [] }) => {
-    const result = notices(stars, asks, secrets, seen);
+  return each.map(({ stars = [], rows = [], secrets = [] }) => {
+    const result = notices(stars, rows, secrets, seen);
     seen = result.seen;
     return result;
   });
@@ -58,9 +71,9 @@ const shownTags = (results: ReturnType<typeof readings>) =>
   results.map((result) => result.show.map((notice) => notice.tag));
 
 NodeTest.describe("notices", () => {
-  NodeTest.it("counts the posted asks and the secrets across the environments", () => {
+  NodeTest.it("counts the extensions' Inbox rows and the secrets across the environments", () => {
     const [result] = readings({
-      asks: [on("a", ["x", "y"]), on("b", ["z"], false)],
+      rows: [on("a", ["x", "y"]), on("b", ["z"], false)],
       secrets: [secrets("a", ["s"], ["unread"]), secrets("b", ["r"], [], false)],
     });
     NodeAssert.equal(result?.badge, 5);
@@ -125,60 +138,66 @@ NodeTest.describe("notices", () => {
   );
 
   NodeTest.it(
-    "takes an environment's first answer as a baseline, and notifies an ask posted after it",
+    "takes an environment's first answer as a baseline, and notifies a row entering Inbox after it, or its status time moving later",
     () => {
-      const [first, second] = readings(
-        { asks: [on("a", ["old"])] },
-        { asks: [on("a", ["old", "new"])] },
+      const [first, second, again, later] = readings(
+        { rows: [on("a", ["old"])] },
+        { rows: [on("a", ["old", "new"])] },
+        { rows: [on("a", ["old", "new"])] },
+        { rows: [on("a", ["old", "new"], true, "2026-11-10T14:00:00.000Z")] },
       );
       NodeAssert.deepEqual(first?.show, []);
       NodeAssert.deepEqual(second?.show, [
         {
-          kind: "ask",
-          tag: "pult-ask:a:new",
+          kind: "row",
+          tag: tag("a", "new"),
           environmentId: "a",
-          ask: "new",
+          extension: "pult",
+          key: "new",
           title: "Vega",
           body: "Title of new",
         },
       ]);
+      NodeAssert.deepEqual(again?.show, []);
+      // Asked again: its status time moved later.
+      NodeAssert.deepEqual(shownTags([later!]), [[tag("a", "old"), tag("a", "new")]]);
     },
   );
 
   NodeTest.it(
-    "replays nothing across a reconnect, and notifies an ask posted again after it left Inbox",
+    "replays nothing across a reconnect, and notifies a row back on Inbox after it left",
     () => {
       const results = readings(
-        { asks: [on("a", [])] },
-        { asks: [on("a", [], false)] },
-        { asks: [on("a", ["during"])] },
-        { asks: [on("a", ["during", "after"])] },
-        { asks: [on("a", ["during"])] },
-        { asks: [on("a", ["during", "after"])] },
+        { rows: [on("a", [])] },
+        { rows: [on("a", [], false)] },
+        { rows: [on("a", ["during"])] },
+        { rows: [on("a", ["during", "after"])] },
+        { rows: [on("a", ["during"])] },
+        { rows: [on("a", ["during", "after"])] },
       );
       NodeAssert.deepEqual(shownTags(results), [
         [],
         [],
         [],
-        ["pult-ask:a:after"],
+        [tag("a", "after")],
         [],
-        ["pult-ask:a:after"],
+        [tag("a", "after")],
       ]);
     },
   );
 
   NodeTest.it(
-    "keeps an ask's notification while it is posted, or its environment is not current",
+    "keeps a row's notification while it is on Inbox, or its environment is not current",
     () => {
       const results = readings(
-        { asks: [on("a", [])] },
-        { asks: [on("a", ["x"])] },
-        { asks: [on("a", [], false)] },
-        { asks: [on("a", [])] },
+        { rows: [on("a", [])] },
+        { rows: [on("a", ["x"])] },
+        { rows: [on("a", [], false)] },
+        { rows: [on("a", [])] },
       );
       NodeAssert.deepEqual(
         results.map((result) => [...result.live]),
-        [[], ["pult-ask:a:x"], ["pult-ask:a:x"], []],
+        [[], [tag("a", "x")], [tag("a", "x")], []],
       );
     },
   );

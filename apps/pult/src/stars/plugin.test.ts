@@ -3,7 +3,6 @@ import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
 import {
-  actOnAsk,
   channelSettingsStars,
   channelTranscriptStars,
   createStarOn,
@@ -15,7 +14,6 @@ import {
   writeStarRecord,
   PluginAnswerError,
   readAbout,
-  readAsks,
   readStars,
   readStarTranscript,
   readStarTranscriptOfThread,
@@ -556,95 +554,6 @@ NodeTest.describe("the Stars' routes", () => {
     );
     NodeAssert.ok(unnamed.result instanceof PluginAnswerError);
   });
-
-  NodeTest.test(
-    "reads the asks, and acts on one by its id, reading the plugin's refusal",
-    async () => {
-      const ask = {
-        id: "a1b2c3d4",
-        title: "Which backend?",
-        status: "posted",
-        file: "/Users/a/repo/design.md",
-        poster: { star: "s1", channel: "ask-model" },
-        posted: "2026-11-21T12:00:00.000Z",
-        replied: null,
-        snoozedUntil: null,
-        settled: null,
-        replies: ["Postgres", "SQLite"],
-      };
-      const line = '[In reply to your ask a1b2c3d4 "Which backend?", to your channel ask-model]';
-      const header = {
-        extension: "pult",
-        line,
-        caption: {
-          reply: true,
-          lead: "Reply to the ask",
-          name: "Which backend?",
-          open: { row: "a1b2c3d4" },
-          note: null,
-        },
-      };
-      const read = await askOver(
-        () =>
-          json({
-            folder: "/Users/a/.pult/asks",
-            projectId: null,
-            asks: [{ ...ask, header, prefix: line }],
-          }),
-        () => readAsks(credential),
-      );
-      NodeAssert.deepEqual(read.result, {
-        folder: "/Users/a/.pult/asks",
-        projectId: null,
-        asks: [{ ...ask, header }],
-      });
-      // A plugin older than headers serves the line alone: a header with no caption.
-      const older = await askOver(
-        () => json({ folder: "/f", projectId: null, asks: [{ ...ask, prefix: line }] }),
-        () => readAsks(credential),
-      );
-      NodeAssert.deepEqual(older.result, {
-        folder: "/f",
-        projectId: null,
-        asks: [{ ...ask, header: { extension: "pult", line, caption: null } }],
-      });
-      const thread = { ...ask, poster: { thread: "t9" } };
-      const misshapen = await askOver(
-        () => json({ folder: "/f", projectId: null, asks: [{ ...thread, poster: {} }] }),
-        () => readAsks(credential),
-      );
-      NodeAssert.ok(misshapen.result instanceof PluginAnswerError);
-      const snoozed = { ...thread, status: "snoozed", snoozedUntil: "2026-11-22T09:00:00.000Z" };
-      const acted = await askOver(
-        // A plugin older than the replies serves none.
-        () => json({ ...snoozed, replies: undefined }),
-        () => actOnAsk(credential, "a1b2c3d4", { kind: "snooze", until: snoozed.snoozedUntil }),
-      );
-      NodeAssert.deepEqual(
-        acted.asked.map((each) => [each.method, each.url, each.body]),
-        [
-          [
-            "POST",
-            "http://127.0.0.1:3773/api/plugins/pult/asks/a1b2c3d4/snooze",
-            { until: "2026-11-22T09:00:00.000Z" },
-          ],
-        ],
-      );
-      NodeAssert.deepEqual(acted.result, { ...snoozed, replies: [] });
-      const failed = await askOver(
-        () =>
-          json(
-            { error: "Pult could not tell the poster of the settle, so the ask is not settled." },
-            500,
-          ),
-        () => actOnAsk(credential, "a1b2c3d4", { kind: "settle" }),
-      );
-      NodeAssert.deepEqual(
-        [failed.asked[0]?.body, (failed.result as Error).message],
-        [undefined, "Pult could not tell the poster of the settle, so the ask is not settled."],
-      );
-    },
-  );
 
   NodeTest.test("asks a Star's channel to sleep, reading the hold that refused it", async () => {
     const slept = await askOver(

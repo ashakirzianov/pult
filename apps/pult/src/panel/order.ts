@@ -143,13 +143,6 @@ export const environmentKey = (environmentId: string) => `environment:${environm
 /** A Star's square's key, beside the threads' in the selection's snapshot. */
 export const starKey = (starId: string) => `star:${starId}`;
 
-/** An ask's row: its environment and id, and the shelf its status puts it on (`src/asks/asks.ts`). */
-export interface AskRef {
-  readonly environmentId: string;
-  readonly id: string;
-  readonly shelf: "inbox" | "working" | "snoozed" | "settled";
-}
-
 /** An extension's row on a thread shelf, as the panel's order reads it (`src/extensions/ui.ts`). */
 export interface ExtensionRowRef {
   readonly environmentId: string;
@@ -160,10 +153,6 @@ export interface ExtensionRowRef {
 
 export const extensionRowKey = (row: Omit<ExtensionRowRef, "shelf">) =>
   `extension:${JSON.stringify([row.environmentId, row.extension, row.key])}`;
-
-/** An ask's row's key, beside the cards' in the jump hints. */
-export const askKey = (ask: Pick<AskRef, "environmentId" | "id">) =>
-  `ask:${ask.environmentId}/${ask.id}`;
 
 /** A secret's row: its thread, in its environment, and its card's turn item (`src/secrets/secrets.ts`). */
 export interface SecretRef {
@@ -261,13 +250,12 @@ export function settledTail<Thread extends ThreadRef>(
   return visible;
 }
 
-/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's square, an open file of the Explorer shelf, a draft card, a secret's row, an ask's row or a thread card. */
+/** A row of the left panel that Cmd+1 to Cmd+9 reach: a Star's square, an open file of the Explorer shelf, a draft card, a secret's row, an extension's row or a thread card. */
 export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThread> =
   | { readonly kind: "star"; readonly key: string; readonly starId: string }
   | { readonly kind: "file"; readonly key: string; readonly file: File }
   | { readonly kind: "draft"; readonly key: string; readonly draft: ProjectDraft }
   | { readonly kind: "secret"; readonly key: string; readonly secret: SecretRef }
-  | { readonly kind: "ask"; readonly key: string; readonly ask: AskRef }
   | { readonly kind: "extension"; readonly key: string; readonly row: ExtensionRowRef }
   | { readonly kind: "thread"; readonly key: string; readonly thread: Thread };
 
@@ -282,9 +270,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly drafts: ReadonlyArray<ProjectDraft>;
   /** The secrets' rows, in the model's order, all in Inbox (`src/secrets/`). */
   readonly secrets: ReadonlyArray<SecretRef>;
-  /** The asks' rows, each on its shelf, in the model's order (`shownAsks`, `src/asks/asks.ts`). */
-  readonly asks: ReadonlyArray<AskRef>;
-  /** Extensions' rows, each on its shelf, after its ask rows, by extension then as published. */
+  /** Extensions' rows (an ask's among them), each on its shelf before its threads, by extension then as published. */
   readonly extensions: ReadonlyArray<ExtensionRowRef>;
   /** The store's threads, in its order. */
   readonly threads: ReadonlyArray<Thread>;
@@ -301,7 +287,7 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
  * them (`PanelView.tsx`), as upstream's sidebar jumps reach its visible
  * rows: shelf by shelf in the open shelves' order, a closed shelf reaching
  * none; the Stars' squares, the Explorer shelf's open files, its environments'
- * rows left out, Inbox's rows (`inboxRows`), and the ask rows then the cards
+ * rows left out, Inbox's rows (`inboxRows`), and the extensions' rows then the cards
  * of the Working, Snoozed and Settled shelves', the threads none while no
  * environment is held.
  * The Limits shelf's rows are none: they select nothing.
@@ -318,10 +304,6 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     key: keyOf(thread),
     thread,
   });
-  const asksOn = (shelf: AskRef["shelf"]) =>
-    panel.asks
-      .filter((ask) => ask.shelf === shelf)
-      .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask }));
   const extensionsOn = (shelf: ExtensionRowRef["shelf"]) =>
     extensionRowsOn<File, Thread>(panel.extensions, shelf);
   const rows = (shelf: PanelShelf): JumpTarget<File, Thread>[] => {
@@ -337,10 +319,9 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
         return inboxRows(panel);
       case "working":
       case "snoozed":
-        return [...asksOn(shelf), ...extensionsOn(shelf), ...on(shelf).map(threadTarget)];
+        return [...extensionsOn(shelf), ...on(shelf).map(threadTarget)];
       case "settled":
         return [
-          ...asksOn("settled"),
           ...extensionsOn("settled"),
           ...settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
         ];
@@ -353,13 +334,13 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
 
 /**
  * Inbox's rows, top to bottom, which the panel draws, counts and jumps to:
- * the draft cards, then the secrets' rows, then the posted asks' rows, then
- * the extensions' rows on Inbox, then the pinned and active threads' cards, none while no environment is held.
+ * the draft cards, then the secrets' rows, then the extensions' rows on
+ * Inbox (the posted asks'), then the pinned and active threads' cards, none while no environment is held.
  */
 export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
   panel: Pick<
     PanelRows<File, Thread>,
-    "drafts" | "secrets" | "asks" | "extensions" | "threads" | "environmentIds"
+    "drafts" | "secrets" | "extensions" | "threads" | "environmentIds"
   >,
 ): JumpTarget<File, Thread>[] {
   return [
@@ -373,9 +354,6 @@ export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
       key: secretKey(secret),
       secret,
     })),
-    ...panel.asks
-      .filter((ask) => ask.shelf === "inbox")
-      .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask })),
     ...extensionRowsOn<File, Thread>(panel.extensions, "inbox"),
     ...(panel.environmentIds.length === 0
       ? []

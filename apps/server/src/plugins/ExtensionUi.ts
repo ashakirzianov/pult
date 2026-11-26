@@ -57,7 +57,7 @@ const isSlot = (slot: string): slot is ExtensionSlot => Object.hasOwn(EXTENSION_
 const listKey = (extension: string, slot: string) => JSON.stringify([extension, slot]);
 
 interface State {
-  /** Each extension's list per slot, by `listKey`; an emptied list is dropped. */
+  /** Each extension's list per slot, by `listKey`, an emptied one kept until its activation goes. */
   readonly lists: ReadonlyMap<string, ExtensionUiPublished>;
   /** The list the last write changed, which a subscriber past the snapshot is sent. */
   readonly last: ExtensionUiPublished | undefined;
@@ -81,7 +81,7 @@ export class ExtensionUi extends Context.Service<
     readonly onSend: (extension: string, handle: SendHandler) => Effect.Effect<void, HostCallError>;
     /** The extension's lists and handlers, gone with its activation. */
     readonly drop: (extension: string) => Effect.Effect<void>;
-    /** Every list, then each list as it changes; an emptied one is sent once, empty. */
+    /** Every list, then each list as it changes; one gone with its activation is sent once, empty. */
     readonly published: Stream.Stream<ExtensionUiPublished>;
     readonly act: (input: ExtensionActInput) => Effect.Effect<void, ExtensionUiRefused>;
     readonly send: (
@@ -97,11 +97,12 @@ const make = Effect.gen(function* () {
   const actionHandlers = new Map<string, ActionHandler>();
   const sendHandlers = new Map<string, SendHandler>();
 
-  const write = (published: ExtensionUiPublished) =>
+  /** An emptied list stays in the set, empty, so a page's first snapshot tells it the extension has nothing there; `drop` removes it. */
+  const write = (published: ExtensionUiPublished, remove = false) =>
     SubscriptionRef.update(state, ({ lists }) => {
       const next = new Map(lists);
       const key = listKey(published.extension, published.slot);
-      if (published.items.length === 0) next.delete(key);
+      if (remove) next.delete(key);
       else next.set(key, published);
       return { lists: next, last: published };
     });
@@ -140,7 +141,7 @@ const make = Effect.gen(function* () {
     sendHandlers.delete(extension);
     const { lists } = yield* SubscriptionRef.get(state);
     for (const list of lists.values())
-      if (list.extension === extension) yield* write({ ...list, items: [] });
+      if (list.extension === extension) yield* write({ ...list, items: [] }, true);
   });
 
   /** The published item named by the input, or why there is none, by name. */

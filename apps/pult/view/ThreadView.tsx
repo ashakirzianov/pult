@@ -515,11 +515,11 @@ export interface MountOptions {
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
-  /** The reply the mount's sends are, its header on each and its `sent` told of each (an answer to a Star's ask). */
+  /** The reply the mount's composer writes: where it goes and the replies suggested (an answer to an ask). */
   readonly reply?: ShellReply;
   /** Hands each of the mount's sends to the shell, its draft becoming no thread (a composer an extension handles, `src/extensions/`). */
   readonly send?: ShellComposerOptions["send"];
-  /** The header the message that creates a thread from the mount's draft carries, read as it is sent (a Star channel's first message, the line `[To your channel <slug>]`); a reply's header stands in for it. */
+  /** The header the message that creates a thread from the mount's draft carries, read as it is sent (a Star channel's first message, the line `[To your channel <slug>]`). */
   readonly creationHeader?: ShellValue<MessageHeader>;
   /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
   readonly draftSent?: (environmentId: string, threadId: string) => void;

@@ -4,10 +4,9 @@ import { useState, useSyncExternalStore } from "react";
 import { actOnRow, extensionRows, pendingAction, rowPoster } from "../extensions/index.ts";
 import type { PageRow } from "../extensions/ui.ts";
 import { showSnoozePresets } from "../threads/park.ts";
-import { run } from "./AskCard.tsx";
 import { extensionRowKey } from "./order.ts";
 import { age } from "./PanelView.tsx";
-import { PosterCard } from "./PosterCard.tsx";
+import { PosterCard, run } from "./PosterCard.tsx";
 
 const knownIcons = new Set<string>();
 const warnedIcons = new Set<string>();

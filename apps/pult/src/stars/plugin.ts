@@ -5,7 +5,7 @@
 // routes serve everything the page knows of a Star, each answer decoded
 // strictly, so an answer of another shape fails loudly.
 
-import type { MessageHeader, MessageHeaderCaption, MessageHeaderOpen } from "@t3tools/contracts";
+import type { MessageHeaderCaption, MessageHeaderOpen } from "@t3tools/contracts";
 
 /** The plugin's feature of keeping the Stars: where `about` lists it, the server finds, keeps and serves its Stars, and the page draws them. */
 export const STARS_FEATURE = "stars";
@@ -232,37 +232,10 @@ export interface RouteSchedule {
   readonly last: RouteRun | null;
 }
 
-/** Where `about` lists it, the plugin serves the asks (`pult_ask`'s): `GET asks` and `POST asks/<id>/<action>`. */
-export const ASKS_FEATURE = "asks";
-
-/** Who posted an ask: a Star's conversation in a channel, or any other thread. */
+/** Who posted a row: a Star's conversation in a channel, or any other thread. */
 export type RoutePoster =
   | { readonly star: string; readonly channel: string }
   | { readonly thread: string };
-
-export type AskStatus = "posted" | "replied" | "snoozed" | "settled";
-
-/** An ask as the plugin serves it on a card's action; `file` is a host path, `settled` its own settle or its thread's. */
-export interface RouteAsk {
-  readonly id: string;
-  readonly title: string;
-  readonly status: AskStatus;
-  readonly file: string;
-  readonly poster: RoutePoster;
-  readonly posted: string;
-  readonly replied: string | null;
-  readonly snoozedUntil: string | null;
-  readonly settled: string | null;
-  /** The reply options its poster suggests. */
-  readonly replies: ReadonlyArray<string>;
-}
-
-/** What `GET asks` answers: the asks folder (a host path) and its hidden project, null before its first Markdown, and every ask by `posted`, each with the header its reply carries. */
-export interface AsksAnswer {
-  readonly folder: string;
-  readonly projectId: string | null;
-  readonly asks: ReadonlyArray<RouteAsk & { readonly header: MessageHeader }>;
-}
 
 /** A model as the server's threads carry it, the fields the page checks; the view decodes it in full. */
 export interface RouteModel {
@@ -523,12 +496,6 @@ const headerCaption = struct<MessageHeaderCaption>({
   note: nullable(string),
 });
 
-const messageHeader = struct<MessageHeader>({
-  extension: string,
-  line: string,
-  caption: nullable(headerCaption),
-});
-
 const transcript = struct<Transcript>({
   threadId: string,
   started: string,
@@ -546,52 +513,6 @@ const transcript = struct<Transcript>({
       caption: optional(nullable(headerCaption)),
     }),
   ),
-});
-
-const askStatus: Decode<AskStatus> = (value, at) =>
-  value === "posted" || value === "replied" || value === "snoozed" || value === "settled"
-    ? value
-    : fail(at, "posted, replied, snoozed or settled");
-
-const poster: Decode<RoutePoster> = (value, at) => {
-  if (isFields(value) && typeof value.star === "string" && typeof value.channel === "string")
-    return { star: value.star, channel: value.channel };
-  if (isFields(value) && typeof value.thread === "string") return { thread: value.thread };
-  return fail(at, "{ star, channel } or { thread }");
-};
-
-/** A plugin older than the replies serves none: absent reads as none, any other shape fails. */
-const askReplies: Decode<ReadonlyArray<string>> = (value, at) =>
-  value === undefined ? [] : arrayOf(string)(value, at);
-
-const routeAsk = struct<RouteAsk>({
-  id: string,
-  title: string,
-  status: askStatus,
-  file: string,
-  poster,
-  posted: string,
-  replied: nullable(string),
-  snoozedUntil: nullable(string),
-  settled: nullable(string),
-  replies: askReplies,
-});
-
-const asksAnswer = struct<AsksAnswer>({
-  folder: string,
-  projectId: nullable(string),
-  asks: arrayOf((value, at) => ({
-    ...routeAsk(value, at),
-    // A plugin older than headers serves the reply's line alone, as `prefix`.
-    header:
-      isFields(value) && value.header === undefined
-        ? {
-            extension: "pult",
-            line: struct<{ prefix: string }>({ prefix: string })(value, at).prefix,
-            caption: null,
-          }
-        : messageHeader(isFields(value) ? value.header : undefined, `${at}.header`),
-  })),
 });
 
 /** A transcript as the lookup by its thread serves it, with its name among the Star's `conversations`. */
@@ -631,8 +552,6 @@ const channelSettings = struct<ChannelSettings>({
 const decodeChannelSettings = (body: unknown): ChannelSettings => channelSettings(body, "settings");
 
 /** A transcript's answer, decoded; a throw for any other shape. */
-const decodeAsks = (body: unknown): AsksAnswer => asksAnswer(body, "asks");
-const decodeAsk = (body: unknown): RouteAsk => routeAsk(body, "ask");
 export const decodeTranscript = (body: unknown): Transcript => transcript(body, "transcript");
 /** A channel's transcripts' names, `{ names }`, oldest first; a throw for any other shape. */
 export const decodeChannelTranscripts = (body: unknown): ReadonlyArray<string> =>
@@ -763,24 +682,6 @@ export const readStarTranscriptOfThread = (credential: Credential, id: string, t
     "GET",
     `${starPath(id)}/conversations/by-thread?threadId=${encodeURIComponent(threadId)}`,
     (body) => namedTranscript(body, "transcript"),
-  );
-
-/** The server's asks, every one, by `posted`. */
-export const readAsks = (credential: Credential) => ask(credential, "GET", "/asks", decodeAsks);
-
-/** What a page does to an ask: its reply sent, Settle, Un-settle, or Snooze until a time, null being Wake. */
-export type AskAction =
-  | { readonly kind: "replied" | "settle" | "unsettle" }
-  | { readonly kind: "snooze"; readonly until: string | null };
-
-/** Acts on the ask, answering it as it stands after; a refusal (unknown, its thread's settle, a settle notice that failed) throws the plugin's words. */
-export const actOnAsk = (credential: Credential, id: string, action: AskAction) =>
-  ask(
-    credential,
-    "POST",
-    `/asks/${encodeURIComponent(id)}/${action.kind}`,
-    decodeAsk,
-    action.kind === "snooze" ? { until: action.until } : undefined,
   );
 
 /** The plugin's feature of keeping the xaxis checkout of `/` at main's tip (`pult/decisions`, `xaxis-kept-checkouts`): `GET xaxis/kept`, asked only where `about` lists it. */

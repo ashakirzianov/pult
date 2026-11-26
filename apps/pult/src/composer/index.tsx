@@ -22,8 +22,6 @@ import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 import { createRoot } from "react-dom/client";
 
 import type { MountedView, MountOptions, ViewTarget } from "../../view/main.tsx";
-import { askStore } from "../asks/model.ts";
-import { onDidChangeReply, replyComposer } from "../asks/reply.ts";
 import { extensionRows, onDidChangeRowReply, rowComposer } from "../extensions/index.ts";
 import { detailsCards } from "../details/cards.ts";
 import { connection } from "../connection/connection.ts";
@@ -122,9 +120,9 @@ export function selectedTarget(): ViewTarget | null {
       };
 }
 
-/** The composer the strip shows, and Cite cites into: a reply's under its ask's file (`src/asks/reply.ts`), else the selection's (`selectedTarget`). */
+/** The composer the strip shows, and Cite cites into: a reply's under its row's file (`src/extensions/`), else the selection's (`selectedTarget`). */
 export function stripTarget(activeResource: string | undefined): ViewTarget | null {
-  return replyComposer(activeResource)?.target ?? selectedTarget();
+  return rowComposer(activeResource)?.target ?? selectedTarget();
 }
 
 /** The selected Star's composer as its tab has it (`starComposerOptions`), or upstream's for any other selection. */
@@ -249,9 +247,8 @@ export async function startComposerStrip(): Promise<void> {
     const { open } = state;
     openKey.set(open);
     const active = editors.activeEditor;
-    // Under an ask's or an extension row's file its reply's composer, a key of its own; else the selection's.
-    const reply =
-      replyComposer(active?.resource?.toString()) ?? rowComposer(active?.resource?.toString());
+    // Under an extension row's file its reply's composer, a key of its own; else the selection's.
+    const reply = rowComposer(active?.resource?.toString());
     const target = reply?.target ?? selectedTarget();
     const key = reply?.key ?? JSON.stringify(target);
     hasComposerKey.set(target !== null);
@@ -270,8 +267,6 @@ export async function startComposerStrip(): Promise<void> {
   editors.onDidEditorsChange(update);
   onDidSelectThread(update);
   starStore.subscribe(update);
-  askStore.subscribe(update);
-  onDidChangeReply(update);
   extensionRows.subscribe(update);
   onDidChangeRowReply(update);
   detailsCards.subscribe(update);

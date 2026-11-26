@@ -1,9 +1,8 @@
 import { useSyncExternalStore } from "react";
 
-import { askRef, asksOn, shownAsks } from "../asks/asks.ts";
-import { askStore } from "../asks/model.ts";
 import { extensionRows } from "../extensions/index.ts";
 import { rowRef, shownRows } from "../extensions/ui.ts";
+import { shownPosted } from "./poster.ts";
 import { secretStore } from "../secrets/model.ts";
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
@@ -71,14 +70,13 @@ export function TrayShelves() {
   const order = useSyncExternalStore(shelfOrder.subscribe, shelfOrder.get);
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
-  const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
   const extensions = shownRows(
     useSyncExternalStore(extensionRows.subscribe, extensionRows.get),
     starsShown,
   ).map(rowRef);
   const extensionsOn = (shelf: (typeof extensions)[number]["shelf"]) =>
     extensions.filter((row) => row.shelf === shelf).length;
-  const secrets = shownAsks(
+  const secrets = shownPosted(
     useSyncExternalStore(secretStore.subscribe, secretStore.get),
     starsShown,
   );
@@ -129,12 +127,11 @@ export function TrayShelves() {
           title: label,
         };
       case "inbox": {
-        // Its rows: the drafts', the secrets', the posted asks', then the pinned and active threads'.
+        // Its rows: the drafts', the secrets', the extensions' rows, then the pinned and active threads'.
         const threads = [...on("pinned"), ...on("active")];
         const count = inboxRows({
           drafts,
           secrets,
-          asks: asks.map(askRef),
           extensions,
           threads: state.threads,
           environmentIds: state.environments.map((environment) => environment.id),
@@ -150,7 +147,7 @@ export function TrayShelves() {
       }
       case "working":
       case "snoozed": {
-        const count = on(shelf).length + asksOn(asks, shelf).length + extensionsOn(shelf);
+        const count = on(shelf).length + extensionsOn(shelf);
         return {
           badge: count > 0 ? count : undefined,
           empty: count === 0,
@@ -160,12 +157,12 @@ export function TrayShelves() {
       }
       case "settled":
         // Every settled thread, the older ones the shells leave out among them, and ask, as the shelf's header counts.
-        const settledAsks = asksOn(asks, "settled").length + extensionsOn("settled");
+        const settledRows = extensionsOn("settled");
         return {
           badge: undefined,
-          empty: on("settled").length === 0 && state.settled.count === 0 && settledAsks === 0,
+          empty: on("settled").length === 0 && state.settled.count === 0 && settledRows === 0,
           selected: holdsSelected("settled"),
-          title: `${label} · ${state.settled.count + settledAsks}`,
+          title: `${label} · ${state.settled.count + settledRows}`,
         };
       case "limits": {
         const shelfShown = limitsShelf(limits.accounts, now, false, weekend);

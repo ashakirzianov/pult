@@ -547,9 +547,7 @@ it("a draft's first send carries the app's creation tags and its header, its tex
   expect(messageHeaderOf(draft.launches[0]?.initialMessage?.context)).toEqual(CHANNEL_HEADER);
 });
 
-it("a draft's first send as a reply carries its header in place of the channel's, and tells it sending, then sent", async () => {
-  const sending = vi.fn();
-  const sent = vi.fn();
+it("a reply's composer names where it goes and offers the suggested replies, a click filling the input and sending nothing", async () => {
   const suggestions = ["Yes", "Not yet"];
   // A sleeping channel's draft, its name plain text, until the channel wakes in a thread its name opens.
   const openThread = vi.fn();
@@ -557,19 +555,7 @@ it("a draft's first send as a reply carries its header in place of the channel's
   const awake = { name: "Beta · review", note: "into its open conversation", open: openThread };
   let destination: { name: string; note: string; open: (() => void) | null } = asleep;
   const destinationListeners = new Set<() => void>();
-  const header: MessageHeader = {
-    extension: "pult",
-    line: '[In reply to your ask a1 "Ship it?"]',
-    caption: {
-      reply: true,
-      lead: "Reply to the ask",
-      name: "Ship it?",
-      open: { row: "a1" },
-      note: null,
-    },
-  };
   await using draft = await renderShellDraft({
-    header,
     destination: {
       get: () => destination,
       subscribe: (listener) => {
@@ -578,10 +564,8 @@ it("a draft's first send as a reply carries its header in place of the channel's
       },
     },
     suggestions: { get: () => suggestions, subscribe: () => () => {} },
-    sending,
-    sent,
   });
-  const { editor, launches, threadId } = draft;
+  const { editor, launches } = draft;
   const line = page.getByText("Reply to Beta · review · asleep, wakes in a new conversation");
   await expect.element(line).toBeVisible();
   expect(page.getByRole("button", { name: "Beta · review" }).query()).toBeNull();
@@ -592,8 +576,6 @@ it("a draft's first send as a reply carries its header in place of the channel's
   await page.getByRole("button", { name: "Not yet" }).click();
   await expect.element(editor).toHaveTextContent("Not yet");
   await vi.waitFor(() => expect(document.activeElement).toBe(editor.element()));
-  expect(sending).not.toHaveBeenCalled();
-  expect(sent).not.toHaveBeenCalled();
   expect(launches).toHaveLength(0);
   await userEvent.keyboard("{ControlOrMeta>}z{/ControlOrMeta}");
   await expect.element(editor).toHaveTextContent("My own draft");
@@ -628,14 +610,10 @@ it("a draft's first send as a reply carries its header in place of the channel's
   await expect.element(editor).toHaveTextContent("Yes");
   await userEvent.keyboard("{Enter}");
 
-  await vi.waitFor(() => expect(sent).toHaveBeenCalledWith(ENVIRONMENT_ID, threadId));
-  expect(sent).toHaveBeenCalledTimes(1);
-  expect(sending).toHaveBeenCalledExactlyOnceWith(ENVIRONMENT_ID, threadId);
-  expect(sending.mock.invocationCallOrder[0]).toBeLessThan(sent.mock.invocationCallOrder[0]!);
-  expect(launches).toHaveLength(1);
+  await vi.waitFor(() => expect(launches).toHaveLength(1));
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
   expect(launches[0]?.initialMessage?.text).toBe("Yes");
-  expect(messageHeaderOf(launches[0]?.initialMessage?.context)).toEqual(header);
+  expect(messageHeaderOf(launches[0]?.initialMessage?.context)).toEqual(CHANNEL_HEADER);
 });
 
 it("a handled composer's send hands the app its text and uploaded attachment, keeping its content until the answer, a refusal its error", async () => {

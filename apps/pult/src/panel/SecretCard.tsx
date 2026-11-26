@@ -1,9 +1,8 @@
 import { declineSecret } from "../secrets/model.ts";
 import type { PageSecret } from "../secrets/secrets.ts";
-import { run } from "./AskCard.tsx";
 import { secretKey } from "./order.ts";
 import { age } from "./PanelView.tsx";
-import { PosterCard } from "./PosterCard.tsx";
+import { PosterCard, run } from "./PosterCard.tsx";
 
 /**
  * A secret's row in Inbox, while a thread's agent waits for it

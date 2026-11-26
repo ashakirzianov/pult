@@ -10,6 +10,7 @@ import {
   Path,
   Schema,
   Semaphore,
+  type Composed,
   type Thread,
   type ThreadMessage,
 } from "../extension.ts";
@@ -47,6 +48,23 @@ export interface AskStars {
     readonly from: NonNullable<ThreadMessage["header"]>;
     readonly key: string;
   }) => Effect.Effect<"told" | "gone", { readonly message: string }>;
+  /** The user's reply into the channel, `deliver`'s user sender: the conversation it landed in. */
+  readonly reply: (reply: {
+    readonly star: string;
+    readonly channel: Channel;
+    readonly composed: Composed;
+    readonly from: NonNullable<ThreadMessage["header"]>;
+    readonly key: string;
+  }) => Effect.Effect<string, { readonly message: string }>;
+  /** Where a reply to the Star's ask goes, for its composer: the Star's project, the model the channel would take, and what the page tells; undefined for a Star that is no more. */
+  readonly replyTarget: (
+    star: string,
+    channel: Channel,
+  ) => Effect.Effect<
+    | { readonly project: string; readonly model: Composed["model"]; readonly note: string }
+    | undefined,
+    { readonly message: string }
+  >;
 }
 
 /** Who posted an ask: a Star's conversation, as the Star and its channel, or any other thread. */
@@ -157,13 +175,15 @@ const unknownAsk = (id: string) =>
   );
 
 export class AsksError extends Schema.TaggedError<AsksError>()("AsksError", {
-  operation: Schema.Literals(["read", "write", "tell"]),
+  operation: Schema.Literals(["read", "write", "tell", "reply"]),
   cause: Schema.Defect(),
 }) {
   override get message(): string {
     return this.operation === "tell"
       ? "Pult could not tell the poster of the settle, so the ask is not settled."
-      : `Pult could not ${this.operation} the asks.`;
+      : this.operation === "reply"
+        ? `Pult could not send the reply: ${this.cause instanceof Error ? this.cause.message : String(this.cause)}`
+        : `Pult could not ${this.operation} the asks.`;
   }
 }
 
@@ -183,16 +203,6 @@ export interface ListFilter {
   readonly settled: boolean;
 }
 
-/** The asks of a route's answer, with the folder and its project the page opens Pult's Markdown in. */
-export interface AsksView {
-  readonly folder: string;
-  readonly projectId: string | null;
-  /** Each with the header its reply carries, and that header's line as `prefix` for a page older than headers. */
-  readonly asks: ReadonlyArray<
-    Ask & { readonly header: ReturnType<typeof replyHeader>; readonly prefix: string }
-  >;
-}
-
 export type Action =
   | { readonly kind: "replied" }
   | { readonly kind: "snooze"; readonly until: string | null }
@@ -200,9 +210,6 @@ export type Action =
   | { readonly kind: "unsettle" };
 
 export interface Asks {
-  readonly folder: string;
-  /** The project of the asks folder, which the page hides as it hides the Stars'; null before the first `text`. */
-  readonly projectId: Effect.Effect<string | null, AsksError>;
   /** `pult_ask`: posts as `poster`, a `file` inside `root`, the caller's worktree or project folder, which a relative one resolves against. */
   readonly post: (
     poster: Poster,
@@ -215,8 +222,15 @@ export interface Asks {
     mine: (poster: Poster) => boolean,
   ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, AskRefused>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<Ask>, AsksError>;
-  readonly view: Effect.Effect<AsksView, AsksError>;
   /** The page's actions; undefined for an unknown ask, a string for one refused. The user's settle tells the poster. */
+  /**
+   * The user's reply from the composer its row's reply opens, under the ask's header, the ask then
+   * replied; the thread it landed in, undefined for an unknown ask.
+   */
+  readonly reply: (
+    id: string,
+    composed: Composed,
+  ) => Effect.Effect<{ readonly thread: string } | undefined, AsksError>;
   readonly act: (
     id: string,
     action: Action,
@@ -350,11 +364,6 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
       (project) => project.archivedAt === null && path.resolve(project.workspaceRoot) === folder,
     ),
   );
-  const projectId = findProject.pipe(
-    Effect.map((project) => project?.id ?? null),
-    Effect.mapError(failed("read")),
-  );
-
   /** Writes Pult's Markdown for an ask, the folder registered as a project where it is not yet. */
   const keep = Effect.fn("Asks.keep")(
     function* (id: string, text: string) {
@@ -529,20 +538,6 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         ),
       );
 
-  const view: Asks["view"] = Effect.gen(function* () {
-    const all = yield* lock.withPermits(1)(load);
-    return {
-      folder,
-      projectId: yield* projectId,
-      asks: all
-        .map(({ ask }) => {
-          const header = replyHeader(ask);
-          return { ...ask, header, prefix: header.line };
-        })
-        .toSorted(byPosted),
-    };
-  });
-
   /** Tells the poster of the user's settle, once per posting: a retry after a failure tells it again, a repeat replays. */
   const tellSettled = Effect.fn("Asks.tellSettled")(function* (record: AskRecord) {
     const about = `Pult, about your ask ${record.id} "${headerTitle(record.title)}"`;
@@ -621,5 +616,25 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
     return ask ?? (yield* Effect.die(new Error(`The ask ${id} went as it was changed.`)));
   });
 
-  return { folder, projectId, post, settleOwn, list, view, act } satisfies Asks;
+  const reply: Asks["reply"] = Effect.fn("Asks.reply")(function* (id, composed) {
+    const found = yield* lock.withPermits(1)(loadOne(id));
+    if (found === undefined) return undefined;
+    const { ask } = found;
+    const header = replyHeader(ask);
+    const from = { line: header.line, caption: header.caption };
+    // @effect-diagnostics-next-line cryptoRandomUUIDInEffect:off -- an extension's entry carries no `SecureRandom`.
+    const key = `ask-reply:${ask.id}:${crypto.randomUUID()}`;
+    const thread =
+      "star" in ask.poster
+        ? yield* stars
+            .reply({ star: ask.poster.star, channel: ask.poster.channel, composed, from, key })
+            .pipe(Effect.mapError(failed("reply")))
+        : yield* host.threads
+            .send({ threadId: ask.poster.thread, key, header: from, composed })
+            .pipe(Effect.mapError(failed("reply")), Effect.as(ask.poster.thread));
+    yield* act(id, { kind: "replied" });
+    return { thread };
+  });
+
+  return { post, settleOwn, list, reply, act } satisfies Asks;
 });

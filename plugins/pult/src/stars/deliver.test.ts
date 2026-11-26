@@ -328,6 +328,84 @@ describe("deliver", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "the user's reply queues into an open conversation under its own line with its attachments, wakes a sleeping channel at a picked model, and delivers once on a repeat",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness;
+        const from = {
+          line: '[In reply to your ask a1 "Ship it?", to your channel main]',
+          caption: { ...caption("Reply to the ask", "Ship it?", { row: "a1" }), reply: true },
+        };
+        const picture = {
+          type: "image",
+          id: "attachment-1",
+          name: "a.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+        } as never;
+        const fromUser = (key: string, picked: ReturnType<typeof model> | null, to?: Channel) =>
+          h.deliver({
+            star: h.star,
+            text: "Yes",
+            from,
+            to,
+            key,
+            sender: { user: { attachments: [picture], context: undefined, model: picked } },
+          });
+        h.open();
+        assert.deepStrictEqual(yield* fromUser("r1", null), {
+          outcome: "started",
+          threadId: ThreadId.make("open"),
+        });
+        const [message] = h.threads.messages;
+        assert.deepStrictEqual(
+          {
+            threadId: message?.threadId,
+            text: message?.text,
+            line: message?.header?.line,
+            createdBy: message?.createdBy,
+            creationSource: message?.creationSource,
+            attachments: message?.attachments,
+          },
+          {
+            threadId: ThreadId.make("open"),
+            text: "Yes",
+            // Its line as the ask wrote it, not a delivery's `[From …]`.
+            line: from.line,
+            createdBy: "user",
+            creationSource: "web",
+            attachments: [picture],
+          },
+        );
+        assert.deepStrictEqual(yield* fromUser("r1", null), {
+          outcome: "replayed",
+          threadId: null,
+        });
+        assert.strictEqual(h.threads.messages.length, 1);
+
+        // A sleeping channel wakes at the model picked in the composer, the attachments on its first message.
+        h.ended("ended-work", work);
+        const woken = yield* fromUser("r2", model("picked"), "work");
+        assert.strictEqual(woken.outcome, "launched");
+        const [launch] = h.launches.launches;
+        assert.deepStrictEqual(
+          {
+            modelSelection: launch?.modelSelection,
+            tags: launch?.tags,
+            attachments: launch?.initialMessage?.attachments,
+            createdBy: launch?.createdBy,
+          },
+          {
+            modelSelection: model("picked"),
+            tags: ["pult:channel:work"],
+            attachments: [picture],
+            createdBy: "user",
+          },
+        );
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("starts an idle conversation's turn and queues behind a running one", () =>
     Effect.gen(function* () {
       const h = yield* harness;
