@@ -9,7 +9,6 @@ import { resolveTaggedSourceVersion } from "../../scripts/lib/tagged-source-vers
 import rootPackageJson from "../../package.json" with { type: "json" };
 import packageJson from "./package.json" with { type: "json" };
 import { WeightedShardSequencer } from "./src/testUtils/weightedShardSequencer.ts";
-import { buildCommit } from "./src/plugins/buildCommit.ts";
 
 // NSIS install time tracks file count, not bytes.
 import {
@@ -112,18 +111,13 @@ export default mergeConfig(
         },
       ],
       // SEA embeds one entry; expose the history worker as a hidden subcommand.
-      // `src/pluginHost.ts` is the stable entry in-process plugins import, and `src/extensionHost.ts`
-      // the one extensions import as `@pult/extension-host`; see docs/internals/plugins.md.
+      // `src/extensionHost.ts` is the stable entry extensions import as `@pult/extension-host`;
+      // see docs/internals/plugins.md.
       entry: packBootstrap
         ? ["src/bin.ts"]
         : packExecutable
           ? ["src/binMain.ts"]
-          : [
-              "src/bin.ts",
-              "src/claude-history-worker.ts",
-              "src/pluginHost.ts",
-              "src/extensionHost.ts",
-            ],
+          : ["src/bin.ts", "src/claude-history-worker.ts", "src/extensionHost.ts"],
       outDir: packBootstrap ? "dist-exe" : packExecutable ? cliAssetDir : "dist",
       sourcemap: !packExecutable,
       clean: true,
@@ -159,8 +153,6 @@ export default mergeConfig(
       },
       define: {
         __T3CODE_BUILD_CHANNEL__: JSON.stringify(cliBuildChannel),
-        // No commit (no git, an xaxis checkout) bakes null, which `serverBuild` reads as none.
-        __T3CODE_BUILD_COMMIT__: JSON.stringify(buildCommit(import.meta.dirname) ?? null),
         __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
         __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
         __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(

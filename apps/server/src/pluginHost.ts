@@ -1,8 +1,7 @@
 /**
- * What an in-process plugin may import. This file is a second bundle entry,
- * `dist/pluginHost.mjs`, that shares its chunks with `dist/bin.mjs`, so a
- * plugin built with `@t3code/plugin-host` external gets the server's own
- * module instances. See docs/internals/plugins.md.
+ * The raw tier: the server modules Pult's bundled plugin imports, by path through its `src/host.ts`,
+ * for what of it has not moved onto the extension contract. Never an extension's (`../extensionHost.ts`).
+ * See docs/internals/plugins.md.
  */
 export * as Cause from "effect/Cause";
 // The Pult plugin's install-at-rest: the desktop's opt-in, `T3CODE_DESKTOP_INSTALL_UPDATES_AT_REST`.
@@ -34,8 +33,7 @@ export * as Stream from "effect/Stream";
 export { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 // A plugin declares its tools as the built-in toolkits declare theirs, with Tool and Toolkit,
 // McpToolAccess and toolkitRegistration below, so upstream's access checks run for them too.
-// McpServer stays for the loader's context and for an installed plugin built on addTool, whose
-// tools skip those checks (docs/internals/plugins.md).
+// McpServer stays for the loader's context.
 // oxlint-disable-next-line t3code/no-raw-mcp-registration -- the plugin surface re-exports it.
 export { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 

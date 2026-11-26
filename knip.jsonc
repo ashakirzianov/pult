@@ -59,8 +59,9 @@
       "entry": [
         "src/bin.ts!",
         "src/claude-history-worker.ts!",
-        "src/pluginHost.ts!",
         "src/extensionHost.ts!",
+        // Not packed: the raw tier Pult's bundled plugin imports by path.
+        "src/pluginHost.ts!",
         "scripts/cli.ts",
         "scripts/fetch-expo-schema.ts",
         "scripts/probe-claude-fork-local-rollback-replay.ts",

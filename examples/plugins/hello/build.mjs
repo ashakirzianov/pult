@@ -1,25 +1,31 @@
-// Bundles main.mjs for the server built from this checkout: `@t3code/plugin-host`
-// stays external, everything else is inlined, and `builtFor` names this server build.
-import * as NodeChildProcess from "node:child_process";
+// Bundles main.mjs into dist/hello/ beside its extension.json: `@pult/extension-host` stays
+// external, everything else is inlined, and the manifest names the contract and the Effect
+// version of the server built from this checkout.
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 import { build } from "esbuild";
 
-const repo = new URL("../../../", import.meta.url);
+// `CONTRACT` in apps/server/src/plugins/contract.ts.
+const contract = 1;
 const { version } = JSON.parse(
-  NodeFS.readFileSync(new URL("apps/server/package.json", repo), "utf8"),
+  NodeFS.readFileSync(new URL("package.json", import.meta.url), "utf8"),
 );
-const commit = NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo })
-  .toString()
-  .trim();
-const buildId = process.argv[2] ?? `${commit.slice(0, 7)}-${Date.now()}`;
+const server = NodeModule.createRequire(
+  new URL("../../../apps/server/package.json", import.meta.url),
+);
+const effect = server("effect/package.json").version;
+const out = new URL("dist/hello/", import.meta.url);
 
 await build({
   entryPoints: [new URL("main.mjs", import.meta.url).pathname],
-  outfile: new URL(`dist/${buildId}/main.mjs`, import.meta.url).pathname,
+  outfile: new URL("main.mjs", out).pathname,
   bundle: true,
   format: "esm",
   platform: "node",
-  external: ["@t3code/plugin-host"],
-  define: { __BUILT_FOR__: JSON.stringify({ version, commit }) },
+  external: ["@pult/extension-host"],
 });
-console.log(`dist/${buildId}/main.mjs built for ${version}@${commit}`);
+NodeFS.writeFileSync(
+  new URL("extension.json", out),
+  `${JSON.stringify({ version, contract, effect }, null, 2)}\n`,
+);
+console.log(`dist/hello/ built: hello ${version}, contract ${contract}, Effect ${effect}`);
