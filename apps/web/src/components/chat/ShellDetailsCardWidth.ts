@@ -1,5 +1,5 @@
 // Pult's hook point, not upstream's: the width the app keeps for the details card, which the user
-// drags (`apps/pult/view/ThreadDetailsCard.tsx`). Upstream's app sets none and keeps its fixed width.
+// drags (`apps/pult/view/ThreadDetailsPanel.tsx`). Upstream's app sets none and keeps its fixed width.
 import { createContext, use, useSyncExternalStore } from "react";
 
 import type { ShellValue } from "./ShellComposerOptions";

@@ -1,7 +1,7 @@
 // Upstream's right panel in Pult's shell: a file the view would open there
 // opens as an editor tab of the shell's instead, its diff surface is the
 // shell's changes view, and the thread details card opens only as the
-// shell's details cards show (`ThreadDetailsCard.tsx`), never by upstream's
+// shell's details cards show (`ThreadDetailsPanel.tsx`), never by upstream's
 // toggles. The panel's store is Zustand's, its actions fields of the state,
 // so the shell's build replaces them at start and stubs nothing. What the panel
 // still holds, pull requests, devices, terminals, stays its own until the

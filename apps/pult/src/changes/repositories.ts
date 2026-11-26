@@ -1,7 +1,7 @@
 // The checkouts the changes view's status read found no repository, a plain
-// folder's project, for the thread bar's Source Control button
-// (`src/threads/barEntries.tsx`), which hides on them. A checkout unread, or
-// whose last read failed, counts as a repository.
+// folder's project, for a thread's Changes shelf (`src/details/ThreadDetails.tsx`),
+// which is left out on them. A checkout unread, or whose last read failed,
+// counts as a repository.
 import { checkoutKey } from "./checkouts.ts";
 
 const notRepositories = new Set<string>();

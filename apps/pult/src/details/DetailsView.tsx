@@ -12,7 +12,9 @@ import {
   selectedThread,
 } from "../threads/selection.ts";
 import { isSubagent, type ShellThread, threadStore } from "../threads/store.ts";
+import { detailsCards } from "./cards.ts";
 import { StarDetails } from "./StarDetails.tsx";
+import { ThreadDetails } from "./ThreadDetails.tsx";
 
 const subscribeToThreads = (listener: () => void) => threadStore.subscribe(listener);
 const threadsSnapshot = () => threadStore.get();
@@ -80,12 +82,21 @@ export function useStarDetails() {
   };
 }
 
-/**
- * The selected Star's details (`StarDetails.tsx`), rendered by the shell into
- * the element the thread view floats them in (`index.tsx`); nothing while the
- * selection is no Star.
- */
-export function StarCards() {
+/** The selected Star's details (`StarDetails.tsx`); nothing while the selection is no Star. */
+function StarCards() {
   const details = useStarDetails();
   return details === null ? null : <StarDetails key={details.star.id} {...details} />;
+}
+
+/**
+ * The details the cards show (`detailsCards`), rendered by the shell into the
+ * element the thread view floats them in, or the file's column
+ * (`index.tsx`, `filePanel.tsx`): a Star's, or a thread's or a draft's
+ * (`ThreadDetails.tsx`); nothing while they show none.
+ */
+export function DetailsShelves() {
+  const subject = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.subject;
+  if (subject === undefined) return null;
+  if (subject.kind === "star") return <StarCards />;
+  return <ThreadDetails key={JSON.stringify(subject)} subject={subject} />;
 }

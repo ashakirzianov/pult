@@ -213,9 +213,9 @@ export function StarContent({
 }
 
 /**
- * The Star's place in its composer bar, as a thread's is
- * (`src/threads/barEntries.tsx`) but for Source Control, which a Star's
- * folder has none of: Explorer, narrowed to the Star's folder, and while a
+ * The Star's place in its composer bar (a thread's is its details' Thread
+ * shelf, `src/details/ThreadDetails.tsx`), each named in upstream's tooltip
+ * (`BarTip`): Explorer, narrowed to the Star's folder, and while a
  * conversation runs its environment, which a sleeping Star's draft picks
  * with upstream's own environment picker instead.
  */

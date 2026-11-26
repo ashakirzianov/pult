@@ -78,6 +78,13 @@ export function StarDetails({
         return <StarSettings key={name} star={star} />;
       case "schedules":
         return <StarSchedules key={name} star={star} now={now} />;
+      // A thread's (`ThreadDetails.tsx`).
+      case "thread":
+      case "changes":
+      case "actions":
+      case "servers":
+      case "subagents":
+        return null;
     }
   };
   return (

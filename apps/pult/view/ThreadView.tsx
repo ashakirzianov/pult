@@ -70,7 +70,7 @@ import {
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { FileLinkGate } from "./fileLinkGate.tsx";
-import { DetailsInFile, DetailsTarget } from "./ThreadDetailsCard.tsx";
+import { DetailsInFile, DetailsTarget } from "./ThreadDetailsPanel.tsx";
 import { threadViewHost } from "./host.ts";
 
 /**

@@ -274,8 +274,8 @@ html:not([data-theme-id]) .monaco-workbench .pult-view-theme {
 
 /* Settings first, taking the room they measure their labels against; then
    the thread's notices, a draft's environment and branch, the
-   icons: the thread's Explorer and Source Control (the shell's,
-   `data-chat-composer-slot-item="shell"`) and environment (the shell's), the
+   icons: a Star's Explorer (the shell's, `data-chat-composer-slot-item="shell"`)
+   and environment (the shell's; a thread's are its details' shelves), the
    context window, access (upstream's runtime mode), attachments. The items
    come in the order they mount, upstream's and the shell's, so Tab
    follows this order, not theirs. */

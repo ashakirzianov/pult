@@ -253,9 +253,9 @@ export async function startComposerStrip(): Promise<void> {
     const key = reply?.key ?? JSON.stringify(target);
     hasComposerKey.set(target !== null);
     const visible = open && target !== null && active !== undefined && !isShellTab(active);
-    // A file's upstream detail rows keep this view's providers even with its composer closed.
+    // A file's thread rows read through this view's providers even with its composer closed (`view/ThreadDetailsPanel.tsx`).
     const cards = detailsCards.get();
-    const needsRows = cards?.fileRows !== undefined && cards.subject.kind !== "star";
+    const needsRows = cards?.file === true && cards.subject.kind !== "star";
     if (target !== null && (visible || needsRows) && mounted?.key !== key)
       mount(key, target, reply?.options ?? selectedStarComposer());
     // A selection the strip no longer shows lets its composer go; the next one mounts when shown.

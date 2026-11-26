@@ -34,17 +34,17 @@ import { threadStore } from "../threads/store.ts";
 import type { DetailsCards, DetailsCardsTarget } from "../../view/main.tsx";
 import { detailsCards } from "./cards.ts";
 import { DetailsTray } from "./DetailsTray.tsx";
-import { detailsSubject, StarCards } from "./DetailsView.tsx";
+import { DetailsShelves, detailsSubject } from "./DetailsView.tsx";
 import { fileDetailsPanel } from "./filePanel.tsx";
 import "./details.css";
 
-/** Whether the cards are open: one state for the whole app, kept for the page's next start. */
+/** Whether the cards are open: one state for the whole app, kept for the page's next start; open until the user first closes them. */
 const OPEN_KEY = "pult-shell.details.open";
 const OPEN_CONTEXT = "pult.detailsOpen";
 /** While the active editor can show the selection's details. */
 const DETAILS_AVAILABLE_CONTEXT = "pult.detailsAvailable";
 
-let open = localStorage.getItem(OPEN_KEY) === "true";
+let open = localStorage.getItem(OPEN_KEY) !== "false";
 let openKey: IContextKey<boolean> | undefined;
 let update: () => void = () => {};
 
@@ -179,9 +179,9 @@ export async function startDetails(): Promise<void> {
   // The docked column of 0.0.25 left the part open in a profile; nothing lives there now.
   layout.setPartHidden(true, Parts.AUXILIARYBAR_PART);
 
-  detailsCards.setStarRenderer((element) => {
+  detailsCards.setShelvesRenderer((element) => {
     const root = createRoot(element);
-    root.render(<StarCards />);
+    root.render(<DetailsShelves />);
     // The view's root is committing as it lets go of the element; this one unmounts after it.
     return () => queueMicrotask(() => root.unmount());
   });
@@ -204,7 +204,7 @@ export async function startDetails(): Promise<void> {
     const cards = view === null ? null : cardsOver(view, editor);
     availableKey.set(file ? cards !== null : view !== null);
     const shown =
-      open && cards !== null ? (file ? { ...cards, fileRows: panel.rows } : cards) : null;
+      open && cards !== null ? (file ? { ...cards, file: true as const } : cards) : null;
     detailsCards.set(shown);
     panel.show(file ? shown : null);
   };

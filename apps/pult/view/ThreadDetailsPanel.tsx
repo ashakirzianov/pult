@@ -1,32 +1,45 @@
-// Stands in for `apps/web`'s `src/components/chat/ThreadDetailsCard.tsx` (`./stubs.ts`), the
-// frame of upstream's thread details: the shell's details cards (`src/details/`) float where
-// upstream's inline card would, over the chat's top-right corner, from the pane's view alone and
-// while that view is the active editor's. Files host the same rows through a portal from the composer strip. A thread's or a draft's details are upstream's rows
-// (`ThreadDetailsPanel.tsx`, with its own "Choose what to show" and defaults) in one card of
-// upstream's look; a Star's are the shell's cards, which it renders into an element of ours. The
-// canvas clears its lane of them as of upstream's card. In a narrow pane the Star shelves
-// overlay the lane so its settings stay reachable. The fork's web app keeps upstream's card.
-import type { ScopedThreadRef } from "@t3tools/contracts";
+// Stands in for `apps/web`'s `src/components/chat/ThreadDetailsPanel.tsx` (`./stubs.ts`),
+// upstream's thread details: the shell's details (`src/details/`), a thread's, a draft's or a
+// Star's shelves, which it renders into an element of ours, float where upstream's inline card
+// would, over the chat's top-right corner, from the pane's view alone and while that view is the
+// active editor's; in a pane too narrow for their lane they overlay the conversation. The canvas
+// clears its lane of them as of upstream's card. Upstream's rows and their "Choose what to show"
+// are the fork's web app's alone (`pult/decisions`, `view-right-panel`).
+import type {
+  EditorId,
+  EnvironmentId,
+  ProjectId,
+  ProjectScript,
+  ResolvedKeybindingsConfig,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   type ComponentProps,
   createContext,
-  type MouseEventHandler,
-  type ReactNode,
-  type RefObject,
   use,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 
-import { createPortal } from "react-dom";
-
+import type { EnvMode, EnvironmentOption } from "~/components/BranchToolbar.logic";
+import type {
+  NewProjectScriptInput,
+  ProjectScriptActionResult,
+} from "~/components/ProjectScriptsControl";
 import { useChatCanvas } from "~/components/chat/ChatCanvasContext";
-import type * as Upstream from "~/components/chat/ThreadDetailsCard";
-import type { PopoverCreateHandle } from "~/components/ui/popover";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { type DraftId, type DraftSessionState, useComposerDraftStore } from "~/composerDraftStore";
+import type { ThreadDetailsCard } from "~/components/chat/ThreadDetailsCard";
+import type * as Upstream from "~/components/chat/ThreadDetailsPanel";
+import type { ThreadDetailsUsageInput } from "~/components/chat/ThreadDetailsUsage";
+import {
+  type ComposerThreadTarget,
+  type DraftId,
+  type DraftSessionState,
+  useComposerDraftStore,
+} from "~/composerDraftStore";
 import { selectThreadPanelOpen, useRightPanelStore } from "~/rightPanelStore";
 import { DetailsModelPickers } from "./DetailsModelPicker.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
@@ -35,29 +48,66 @@ import { type DetailsCards, type DetailsCardsTarget, threadViewHost } from "./ho
 import { setThreadPanelInline } from "./rightPanel.ts";
 import type { ViewTarget } from "./ThreadView.tsx";
 
-/** The file's composer can portal its thread rows into the workbench beside the file. */
+/** The composer strip's view, under a file, whose column the shell draws itself (`src/details/filePanel.tsx`). */
 export const DetailsInFile = createContext(false);
 
 export const DetailsTarget = createContext<ViewTarget | null>(null);
 
-/** Upstream's frame's props, which the stub owns. */
-interface ThreadDetailsCardProps {
-  threadRef: ScopedThreadRef;
-  /** Upstream's narrow-pane popover anchor and handle. */
-  anchor: RefObject<Element | null>;
-  handle: ReturnType<typeof PopoverCreateHandle>;
-  /** Upstream measures its densities again when it changes; the card always renders the full one. */
-  contentKey: string;
-  onContextMenu?: MouseEventHandler<HTMLDivElement>;
-  children: (density: "full" | "compact" | "essential") => ReactNode;
+/** Upstream's panel's props, which the stub owns. */
+interface ThreadDetailsPanelProps extends Pick<
+  ComponentProps<typeof ThreadDetailsCard>,
+  "anchor" | "handle"
+> {
+  forceNewWorktree?: boolean;
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  projectId: ProjectId;
+  worktreePath: string | null;
+  isServerThread: boolean;
+  draftId?: DraftId;
+  composerDraftTarget: ComposerThreadTarget;
+  activeProjectName: string | undefined;
+  activeProjectScripts: ReadonlyArray<ProjectScript> | undefined;
+  preferredScriptId: string | null;
+  keybindings: ResolvedKeybindingsConfig;
+  availableEditors: ReadonlyArray<EditorId>;
+  showOpenInPicker: boolean;
+  openInShortcutEnabled: boolean;
+  gitCwd: string | null;
+  workspaceMutationId: string | null;
+  isGitRepo: boolean;
+  /** False when no worktree can come from this folder, so it offers no workspace modes. */
+  offersWorkspaceModes: boolean;
+  envLocked: boolean;
+  availableEnvironments: readonly EnvironmentOption[];
+  autoEnvironmentLabel?: string | undefined;
+  onAutoEnvironment?: (() => void) | undefined;
+  onEnvironmentChange?: (environmentId: EnvironmentId) => void;
+  onEnvModeChange: (mode: EnvMode) => void;
+  envMode: EnvMode;
+  activeThreadBranchOverride?: string | null;
+  onActiveThreadBranchOverrideChange?: (branch: string | null) => void;
+  startFromOrigin: boolean;
+  onStartFromOriginChange: (startFromOrigin: boolean) => void;
+  onCheckoutPullRequestRequest?: (reference: string) => void;
+  onComposerFocusRequest: () => void;
+  onOpenChanges?: () => void;
+  onRunProjectScript: (script: ProjectScript) => void;
+  onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
+  onUpdateProjectScript: (
+    scriptId: string,
+    input: NewProjectScriptInput,
+  ) => Promise<ProjectScriptActionResult>;
+  onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+  usage: ThreadDetailsUsageInput;
 }
 
 /** Whether A and B are one type: assignability both ways would miss an optional prop added or dropped. */
 type Exactly<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
-// A merge that changes upstream's frame's props fails the typecheck here, so the stub is read again.
-true satisfies Exactly<ThreadDetailsCardProps, ComponentProps<typeof Upstream.ThreadDetailsCard>>;
+// A merge that changes upstream's panel's props fails the typecheck here, so the stub is read again.
+true satisfies Exactly<ThreadDetailsPanelProps, ComponentProps<typeof Upstream.ThreadDetailsPanel>>;
 
 /** Whether the view shows this thread or draft, including the channel tag that identifies a draft within a project. */
 function isTarget(target: ViewTarget, shown: DetailsCardsTarget): boolean {
@@ -172,7 +222,9 @@ function DetailsTrayHost({ width }: { readonly width: number | string }) {
   );
 }
 
-export function ThreadDetailsCard({ threadRef, onContextMenu, children }: ThreadDetailsCardProps) {
+export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
+  const { environmentId, threadId } = props;
+  const threadRef = useMemo(() => ({ environmentId, threadId }), [environmentId, threadId]);
   const target = use(DetailsTarget);
   const inFile = use(DetailsInFile);
   const { detailsCards } = threadViewHost();
@@ -186,7 +238,7 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
   const shown =
     target !== null &&
     cards !== null &&
-    inFile === (cards.fileRows !== undefined) &&
+    inFile === (cards.file === true) &&
     showsCards(target, threadRef, draft, cards)
       ? cards
       : null;
@@ -204,7 +256,6 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
   const star = shown?.subject.kind === "star";
   const measureDetailsCard = canvas?.measureDetailsCard;
   const width = canvas?.preferredDetailsCard?.width;
-  const { environmentId, threadId } = threadRef;
   // The panel occupies its column even when all of its shelves are in the tray.
   const height = canvas?.preferredDetailsCard?.height;
   useLayoutEffect(() => {
@@ -216,24 +267,13 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
     });
   }, [open, width, height, measureDetailsCard, environmentId, threadId]);
   useLayoutEffect(() => {
-    if (island === null || !star) return;
-    return detailsCards.renderStar(island);
-  }, [island, star, detailsCards]);
-  const rows =
-    shown === null || star ? null : (
-      <div
-        className="dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-        onContextMenu={onContextMenu}
-        data-thread-details-card
-      >
-        <ScrollArea scrollFade className="min-h-0">
-          {children("full")}
-        </ScrollArea>
-      </div>
-    );
-  if (shown?.fileRows !== undefined) return rows && createPortal(rows, shown.fileRows);
+    if (island === null) return;
+    return detailsCards.renderShelves(island);
+  }, [island, detailsCards]);
+  // Beside a file the shell draws the column itself.
+  if (inFile) return null;
   const placement = canvas?.detailsCardPlacement ?? null;
-  if (shown === null || (placement === null && (!star || canvas === null))) return null;
+  if (shown === null || canvas === null) return null;
   const overlay = placement === null;
   const panelWidth = placement?.width ?? `min(calc(100% - 24px), ${detailsCardWidth.get()}px)`;
   const panelHeight =
@@ -248,18 +288,13 @@ export function ThreadDetailsCard({ threadRef, onContextMenu, children }: Thread
           width: panelWidth,
           bottom: overlay ? "var(--pult-bar-height)" : undefined,
           maxHeight: panelHeight,
-          height: star ? panelHeight : undefined,
+          height: panelHeight,
         }}
         data-thread-details-panel={overlay ? "overlay" : "inline"}
       >
-        <div className={star ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-col"}>
-          {star ? (
-            // The shell's own: the view's stylesheet stops at it (`vite.config.ts`).
-            <div ref={setIsland} className="pult-details-island pult-details-panel" />
-          ) : (
-            // Through React's tree, so the rows keep the view's providers, and their right-click is the chooser.
-            rows
-          )}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* The shell's own: the view's stylesheet stops at it (`vite.config.ts`). */}
+          <div ref={setIsland} className="pult-details-island pult-details-panel" />
         </div>
       </aside>
       {placement === null ? null : (

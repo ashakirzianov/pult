@@ -245,9 +245,45 @@ NodeTest.describe("shelf order", () => {
         "settings",
       ]),
       {
-        top: ["channels", "schedules", "asks", "settings"],
+        top: ["channels", "schedules", "settings", "asks"],
         bottom: [],
         closed: ["schedules", "asks"],
+      },
+    );
+    // The right panel's order as 0.0.32 saved it, a Star's shelves alone, takes a thread's at their default places.
+    NodeAssert.deepEqual(
+      parseShelfOrder(
+        {
+          top: ["channel", "asks", "channels"],
+          bottom: ["schedules", "settings"],
+          closed: ["asks"],
+        },
+        [
+          "asks",
+          "channels",
+          "channel",
+          "thread",
+          "changes",
+          "actions",
+          "servers",
+          "subagents",
+          "schedules",
+          "settings",
+        ],
+      ),
+      {
+        top: [
+          "channel",
+          "thread",
+          "changes",
+          "actions",
+          "servers",
+          "subagents",
+          "asks",
+          "channels",
+        ],
+        bottom: ["schedules", "settings"],
+        closed: ["asks"],
       },
     );
     NodeAssert.equal(

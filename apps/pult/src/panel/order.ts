@@ -96,7 +96,12 @@ export function moveIn<Name extends string>(
   };
 }
 
-/** Read the current or immediately preceding storage format, appending newly added shelves. */
+/**
+ * Read the current or immediately preceding storage format, a shelf it lacks
+ * (one added since it was saved) at its default place: after the nearest
+ * shelf before it in `names`, the default order, in that shelf's group, else
+ * first in the top group.
+ */
 export function parseShelfOrder<Name extends string>(
   stored: unknown,
   names: ReadonlyArray<Name>,
@@ -119,11 +124,16 @@ export function parseShelfOrder<Name extends string>(
     new Set(closed).size === closed.length &&
     closed.every((shelf) => all.includes(shelf));
   if (!valid) return null;
-  return {
-    top: [...(groups.top as Name[]), ...names.filter((shelf) => !all.includes(shelf))],
-    bottom: groups.bottom as Name[],
-    closed: closed as Name[],
-  };
+  const order = { top: [...(groups.top as Name[])], bottom: [...(groups.bottom as Name[])] };
+  for (const [index, shelf] of names.entries()) {
+    if (order.top.includes(shelf) || order.bottom.includes(shelf)) continue;
+    const before = names
+      .slice(0, index)
+      .findLast((each) => order.top.includes(each) || order.bottom.includes(each));
+    const group = before === undefined || order.top.includes(before) ? order.top : order.bottom;
+    group.splice(before === undefined ? 0 : group.indexOf(before) + 1, 0, shelf);
+  }
+  return { ...order, closed: closed as Name[] };
 }
 
 /** Upstream's settled tail: this many settled threads at first, then a page more per click. */

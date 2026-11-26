@@ -35,7 +35,6 @@ import { starById, starStore, starTarget } from "../stars/model.ts";
 import { starName } from "../stars/stars.ts";
 import { StarContent } from "../stars/tab.tsx";
 import { workbenchColorScheme } from "../theme.ts";
-import { ThreadBarEntries } from "./barEntries.tsx";
 import { openThreadFile, registerOpenThreadFileCommand, threadFileLinks } from "./files.ts";
 import { projectIconUri, projectIcons, threadProjectIcon } from "./projectIcon.ts";
 import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./store.ts";
@@ -160,8 +159,9 @@ export function draftCreates(
  * that environment, or `generation` changes, and not when only `target`
  * does, which is a draft's promotion: the view mounted for the draft becomes
  * the new thread's, at once if it has not gone there itself yet
- * (`MountedView.follow`). A thread's place (`ThreadBarEntries`) joins the
- * view's composer bar, or what `barEntries` renders there; `options` are the
+ * (`MountedView.follow`). What `barEntries` renders joins the view's
+ * composer bar (a Star's place, `src/stars/tab.tsx`); a thread's place is its
+ * details' Thread and Changes shelves (`src/details/`); `options` are the
  * caller's additions to the view, read as it mounts (a Star's fold, its
  * placeholder, its draft without upstream's hero, `src/stars/tab.tsx`).
  */
@@ -243,15 +243,7 @@ export function ThreadContent({
   return (
     <>
       <div ref={element} className="pult-thread-content" />
-      {bar === undefined ? null : barEntries !== undefined ? (
-        barEntries(bar)
-      ) : target.kind === "thread" ? (
-        <ThreadBarEntries
-          bar={bar}
-          environmentId={target.environmentId}
-          threadId={target.threadId}
-        />
-      ) : null}
+      {bar === undefined || barEntries === undefined ? null : barEntries(bar)}
     </>
   );
 }

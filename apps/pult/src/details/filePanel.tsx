@@ -17,7 +17,7 @@ import type { DetailsCards } from "../../view/main.tsx";
 import { allowNativeScroll } from "../nativeScroll.ts";
 import { allowNativeTextMenu } from "../nativeTextMenu.ts";
 import { DetailsTray } from "./DetailsTray.tsx";
-import { StarCards } from "./DetailsView.tsx";
+import { DetailsShelves } from "./DetailsView.tsx";
 
 /**
  * The editor part's own inset, upstream's for its docked auxiliary bar
@@ -43,13 +43,11 @@ export function fileDetailsPanel(layout: IWorkbenchLayoutService, groups: IEdito
   const element = document.createElement("aside");
   element.className = "pult-thread-view pult-file-details";
   element.hidden = true;
-  const rows = document.createElement("div");
-  rows.className = "pult-file-details-rows";
   const shelves = document.createElement("div");
   shelves.className = "pult-details-island pult-details-panel";
   const tray = document.createElement("div");
   tray.className = "pult-details-island pult-details-tray";
-  element.append(rows, shelves, tray);
+  element.append(shelves, tray);
   host.append(element);
   allowNativeScroll(element);
   allowNativeTextMenu(element);
@@ -109,9 +107,7 @@ export function fileDetailsPanel(layout: IWorkbenchLayoutService, groups: IEdito
   groups.mainPart.onDidLayout(() => queueMicrotask(place));
   detailsCardWidth.subscribe(place);
 
-  let star = false;
   return {
-    rows,
     show(cards: DetailsCards | null) {
       if (visible !== (cards !== null)) {
         visible = cards !== null;
@@ -122,12 +118,9 @@ export function fileDetailsPanel(layout: IWorkbenchLayoutService, groups: IEdito
           host.style.removeProperty("--pult-file-details-width");
           editorPart.setContentRightInset(0);
         }
-      }
-      const showStar = cards?.subject.kind === "star";
-      if (star !== showStar) {
-        star = showStar;
-        shelfRoot.render(star ? <StarCards /> : null);
-        trayRoot.render(star ? <DetailsTray /> : null);
+        // Only while shown, so the rows and what they read live while they can be seen.
+        shelfRoot.render(visible ? <DetailsShelves /> : null);
+        trayRoot.render(visible ? <DetailsTray /> : null);
       }
     },
   };

@@ -938,6 +938,7 @@ class ChangesView {
       if (keys.has(key)) continue;
       entry.registered?.repository.dispose();
       this.entries.delete(key);
+      setSummary(key, undefined);
     }
     const added: Entry[] = [];
     for (const checkout of checkouts) {
@@ -1071,7 +1072,7 @@ class ChangesView {
     const generation = ++entry.syncGeneration;
     const { environmentId, root } = entry.checkout;
     let sync: SyncState | undefined;
-    // A failed read counts as a repository, for the thread bar's Source Control.
+    // A failed read counts as a repository, for a thread's Changes shelf.
     let isRepo = true;
     let xaxisRoot: string | undefined;
     try {
@@ -1151,6 +1152,7 @@ class ChangesView {
     const turn = this.shownTurn();
     const decorated = new Map<string, Change>();
     for (const entry of this.entries.values()) {
+      this.publishSummary(entry);
       const shows =
         thread === undefined
           ? entry.shown !== undefined ||
@@ -1295,6 +1297,7 @@ class ChangesView {
    * else Commit disabled; while an action runs, its step.
    */
   private syncActions(entry: Entry, turnShown: boolean): void {
+    this.publishSummary(entry);
     const registered = entry.registered;
     if (registered === undefined) return;
     const { repository, provider } = registered;
@@ -1343,6 +1346,34 @@ class ChangesView {
           );
     if (JSON.stringify(line) !== JSON.stringify(provider.statusBarCommands.get()))
       provider.statusBarCommands.set(line, undefined);
+  }
+
+  /** The checkout's summary for the Changes shelf (`checkoutSummary`): its branch, its shown changes and its button as Source Control has it. */
+  private publishSummary(entry: Entry): void {
+    const branch = this.branchOf(entry);
+    const { command, enabled } = this.actionButton(entry, branch);
+    const changes = entry.shown?.changes ?? [];
+    setSummary(entry.key, {
+      branch,
+      files: changes.length,
+      additions: changes.reduce((sum, change) => sum + change.additions, 0),
+      deletions: changes.reduce((sum, change) => sum + change.deletions, 0),
+      button: { title: command.title, tooltip: command.tooltip ?? "", enabled: enabled !== false },
+    });
+  }
+
+  /**
+   * The checkout's button as the Changes shelf runs it: what Source Control's
+   * runs, but a commit's message is the server's, the message box's text
+   * left to Source Control.
+   */
+  async runButton(key: string): Promise<void> {
+    const entry = this.entries.get(key);
+    if (entry === undefined) return;
+    const { command, enabled } = this.actionButton(entry, this.branchOf(entry));
+    if (enabled === false) return;
+    if (command.id === COMMIT_COMMAND) return this.commit(entry, false, false);
+    await this.services.commands.executeCommand(command.id, ...(command.arguments ?? []));
   }
 
   /** What the state line adds for the checkout the environment's plugin keeps at main's tip (`kept.ts`); none for any other. */
@@ -1464,16 +1495,16 @@ class ChangesView {
 
   /**
    * Commits every change of the checkout's working tree, untracked files
-   * included, with the message box's text, or with none a message the
-   * server writes, and with `push` pushes it after; the box cleared on a
-   * commit, kept on a failure, which a notification tells with the
-   * server's message.
+   * included, with the message box's text, or with none (or not `typed`, the
+   * Changes shelf's) a message the server writes, and with `push` pushes it
+   * after; the box cleared on a commit of its text, kept on a failure, which
+   * a notification tells with the server's message.
    */
-  async commit(entry: Entry, push = false): Promise<void> {
+  async commit(entry: Entry, push = false, typed = true): Promise<void> {
     const xaxis = entry.sync?.xaxis ?? null;
-    if (xaxis !== null) return this.commitAndLand(entry, xaxis);
+    if (xaxis !== null) return this.commitAndLand(entry, xaxis, typed);
     const name = this.nameOf(entry);
-    const message = (entry.message ?? "").trim();
+    const message = typed ? (entry.message ?? "").trim() : "";
     await this.runAction(entry, COMMIT_STARTED.label, async (progressed) => {
       const { notifications } = this.services;
       try {
@@ -1487,9 +1518,11 @@ class ChangesView {
         if (result?.commit.status === "skipped_no_changes") {
           notifications.info(`Pult: nothing to commit in ${name}.`);
         } else if (result?.commit.status === "created") {
-          entry.message = "";
-          // Not transient, so the message joins the box's history.
-          entry.registered?.repository.input.setValue("", false);
+          if (typed) {
+            entry.message = "";
+            // Not transient, so the message joins the box's history.
+            entry.registered?.repository.input.setValue("", false);
+          }
           if (message === "" || push) notifications.info(`Pult: ${toast(result)}`);
         }
       } catch (error) {
@@ -1503,11 +1536,11 @@ class ChangesView {
   /**
    * An xaxis checkout's Commit & Land: every change committed, then landed on
    * main. A commit needs a message, which the server never writes for xaxis:
-   * the box's text, else the filter's thread's title on the checkout, else
-   * one the shell asks for. A failure is the server's message, and the status
+   * the box's text (unless not `typed`), else the filter's thread's title on
+   * the checkout, else one the shell asks for. A failure is the server's message, and the status
    * read after it opens the conflict it left.
    */
-  private async commitAndLand(entry: Entry, xaxis: XaxisState): Promise<void> {
+  private async commitAndLand(entry: Entry, xaxis: XaxisState, typedBox = true): Promise<void> {
     const name = this.nameOf(entry);
     const uncommitted = entry.shown?.kind === "working-tree";
     // Cmd+Enter in the box, whatever the button offers.
@@ -1516,7 +1549,7 @@ class ChangesView {
       this.services.notifications.info(`Pult: nothing to commit or land in ${name}.`);
       return;
     }
-    const typed = (entry.message ?? "").trim();
+    const typed = typedBox ? (entry.message ?? "").trim() : "";
     // A pending conflict is cleared only by a commit, though Take latest may have left nothing to commit.
     const commits = uncommitted || xaxis.conflicts.length > 0;
     let message = typed;
@@ -2177,6 +2210,44 @@ function joinPath(root: string, relativePath: string): string {
 }
 
 let started: Promise<ChangesView> | undefined;
+
+/** A checkout as the right panel's Changes shelf shows it (`src/details/ThreadDetails.tsx`). */
+export interface CheckoutSummary {
+  /** Null on a detached HEAD, or before it is known. */
+  readonly branch: string | null;
+  /** The changes Source Control shows of it: its working tree's while it has uncommitted changes, else its branch's against its base. */
+  readonly files: number;
+  readonly additions: number;
+  readonly deletions: number;
+  /** Source Control's button for it (`actionButton`), its title with `$(icon)` marks. */
+  readonly button: { readonly title: string; readonly tooltip: string; readonly enabled: boolean };
+}
+
+const summaries = new Map<string, CheckoutSummary>();
+const summaryListeners = new Set<() => void>();
+
+function setSummary(key: string, summary: CheckoutSummary | undefined): void {
+  const previous = summaries.get(key);
+  if (JSON.stringify(previous) === JSON.stringify(summary)) return;
+  if (summary === undefined) summaries.delete(key);
+  else summaries.set(key, summary);
+  for (const listener of summaryListeners) listener();
+}
+
+/** The checkout's summary, once the changes view has read it; undefined before, or off the store's checkouts. */
+export function checkoutSummary(environmentId: string, root: string): CheckoutSummary | undefined {
+  return summaries.get(checkoutKey(environmentId, root));
+}
+
+export function subscribeCheckoutSummaries(listener: () => void): () => void {
+  summaryListeners.add(listener);
+  return () => summaryListeners.delete(listener);
+}
+
+/** Runs the checkout's button as the Changes shelf does (`ChangesView.runButton`). */
+export async function runCheckoutButton(environmentId: string, root: string): Promise<void> {
+  await (await started)?.runButton(checkoutKey(environmentId, root));
+}
 
 /**
  * Opens the Source Control view narrowed to `thread`, selecting it first if

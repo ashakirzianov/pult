@@ -1,7 +1,7 @@
 // The composer's model picker in a Star's details (`src/details/ChannelDetails.tsx`, through the
 // host's `modelPickers`): upstream's `ProviderModelPicker` over the environment's server config's
 // models, as its settings page builds them, portalled from the view's tree, inside its providers,
-// into an element of the shell's own (`ThreadDetailsCard.tsx`). The element carries
+// into an element of the shell's own (`ThreadDetailsPanel.tsx`). The element carries
 // `pult-view-theme`, so the view's stylesheet, which stops at the shell's island, starts again in it.
 import type { EnvironmentId, ProjectId, ProviderInstanceId } from "@t3tools/contracts";
 import { pickModelSelection } from "@t3tools/shared/model";

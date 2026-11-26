@@ -1,7 +1,7 @@
-/* The right panel (src/details): floating cards over the active thread's view, where upstream's
-   details card floats (view/ThreadDetailsCard.tsx). A thread's card is upstream's own; a Star's are
-   the shell's, in the element below, which the view's stylesheet stops at (vite.config.ts), drawn in
-   upstream's card look from the view's tokens, which reach it as custom properties. */
+/* The right panel (src/details): shelves over the active thread's view, where upstream's details
+   card floats (view/ThreadDetailsPanel.tsx), a thread's, a draft's or a Star's, in the element below,
+   which the view's stylesheet stops at (vite.config.ts), drawn from the view's tokens, which reach it
+   as custom properties. */
 
 .pult-details-island {
   color: var(--foreground);
@@ -125,12 +125,6 @@
   padding-right: var(--pult-file-details-width, 0px);
 }
 
-.pult-file-details-rows {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
 .pult-file-details > .pult-details-tray {
   left: 0;
 }
@@ -195,4 +189,79 @@
 
 .pult-channel-details .pult-subagents-list {
   margin: 2px -8px -4px;
+}
+
+/* A thread's rows (`rows.tsx`): the subagents' look, a line under the label, actions at the row's end. */
+.pult-details-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pult-details-row > .pult-subagent {
+  flex: 1;
+  min-width: 0;
+}
+
+.pult-details-row > div.pult-subagent:hover {
+  background: none;
+}
+
+.pult-details-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pult-details-row-description {
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pult-details-row-action {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pult-details-row-action:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.pult-details-row-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The Changes shelf's one button, Source Control's for the checkout. */
+.pult-details-button-row {
+  display: flex;
+  padding: 4px 8px 6px;
+}
+
+.pult-details-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pult-details-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

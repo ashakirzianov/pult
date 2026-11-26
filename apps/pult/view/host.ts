@@ -100,7 +100,7 @@ export interface ThreadViewHost {
    * The details cards over the active thread view (`src/details/`): which
    * view they float over and what they show, null while they are closed or
    * the active editor is no thread's view. The pane's view showing that
-   * target renders them (`ThreadDetailsCard.tsx`).
+   * target renders them (`ThreadDetailsPanel.tsx`).
    */
   readonly detailsCards: DetailsCardsValue;
   /**
@@ -149,9 +149,9 @@ export type DetailsCardsTarget =
 export interface DetailsCards {
   /** The active editor's thread view's target: a thread's, a draft's, a Star's conversation or draft, a Star's channel's or child's. */
   readonly view: DetailsCardsTarget;
-  /** Beside a file, the grid cell that hosts the selected thread's rows. */
-  readonly fileRows?: HTMLElement;
-  /** The selected thread's or draft's details, upstream's rows, or the selected Star's, which the shell renders (`renderStar`). */
+  /** Beside a file, in its column (`src/details/filePanel.tsx`), rather than over the view. */
+  readonly file?: true;
+  /** The thread's, the draft's or the Star's details, which the shell renders (`renderShelves`). */
   readonly subject: DetailsCardsTarget | { readonly kind: "star"; readonly channel: string | null };
 }
 
@@ -181,8 +181,8 @@ export interface DetailsModelPicker {
 export interface DetailsCardsValue {
   get(): DetailsCards | null;
   subscribe(listener: () => void): () => void;
-  /** Renders the selected Star's cards into `element`, an element of the view's the shell owns from then on; returns their removal. */
-  renderStar(element: HTMLElement): () => void;
+  /** Renders the details' shelves into `element`, an element of the view's the shell owns from then on; returns their removal. */
+  renderShelves(element: HTMLElement): () => void;
   /** Renders the right panel's tray into `element`, on the composer buttons' row; returns its removal. */
   renderTray(element: HTMLElement): () => void;
   /** The model pickers a Star's cards show now, which the view portals into their elements. */

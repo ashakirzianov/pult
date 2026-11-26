@@ -123,7 +123,7 @@
       "entry": [
         "view/connectionRuntime.ts!",
         "view/panelLayoutControls.tsx!",
-        "view/ThreadDetailsCard.tsx!",
+        "view/ThreadDetailsPanel.tsx!",
         "view/keybindings.ts!",
         "view/stubs/*.ts!",
         "src/**/*.test.ts",

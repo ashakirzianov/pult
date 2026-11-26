@@ -1,7 +1,7 @@
 import type { DetailsCards, DetailsCardsValue, DetailsModelPicker } from "../../view/main.tsx";
 
 let current: DetailsCards | null = null;
-let starRenderer: ((element: HTMLElement) => () => void) | undefined;
+let shelvesRenderer: ((element: HTMLElement) => () => void) | undefined;
 let trayRenderer: ((element: HTMLElement) => () => void) | undefined;
 const listeners = new Set<() => void>();
 let pickers: ReadonlyArray<DetailsModelPicker> = [];
@@ -9,14 +9,14 @@ const pickerListeners = new Set<() => void>();
 
 /**
  * The details cards as the thread view reads them through its host
- * (`view/ThreadDetailsCard.tsx`): which view they float over and what they
+ * (`view/ThreadDetailsPanel.tsx`): which view they float over and what they
  * show, null while they are closed or the active editor shows no details,
  * so the rows, and the queries they run, live only while they can be
  * seen, as upstream's card's do. `index.tsx` keeps it.
  */
 export const detailsCards: DetailsCardsValue & {
   set(next: DetailsCards | null): void;
-  setStarRenderer(render: (element: HTMLElement) => () => void): void;
+  setShelvesRenderer(render: (element: HTMLElement) => () => void): void;
   setTrayRenderer(render: (element: HTMLElement) => () => void): void;
   /** Asks the view for a model picker in `picker.element` until what it returns removes it. */
   showModelPicker(picker: DetailsModelPicker): () => void;
@@ -28,10 +28,10 @@ export const detailsCards: DetailsCardsValue & {
       listeners.delete(listener);
     };
   },
-  renderStar(element) {
-    if (starRenderer === undefined)
-      throw new Error("A Star's details cards rendered before the shell started them");
-    return starRenderer(element);
+  renderShelves(element) {
+    if (shelvesRenderer === undefined)
+      throw new Error("The details' shelves rendered before the shell started them");
+    return shelvesRenderer(element);
   },
   renderTray(element) {
     if (trayRenderer === undefined)
@@ -40,7 +40,7 @@ export const detailsCards: DetailsCardsValue & {
   },
   set(next) {
     if (
-      next?.fileRows === current?.fileRows &&
+      next?.file === current?.file &&
       JSON.stringify(next?.view) === JSON.stringify(current?.view) &&
       JSON.stringify(next?.subject) === JSON.stringify(current?.subject)
     )
@@ -48,8 +48,8 @@ export const detailsCards: DetailsCardsValue & {
     current = next;
     for (const listener of listeners) listener();
   },
-  setStarRenderer(render) {
-    starRenderer = render;
+  setShelvesRenderer(render) {
+    shelvesRenderer = render;
   },
   setTrayRenderer(render) {
     trayRenderer = render;
