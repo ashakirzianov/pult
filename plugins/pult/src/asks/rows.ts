@@ -149,6 +149,8 @@ export const make = Effect.fn("AskRows.make")(function* (
   let posterThreads = new Set<string>();
   /** Sleeping until the next ask changes by itself. */
   let timer: { readonly interruptUnsafe: () => void } | undefined;
+  /** While a publish reads the asks: a poster's event then may concern a thread it has not counted yet. */
+  let reading = false;
 
   const targetOf = (ask: Ask) =>
     "thread" in ask.poster
@@ -160,6 +162,7 @@ export const make = Effect.fn("AskRows.make")(function* (
   const publish: Effect.Effect<void> = publishing
     .withPermits(1)(
       Effect.gen(function* () {
+        reading = true;
         const all = yield* asks.list({ settled: true });
         const rows = yield* Effect.forEach(
           all,
@@ -169,6 +172,7 @@ export const make = Effect.fn("AskRows.make")(function* (
         posterThreads = new Set(
           all.flatMap((ask) => ("thread" in ask.poster ? [ask.poster.thread] : [])),
         );
+        reading = false;
         yield* host.ui.publish("shelf-row", rows);
         const now = DateTime.toEpochMillis(yield* DateTime.now);
         const next = Math.min(
@@ -183,12 +187,17 @@ export const make = Effect.fn("AskRows.make")(function* (
         timer?.interruptUnsafe();
         timer = Number.isFinite(next)
           ? yield* Effect.forkDetach(
-              Effect.sleep(Math.max(0, next - now) + 1000).pipe(Effect.andThen(publishLater)),
+              Effect.sleep(Math.max(0, next - now) + 1000).pipe(
+                // The fired timer is no longer the one to interrupt: its publish schedules the next.
+                Effect.andThen(Effect.sync(() => void (timer = undefined))),
+                Effect.andThen(publishLater),
+              ),
             )
           : undefined;
       }),
     )
     .pipe(
+      Effect.ensuring(Effect.sync(() => void (reading = false))),
       Effect.catchCause((cause) =>
         Effect.logWarning("Pult could not publish the asks' rows.", { cause }),
       ),
@@ -227,7 +236,8 @@ export const make = Effect.fn("AskRows.make")(function* (
 
   yield* Effect.forkScoped(
     Stream.runForEach(host.threadEvents, (event) =>
-      posterThreads.has(event.threadId) ? publish : Effect.void,
+      // An event during a publish's read is published again after it, whatever thread it names.
+      posterThreads.has(event.threadId) || reading ? publish : Effect.void,
     ),
   );
   yield* Effect.forkScoped(publish);

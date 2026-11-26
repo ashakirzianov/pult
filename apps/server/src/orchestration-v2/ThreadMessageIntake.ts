@@ -265,14 +265,25 @@ export const sendToThread = Effect.fn("ThreadMessageIntake.sendToThread")(functi
 ) {
   const threads = yield* ThreadManagement.ThreadManagementService;
   const claimed = yield* AttachmentClaims.claimPendingAttachments(input);
-  return yield* threads.sendToThread({ ...input, attachments: claimed.attachments }).pipe(
-    Effect.tap((result) => releaseUnusedClaims(claimed.claimedPaths, result.message.attachments)),
-    Effect.tapError((error) =>
-      dispatchWasNotAccepted(error)
-        ? AttachmentClaims.releaseClaimedAttachments(claimed.claimedPaths)
-        : Effect.void,
-    ),
-  );
+  // Pult: a context's references follow the claimed uploads, as a launch's do (a reply an extension sends, `ExtensionContract.ts`).
+  const context =
+    input.context === undefined
+      ? undefined
+      : remapComposerContextAttachments(input.context, input.attachments, claimed.attachments);
+  return yield* threads
+    .sendToThread({
+      ...input,
+      attachments: claimed.attachments,
+      ...(context === undefined ? {} : { context }),
+    })
+    .pipe(
+      Effect.tap((result) => releaseUnusedClaims(claimed.claimedPaths, result.message.attachments)),
+      Effect.tapError((error) =>
+        dispatchWasNotAccepted(error)
+          ? AttachmentClaims.releaseClaimedAttachments(claimed.claimedPaths)
+          : Effect.void,
+      ),
+    );
 });
 
 export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(function* (

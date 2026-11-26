@@ -315,7 +315,8 @@ export const make = Effect.gen(function* () {
           yield* withinLimit(newest);
           // A resumed launch's thread is the channel's newest, created at the model the launch chose.
           const modelSelection: ModelSelection = fresh
-            ? (user?.model ?? (yield* chosen(newest)))
+            ? // The Star's choice read for its notice even where the user picked a model.
+              yield* Effect.map(chosen(newest), (choice) => user?.model ?? choice)
             : newest.modelSelection;
           // The user's uploads are claimed into the thread, whose id the launch mints first.
           const launched = yield* ThreadMessageIntake.launchThread({

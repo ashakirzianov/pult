@@ -204,7 +204,7 @@ export interface ListFilter {
 }
 
 export type Action =
-  | { readonly kind: "replied" }
+  | { readonly kind: "replied"; readonly posted: string }
   | { readonly kind: "snooze"; readonly until: string | null }
   | { readonly kind: "settle" }
   | { readonly kind: "unsettle" };
@@ -592,6 +592,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             return {
               refused: "The ask reads as settled because its thread is: un-settle the thread.",
             };
+          if (action.kind === "replied" && record.posted !== action.posted) return { record };
           const next: AskRecord =
             action.kind === "replied"
               ? // A reply moves it to Working, from Snoozed too.
@@ -632,7 +633,8 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         : yield* host.threads
             .send({ threadId: ask.poster.thread, key, header: from, composed })
             .pipe(Effect.mapError(failed("reply")), Effect.as(ask.poster.thread));
-    yield* act(id, { kind: "replied" });
+    // The posting it answered: one asked again meanwhile stays in Inbox.
+    yield* act(id, { kind: "replied", posted: ask.posted });
     return { thread };
   });
 
