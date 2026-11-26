@@ -98,9 +98,9 @@ export function moveIn<Name extends string>(
 
 /**
  * Read the current or immediately preceding storage format, a shelf it lacks
- * (one added since it was saved) at its default place: after the nearest
- * shelf before it in `names`, the default order, in that shelf's group, else
- * first in the top group.
+ * (one added since it was saved) at its default place in the top group, the
+ * default one: after the nearest shelf before it in `names`, the default
+ * order, that the top group holds, else first.
  */
 export function parseShelfOrder<Name extends string>(
   stored: unknown,
@@ -127,11 +127,8 @@ export function parseShelfOrder<Name extends string>(
   const order = { top: [...(groups.top as Name[])], bottom: [...(groups.bottom as Name[])] };
   for (const [index, shelf] of names.entries()) {
     if (order.top.includes(shelf) || order.bottom.includes(shelf)) continue;
-    const before = names
-      .slice(0, index)
-      .findLast((each) => order.top.includes(each) || order.bottom.includes(each));
-    const group = before === undefined || order.top.includes(before) ? order.top : order.bottom;
-    group.splice(before === undefined ? 0 : group.indexOf(before) + 1, 0, shelf);
+    const before = names.slice(0, index).findLast((each) => order.top.includes(each));
+    order.top.splice(before === undefined ? 0 : order.top.indexOf(before) + 1, 0, shelf);
   }
   return { ...order, closed: closed as Name[] };
 }

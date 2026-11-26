@@ -210,8 +210,43 @@ function DetailsCardResizer({
   );
 }
 
-/** The element the shell renders the right panel's tray into, on the composer buttons' row, as wide as the panel. */
-function DetailsTrayHost({ width }: { readonly width: number | string }) {
+/**
+ * Over a narrow pane, how far above the canvas's bottom the composer's top
+ * is, its message box and its bar, which the overlaid panel and its tray
+ * stay clear of; null while the panel is in its lane, the view has no
+ * composer, or before it is measured.
+ */
+function useComposerClearance(aside: HTMLElement | null, overlay: boolean): number | null {
+  const [clearance, setClearance] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!overlay || aside === null) return;
+    const canvas = aside.offsetParent;
+    const composer =
+      aside
+        .closest(".pult-thread-view")
+        ?.querySelector("form:has([data-chat-composer-bar-host])") ?? null;
+    if (!(canvas instanceof HTMLElement) || composer === null) return;
+    const measure = () =>
+      setClearance(
+        Math.max(0, canvas.getBoundingClientRect().bottom - composer.getBoundingClientRect().top),
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [aside, overlay]);
+  return overlay ? clearance : null;
+}
+
+/** The element the shell renders the right panel's tray into, on the composer buttons' row (over a narrow pane, right above the composer), as wide as the panel. */
+function DetailsTrayHost({
+  width,
+  bottom,
+}: {
+  readonly width: number | string;
+  readonly bottom: number | null;
+}) {
   const { detailsCards } = threadViewHost();
   const [element, setElement] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -219,7 +254,11 @@ function DetailsTrayHost({ width }: { readonly width: number | string }) {
     return detailsCards.renderTray(element);
   }, [element, detailsCards]);
   return (
-    <div ref={setElement} className="pult-details-island pult-details-tray" style={{ width }} />
+    <div
+      ref={setElement}
+      className="pult-details-island pult-details-tray"
+      style={{ width, ...(bottom === null ? {} : { bottom }) }}
+    />
   );
 }
 
@@ -254,6 +293,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     if (!inFile && target !== null && inlineOpen !== open) setThreadPanelInline(threadRef, open);
   }, [inFile, target, inlineOpen, open, threadRef]);
   const [island, setIsland] = useState<HTMLElement | null>(null);
+  const [aside, setAside] = useState<HTMLElement | null>(null);
   const star = shown?.subject.kind === "star";
   const measureDetailsCard = canvas?.measureDetailsCard;
   const width = canvas?.preferredDetailsCard?.width;
@@ -283,11 +323,12 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
         onAddProjectScript={props.onAddProjectScript}
       />
     ) : null;
+  const placement = canvas?.detailsCardPlacement ?? null;
+  const overlay = placement === null;
+  const clearance = useComposerClearance(aside, overlay && !inFile && shown !== null);
   // Beside a file the shell draws the column itself.
   if (inFile) return publisher;
-  const placement = canvas?.detailsCardPlacement ?? null;
   if (shown === null || canvas === null) return publisher;
-  const overlay = placement === null;
   const panelWidth = placement?.width ?? `min(calc(100% - 24px), ${detailsCardWidth.get()}px)`;
   const panelHeight =
     placement === null ? undefined : `calc(${placement.height}px - var(--pult-bar-height))`;
@@ -295,12 +336,17 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     <>
       {publisher}
       <aside
+        ref={setAside}
         className="absolute z-22 flex flex-col"
         style={{
           right: placement?.right ?? 12,
           top: placement?.y ?? 12,
           width: panelWidth,
-          bottom: overlay ? "var(--pult-bar-height)" : undefined,
+          bottom: !overlay
+            ? undefined
+            : clearance === null
+              ? "var(--pult-bar-height)"
+              : `calc(${clearance}px + var(--pult-bar-height))`,
           maxHeight: panelHeight,
           height: panelHeight,
         }}
@@ -314,7 +360,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
       {placement === null ? null : (
         <DetailsCardResizer width={placement.width} right={placement.right + placement.width - 3} />
       )}
-      <DetailsTrayHost width={panelWidth} />
+      <DetailsTrayHost width={panelWidth} bottom={clearance} />
       {/* A Star's cards' model pickers, drawn from the view's tree into the shell's elements. */}
       {star ? <DetailsModelPickers /> : null}
     </>

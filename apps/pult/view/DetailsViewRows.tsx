@@ -79,6 +79,46 @@ function reportFailure(title: string, error: unknown): void {
   );
 }
 
+/**
+ * The rows handed over, each action calling its row's as the latest render
+ * has it, found by its key, since a change to what an action does (a
+ * script's command) need not change what the rows say.
+ */
+function delegated(
+  rows: DetailsViewRows,
+  latest: { readonly current: DetailsViewRows },
+): DetailsViewRows {
+  const action = (key: string) => latest.current.actions.find((each) => each.key === key);
+  const server = (key: string) => latest.current.servers.find((each) => each.key === key);
+  const schedule = (key: string) => latest.current.schedules.find((each) => each.key === key);
+  return {
+    ...rows,
+    actions: rows.actions.map((row) => ({
+      ...row,
+      ...(row.run === undefined ? {} : { run: () => action(row.key)?.run?.() }),
+      ...(row.add === undefined ? {} : { add: () => action(row.key)?.add?.() }),
+    })),
+    servers: rows.servers.map((row) => ({
+      ...row,
+      ...(row.open === undefined ? {} : { open: () => server(row.key)?.open?.() }),
+      ...(row.stop === undefined ? {} : { stop: () => server(row.key)?.stop?.() }),
+    })),
+    schedules: rows.schedules.map((row) => ({
+      ...row,
+      ...(row.runNow === undefined ? {} : { runNow: () => schedule(row.key)?.runNow?.() }),
+      ...(row.setEnabled === undefined
+        ? {}
+        : {
+            setEnabled: (enabled: boolean) => schedule(row.key)?.setEnabled?.(enabled),
+          }),
+    })),
+    stops: rows.stops.map(({ threadId }) => ({
+      threadId,
+      stop: () => latest.current.stops.find((each) => each.threadId === threadId)?.stop(),
+    })),
+  };
+}
+
 /** A command's failure, told as upstream's rows tell it; an interrupted one is none. */
 function reported(title: string) {
   return (result: AtomCommandResult<unknown, unknown>) => {
@@ -130,8 +170,13 @@ export function DetailsViewRowsPublisher(props: {
     label: "thread automation run now",
   });
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const subagents =
-    useQuietThreadProjection(scopeThreadRef(environmentId, threadId))?.projection?.subagents ?? [];
+  // Its own subagents, and on a subagent's tab its siblings, which its parent's projection holds.
+  const projection = useQuietThreadProjection(scopeThreadRef(environmentId, threadId))?.projection;
+  const parentId = projection?.thread?.lineage.parentThreadId ?? null;
+  const parentProjection = useQuietThreadProjection(
+    parentId === null ? null : scopeThreadRef(environmentId, parentId),
+  )?.projection;
+  const subagents = [...(projection?.subagents ?? []), ...(parentProjection?.subagents ?? [])];
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);
 
   const latest = useRef(props);
@@ -216,13 +261,19 @@ export function DetailsViewRowsPublisher(props: {
         nextRunAt: task.nextRunAt,
         once: task.schedule.type === "once",
         enabled: task.enabled,
+        running: task.lastRunStatus === "running",
         blocked: task.blockedByPolicy ?? null,
         ...(mayRunTasks && readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
           ? {
-              runNow: () =>
-                void runTaskNow({ environmentId, input: { id: task.id } }).then(
-                  reported("Could not run automation"),
-                ),
+              // A webhook's task runs when its hook is called, as upstream's row has it.
+              ...(task.schedule.type === "webhook"
+                ? {}
+                : {
+                    runNow: () =>
+                      void runTaskNow({ environmentId, input: { id: task.id } }).then(
+                        reported("Could not run automation"),
+                      ),
+                  }),
               setEnabled: (enabled: boolean) =>
                 void setTaskEnabled({ environmentId, input: { id: task.id, enabled } }).then(
                   reported("Could not update automation"),
@@ -251,8 +302,7 @@ export function DetailsViewRowsPublisher(props: {
   // oxlint-disable-next-line react/refs -- the rows handed over are the latest that say this.
   current.current = rows;
   useLayoutEffect(() => {
-    const shown = current.current;
-    detailsCards.setViewRows(shown);
+    detailsCards.setViewRows(delegated(current.current, current));
     return () => {
       // Still ours: the next publisher's effect runs after this cleanup.
       detailsCards.setViewRows(null);

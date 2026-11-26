@@ -211,6 +211,8 @@ export interface DetailsViewRows {
     /** A one-off, which runs once, else recurring or on a webhook. */
     readonly once: boolean;
     readonly enabled: boolean;
+    /** Its run under way, which Run now waits for. */
+    readonly running: boolean;
     /** Why it cannot run whatever `enabled` says, as the server words it. */
     readonly blocked: string | null;
     readonly runNow?: () => void;

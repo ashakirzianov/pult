@@ -1365,13 +1365,15 @@ class ChangesView {
   /**
    * The checkout's button as the Changes shelf runs it: what Source Control's
    * runs, but a commit's message is the server's, the message box's text
-   * left to Source Control.
+   * left to Source Control; nothing when the button no longer reads
+   * `shown`, the title the shelf showed, which a status read may have
+   * changed since (a Commit become Publish Branch).
    */
-  async runButton(key: string): Promise<void> {
+  async runButton(key: string, shown: string): Promise<void> {
     const entry = this.entries.get(key);
     if (entry === undefined) return;
     const { command, enabled } = this.actionButton(entry, this.branchOf(entry));
-    if (enabled === false) return;
+    if (enabled === false || command.title !== shown) return;
     if (command.id === COMMIT_COMMAND) return this.commit(entry, false, false);
     await this.services.commands.executeCommand(command.id, ...(command.arguments ?? []));
   }
@@ -2244,9 +2246,13 @@ export function subscribeCheckoutSummaries(listener: () => void): () => void {
   return () => summaryListeners.delete(listener);
 }
 
-/** Runs the checkout's button as the Changes shelf does (`ChangesView.runButton`). */
-export async function runCheckoutButton(environmentId: string, root: string): Promise<void> {
-  await (await started)?.runButton(checkoutKey(environmentId, root));
+/** Runs the checkout's button as the Changes shelf does, while it still reads `shown` (`ChangesView.runButton`). */
+export async function runCheckoutButton(
+  environmentId: string,
+  root: string,
+  shown: string,
+): Promise<void> {
+  await (await started)?.runButton(checkoutKey(environmentId, root), shown);
 }
 
 /**

@@ -27,7 +27,7 @@ import { createRoot } from "react-dom/client";
 
 import { selectedTarget } from "../composer/index.tsx";
 import { PULT_SCHEME } from "../files/paths.ts";
-import { starById, starStore, starTarget } from "../stars/model.ts";
+import { starById, starOfThread, starStore, starTarget } from "../stars/model.ts";
 import { DraftInput, StarInput, StarThreadInput, ThreadInput } from "../threads/pane.tsx";
 import { onDidSelectThread } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
@@ -128,13 +128,19 @@ function threadViewOf(editor: unknown): DetailsCardsTarget | null {
  * What the cards show while open over a thread's view: the selection's
  * details, a thread's, a draft's or a Star's; on a Star's child's tab (a
  * `StarThreadInput` with no slug) the child's own, a regular thread's,
- * where a channel's tab keeps the Star's.
+ * where a channel's tab, and a subagent of a Star's conversation opened as a
+ * tab of its own, keep the Star's.
  */
 function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | null {
   const subject = detailsSubject();
   switch (subject.kind) {
     case "star":
-      if (editor instanceof StarThreadInput && editor.slug === null && over.kind === "thread")
+      if (
+        editor instanceof StarThreadInput &&
+        editor.slug === null &&
+        over.kind === "thread" &&
+        !ofStarConversation(over.environmentId, over.threadId)
+      )
         return { view: over, subject: over };
       return {
         view: over,
@@ -171,6 +177,13 @@ function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | nu
     case "none":
       return null;
   }
+}
+
+/** Whether the thread's lineage is a Star's conversation's: its root a Star's thread. */
+function ofStarConversation(environmentId: string, threadId: string): boolean {
+  const thread = threadStore.thread(environmentId, threadId);
+  const root = thread === undefined ? undefined : threadStore.thread(environmentId, thread.rootId);
+  return root !== undefined && starOfThread(root) !== undefined;
 }
 
 /** Follow the active editor and the selection. Thread tabs host the cards on their canvas, files beside their editor. */

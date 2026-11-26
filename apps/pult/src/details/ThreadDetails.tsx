@@ -22,6 +22,7 @@ import {
 } from "../panel/PanelView.tsx";
 import { instantText } from "../stars/schedules.ts";
 import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
+import { revealTerminal } from "../threads/terminal.ts";
 import type { DetailsCardsTarget, DetailsViewRows } from "../../view/main.tsx";
 import { detailsCards } from "./cards.ts";
 import { type DetailsRow, DetailsRows, IconLabel } from "./rows.tsx";
@@ -175,7 +176,9 @@ export function ThreadDetails({ subject }: { subject: ThreadSubject }) {
       case "changes":
         return details.changes === null ? null : <ThreadChanges key={name} {...details.changes} />;
       case "actions":
-        return details.view === null ? null : <ThreadActions key={name} view={details.view} />;
+        return details.view === null || details.thread === undefined ? null : (
+          <ThreadActions key={name} thread={details.thread} view={details.view} />
+        );
       case "servers":
         return details.view === null ? null : <ThreadServers key={name} view={details.view} />;
       case "subagents":
@@ -318,7 +321,7 @@ function ThreadChanges({
             className="pult-settings-button pult-details-button"
             title={summary.button.tooltip}
             disabled={!summary.button.enabled}
-            onClick={() => void runCheckoutButton(thread.environmentId, root)}
+            onClick={() => void runCheckoutButton(thread.environmentId, root, summary.button.title)}
           >
             <IconLabel text={summary.button.title} />
           </button>
@@ -344,7 +347,7 @@ const SCRIPT_ICONS: Record<string, string> = {
  * drawer open, as Toggle Terminal does. A script the project's `t3.json`
  * defines and the project lacks has Add, which adds it as upstream imports it.
  */
-function ThreadActions({ view }: { view: DetailsViewRows }) {
+function ThreadActions({ thread, view }: { thread: ShellThread; view: DetailsViewRows }) {
   const inFile = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.file === true;
   return (
     <DetailsShelf name="actions">
@@ -360,7 +363,7 @@ function ThreadActions({ view }: { view: DetailsViewRows }) {
             : {
                 open: () => {
                   start();
-                  if (inFile) run("pult-shell.toggleTerminal");
+                  if (inFile) void revealTerminal(thread.environmentId, thread.id);
                 },
               }),
           ...(add === undefined
@@ -466,7 +469,9 @@ function ThreadSchedules({ view, now }: { view: DetailsViewRows; now: number }) 
                 ? undefined
                 : instantText(task.nextRunAt, now, zone)),
           actions: [
-            ...(task.runNow === undefined ? [] : [{ label: "Run now", run: task.runNow }]),
+            ...(task.runNow === undefined
+              ? []
+              : [{ label: "Run now", run: task.runNow, disabled: task.running }]),
             ...(task.setEnabled === undefined
               ? []
               : [

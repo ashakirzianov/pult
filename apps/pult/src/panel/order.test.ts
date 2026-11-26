@@ -286,6 +286,22 @@ NodeTest.describe("shelf order", () => {
         closed: ["asks"],
       },
     );
+    // A shelf before them stuck to the bottom leaves them in the top group, their default one.
+    NodeAssert.deepEqual(
+      parseShelfOrder({ top: ["asks", "channels"], bottom: ["channel", "settings"], closed: [] }, [
+        "asks",
+        "channels",
+        "channel",
+        "thread",
+        "changes",
+        "settings",
+      ]),
+      {
+        top: ["asks", "channels", "thread", "changes"],
+        bottom: ["channel", "settings"],
+        closed: [],
+      },
+    );
     NodeAssert.equal(
       parseShelfOrder({ top: ["stars"], bottom: ["stars"], closed: [] }, PANEL_SHELVES),
       null,

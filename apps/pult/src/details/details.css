@@ -78,6 +78,17 @@
   box-sizing: border-box;
 }
 
+/* Its empty width over the composer's row lets clicks through, but while a shelf is dragged to it; its icons take them. */
+.pult-details-tray,
+.pult-details-tray .pult-tray-shelves:not(.pult-tray-shelves-dropping) {
+  pointer-events: none;
+}
+
+.pult-details-tray .pult-tray-shelves-dropping,
+.pult-details-tray .pult-panel-tab {
+  pointer-events: auto;
+}
+
 /* The first shelf in the remembered order sits at the right edge; Tab goes left to right as they read. */
 .pult-details-tray .pult-tray-shelves {
   width: 100%;
@@ -259,6 +270,12 @@
   justify-content: center;
   gap: 4px;
   min-width: 0;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.pult-details-button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
 }
 
 .pult-details-button:disabled {

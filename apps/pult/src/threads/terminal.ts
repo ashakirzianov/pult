@@ -27,12 +27,28 @@ import { selectionTarget } from "./selection.ts";
 async function toggleTerminal(groups: IEditorGroupsService): Promise<void> {
   const target = selectionTarget();
   if (target === undefined || !("threadId" in target)) return;
+  const hidden = await showLeadTab(groups);
+  const view = await threadView();
+  view.toggleTerminal(target.environmentId, target.threadId, hidden);
+}
+
+/** Shows the selection's lead tab where another hides it in its group; whether it was hidden. */
+async function showLeadTab(groups: IEditorGroupsService): Promise<boolean> {
   const group = groups.groups.find((candidate) => candidate.editors.some(isLeadTab));
   const lead = group?.editors.find(isLeadTab);
   const hidden = group !== undefined && lead !== undefined && group.activeEditor !== lead;
   if (hidden) await group.openEditor(lead);
-  const view = await threadView();
-  view.toggleTerminal(target.environmentId, target.threadId, hidden);
+  return hidden;
+}
+
+/**
+ * Shows the thread's tab, where another hides it in its group, with its
+ * drawer open, an open one left open, as Toggle Terminal shows it from a
+ * file: where an action run beside a file lands (`src/details/ThreadDetails.tsx`).
+ */
+export async function revealTerminal(environmentId: string, threadId: string): Promise<void> {
+  await showLeadTab(await getService(IEditorGroupsService));
+  (await threadView()).toggleTerminal(environmentId, threadId, true);
 }
 
 /**
