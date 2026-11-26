@@ -116,7 +116,12 @@ export interface Change {
   readonly deletions: number;
 }
 
-/** A source's files as changes: its stats, with how each changed from its patch; a file the truncated patch missed counts as modified. */
+/**
+ * A source's files as changes: its stats, with how each changed from its
+ * patch where it names the file (an xaxis checkout's headers, a bounded
+ * patch, an older server's), else from the stat; a stat that names none,
+ * as a server before upstream's 2026-11-14 sends, counts as modified.
+ */
 function changesOf(
   environmentId: string,
   cwd: string,
@@ -137,7 +142,10 @@ function changesOf(
       headRef: source.headRef,
       path: stat.path,
       previousPath: file?.previousPath ?? stat.previousPath,
-      changeType: file?.changeType ?? (stat.previousPath === null ? "change" : "rename-changed"),
+      changeType:
+        file?.changeType ??
+        stat.changeType ??
+        (stat.previousPath === null ? "change" : "rename-changed"),
       additions: stat.additions,
       deletions: stat.deletions,
     };

@@ -70,6 +70,7 @@ import {
   ProjectId,
   REVIEW_LOG_MAX_LIMIT,
   ThreadId,
+  type ReviewDiffPreviewSource,
   type ReviewDiffPreviewSourceKind,
 } from "@t3tools/contracts";
 
@@ -108,6 +109,7 @@ import { keptAt, onDidChangeKept, rereadKept, startKept } from "./kept.ts";
 import { historyItem, type HistoryRefs, historyRefs, refsChange } from "./history.ts";
 import { type ChangeType, patchFiles } from "./patch.ts";
 import { setRepository } from "./repositories.ts";
+import { CheckoutReads, type Settled } from "./reads.ts";
 import { changesServer } from "./server.ts";
 import {
   afterStep,
@@ -690,12 +692,11 @@ interface Entry {
   shown: ReturnType<typeof shownChanges>;
   /** The base the server diffs its branch against (`main`, `origin/main`), after the last refresh, which its history colours; null with none. */
   baseRef: string | null;
-  /** Bumped on every answer, for the provider's `rendered`. */
+  /** Bumped on every changed answer, for the provider's `rendered`. */
   version: number;
   failure: string | null;
-  /** The refresh in flight; a newer one's answer wins. */
-  loading: Promise<void> | undefined;
-  generation: number;
+  /** Its diff reads: one in flight, the newest winning, an answer equal to the last dropped. */
+  readonly reads: CheckoutReads<DiffRead>;
   registered:
     | {
         readonly repository: ISCMRepository;
@@ -951,8 +952,14 @@ class ChangesView {
         baseRef: null,
         version: 0,
         failure: null,
-        loading: undefined,
-        generation: 0,
+        reads: new CheckoutReads({
+          read: () => this.readDiff(entry),
+          keyOf: diffKey,
+          delivered: (answer) => this.delivered(entry, answer),
+          unchanged: () => this.unchanged(entry),
+          // Back through the file events' delay, so a checkout's reads stay that far apart.
+          followUp: () => this.markStale([entry]),
+        }),
         registered: undefined,
         message: null,
         running: undefined,
@@ -999,17 +1006,26 @@ class ChangesView {
 
   /** Marks the checkouts whose root `touches` names as stale, reading them again once writes settle. */
   private filesChanged(touches: (root: URI) => boolean): void {
-    for (const entry of this.entries.values())
-      if (touches(pultUri(entry.checkout.environmentId, entry.checkout.root)))
-        this.stale.add(entry);
+    this.markStale(
+      [...this.entries.values()].filter((entry) =>
+        touches(pultUri(entry.checkout.environmentId, entry.checkout.root)),
+      ),
+    );
+  }
+
+  private markStale(entries: ReadonlyArray<Entry>): void {
+    for (const entry of entries) this.stale.add(entry);
     if (this.stale.size === 0 || this.staleTimer !== undefined) return;
     this.staleTimer = setTimeout(() => {
       this.staleTimer = undefined;
       const stale = [...this.stale];
       this.stale.clear();
-      // A read already under way may predate the change.
       for (const entry of stale)
-        if (this.entries.get(entry.key) === entry) void this.refresh(entry, true);
+        if (this.entries.get(entry.key) === entry) {
+          void this.readSync(entry, false);
+          // A read already under way may predate the change: one more follows it.
+          entry.reads.stale();
+        }
     }, FILE_CHANGE_DELAY_MS);
   }
 
@@ -1025,42 +1041,52 @@ class ChangesView {
    */
   private refresh(entry: Entry, force: boolean, fetch = false): Promise<void> {
     void this.readSync(entry, fetch);
-    if (entry.loading !== undefined && !force) return entry.loading;
-    const generation = ++entry.generation;
+    return entry.reads.read(force);
+  }
+
+  /** A checkout's diff as file stats alone, which name each file's change: no patch crosses the wire. */
+  private async readDiff(entry: Entry): Promise<DiffRead> {
     const { environmentId, root } = entry.checkout;
-    const current = () => generation === entry.generation && this.entries.get(entry.key) === entry;
     // Asked beside the diff, and waited for only when there are changes to place: a folder off any repository has none.
     const repository = repositoryRoot(environmentId, root);
     repository.catch(() => undefined);
-    const loading = limited(() => changesServer(environmentId).diffPreview({ cwd: root })).then(
-      async (preview) => {
-        const shown =
-          preview.sources.length === 0
-            ? undefined
-            : shownChanges(environmentId, root, await repository, preview.sources);
-        if (!current()) return;
-        entry.failure = null;
-        entry.shown = shown;
-        entry.baseRef =
-          preview.sources.find((source) => source.kind === "branch-range")?.baseRef ?? null;
-      },
-      (error: unknown) => {
-        // Not a repository, a worktree gone, or a server without the review calls: no changes to show.
-        if (!current()) return;
-        entry.failure = error instanceof Error ? error.message : String(error);
-        entry.shown = undefined;
-      },
+    const { sources } = await limited(() =>
+      changesServer(environmentId).diffPreview({ cwd: root, metadataOnly: true }),
     );
-    entry.loading = loading.then(() => {
-      if (!current()) return;
-      entry.loading = undefined;
-      entry.version += 1;
-      this.contents.clear();
-      this.render();
-      // Its history moves with its changes: a commit, a pull, a run's end.
-      void entry.registered?.provider.historyProvider.get()?.refresh(entry.baseRef);
-    });
-    return entry.loading;
+    warnUntyped(environmentId, sources);
+    return {
+      sources,
+      shown:
+        sources.length === 0
+          ? undefined
+          : shownChanges(environmentId, root, await repository, sources),
+    };
+  }
+
+  /** A checkout's diff that changed: what it shows, rendered. */
+  private delivered(entry: Entry, answer: Settled<DiffRead>): void {
+    if (this.entries.get(entry.key) !== entry) return;
+    if (answer.ok) {
+      entry.failure = null;
+      entry.shown = answer.value.shown;
+      entry.baseRef =
+        answer.value.sources.find((source) => source.kind === "branch-range")?.baseRef ?? null;
+    } else {
+      // Not a repository, a worktree gone, or a server without the review calls: no changes to show.
+      entry.failure = failureOf(answer.error);
+      entry.shown = undefined;
+    }
+    entry.version += 1;
+    this.unchanged(entry);
+    this.render();
+  }
+
+  /** A checkout's diff read again: its files' contents and its history may have moved all the same. */
+  private unchanged(entry: Entry): void {
+    if (this.entries.get(entry.key) !== entry) return;
+    this.contents.clear();
+    // Its history moves with its changes: a commit, a pull, a run's end.
+    void entry.registered?.provider.historyProvider.get()?.refresh(entry.baseRef);
   }
 
   /** The checkout's status against its upstream, unless read within `SYNC_INTERVAL_MS` and not forced; the newest read wins. */
@@ -1739,6 +1765,8 @@ class ChangesView {
     if (step === "commit" && entry.shown?.kind === "working-tree") {
       entry.shown = undefined;
       entry.version += 1;
+      // The read that confirms the commit renders, though it answers as the one before it did.
+      entry.reads.reset();
     }
     this.render();
   }
@@ -1862,7 +1890,7 @@ class ChangesView {
     );
     if (turnChange !== undefined) return this.open(turnChange, false);
     const entry = this.entryOf(threadStore.thread(target.environmentId, target.threadId));
-    await entry?.loading;
+    await entry?.reads.loading;
     const change = entry?.shown?.changes.find((candidate) => candidate.path === path);
     if (change !== undefined) await this.open(change, false);
   }
@@ -1983,7 +2011,8 @@ class ChangesView {
         shown: entry.registered !== undefined,
         source: entry.shown?.kind ?? null,
         files: entry.shown?.changes.length ?? 0,
-        loading: entry.loading !== undefined,
+        loading: entry.reads.loading !== undefined,
+        version: entry.version,
         failure: entry.failure,
         running: entry.running?.label ?? null,
         sync: entry.sync ?? null,
@@ -2023,6 +2052,50 @@ function syncDetail(state: SyncState | undefined): string {
   if (state === undefined) return "";
   if (!state.hasUpstream) return `${state.branch ?? "HEAD"}: no upstream`;
   return `${state.branch ?? "HEAD"}: ${state.behind} behind, ${state.ahead} ahead`;
+}
+
+/** A checkout's diff as one read answers it. */
+interface DiffRead {
+  readonly sources: ReadonlyArray<ReviewDiffPreviewSource>;
+  readonly shown: ReturnType<typeof shownChanges>;
+}
+
+/** What makes two reads of a checkout's diff the same: its file stats' hash and refs per source, or the failure. */
+function diffKey(answer: Settled<DiffRead>): string {
+  if (!answer.ok) return `failed\n${failureOf(answer.error)}`;
+  return JSON.stringify(
+    answer.value.sources.map((source) => [
+      source.kind,
+      source.diffHash,
+      source.baseRef,
+      source.headRef,
+      source.mergeBase ?? null,
+      source.truncated,
+    ]),
+  );
+}
+
+function failureOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+const warnedUntyped = new Set<string>();
+
+/** Once per environment: a file whose stat names no change type (a server before upstream's 2026-11-14) and whose patch, if any, misses it, so its row reads as modified. */
+function warnUntyped(environmentId: string, sources: ReadonlyArray<ReviewDiffPreviewSource>): void {
+  if (warnedUntyped.has(environmentId)) return;
+  const untyped = sources.some((source) => {
+    const stats = source.files?.filter((file) => file.changeType === undefined) ?? [];
+    if (stats.length === 0) return false;
+    // An xaxis checkout's stats name none, its headers naming every file.
+    const named = new Set(patchFiles(source.diff).map((file) => file.path));
+    return stats.some((file) => !named.has(file.path));
+  });
+  if (!untyped) return;
+  warnedUntyped.add(environmentId);
+  console.warn(
+    `[pult-shell] the server of ${environmentId} names no change type in its file stats: its changed files read as modified`,
+  );
 }
 
 let running = 0;

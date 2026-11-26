@@ -153,6 +153,33 @@ NodeTest.describe("shownChanges", () => {
     },
   );
 
+  NodeTest.test("names each change from its stat when no patch comes with it", () => {
+    const shown = shownChanges("a", "/repo", "/repo", [
+      {
+        ...source("working-tree", []),
+        files: [
+          { path: "a.ts", previousPath: null, changeType: "new", additions: 3, deletions: 0 },
+          { path: "b.ts", previousPath: null, changeType: "deleted", additions: 0, deletions: 2 },
+          {
+            path: "c.ts",
+            previousPath: "old.ts",
+            changeType: "rename-pure",
+            additions: 0,
+            deletions: 0,
+          },
+        ],
+      },
+    ]);
+    NodeAssert.deepEqual(
+      shown?.changes.map((change) => [change.path, change.previousPath, change.changeType]),
+      [
+        ["a.ts", null, "new"],
+        ["b.ts", null, "deleted"],
+        ["c.ts", "old.ts", "rename-pure"],
+      ],
+    );
+  });
+
   NodeTest.test("shows nothing without changes", () => {
     NodeAssert.equal(
       shownChanges("a", "/repo", "/repo", [source("working-tree", []), source("branch-range", [])]),
