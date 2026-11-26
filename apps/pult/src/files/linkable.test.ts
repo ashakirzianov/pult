@@ -16,23 +16,31 @@ const checkout = (root: string, projectId: string): Checkout => ({
 
 const pult = checkout("/repos/pult", "pult");
 const axis = checkout("/repos/axis", "axis");
+/** A project whose root is gone, as a deleted worktree's: the server's search of it fails. */
+const gone = checkout("/repos/gone", "gone");
 
-/** One environment whose files are `files`, its threads in `/repos/pult`, its kept xaxis checkout at `/xaxis`. */
+/**
+ * One environment whose files are `files`, its threads in `/repos/pult` but
+ * `star`, a Star's conversation in its folder `/stars/beta`, which is no
+ * checkout (`checkoutsOf`), its kept xaxis checkout at `/xaxis`.
+ */
 function environment(files: Array<string>) {
   const metadataCalls: Array<ReadonlyArray<string>> = [];
   const searched: Array<string> = [];
   const runEnds = new Map<string, string | null>();
   const changed: Array<() => void> = [];
-  let checkouts = [pult, axis];
+  let checkouts = [pult, axis, gone];
   const links = makeFileLinks({
     whenListed: async () => {},
-    input: () => ({
-      checkoutRoot: "/repos/pult",
-      projectId: "pult",
+    input: (_environmentId, threadId) => ({
+      checkoutRoot: threadId === "star" ? "/stars/beta" : "/repos/pult",
+      projectId: threadId === "star" ? "star" : "pult",
       checkouts,
       xaxisRoot: "/xaxis",
       search: async ({ root }, key) => {
         searched.push(`${root} ${key}`);
+        if (root === gone.root)
+          throw { failure: "workspace_root_not_found", message: `${root} does not exist` };
         return files
           .filter((file) => file.startsWith(`${root}/`) && file.endsWith(`/${key}`))
           .map((file) => file.slice(root.length + 1));
@@ -87,6 +95,7 @@ NodeTest.test(
       "/repos/pult/y/c.ts",
       "/etc/hosts",
       "/xaxis/owner/track/about.md",
+      "/stars/beta/notes.md",
     ];
     const { links, verdicts, settle, reroot, metadataCalls, searched } = environment(files);
     const paths = [
@@ -97,17 +106,35 @@ NodeTest.test(
       "src/missing.ts",
       "/owner/track/about.md",
     ];
-    const [first, second] = await Promise.all([verdicts("t1", paths), verdicts("t2", ["b.ts"])]);
+    const starPaths = ["/stars/beta/nope/missing.md", "never.md", "/stars/beta/notes.md"];
+    const [first, second, star] = await Promise.all([
+      verdicts("t1", paths),
+      verdicts("t2", ["b.ts"]),
+      verdicts("star", starPaths),
+    ]);
     NodeAssert.deepEqual(first, [true, true, true, false, false, true]);
     NodeAssert.deepEqual(second, [true]);
+    NodeAssert.deepEqual(
+      star,
+      [false, false, true],
+      "in a Star's folder, missing files are no links though a checkout's root is gone",
+    );
     NodeAssert.equal(metadataCalls.length, 1);
     NodeAssert.deepEqual(
       searched.toSorted(),
       [
         "/repos/axis b.ts",
+        "/repos/axis never.md",
+        "/repos/axis nope/missing.md",
         "/repos/axis src/missing.ts",
+        "/repos/gone b.ts",
+        "/repos/gone never.md",
+        "/repos/gone nope/missing.md",
+        "/repos/gone src/missing.ts",
         "/repos/pult b.ts",
         "/repos/pult c.ts",
+        "/repos/pult never.md",
+        "/repos/pult nope/missing.md",
         "/repos/pult src/missing.ts",
       ],
       "each checkout searched once per key, across threads",
@@ -141,8 +168,32 @@ NodeTest.test(
     NodeAssert.deepEqual(metadataCalls, [["/xaxis/etc/hosts", "/repos/pult/src/missing.ts"]]);
     NodeAssert.deepEqual(searched.toSorted(), [
       "/repos/axis src/missing.ts",
+      "/repos/gone src/missing.ts",
       "/repos/pult src/missing.ts",
     ]);
+
+    // The Star's turn wrote one of the files it named: it becomes a link once the turn ends.
+    const starRefs = starPaths.map((path): FileLinkRef => ({
+      environmentId: "env",
+      threadId: "star",
+      path,
+    }));
+    let starPublish = () => {};
+    const starPublished = new Promise<void>((resolve) => (starPublish = resolve));
+    const starNotified: Array<string> = [];
+    for (const ref of starRefs)
+      links.subscribe(ref, () => {
+        starNotified.push(ref.path);
+        starPublish();
+      });
+    files.push("/stars/beta/never.md");
+    settle("star", "2026-11-24T12:05:00Z");
+    await starPublished;
+    NodeAssert.deepEqual(starNotified, ["never.md"]);
+    NodeAssert.deepEqual(
+      starRefs.map((ref) => links.verdict(ref)),
+      [false, true, true],
+    );
 
     // A worktree thread ends its turn and the store lists the same checkouts in another order.
     NodeAssert.equal(

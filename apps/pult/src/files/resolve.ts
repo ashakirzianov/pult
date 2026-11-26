@@ -94,6 +94,8 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
               path: joinPath(root, relativePath),
             }));
         } catch (error) {
+          // A checkout whose root is gone (a deleted worktree's project) holds no files.
+          if (rootGone(error)) return [];
           failures.push(error instanceof Error ? error.message : String(error));
           return [];
         }
@@ -118,6 +120,16 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
     key,
     error: searches > 0 && failures.length === searches ? failures[0] : undefined,
   };
+}
+
+/** Whether a search failed because its checkout's root is not there, the server's `workspace_root_not_found`. */
+export function rootGone(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "failure" in error &&
+    error.failure === "workspace_root_not_found"
+  );
 }
 
 /** Whether an index entry is the key, or ends with it after a `/`: `files/paths.ts` is `src/files/paths.ts`, not `profiles/paths.ts`. */

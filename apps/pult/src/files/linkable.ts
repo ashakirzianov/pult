@@ -8,7 +8,7 @@ import { FILESYSTEM_METADATA_BATCH_LIMIT } from "@t3tools/contracts";
 import type { FileLinkRef, FileLinks } from "../../view/host.ts";
 import type { Checkout } from "../changes/checkouts.ts";
 import { toHostPath } from "./paths.ts";
-import { type ResolveInput, resolveThreadPath } from "./resolve.ts";
+import { type ResolveInput, resolveThreadPath, rootGone } from "./resolve.ts";
 
 export interface FileLinkSources {
   /** Waits for the store to list the environment's projects, as the click does (`whenListed`). */
@@ -181,8 +181,11 @@ export function makeFileLinks(sources: FileLinkSources) {
           }),
         search: (checkout, key) =>
           search(environment, input.search, checkout, key).catch((error: unknown) => {
-            failed = true;
-            warn(ref.environmentId, environment, error);
+            // A checkout whose root is gone holds no files, as the click reads it.
+            if (!rootGone(error)) {
+              failed = true;
+              warn(ref.environmentId, environment, error);
+            }
             throw error;
           }),
       });
