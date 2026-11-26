@@ -396,3 +396,20 @@ it.effect("a bundled plugin refuses a reload and keeps running", () =>
     expect(status?.status).toBe("loaded");
   }).pipe(Effect.scoped, Effect.provide(layerBase)),
 );
+
+it("the extension entry exports the contract and the Effect namespaces, and nothing else", async () => {
+  // Taking a name off, or adding one, is a change to what every extension may use.
+  expect(Object.keys(await import("../extensionHost.ts")).toSorted()).toEqual([
+    "CONTRACT",
+    "Effect",
+    "FileSystem",
+    "Manifest",
+    "Path",
+    "Schema",
+    "Thread",
+    "Tool",
+    "ToolAccess",
+    "ToolCaller",
+    "Toolkit",
+  ]);
+});

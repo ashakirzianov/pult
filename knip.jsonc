@@ -60,6 +60,7 @@
         "src/bin.ts!",
         "src/claude-history-worker.ts!",
         "src/pluginHost.ts!",
+        "src/extensionHost.ts!",
         "scripts/cli.ts",
         "scripts/fetch-expo-schema.ts",
         "scripts/probe-claude-fork-local-rollback-replay.ts",

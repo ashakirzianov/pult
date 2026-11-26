@@ -23,6 +23,8 @@ import type { McpServer } from "effect/ai";
 import type { HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
+import type { ExtensionHost } from "./contract.ts";
+import * as ExtensionContract from "./ExtensionContract.ts";
 import { hostIdentity, type ServerBuild, serverBuild } from "../pluginHost.ts";
 
 /** The bare specifier a plugin build leaves external; resolved to the host entry here. */
@@ -157,6 +159,8 @@ export interface PluginHost {
    * the build is swapped in, until the next build replaces it; the last call wins.
    */
   readonly serve: (handler: PluginRouteHandler) => Effect.Effect<void>;
+  /** The contract an installed extension of this name would get, its data directory made. */
+  readonly extension: ExtensionHost;
 }
 
 interface PluginModule {
@@ -386,6 +390,10 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
     // The route stays with this build until swapIn publishes it, so a build that
     // serves and then fails never displaces the running build's handler.
     let route: PluginRouteHandler | undefined;
+    const dataDir = path.join(config.stateDir, "plugins", name);
+    yield* fs
+      .makeDirectory(dataDir, { recursive: true })
+      .pipe(Effect.mapError((cause) => new PluginActivateError({ plugin: name, build, cause })));
     const host: PluginHost = {
       name,
       build,
@@ -394,6 +402,7 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
         Effect.sync(() => {
           route = handler;
         }),
+      extension: ExtensionContract.make(name, dataDir, context),
     };
     yield* runActivate(activate, host, scope).pipe(
       Effect.catchCause((cause) =>

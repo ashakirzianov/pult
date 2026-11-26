@@ -112,12 +112,18 @@ export default mergeConfig(
         },
       ],
       // SEA embeds one entry; expose the history worker as a hidden subcommand.
-      // `src/pluginHost.ts` is the stable entry in-process plugins import; see docs/internals/plugins.md.
+      // `src/pluginHost.ts` is the stable entry in-process plugins import, and `src/extensionHost.ts`
+      // the one extensions import as `@pult/extension-host`; see docs/internals/plugins.md.
       entry: packBootstrap
         ? ["src/bin.ts"]
         : packExecutable
           ? ["src/binMain.ts"]
-          : ["src/bin.ts", "src/claude-history-worker.ts", "src/pluginHost.ts"],
+          : [
+              "src/bin.ts",
+              "src/claude-history-worker.ts",
+              "src/pluginHost.ts",
+              "src/extensionHost.ts",
+            ],
       outDir: packBootstrap ? "dist-exe" : packExecutable ? cliAssetDir : "dist",
       sourcemap: !packExecutable,
       clean: true,
