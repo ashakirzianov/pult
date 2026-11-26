@@ -55,7 +55,7 @@ export function ComposerBarNotices({
 }: {
   readonly items: ReadonlyArray<ComposerBannerStackItem>;
 }) {
-  // The background work notice lists the thread's working subagents, which its card in the shell lists already.
+  // The background work notice lists the thread's working subagents, which its details' Subagents shelf lists already.
   const ordered = items
     .filter((item) => !item.id.startsWith("background-work:"))
     .toSorted((a, b) => noticeRank(a) - noticeRank(b));

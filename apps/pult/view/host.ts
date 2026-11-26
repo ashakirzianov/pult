@@ -177,6 +177,49 @@ export interface DetailsModelPicker {
   }) => void;
 }
 
+/**
+ * What a thread's shelves read through the view (`DetailsViewRows.tsx`), which
+ * only its providers reach: its project's scripts, its local servers, its
+ * scheduled tasks and which of its subagents can be stopped, each action a
+ * call the view makes; the shell draws them as rows (`src/details/ThreadDetails.tsx`).
+ */
+export interface DetailsViewRows {
+  readonly environmentId: string;
+  readonly threadId: string;
+  /** The project's scripts, then those its `t3.json` defines and it lacks, each with `add`. */
+  readonly actions: ReadonlyArray<{
+    readonly key: string;
+    readonly name: string;
+    /** Upstream's script icon: `play`, `test`, `lint`, `configure`, `build` or `debug`. */
+    readonly icon: string;
+    readonly run?: () => void;
+    readonly add?: () => void;
+  }>;
+  readonly servers: ReadonlyArray<{
+    readonly key: string;
+    readonly address: string;
+    readonly startedBy: "Agent" | "Terminal";
+    readonly open?: () => void;
+    readonly stop?: () => void;
+  }>;
+  readonly schedules: ReadonlyArray<{
+    readonly key: string;
+    readonly title: string;
+    /** The schedule in upstream's words, `Every day at 09:00`. */
+    readonly rule: string;
+    readonly nextRunAt: string | null;
+    /** A one-off, which runs once, else recurring or on a webhook. */
+    readonly once: boolean;
+    readonly enabled: boolean;
+    /** Why it cannot run whatever `enabled` says, as the server words it. */
+    readonly blocked: string | null;
+    readonly runNow?: () => void;
+    readonly setEnabled?: (enabled: boolean) => void;
+  }>;
+  /** Stop on each subagent of the thread's that upstream's lineage panel can stop, by its thread. */
+  readonly stops: ReadonlyArray<{ readonly threadId: string; readonly stop: () => void }>;
+}
+
 /** The details cards live, and the shell's renderer of a Star's. */
 export interface DetailsCardsValue {
   get(): DetailsCards | null;
@@ -189,6 +232,8 @@ export interface DetailsCardsValue {
   modelPickers(): ReadonlyArray<DetailsModelPicker>;
   /** Calls `listener` when `modelPickers` changes; returns its removal. */
   subscribeModelPickers(listener: () => void): () => void;
+  /** Hands the shell the shown thread's rows its view reads, null when it no longer shows them. */
+  setViewRows(rows: DetailsViewRows | null): void;
 }
 
 /**

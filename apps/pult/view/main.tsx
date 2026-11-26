@@ -50,6 +50,7 @@ export type {
   DetailsCardsTarget,
   DetailsCardsValue,
   DetailsModelPicker,
+  DetailsViewRows,
   ThreadViewHost,
   TurnCheckpoints,
 } from "./host.ts";

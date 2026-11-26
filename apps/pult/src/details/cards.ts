@@ -1,4 +1,9 @@
-import type { DetailsCards, DetailsCardsValue, DetailsModelPicker } from "../../view/main.tsx";
+import type {
+  DetailsCards,
+  DetailsCardsValue,
+  DetailsModelPicker,
+  DetailsViewRows,
+} from "../../view/main.tsx";
 
 let current: DetailsCards | null = null;
 let shelvesRenderer: ((element: HTMLElement) => () => void) | undefined;
@@ -6,6 +11,8 @@ let trayRenderer: ((element: HTMLElement) => () => void) | undefined;
 const listeners = new Set<() => void>();
 let pickers: ReadonlyArray<DetailsModelPicker> = [];
 const pickerListeners = new Set<() => void>();
+let viewRows: DetailsViewRows | null = null;
+const viewRowsListeners = new Set<() => void>();
 
 /**
  * The details cards as the thread view reads them through its host
@@ -20,6 +27,9 @@ export const detailsCards: DetailsCardsValue & {
   setTrayRenderer(render: (element: HTMLElement) => () => void): void;
   /** Asks the view for a model picker in `picker.element` until what it returns removes it. */
   showModelPicker(picker: DetailsModelPicker): () => void;
+  /** The rows the shown thread's view hands over (`setViewRows`), null while none does. */
+  viewRows(): DetailsViewRows | null;
+  subscribeViewRows(listener: () => void): () => void;
 } = {
   get: () => current,
   subscribe(listener) {
@@ -59,6 +69,18 @@ export const detailsCards: DetailsCardsValue & {
     pickerListeners.add(listener);
     return () => {
       pickerListeners.delete(listener);
+    };
+  },
+  setViewRows(rows) {
+    if (rows === viewRows) return;
+    viewRows = rows;
+    for (const listener of viewRowsListeners) listener();
+  },
+  viewRows: () => viewRows,
+  subscribeViewRows(listener) {
+    viewRowsListeners.add(listener);
+    return () => {
+      viewRowsListeners.delete(listener);
     };
   },
   showModelPicker(picker) {

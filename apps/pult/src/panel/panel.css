@@ -330,10 +330,6 @@
   opacity: 0.75;
 }
 
-.pult-card-details {
-  padding: 0 10px 8px;
-}
-
 .pult-panel-button {
   display: inline-flex;
   align-items: center;
@@ -540,20 +536,6 @@
   flex: none;
 }
 
-.pult-shelf-count {
-  flex: none;
-  min-width: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 16px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
 .pult-shelf-spacer {
   flex: 1;
   min-width: 8px;
@@ -571,11 +553,6 @@
 
 .pult-shelf-more {
   padding: 4px 10px 6px;
-}
-
-/* The expanded card's subagents: a row each, selecting its thread. */
-.pult-card-subagents {
-  margin: 0 0 8px;
 }
 
 .pult-subagent {
@@ -643,13 +620,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* The subagents' header inside a card: the shelves' header, a step smaller, its rule only a spacer. */
-.pult-card-subagents .pult-shelf-header {
-  height: 22px;
-  padding: 0 4px;
-  font-size: 11px;
 }
 
 .pult-subagents-list {

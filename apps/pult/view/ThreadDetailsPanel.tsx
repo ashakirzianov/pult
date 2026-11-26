@@ -42,6 +42,7 @@ import {
 } from "~/composerDraftStore";
 import { selectThreadPanelOpen, useRightPanelStore } from "~/rightPanelStore";
 import { DetailsModelPickers } from "./DetailsModelPicker.tsx";
+import { DetailsViewRowsPublisher } from "./DetailsViewRows.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { draftKey, isDraftOf } from "./drafts.ts";
 import { type DetailsCards, type DetailsCardsTarget, threadViewHost } from "./host.ts";
@@ -270,16 +271,29 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     if (island === null) return;
     return detailsCards.renderShelves(island);
   }, [island, detailsCards]);
+  // A thread's rows that only the view reads, while its shelves show (a draft has none of them).
+  const publisher =
+    shown?.subject.kind === "thread" ? (
+      <DetailsViewRowsPublisher
+        environmentId={environmentId}
+        threadId={threadId}
+        gitCwd={props.gitCwd}
+        scripts={props.activeProjectScripts}
+        onRunProjectScript={props.onRunProjectScript}
+        onAddProjectScript={props.onAddProjectScript}
+      />
+    ) : null;
   // Beside a file the shell draws the column itself.
-  if (inFile) return null;
+  if (inFile) return publisher;
   const placement = canvas?.detailsCardPlacement ?? null;
-  if (shown === null || canvas === null) return null;
+  if (shown === null || canvas === null) return publisher;
   const overlay = placement === null;
   const panelWidth = placement?.width ?? `min(calc(100% - 24px), ${detailsCardWidth.get()}px)`;
   const panelHeight =
     placement === null ? undefined : `calc(${placement.height}px - var(--pult-bar-height))`;
   return (
     <>
+      {publisher}
       <aside
         className="absolute z-22 flex flex-col"
         style={{

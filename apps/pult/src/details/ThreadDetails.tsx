@@ -10,10 +10,20 @@ import {
 import { isNoRepository, subscribeRepositories } from "../changes/repositories.ts";
 import { extensionRows } from "../extensions/index.ts";
 import type { PageRow } from "../extensions/ui.ts";
-import { openShelves } from "../panel/order.ts";
-import { age, useMinuteClock } from "../panel/PanelView.tsx";
-import { type ShellThread, threadStore } from "../threads/store.ts";
-import type { DetailsCardsTarget } from "../../view/main.tsx";
+import { keyOf, openShelves } from "../panel/order.ts";
+import {
+  type Activity,
+  age,
+  Elapsed,
+  Status,
+  subagentsByRoot,
+  threadActivities,
+  useMinuteClock,
+} from "../panel/PanelView.tsx";
+import { instantText } from "../stars/schedules.ts";
+import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
+import type { DetailsCardsTarget, DetailsViewRows } from "../../view/main.tsx";
+import { detailsCards } from "./cards.ts";
 import { type DetailsRow, DetailsRows, IconLabel } from "./rows.tsx";
 import { DetailsShelf, type DetailsShelfName, detailsShelves, THREAD_SHELVES } from "./shelves.tsx";
 
@@ -62,6 +72,21 @@ export function useThreadDetails(subject: ThreadSubject) {
     subject.kind === "draft"
       ? threadStore.project(subject.environmentId, subject.projectId)
       : undefined;
+  const handed = useSyncExternalStore(detailsCards.subscribeViewRows, detailsCards.viewRows);
+  // The view's rows of this thread alone: another's are a moment stale.
+  const view =
+    thread !== undefined &&
+    handed?.environmentId === thread.environmentId &&
+    handed.threadId === thread.id
+      ? handed
+      : null;
+  const activities = threadActivities(state.threads);
+  const lineage =
+    thread === undefined
+      ? []
+      : (subagentsByRoot(state.threads, activities).get(
+          scopedKey(thread.environmentId, thread.rootId),
+        ) ?? []);
   return {
     subject,
     thread,
@@ -71,6 +96,10 @@ export function useThreadDetails(subject: ThreadSubject) {
     asks: thread === undefined ? [] : threadRows(rows, thread.environmentId, thread.id),
     /** The Changes shelf's checkout: a started thread's, while it is a repository. */
     changes: thread !== undefined && root !== null && repository ? { thread, root, summary } : null,
+    view,
+    /** The subagents of its lineage, as its root's card listed them, active first. */
+    lineage,
+    activities,
   };
 }
 
@@ -89,10 +118,26 @@ export function threadShelf(
     case "changes":
       return { holds: details.changes !== null, count: 0 };
     case "actions":
+      return { holds: (details.view?.actions.length ?? 0) > 0, count: 0 };
     case "servers":
+      return {
+        holds: (details.view?.servers.length ?? 0) > 0,
+        count: details.view?.servers.length ?? 0,
+      };
     case "subagents":
-    case "schedules":
-      return { holds: false, count: 0 };
+      return {
+        holds: details.lineage.length > 0,
+        count: details.lineage.filter(
+          (subagent) => details.activities.get(keyOf(subagent)) === "working",
+        ).length,
+      };
+    case "schedules": {
+      const schedules = details.view?.schedules ?? [];
+      return {
+        holds: schedules.length > 0,
+        count: schedules.filter((schedule) => schedule.once).length,
+      };
+    }
     case "channels":
     case "channel":
     case "settings":
@@ -105,8 +150,11 @@ export function threadShelf(
  * the thread's shelves of the panel's one order (`detailsShelves`), each
  * closing into the tray and left out while it holds nothing (`threadShelf`):
  * the rows it posted on Inbox (`ThreadAsks`), its folder and environment
- * (`ThreadPlace`), and its checkout's changes (`ThreadChanges`). A draft's is
- * its Folder alone.
+ * (`ThreadPlace`), its checkout's changes (`ThreadChanges`), its project's
+ * scripts (`ThreadActions`), its local servers (`ThreadServers`), its
+ * lineage's subagents (`ThreadSubagents`) and its scheduled tasks
+ * (`ThreadSchedules`), the last but one read from the store, the others
+ * from its view (`DetailsViewRows`). A draft's is its Folder alone.
  */
 export function ThreadDetails({ subject }: { subject: ThreadSubject }) {
   const order = useSyncExternalStore(
@@ -126,6 +174,25 @@ export function ThreadDetails({ subject }: { subject: ThreadSubject }) {
         return <ThreadPlace key={name} details={details} />;
       case "changes":
         return details.changes === null ? null : <ThreadChanges key={name} {...details.changes} />;
+      case "actions":
+        return details.view === null ? null : <ThreadActions key={name} view={details.view} />;
+      case "servers":
+        return details.view === null ? null : <ThreadServers key={name} view={details.view} />;
+      case "subagents":
+        return details.thread === undefined ? null : (
+          <ThreadSubagents
+            key={name}
+            thread={details.thread}
+            lineage={details.lineage}
+            activities={details.activities}
+            stops={details.view?.stops ?? []}
+            now={now}
+          />
+        );
+      case "schedules":
+        return details.view === null ? null : (
+          <ThreadSchedules key={name} view={details.view} now={now} />
+        );
       default:
         return null;
     }
@@ -253,6 +320,160 @@ function ThreadChanges({
           </button>
         </div>
       )}
+    </DetailsShelf>
+  );
+}
+
+/** Upstream's script icons as codicons. */
+const SCRIPT_ICONS: Record<string, string> = {
+  play: "play",
+  test: "beaker",
+  lint: "checklist",
+  configure: "settings-gear",
+  build: "tools",
+  debug: "debug-alt",
+};
+
+/**
+ * The project's scripts, a click running one in the thread's terminal drawer
+ * as upstream's row does; beside a file, the thread's tab shown with its
+ * drawer open, as Toggle Terminal does. A script the project's `t3.json`
+ * defines and the project lacks has Add, which adds it as upstream imports it.
+ */
+function ThreadActions({ view }: { view: DetailsViewRows }) {
+  const inFile = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.file === true;
+  return (
+    <DetailsShelf name="actions">
+      <DetailsRows
+        label="Actions"
+        rows={view.actions.map(({ key, name, icon, run: start, add }) => ({
+          key,
+          icon: SCRIPT_ICONS[icon] ?? "play",
+          label: name,
+          title: name,
+          ...(start === undefined
+            ? {}
+            : {
+                open: () => {
+                  start();
+                  if (inFile) run("pult-shell.toggleTerminal");
+                },
+              }),
+          ...(add === undefined
+            ? {}
+            : { actions: [{ label: "Add", title: `Add ${name} from t3.json`, run: add }] }),
+        }))}
+      />
+    </DetailsShelf>
+  );
+}
+
+/** The local servers the thread's agent or terminals started: its address and who started it, a click opening it in a preview tab, with Stop. */
+function ThreadServers({ view }: { view: DetailsViewRows }) {
+  return (
+    <DetailsShelf name="servers">
+      <DetailsRows
+        label="Servers"
+        rows={view.servers.map(({ key, address, startedBy, open, stop }) => ({
+          key,
+          icon: "globe",
+          label: address,
+          value: startedBy,
+          ...(open === undefined ? {} : { open, title: `Open ${address} in a preview tab` }),
+          ...(stop === undefined ? {} : { actions: [{ label: "Stop", run: stop }] }),
+        }))}
+      />
+    </DetailsShelf>
+  );
+}
+
+/**
+ * The thread's lineage, as its root's card listed it: each subagent's title
+ * and status, Working with its elapsed time, a click selecting its thread,
+ * the selected one highlighted, with upstream's Stop where its lineage panel
+ * offers it (`stops`, from the view).
+ */
+function ThreadSubagents({
+  thread,
+  lineage,
+  activities,
+  stops,
+  now,
+}: {
+  thread: ShellThread;
+  lineage: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+  stops: DetailsViewRows["stops"];
+  now: number;
+}) {
+  return (
+    <DetailsShelf name="subagents">
+      <DetailsRows
+        label="Subagents"
+        rows={lineage.map((subagent) => {
+          const activity = activities.get(keyOf(subagent)) ?? null;
+          const stop = stops.find((each) => each.threadId === subagent.id)?.stop;
+          return {
+            key: keyOf(subagent),
+            icon: "hubot",
+            label: subagent.title,
+            title: subagent.title,
+            selected: keyOf(subagent) === keyOf(thread),
+            value:
+              activity === "working" && subagent.workingSince !== null ? (
+                <span className="pult-card-status-working">
+                  <Elapsed since={subagent.workingSince} />
+                </span>
+              ) : (
+                <Status thread={subagent} activity={activity} now={now} />
+              ),
+            open: () => run("pult-shell.selectThread", subagent.environmentId, subagent.id),
+            ...(stop === undefined ? {} : { actions: [{ label: "Stop", run: stop }] }),
+          };
+        })}
+      />
+    </DetailsShelf>
+  );
+}
+
+/**
+ * The thread's scheduled tasks, a Star's Schedules' name and icons: each
+ * its title over its rule in upstream's words, and its next run, in the
+ * page's zone as a Star's are (`instantText`), else paused or why it cannot
+ * run; with Run now, and Pause or Resume.
+ */
+function ThreadSchedules({ view, now }: { view: DetailsViewRows; now: number }) {
+  const zone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return (
+    <DetailsShelf name="schedules">
+      <DetailsRows
+        label="Schedules"
+        rows={view.schedules.map((task) => ({
+          key: task.key,
+          icon: task.once ? "clockface" : "history",
+          label: task.title,
+          description: task.rule,
+          title: task.title,
+          value:
+            task.blocked ??
+            (!task.enabled
+              ? "paused"
+              : task.nextRunAt === null
+                ? undefined
+                : instantText(task.nextRunAt, now, zone)),
+          actions: [
+            ...(task.runNow === undefined ? [] : [{ label: "Run now", run: task.runNow }]),
+            ...(task.setEnabled === undefined
+              ? []
+              : [
+                  {
+                    label: task.enabled ? "Pause" : "Resume",
+                    run: () => task.setEnabled?.(!task.enabled),
+                  },
+                ]),
+          ],
+        }))}
+      />
     </DetailsShelf>
   );
 }

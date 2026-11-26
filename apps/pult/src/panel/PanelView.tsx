@@ -31,7 +31,6 @@ import {
   type ThreadState,
   threadStore,
 } from "../threads/store.ts";
-import { CollapsibleHeader, useExpanded } from "./collapsible.tsx";
 import { DraftCard, EnvironmentChip } from "./DraftCard.tsx";
 import {
   hasNoDraftCard,
@@ -164,10 +163,10 @@ export function subagentsByRoot(
  * extensions' rows (`ExtensionRow.tsx`), a Star's while Show Star is on, the rows
  * Inbox's order lists (`inboxRows`);
  * then the Working, Snoozed and Settled shelves, each led by its extensions' rows. While the page holds
- * several environments, each card names its own. The selected thread's card
- * expands with its details and its subagents (a Star's details are the
- * details cards', `src/details/`); a subagent has no card, so while one
- * is selected its root's card is the expanded one. The Limits shelf is the
+ * several environments, each card names its own. No card expands: a
+ * thread's details and its subagents are the right panel's shelves
+ * (`src/details/`); a subagent has no card, so while one is selected its
+ * root's card is the selected one. The Limits shelf is the
  * providers' usage (`LimitsShelf.tsx`), its rows no jump targets. Cmd+1 to
  * Cmd+9 jump to the rows in the panel's order (`order.ts`, `jump.ts`). A
  * shelf's header dragged moves it within or between groups, or into the
@@ -185,14 +184,13 @@ export function PanelView() {
   const snoozed = state.threads.filter((thread) => thread.shelf === "snoozed");
   const settled = state.threads.filter((thread) => thread.shelf === "settled");
   const activities = threadActivities(state.threads);
-  const subagents = subagentsByRoot(state.threads, activities);
   const environments = new Map(
     state.environments.map((environment) => [environment.id, environment]),
   );
   /** The environment's name on its cards, while there are several to tell apart. */
   const chip = (environmentId: string) =>
     state.environments.length > 1 ? environments.get(environmentId)?.name : undefined;
-  // The card the selection expands: the selected thread's own, or for a subagent its root's.
+  // The selected card: the selected thread's own, or for a subagent its root's.
   const selectedThread = state.threads.find((thread) => keyOf(thread) === selection);
   const selectedCard =
     selectedThread !== undefined && isSubagent(selectedThread)
@@ -233,11 +231,9 @@ export function PanelView() {
       key={keyOf(thread)}
       thread={thread}
       environment={chip(thread.environmentId)}
-      subagents={subagents.get(keyOf(thread)) ?? []}
       activities={activities}
       features={environments.get(thread.environmentId)?.features ?? NO_THREAD_FEATURES}
       selected={keyOf(thread) === selectedCard}
-      selection={selection}
       now={now}
     />
   );
@@ -514,27 +510,22 @@ function SettledTail({
  * pin, a dot while it is not selected and its composer holds an unsent message, and status, then the title, as the button that selects the thread; on
  * hover or keyboard focus the status gives way to the thread's actions
  * (`StatusSlot`), and a right-click opens its menu (`showThreadMenu`).
- * Selected, it expands with its subagents under their header, each selecting
- * its own thread; the thread's place, Explorer, its branch and environment,
- * is in its pane's composer bar (`src/threads/barEntries.tsx`).
+ * It never expands: the thread's place, its changes and its subagents are
+ * its details' shelves (`src/details/ThreadDetails.tsx`).
  */
 function ThreadCard({
   thread,
   environment,
-  subagents,
   activities,
   features,
   selected,
-  selection,
   now,
 }: {
   thread: ShellThread;
   environment: string | undefined;
-  subagents: ReadonlyArray<ShellThread>;
   activities: Map<string, Activity>;
   features: ThreadFeatures;
   selected: boolean;
-  selection: string | undefined;
   now: number;
 }) {
   const select = () => run("pult-shell.selectThread", thread.environmentId, thread.id);
@@ -594,117 +585,7 @@ function ThreadCard({
         <span className="pult-card-title">{thread.title}</span>
         <JumpHint rowKey={keyOf(thread)} />
       </div>
-      {selected && subagents.length > 0 ? (
-        <div className="pult-card-details">
-          <Subagents
-            subagents={subagents}
-            activities={activities}
-            selection={selection}
-            now={now}
-          />
-        </div>
-      ) : null}
     </li>
-  );
-}
-
-/**
- * The expanded card's subagents under one collapsible header, their count
- * and, while any works, Working with the longest elapsed time; collapsed
- * until opened, for every card at once. Each a row that selects its thread:
- * its title, then its status, a working one's being its elapsed time alone.
- * Active ones first; the selected one shown even while collapsed.
- */
-function Subagents({
-  subagents,
-  activities,
-  selection,
-  now,
-}: {
-  subagents: ReadonlyArray<ShellThread>;
-  activities: Map<string, Activity>;
-  selection: string | undefined;
-  now: number;
-}) {
-  const [expanded, setExpanded] = useExpanded("pult-shell.panel.subagents-expanded");
-  const shown = expanded
-    ? subagents
-    : subagents.filter((subagent) => keyOf(subagent) === selection);
-  return (
-    <div className="pult-card-subagents">
-      <CollapsibleHeader
-        label="Subagents"
-        count={subagents.length}
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-        status={<SubagentsWorking subagents={subagents} activities={activities} />}
-      />
-      {shown.length > 0 ? (
-        <SubagentList subagents={shown} activities={activities} selection={selection} now={now} />
-      ) : null}
-    </div>
-  );
-}
-
-/** Working with the longest elapsed time while any subagent works; nothing otherwise. */
-function SubagentsWorking({
-  subagents,
-  activities,
-}: {
-  subagents: ReadonlyArray<ShellThread>;
-  activities: Map<string, Activity>;
-}) {
-  const working = subagents.filter((subagent) => activities.get(keyOf(subagent)) === "working");
-  if (working.length === 0) return null;
-  // The longest elapsed time is the earliest start.
-  const since = working
-    .map((subagent) => subagent.workingSince)
-    .filter((start) => start !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  return (
-    <span className="pult-card-status pult-card-status-working">
-      Working{since === undefined ? null : <Elapsed since={since} />}
-    </span>
-  );
-}
-
-/** The subagents' rows, each selecting its thread: its title, then its status, a working one's being its elapsed time alone. */
-function SubagentList({
-  subagents,
-  activities,
-  selection,
-  now,
-}: {
-  subagents: ReadonlyArray<ShellThread>;
-  activities: Map<string, Activity>;
-  selection: string | undefined;
-  now: number;
-}) {
-  const activity = (subagent: ShellThread) => activities.get(keyOf(subagent)) ?? null;
-  return (
-    <ul className="pult-subagents-list" aria-label="Subagents">
-      {subagents.map((subagent) => (
-        <li key={keyOf(subagent)}>
-          <button
-            type="button"
-            className={`pult-subagent${keyOf(subagent) === selection ? " pult-subagent-selected" : ""}`}
-            aria-current={keyOf(subagent) === selection || undefined}
-            title={subagent.title}
-            onClick={() => run("pult-shell.selectThread", subagent.environmentId, subagent.id)}
-          >
-            <i className="codicon codicon-hubot" aria-hidden />
-            <span className="pult-subagent-title">{subagent.title}</span>
-            {activity(subagent) === "working" && subagent.workingSince !== null ? (
-              <span className="pult-card-status pult-card-status-working">
-                <Elapsed since={subagent.workingSince} />
-              </span>
-            ) : (
-              <Status thread={subagent} activity={activity(subagent)} now={now} />
-            )}
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -882,7 +763,7 @@ export function age(iso: string, now: number): string {
  * The time since `since`, ticking each second, in upstream's subagent form:
  * `45s`, `3m 05s`, `1h 02m`. Its own clock, so a tick re-renders only it.
  */
-function Elapsed({ since }: { since: string }) {
+export function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
