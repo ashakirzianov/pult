@@ -77,16 +77,21 @@ const layerThreads = Layer.mergeAll(
         recorded.sent.push(input);
         return { message: { attachments: input.attachments } };
       }),
-    // A thread created, then one of each event an extension is told of.
-    streamDomainEvents: Stream.fromIterable(
-      [
+    // A thread created, then one of each event an extension is told of, a run's start not among them.
+    streamDomainEvents: Stream.fromIterable([
+      ...[
         "thread.created",
         "thread.settled",
         "thread.unsettled",
         "thread.archived",
         "thread.deleted",
       ].map((type) => ({ type, threadId: THREAD })),
-    ),
+      ...["running", "completed"].map((status) => ({
+        type: "run.updated",
+        threadId: THREAD,
+        payload: { status, userMessageId: "message-1" },
+      })),
+    ]),
   } as unknown as ThreadManagementService["Service"]),
   Layer.succeed(ProjectService, {
     getShell: (projectId: ProjectId) =>
@@ -488,7 +493,7 @@ const THREADS_ACTIVATE = `
       interactionMode: null,
     },
   }));
-  yield* note("events", Effect.map(Stream.runCollect(Stream.take(host.threadEvents, 4)), (events) => Array.from(events)));
+  yield* note("events", Effect.map(Stream.runCollect(Stream.take(host.threadEvents, 5)), (events) => Array.from(events)));
   yield* note("create", Effect.map(host.projects.create({ title: "Asks", workspaceRoot: "/work/asks" }), (project) => project.workspaceRoot));
   yield* note("list", Effect.map(host.projects.list(), (projects) => projects.map((project) => project.workspaceRoot)));
 `;
@@ -513,7 +518,7 @@ it.effect(
         ),
         'send unknown HostCallError threads.send: there is no thread "nobody"',
         "send composed undefined",
-        `events ${JSON.stringify(["settled", "unsettled", "archived", "deleted"].map((_tag) => ({ _tag, threadId: THREAD })))}`,
+        `events ${JSON.stringify([...["settled", "unsettled", "archived", "deleted"].map((_tag) => ({ _tag, threadId: THREAD })), { _tag: "run-completed", threadId: THREAD, messageId: "message-1" }])}`,
         'create "/work/asks"',
         'list ["/work/asks"]',
       ]);

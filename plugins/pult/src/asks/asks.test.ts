@@ -33,7 +33,7 @@ import {
   McpServer,
   Path,
 } from "../host.ts";
-import { at, fakeServer, run } from "../stars/testing.ts";
+import { at, fakeServer, type FakeMessage, run } from "../stars/testing.ts";
 
 const mcpClient = McpSchema.McpServerClient.of({
   clientId: 1,
@@ -176,6 +176,20 @@ it.effect(
           } as never),
         );
 
+      // A run the message started ends completed, as upstream commits it.
+      const completed = (message: FakeMessage) =>
+        Effect.forEach(server.threads.events.items, ({ queue }) =>
+          Queue.offer(queue, {
+            type: "run.updated",
+            id: `event:run:${message.messageId}`,
+            threadId: message.threadId,
+            occurredAt: at("2026-11-10T13:00:00.000Z"),
+            payload: { status: "completed", userMessageId: message.messageId },
+          } as never),
+        ).pipe(Effect.andThen(rows));
+      const unanswered =
+        "The turn that received the user's reply to this ask ended with the ask neither settled nor asked again, so the user still sees it as being worked on. If the reply needs an answer, put it in the ask and call `pult_ask` with its `id`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per reply.";
+
       // An older page reads `asks` gone from `about` as no asks.
       expect((yield* send("GET", "/about")).body.features).not.toContain("asks");
 
@@ -194,7 +208,7 @@ it.effect(
               "readOnlyHint": false,
               "title": "Ask the user",
             },
-            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
+            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. A message opening the same way also tells you, once per reply, when the turn that received a reply ended with the ask neither settled nor asked again. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
             "inputSchema": {
               "properties": {
                 "file": {
@@ -663,6 +677,23 @@ it.effect(
         status: { icon: "comment", time: { at: "2026-11-10T13:00:02.000Z" } },
         open: { reply: { chips: [] } },
       });
+      // The turn the reply started ends with the ask still replied: the channel is told, once per reply.
+      const starReply = server.threads.messages.at(-1)!;
+      yield* completed(starReply);
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "vega-user",
+        text: unanswered,
+        header: {
+          extension: "pult",
+          line: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel main]`,
+          caption: { reply: false, lead: "From Pult, about the ask", open: { row: posted.id } },
+        },
+        createdBy: "agent",
+        creationSource: "server",
+      });
+      const toldUnanswered = server.threads.messages.length;
+      yield* completed(starReply);
+      expect(server.threads.messages).toHaveLength(toldUnanswered);
       yield* act(posted.id, "snooze", until);
       expect(yield* act(posted.id, "wake")).toBe("done");
       expect((yield* rows)[0]).toMatchObject({ shelf: "working" });
@@ -696,6 +727,21 @@ it.effect(
       expect((yield* star.list({ settled: true })).asks).toMatchObject([{ status: "settled" }]);
       expect(yield* act(posted.id, "unsettle")).toBe("done");
       expect((yield* star.list()).asks).toMatchObject([{ status: "replied" }]);
+      // A later reply left unanswered is told again; one whose ask is settled as its turn ends is not.
+      yield* TestClock.adjust(1000);
+      yield* reply(posted.id, "serde, with derive");
+      yield* completed(server.threads.messages.at(-1)!);
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "vega-user",
+        text: unanswered,
+      });
+      yield* TestClock.adjust(1000);
+      yield* reply(posted.id, "Or miniserde");
+      const settledReply = server.threads.messages.at(-1)!;
+      yield* star.settle(posted.id);
+      yield* completed(settledReply);
+      expect(server.threads.messages.at(-1)).toBe(settledReply);
+      yield* act(posted.id, "unsettle");
       // A plain thread is told in its own thread, here of a settle with no reply.
       // A thread's reply goes into its own thread; its settle is told there, here after that reply.
       expect(yield* reply(filed.id, "Ship it")).toEqual({ thread: "worker" });
@@ -704,6 +750,13 @@ it.effect(
         text: "Ship it",
         header: { line: `[In reply to your ask ${filed.id} "Ship it?"]` },
         createdBy: "user",
+      });
+      const threadReply = server.threads.messages.at(-1)!;
+      yield* completed(threadReply);
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        threadId: "worker",
+        text: unanswered,
+        header: { line: `[From Pult, about your ask ${filed.id} "Ship it?"]` },
       });
       yield* act(filed.id, "settle");
       expect(server.threads.messages.at(-1)).toMatchObject({
@@ -724,8 +777,8 @@ it.effect(
 
       // The poster's own settle is silent, and asking again with the id reopens it, a new text replacing the old.
       expect(yield* star.settle(posted.id)).toEqual({ id: posted.id, status: "settled" });
-      // The thread's reply and its settle's notice since, and nothing more.
-      expect(server.threads.messages).toHaveLength(told + 2);
+      // Two later replies, the thread's reply, the notices of the turns and the thread's settle, and nothing more.
+      expect(server.threads.messages).toHaveLength(told + 6);
       expect((yield* work.settle(posted.id)).refused).toBe("invalid_request");
       expect(yield* star.ask({ id: posted.id, text: "# Which crate, now?" })).toEqual(posted);
       expect((yield* star.list()).asks).toMatchObject([

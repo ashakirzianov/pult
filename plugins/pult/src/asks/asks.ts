@@ -10,6 +10,7 @@ import {
   Path,
   Schema,
   Semaphore,
+  Stream,
   type Composed,
   type Thread,
   type ThreadMessage,
@@ -90,6 +91,8 @@ const AskRecord = Schema.Struct({
   settled: Schema.NullOr(Schema.String),
   /** The reply options its poster suggests; a record from before them has none. */
   replies: Schema.optional(Schema.Array(Schema.String)),
+  /** The key of the latest reply to this posting, which its message's id carries: the poster is told if the run it started left the ask replied. A record from before it has none. */
+  replyKey: Schema.optional(Schema.NullOr(Schema.String)),
 });
 type AskRecord = typeof AskRecord.Type;
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(AskRecord));
@@ -133,6 +136,10 @@ const replyHeader = (ask: Pick<Ask, "id" | "title" | "poster">) => ({
 /** What the user's settle tells the poster, below the delivery's line (`settleNotice`). */
 const settleText = (replied: boolean) =>
   `The user settled this ask ${replied ? "after replying to it" : "without replying to it"}. \`pult_ask\` with its id reopens it for 7 days.`;
+
+/** What the poster is told when the turn that received a reply left the ask replied (`pult/decisions`, `ask-reply-unanswered`). */
+const UNANSWERED_TEXT =
+  "The turn that received the user's reply to this ask ended with the ask neither settled nor asked again, so the user still sees it as being worked on. If the reply needs an answer, put it in the ask and call `pult_ask` with its `id`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per reply.";
 
 /** The first non-empty line with its leading `#`s dropped, its whitespace one space; `fallback` where that leaves nothing. */
 function contextTitle(text: string, fallback: string): string {
@@ -204,7 +211,7 @@ export interface ListFilter {
 }
 
 export type Action =
-  | { readonly kind: "replied"; readonly posted: string }
+  | { readonly kind: "replied"; readonly posted: string; readonly key: string }
   | { readonly kind: "snooze"; readonly until: string | null }
   | { readonly kind: "settle" }
   | { readonly kind: "unsettle" };
@@ -474,6 +481,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             poster,
             posted: now,
             replied: null,
+            replyKey: null,
             snoozedUntil: null,
             settled: null,
             replies,
@@ -538,14 +546,16 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         ),
       );
 
-  /** Tells the poster of the user's settle, once per posting: a retry after a failure tells it again, a repeat replays. */
-  const tellSettled = Effect.fn("Asks.tellSettled")(function* (record: AskRecord) {
+  /** Tells the poster a notice of Pult's about its ask, once per `key`: a retry after a failure tells it again, a repeat replays. */
+  const tellPoster = Effect.fn("Asks.tellPoster")(function* (
+    record: AskRecord,
+    text: string,
+    key: string,
+  ) {
     const about = `Pult, about your ask ${record.id} "${headerTitle(record.title)}"`;
     const notice = caption("From Pult, about the ask", headerTitle(record.title), {
       row: record.id,
     });
-    const text = settleText(record.replied !== null);
-    const key = `ask-settled:${record.id}:${record.posted}`;
     if ("star" in record.poster) {
       const told = yield* stars.tell({
         star: record.poster.star,
@@ -556,9 +566,10 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         key,
       });
       if (told === "gone")
-        yield* Effect.logWarning("An ask's Star is gone: its settle is told to no one.", {
+        yield* Effect.logWarning("An ask's Star is gone: Pult's notice is told to no one.", {
           askId: record.id,
           starId: record.poster.star,
+          key,
         });
       return;
     }
@@ -570,6 +581,14 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
       text,
     });
   });
+
+  /** Tells the poster of the user's settle, once per posting. */
+  const tellSettled = (record: AskRecord) =>
+    tellPoster(
+      record,
+      settleText(record.replied !== null),
+      `ask-settled:${record.id}:${record.posted}`,
+    );
 
   const act: Asks["act"] = Effect.fn("Asks.act")(function* (id, action) {
     const find = loadOne(id);
@@ -602,7 +621,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
           const next: AskRecord =
             action.kind === "replied"
               ? // A reply moves it to Working, from Snoozed too.
-                { ...record, replied: now, snoozedUntil: null }
+                { ...record, replied: now, replyKey: action.key, snoozedUntil: null }
               : action.kind === "snooze"
                 ? { ...record, snoozedUntil: action.until }
                 : action.kind === "unsettle"
@@ -640,9 +659,39 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             .send({ threadId: ask.poster.thread, key, header: from, composed })
             .pipe(Effect.mapError(failed("reply")), Effect.as(ask.poster.thread));
     // The posting it answered: one asked again meanwhile stays in Inbox.
-    yield* act(id, { kind: "replied", posted: ask.posted });
+    yield* act(id, { kind: "replied", posted: ask.posted, key });
     return { thread };
   });
+
+  // The turn a reply started ended, the ask still replied: its poster is told, once per reply.
+  // A reply's message id carries its key, `<name>:<key>` into a thread, `deliver`'s
+  // `pult:star-message:<star>:<key>:<path>` into a Star's channel.
+  const tellUnanswered = Effect.fn("Asks.tellUnanswered")(function* (messageId: string) {
+    const found = (yield* lock.withPermits(1)(load)).find(
+      ({ record, ask }) =>
+        record.replyKey != null &&
+        messageId.includes(`:${record.replyKey}`) &&
+        ask.status === "replied",
+    );
+    if (found === undefined) return;
+    const { record } = found;
+    yield* tellPoster(record, UNANSWERED_TEXT, `ask-unanswered:${record.replyKey}`);
+  });
+  yield* Effect.forkScoped(
+    Stream.runForEach(host.threadEvents, (event) =>
+      // Only a reply's message names an ask's reply key.
+      event._tag === "run-completed" && event.messageId.includes(":ask-reply:")
+        ? tellUnanswered(event.messageId).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Pult could not tell a poster its ask's reply went unanswered.", {
+                messageId: event.messageId,
+                cause,
+              }),
+            ),
+          )
+        : Effect.void,
+    ),
+  );
 
   return { post, settleOwn, list, reply, act } satisfies Asks;
 });

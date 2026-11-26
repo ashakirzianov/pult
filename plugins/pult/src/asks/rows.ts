@@ -236,8 +236,10 @@ export const make = Effect.fn("AskRows.make")(function* (
 
   yield* Effect.forkScoped(
     Stream.runForEach(host.threadEvents, (event) =>
-      // An event during a publish's read is published again after it, whatever thread it names.
-      posterThreads.has(event.threadId) || reading ? publish : Effect.void,
+      // A run's end moves no row. An event during a publish's read is published again after it, whatever thread it names.
+      event._tag !== "run-completed" && (posterThreads.has(event.threadId) || reading)
+        ? publish
+        : Effect.void,
     ),
   );
   yield* Effect.forkScoped(publish);

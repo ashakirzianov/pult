@@ -136,6 +136,10 @@ describe("AGENTS.md", () => {
       AGENTS_TEXT,
       '`[In reply to your ask <id> "<title>", to your channel <channel>]`',
     );
+    assert.include(
+      AGENTS_TEXT,
+      'a message opening `[From Pult, about your ask <id> "<title>", to your channel <channel>]` tells you if the user settles the ask, or if a turn that received a reply ended with the ask neither settled nor asked again.',
+    );
     assert.notInclude(AGENTS_TEXT, ".pult/asks");
   });
 
@@ -217,6 +221,8 @@ describe("AGENTS.md", () => {
     assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 19 -->\n"), true);
     // Version 22 is the last without where the answer to a reply goes.
     assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 22 -->\n"), true);
+    // Version 23 is the last without the notice of a reply left unanswered.
+    assert.strictEqual(agentsOutdated("<!-- pult-agents-md: 23 -->\n"), true);
     assert.strictEqual(agentsOutdated(AGENTS_TEXT), false);
     assert.strictEqual(agentsOutdated(`<!-- pult-agents-md: ${AGENTS_VERSION + 1} -->\n`), false);
   });

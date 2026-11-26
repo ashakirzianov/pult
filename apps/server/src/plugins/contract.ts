@@ -63,10 +63,10 @@ export type ThreadMessage = {
 } & ({ readonly text: string } | { readonly composed: Composed });
 
 /** What befell a thread, from upstream's committed events, live from the subscription on. */
-export interface ThreadEvent {
-  readonly _tag: "settled" | "unsettled" | "archived" | "deleted";
-  readonly threadId: string;
-}
+export type ThreadEvent =
+  | { readonly _tag: "settled" | "unsettled" | "archived" | "deleted"; readonly threadId: string }
+  /** A run ended completed, told for each of its updates since, so perhaps more than once; `messageId` its `userMessageId`, the message it started from (a steer's or a continuation's run names another). */
+  | { readonly _tag: "run-completed"; readonly threadId: string; readonly messageId: string };
 
 /** Who calls a tool: always a thread, since no extension tool is offered to an outside client. */
 export const ToolCaller = Schema.Struct({
@@ -153,7 +153,7 @@ export interface ExtensionHost {
     /** A message queued behind the thread's work, under no mode ceiling: the extension's own as an agent's from the server, the user's as from the web. */
     readonly send: (message: ThreadMessage) => Effect.Effect<void, HostCallError>;
   };
-  /** Each thread settled, un-settled, archived or deleted; each subscriber its own. */
+  /** Each thread settled, un-settled, archived or deleted, and each run completed; each subscriber its own. */
   readonly threadEvents: Stream.Stream<ThreadEvent>;
   readonly projects: {
     readonly list: () => Effect.Effect<ReadonlyArray<Project>, HostCallError>;

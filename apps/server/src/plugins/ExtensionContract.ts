@@ -19,6 +19,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -254,11 +255,23 @@ export const make = (
       ),
   },
   threadEvents: threads.streamDomainEvents.pipe(
-    Stream.filter((event) => Object.hasOwn(THREAD_EVENTS, event.type)),
-    Stream.map((event): ThreadEvent => ({
-      _tag: THREAD_EVENTS[event.type as keyof typeof THREAD_EVENTS],
-      threadId: event.threadId,
-    })),
+    Stream.filterMap((event): Result.Result<ThreadEvent, void> =>
+      event.type === "run.updated"
+        ? // Each update of a completed run is told: a subscriber keeps its own once.
+          event.payload.status === "completed"
+          ? Result.succeed({
+              _tag: "run-completed",
+              threadId: event.threadId,
+              messageId: event.payload.userMessageId,
+            })
+          : Result.failVoid
+        : Object.hasOwn(THREAD_EVENTS, event.type)
+          ? Result.succeed({
+              _tag: THREAD_EVENTS[event.type as keyof typeof THREAD_EVENTS],
+              threadId: event.threadId,
+            })
+          : Result.failVoid,
+    ),
     // Upstream's own stream fails only as the server stops; an extension's subscriber ends with it.
     Stream.catchCause(() => Stream.empty),
   ),
