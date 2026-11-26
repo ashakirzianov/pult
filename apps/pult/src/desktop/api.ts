@@ -75,6 +75,21 @@ export interface LongFrame {
   readonly startedAtUnixMs: number;
   readonly durationMs: number;
   readonly blockingDurationMs: number;
+  /** When rendering began (rAF callbacks, observers, then style and layout), in ms after the frame's start; absent where the frame did not render. */
+  readonly renderStartMs?: number;
+  /** When style and layout began, in ms after the frame's start; absent where the frame had none. */
+  readonly styleAndLayoutStartMs?: number;
+  /** When the frame's first input event was queued, in ms after its start (negative if before it); absent where it handled none. */
+  readonly firstUIEventMs?: number;
+  /**
+   * Chromium's `performance.memory.usedJSHeapSize`, in bytes, as read at the observer callback
+   * that delivered the frame, and at the callback before; frames delivered together share both,
+   * and absent where the runtime gives none. Chromium caches it (50 ms where precise; bucketed and
+   * at most every 20 minutes otherwise), so a drop places a collection between two callbacks, not
+   * in one frame.
+   */
+  readonly usedJSHeapSize?: number;
+  readonly previousUsedJSHeapSize?: number;
   readonly scripts: ReadonlyArray<{
     readonly sourceURL: string;
     readonly sourceFunctionName: string;
