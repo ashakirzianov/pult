@@ -1,41 +1,53 @@
-// The asks (Beta's `designs/ask-model.md`): one JSON record per ask in `<stateDir>/plugins/pult/asks/`,
-// its context a file the poster names or Markdown Pult keeps in the asks folder, a hidden project. A
-// settled ask goes 7 days after its settle, and a plain thread's follow its thread, read when listing,
-// with no timer. The Stars' old `.pult/asks/` files are read no more (`retired.ts`).
-import {
-  CommandId,
-  MessageId,
-  OrchestratorMcpFailure,
-  type OrchestrationV2ThreadShell,
-  ProjectId,
-  ThreadId,
-  type MessageHeader,
-  withMessageHeader,
-} from "@t3tools/contracts";
-
+// The asks (Beta's `designs/ask-model.md`): one JSON record per ask in the extension's data folder, its
+// context a file the poster names or Markdown Pult keeps in the asks folder, a hidden project; a settled
+// ask goes 7 days after its settle, a plain thread's follow its thread, read when listing. On the
+// extension contract (`../extension.ts`), the Stars reached through one port (`AskStars`).
 import {
   DateTime,
-  DispatchModeLimit,
   Effect,
+  type ExtensionHost,
   FileSystem,
   Path,
-  ProjectService,
   Schema,
   Semaphore,
-  SecureRandom,
-  ServerConfig,
-  ThreadManagementService,
-} from "../host.ts";
+  type Thread,
+  type ThreadMessage,
+} from "../extension.ts";
 import { type Channel, CHANNEL_PATTERN } from "../stars/channels.ts";
-import { caption, type Deliver, headerTitle } from "../stars/deliver.ts";
-import type { Stars } from "../stars/stars.ts";
+import { caption, headerTitle } from "../stars/deliver.ts";
 
 /** How long a settled ask is kept after its settle. */
 const EXPIRY_MS = 7 * 24 * 60 * 60_000;
 
-/** The asks folder, Pult's Markdown for the asks posted as `text`: beside the Stars directory. */
-export const asksFolderOf = (starsDirectory: string, path: Path.Path) =>
-  path.join(path.dirname(starsDirectory), "asks");
+/** A thread's id as `pult_ask_list` advertises it, `ThreadId`'s JSON schema and trim, kept here since an extension bundles no `@t3tools/contracts`. */
+export const AskThreadId = Schema.Trim.check(Schema.isNonEmpty());
+
+/** A refusal, on the wire as upstream's `OrchestratorMcpFailure`: agents read its `code` and `message`. */
+export class AskRefused extends Schema.TaggedError<AskRefused>()("OrchestratorMcpFailure", {
+  code: Schema.Literals(["invalid_request", "orchestration_error", "capability_denied"]),
+  message: Schema.String,
+}) {}
+
+/** What asks need of the Stars, two features of one plugin: the port Stars implement (`stars/forAsks.ts`). */
+export interface AskStars {
+  /** The asks folder, Pult's Markdown for the asks posted as `text`, whose project Stars hide. */
+  readonly asksFolder: string;
+  /** The Star and channel whose conversation the thread is; undefined for any other thread. */
+  readonly posterOf: (
+    threadId: string,
+  ) => Effect.Effect<
+    { readonly star: string; readonly channel: Channel } | undefined,
+    { readonly message: string }
+  >;
+  /** A message of Pult's into the channel, once per `key`; "gone" for a Star that is no more. */
+  readonly tell: (tell: {
+    readonly star: string;
+    readonly channel: Channel;
+    readonly text: string;
+    readonly from: NonNullable<ThreadMessage["header"]>;
+    readonly key: string;
+  }) => Effect.Effect<"told" | "gone", { readonly message: string }>;
+}
 
 /** Who posted an ask: a Star's conversation, as the Star and its channel, or any other thread. */
 const Poster = Schema.Union([
@@ -43,7 +55,7 @@ const Poster = Schema.Union([
     star: Schema.String,
     channel: Schema.String.check(Schema.isPattern(CHANNEL_PATTERN)),
   }),
-  Schema.Struct({ thread: ThreadId }),
+  Schema.Struct({ thread: AskThreadId }),
 ]);
 export type Poster = typeof Poster.Type;
 
@@ -88,7 +100,7 @@ export type Ask = typeof Ask.Type;
  * page's composer attaches: its line a Star's names its posting channel, as the settle notice does
  * (Anton's ruling, 2026-11-21).
  */
-const replyHeader = (ask: Pick<Ask, "id" | "title" | "poster">): MessageHeader => ({
+const replyHeader = (ask: Pick<Ask, "id" | "title" | "poster">) => ({
   extension: "pult",
   line: `[In reply to your ask ${ask.id} "${headerTitle(ask.title)}"${"star" in ask.poster ? `, to your channel ${ask.poster.channel}` : ""}]`,
   caption: {
@@ -112,8 +124,7 @@ function contextTitle(text: string, fallback: string): string {
 
 const oneLine = (text: string) => text.replace(/\s+/gu, " ").trim();
 
-const refused = (message: string) =>
-  new OrchestratorMcpFailure({ code: "invalid_request", message });
+const refused = (message: string) => new AskRefused({ code: "invalid_request", message });
 
 const MAX_REPLIES = 4;
 const MAX_REPLY_LENGTH = 200;
@@ -168,16 +179,18 @@ export interface PostInput {
 export interface ListFilter {
   readonly star?: string | undefined;
   readonly channel?: Channel | undefined;
-  readonly thread?: ThreadId | undefined;
+  readonly thread?: string | undefined;
   readonly settled: boolean;
 }
 
 /** The asks of a route's answer, with the folder and its project the page opens Pult's Markdown in. */
 export interface AsksView {
   readonly folder: string;
-  readonly projectId: ProjectId | null;
+  readonly projectId: string | null;
   /** Each with the header its reply carries, and that header's line as `prefix` for a page older than headers. */
-  readonly asks: ReadonlyArray<Ask & { readonly header: MessageHeader; readonly prefix: string }>;
+  readonly asks: ReadonlyArray<
+    Ask & { readonly header: ReturnType<typeof replyHeader>; readonly prefix: string }
+  >;
 }
 
 export type Action =
@@ -189,18 +202,18 @@ export type Action =
 export interface Asks {
   readonly folder: string;
   /** The project of the asks folder, which the page hides as it hides the Stars'; null before the first `text`. */
-  readonly projectId: Effect.Effect<ProjectId | null, AsksError>;
+  readonly projectId: Effect.Effect<string | null, AsksError>;
   /** `pult_ask`: posts as `poster`, a `file` inside `root`, the caller's worktree or project folder, which a relative one resolves against. */
   readonly post: (
     poster: Poster,
     root: string | undefined,
     input: PostInput,
-  ) => Effect.Effect<{ readonly id: string; readonly status: "posted" }, OrchestratorMcpFailure>;
+  ) => Effect.Effect<{ readonly id: string; readonly status: "posted" }, AskRefused>;
   /** `pult_ask_settle`: the poster's own, silently; `mine` says whether a record's poster is the caller. */
   readonly settleOwn: (
     id: string,
     mine: (poster: Poster) => boolean,
-  ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, OrchestratorMcpFailure>;
+  ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, AskRefused>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<Ask>, AsksError>;
   readonly view: Effect.Effect<AsksView, AsksError>;
   /** The page's actions; undefined for an unknown ask, a string for one refused. The user's settle tells the poster. */
@@ -213,22 +226,18 @@ export interface Asks {
 const iso = (at: DateTime.DateTime) => DateTime.formatIso(at);
 const millis = (at: string) => DateTime.toEpochMillis(DateTime.makeUnsafe(at));
 
-export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Deliver) {
+export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars: AskStars) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const config = yield* ServerConfig.ServerConfig;
-  const projects = yield* ProjectService.ProjectService;
-  const threads = yield* ThreadManagementService.ThreadManagementService;
-  const newId = (yield* SecureRandom.SecureRandom).uuidV4();
   const lock = yield* Semaphore.make(1);
 
-  const records = path.join(config.stateDir, "plugins", "pult", "asks");
-  const folder = asksFolderOf(stars.directory, path);
+  const records = path.join(host.dataDir, "asks");
+  const folder = stars.asksFolder;
   const recordFile = (id: string) => path.join(records, `${id}.json`);
   const failed = (operation: AsksError["operation"]) => (cause: unknown) =>
     new AsksError({ operation, cause });
   const unavailable = (error: { readonly message: string }) =>
-    new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
+    new AskRefused({ code: "orchestration_error", message: error.message });
 
   const write = Effect.fn("Asks.write")(
     function* (record: AskRecord) {
@@ -248,16 +257,16 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
   );
 
   /** What a thread poster's thread says of its asks: gone once archived or deleted, else settled since when. */
-  const threadState = (shell: OrchestrationV2ThreadShell | null) =>
-    shell === null || shell.deletedAt !== null || shell.archivedAt !== null
+  const threadState = (thread: Thread | null) =>
+    thread === null || thread.deletedAt !== null || thread.archivedAt !== null
       ? ("gone" as const)
-      : { settled: shell.settledAt === null ? null : iso(shell.settledAt) };
+      : { settled: thread.settledAt };
 
   /** A record as served now, or undefined where it is gone: its thread archived or deleted, or 7 days past its settle. */
   const served = Effect.fn("Asks.served")(function* (record: AskRecord, now: number) {
     const thread =
       "thread" in record.poster
-        ? threadState(yield* threads.getThreadShell(record.poster.thread))
+        ? threadState(yield* host.threads.get(record.poster.thread))
         : { settled: null };
     if (thread === "gone") return undefined;
     // The later settle counts, so a thread settled after its ask holds it for 7 days from then.
@@ -336,9 +345,9 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
   const byPosted = (left: Ask, right: Ask) =>
     left.posted.localeCompare(right.posted) || left.id.localeCompare(right.id);
 
-  const findProject = Effect.map(projects.listShells(), (shells) =>
+  const findProject = Effect.map(host.projects.list(), (shells) =>
     shells.find(
-      (project) => project.archivedAt == null && path.resolve(project.workspaceRoot) === folder,
+      (project) => project.archivedAt === null && path.resolve(project.workspaceRoot) === folder,
     ),
   );
   const projectId = findProject.pipe(
@@ -351,12 +360,7 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     function* (id: string, text: string) {
       yield* fs.makeDirectory(folder, { recursive: true });
       if ((yield* findProject) === undefined)
-        yield* projects.create({
-          commandId: CommandId.make(yield* newId),
-          projectId: ProjectId.make(yield* newId),
-          title: "Asks",
-          workspaceRoot: folder,
-        });
+        yield* host.projects.create({ title: "Asks", workspaceRoot: folder });
       const file = path.join(folder, `${id}.md`);
       yield* fs.writeFileString(file, text);
       return file;
@@ -367,7 +371,8 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
   /** A fresh id: eight hex digits, short enough for the reply's line. */
   const freshId = Effect.gen(function* () {
     for (;;) {
-      const id = (yield* newId).replaceAll("-", "").slice(0, 8);
+      // @effect-diagnostics-next-line cryptoRandomUUIDInEffect:off -- an extension's entry carries no `SecureRandom`.
+      const id = crypto.randomUUID().replaceAll("-", "").slice(0, 8);
       if (!(yield* fs.exists(recordFile(id)))) return id;
     }
   }).pipe(Effect.mapError(failed("write")));
@@ -547,42 +552,27 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     const text = settleText(record.replied !== null);
     const key = `ask-settled:${record.id}:${record.posted}`;
     if ("star" in record.poster) {
-      const star = yield* stars.get(record.poster.star);
-      if (star === undefined)
-        return yield* Effect.logWarning("An ask's Star is gone: its settle is told to no one.", {
+      const told = yield* stars.tell({
+        star: record.poster.star,
+        channel: record.poster.channel,
+        text,
+        // `[From <from>, to your channel <to>]`, the notice's line.
+        from: { line: about, caption: notice },
+        key,
+      });
+      if (told === "gone")
+        yield* Effect.logWarning("An ask's Star is gone: its settle is told to no one.", {
           askId: record.id,
           starId: record.poster.star,
         });
-      // `[From <from>, to your channel <to>]`, the notice's line.
-      yield* deliver({
-        star,
-        text,
-        from: { line: about, caption: notice },
-        to: record.poster.channel,
-        key,
-        sender: "plugin",
-      });
       return;
     }
-    const shell = yield* threads.getThreadShell(record.poster.thread);
-    if (shell === null) return;
-    const id = `pult:${key}`;
-    if (yield* threads.hasReceipt(CommandId.make(id))) return;
-    yield* threads.sendToThread({
-      projectId: shell.projectId,
-      threadId: shell.id,
-      commandId: CommandId.make(id),
-      messageId: MessageId.make(id),
+    if ((yield* host.threads.get(record.poster.thread)) === null) return;
+    yield* host.threads.send({
+      threadId: record.poster.thread,
+      key,
+      header: { line: `[From ${about}]`, caption: notice },
       text,
-      attachments: [],
-      context: withMessageHeader(undefined, {
-        extension: "pult",
-        line: `[From ${about}]`,
-        caption: notice,
-      }),
-      mode: "queue",
-      createdBy: "agent",
-      creationSource: "server",
     });
   });
 
@@ -593,10 +583,7 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
       const before = yield* lock.withPermits(1)(find);
       if (before === undefined) return undefined;
       if (before.ask.status !== "settled")
-        yield* tellSettled(before.record).pipe(
-          Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined),
-          Effect.mapError(failed("tell")),
-        );
+        yield* tellSettled(before.record).pipe(Effect.mapError(failed("tell")));
     }
     const changed: undefined | { readonly refused: string } | { readonly record: AskRecord } =
       yield* lock.withPermits(1)(

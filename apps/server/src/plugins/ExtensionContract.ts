@@ -4,13 +4,23 @@
  * `tools.register` declares each tool through `McpToolAccess` and registers it with
  * `toolkitRegistration`, so upstream's checks run for an extension's calls unchanged.
  */
-import { OrchestratorMcpFailure, type OrchestrationV2ThreadShell } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageHeader,
+  MessageId,
+  OrchestratorMcpFailure,
+  type OrchestrationV2ThreadShell,
+  ProjectId,
+  ThreadId,
+  withMessageHeader,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 // oxlint-disable-next-line t3code/no-raw-mcp-registration -- read for the names it already has; registration goes through toolkitRegistration.
 import { McpSchema, McpServer, type Tool, Toolkit } from "effect/ai";
 
@@ -19,8 +29,18 @@ import { toolkitRegistration } from "../mcp/McpHttpServer.ts";
 import * as McpToolAccess from "../mcp/McpToolAccess.ts";
 import { fencingLinkOrigin } from "../mcp/linkOrigin.ts";
 import { loadCaller } from "../mcp/threadAccess.ts";
+import * as DispatchModeLimit from "../orchestration-v2/DispatchModeLimit.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
-import type { ExtensionHost, Thread, ToolCaller, ToolHandler } from "./contract.ts";
+import {
+  type ExtensionHost,
+  HostCallError,
+  type Project,
+  type Thread,
+  type ThreadMessage,
+  type ToolCaller,
+  type ToolHandler,
+} from "./contract.ts";
 import type { ExtensionUi } from "./ExtensionUi.ts";
 
 const unreachable = (value: never): never => {
@@ -105,12 +125,71 @@ const register = Effect.fn("ExtensionContract.register")(function* (
   ).pipe(Effect.provide(context));
 });
 
+/** The services the contract's calls use, resolved once by the loader, so a missing one fails at startup. */
+export interface Services {
+  readonly threads: ThreadManagementService.ThreadManagementService["Service"];
+  readonly projects: ProjectService.ProjectService["Service"];
+  readonly ui: ExtensionUi["Service"];
+  readonly random: SecureRandom.SecureRandom["Service"];
+}
+
+const failedAs =
+  (call: string) =>
+  (error: { readonly message: string }): HostCallError =>
+    new HostCallError({ call, message: error.message });
+
+const decodeHeader = Schema.decodeUnknownEffect(MessageHeader);
+const isHostCallError = Schema.is(HostCallError);
+
+const send = Effect.fn("ExtensionContract.send")(function* (
+  name: string,
+  threads: Services["threads"],
+  message: ThreadMessage,
+) {
+  const failed = (text: string) => new HostCallError({ call: "threads.send", message: text });
+  if (message.key === "") return yield* failed("the key is empty");
+  const header =
+    message.header === undefined
+      ? undefined
+      : yield* decodeHeader({ extension: name, ...message.header }).pipe(
+          Effect.mapError((error) => failed(`the header does not decode: ${error.message}`)),
+        );
+  const shell = yield* threads.getThreadShell(ThreadId.make(message.threadId));
+  if (shell === null) return yield* failed(`there is no thread "${message.threadId}"`);
+  const id = `${name}:${message.key}`;
+  if (yield* threads.hasReceipt(CommandId.make(id))) return;
+  yield* threads
+    .sendToThread({
+      projectId: shell.projectId,
+      threadId: shell.id,
+      commandId: CommandId.make(id),
+      messageId: MessageId.make(id),
+      text: message.text,
+      attachments: [],
+      ...(header === undefined ? {} : { context: withMessageHeader(undefined, header) }),
+      mode: "queue",
+      createdBy: "agent",
+      creationSource: "server",
+    })
+    .pipe(Effect.provideService(DispatchModeLimit.DispatchModeLimit, undefined));
+});
+
+const projectOf = (project: {
+  readonly id: string;
+  readonly workspaceRoot: string;
+  readonly archivedAt?: string | null | undefined;
+}): Project => ({
+  id: project.id,
+  workspaceRoot: project.workspaceRoot,
+  archivedAt: project.archivedAt ?? null,
+});
+
 /** The host an extension named `name` gets; its calls run with the server's `context`. */
 export const make = (
   name: string,
   dataDir: string,
   context: Context.Context<McpServer.McpServer>,
-  ui: ExtensionUi["Service"],
+  { threads, projects, ui, random }: Services,
 ): ExtensionHost => ({
   name,
   dataDir,
@@ -122,6 +201,40 @@ export const make = (
         toolkit.tools,
         handlers as Readonly<Record<string, ToolHandler<Tool.Any>>>,
       ),
+  },
+  threads: {
+    get: (id) =>
+      threads.getThreadShell(ThreadId.make(id)).pipe(
+        Effect.map((shell) => (shell === null ? null : threadOf(shell))),
+        Effect.mapError(failedAs("threads.get")),
+      ),
+    send: (message) =>
+      send(name, threads, message).pipe(
+        Effect.catchIf(
+          (error) => !isHostCallError(error),
+          (error) => Effect.fail(failedAs("threads.send")(error)),
+        ),
+      ),
+  },
+  projects: {
+    list: () =>
+      projects.listShells().pipe(
+        Effect.map((shells) => shells.map(projectOf)),
+        Effect.mapError(failedAs("projects.list")),
+      ),
+    create: Effect.fn("ExtensionContract.createProject")(
+      function* ({ title, workspaceRoot }) {
+        const newId = random.uuidV4();
+        return yield* projects.create({
+          commandId: CommandId.make(yield* newId),
+          projectId: ProjectId.make(yield* newId),
+          title,
+          workspaceRoot,
+        });
+      },
+      Effect.map(projectOf),
+      Effect.mapError(failedAs("projects.create")),
+    ),
   },
   ui: {
     publish: (slot, items) => ui.publish(name, slot, items),

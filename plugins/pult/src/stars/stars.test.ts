@@ -14,7 +14,7 @@ import {
 } from "@t3tools/contracts";
 import * as TestClock from "effect/testing/TestClock";
 
-import { RETIRED_ASKS_NOTICE, tellRetiredAsks } from "../asks/retired.ts";
+import { RETIRED_ASKS_NOTICE, tellRetiredAsks } from "./retiredAsks.ts";
 import { Effect, FileSystem, Layer, Path } from "../host.ts";
 import { AGENTS_TEXT, AGENTS_VERSION } from "./agents.ts";
 import { recordText } from "./record.ts";

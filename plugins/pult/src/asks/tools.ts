@@ -1,26 +1,17 @@
 // `pult_ask`, `pult_ask_settle` and `pult_ask_list` (`asks.ts`): the poster is read from the call, a
-// Star's conversation posting as the Star and its channel, any other thread as itself. Declared through
-// the server's `McpToolAccess`, thread-bound, so an outside MCP client is refused and not offered them;
+// Star's conversation posting as the Star and its channel, any other thread as itself. Registered on
+// the extension contract (`tools.register`), so an outside MCP client is refused and not offered them;
 // work a fenced link started may post, settle and list its own asks only.
-import { OrchestratorMcpFailure, ThreadId } from "@t3tools/contracts";
-
 import {
   Effect,
-  McpInvocationContext,
-  McpLinkOrigin,
-  McpSchema,
-  McpThreadAccess,
-  McpToolAccess,
-  ProjectService,
+  type ExtensionHost,
   Schema,
-  ThreadManagementService,
+  type ToolCaller,
   Tool,
   Toolkit,
-  toolkitRegistration,
-} from "../host.ts";
+} from "../extension.ts";
 import { CHANNEL_PATTERN } from "../stars/channels.ts";
-import type { Stars } from "../stars/stars.ts";
-import { Ask, type Asks, type Poster } from "./asks.ts";
+import { Ask, AskRefused, type Asks, type AskStars, AskThreadId, type Poster } from "./asks.ts";
 
 const AskTool = Tool.make("pult_ask", {
   description:
@@ -50,32 +41,22 @@ const AskTool = Tool.make("pult_ask", {
     ),
   }),
   success: Schema.Struct({ id: Schema.String, status: Schema.Literals(["posted"]) }),
-  failure: OrchestratorMcpFailure,
+  failure: AskRefused,
   failureMode: "return",
-  dependencies: [
-    McpInvocationContext.McpInvocationContext,
-    ThreadManagementService.ThreadManagementService,
-  ],
 })
   .annotate(Tool.Title, "Ask the user")
-  .annotate(Tool.Destructive, false)
-  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
+  .annotate(Tool.Destructive, false);
 
 const SettleTool = Tool.make("pult_ask_settle", {
   description:
     "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. It is removed 7 days after its settle; until then `pult_ask` with its `id` reopens it.",
   parameters: Schema.Struct({ id: Schema.String }),
   success: Schema.Struct({ id: Schema.String, status: Schema.Literals(["settled"]) }),
-  failure: OrchestratorMcpFailure,
+  failure: AskRefused,
   failureMode: "return",
-  dependencies: [
-    McpInvocationContext.McpInvocationContext,
-    ThreadManagementService.ThreadManagementService,
-  ],
 })
   .annotate(Tool.Title, "Settle an ask")
-  .annotate(Tool.Destructive, false)
-  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
+  .annotate(Tool.Destructive, false);
 
 const ListTool = Tool.make("pult_ask_list", {
   description:
@@ -87,53 +68,38 @@ const ListTool = Tool.make("pult_ask_list", {
         description: "One of the Star's channels, a slug.",
       }),
     ),
-    thread: Schema.optional(ThreadId.annotate({ description: "A thread's id." })),
+    thread: Schema.optional(AskThreadId.annotate({ description: "A thread's id." })),
     settled: Schema.optional(
       Schema.Boolean.annotate({ description: "Whether to list settled asks too." }),
     ),
   }),
   success: Schema.Struct({ asks: Schema.Array(Ask) }),
-  failure: OrchestratorMcpFailure,
+  failure: AskRefused,
   failureMode: "return",
-  dependencies: [
-    McpInvocationContext.McpInvocationContext,
-    ThreadManagementService.ThreadManagementService,
-  ],
 })
   .annotate(Tool.Title, "List asks")
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false)
-  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
+  .annotate(Tool.Destructive, false);
 
 const AsksToolkit = Toolkit.make(AskTool, SettleTool, ListTool);
 
-const refused = (message: string) =>
-  new OrchestratorMcpFailure({ code: "invalid_request", message });
+const refused = (message: string) => new AskRefused({ code: "invalid_request", message });
 
-/** The tools' registration, to build in the plugin's activation once everything else is up. */
-export const make = Effect.fn("PultTools.makeAsks")(function* (stars: Stars, asks: Asks) {
-  const projects = yield* ProjectService.ProjectService;
+/** Registers the tools, last in the plugin's activation, once everything else is up. */
+export const register = Effect.fn("PultTools.registerAsks")(function* (
+  host: ExtensionHost,
+  stars: AskStars,
+  asks: Asks,
+) {
   const unavailable = (error: { readonly message: string }) =>
-    new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
+    new AskRefused({ code: "orchestration_error", message: error.message });
 
-  /** Who calls: its poster, the folder a relative file resolves against, and whether a fenced link started it. */
-  const caller = Effect.gen(function* () {
-    const loaded = yield* McpThreadAccess.loadCaller();
-    const shell = loaded.caller;
-    // The wrappers require a thread, and `loadCaller` refuses one that is not found.
-    if (shell === undefined) return yield* Effect.die(new Error("An ask's caller has no thread."));
-    const own = yield* stars.ofThread(shell.id).pipe(Effect.mapError(unavailable));
-    const poster: Poster =
-      own === undefined ? { thread: shell.id } : { star: own.star.id, channel: own.channel };
-    const project = yield* projects.getShell(shell.projectId).pipe(Effect.mapError(unavailable));
-    const root =
-      shell.worktreePath ?? (project._tag === "Some" ? project.value.workspaceRoot : undefined);
-    return {
-      poster,
-      root,
-      fenced: McpLinkOrigin.fencingLinkOrigin(loaded) !== undefined,
-    };
-  });
+  /** Who calls: its poster, a Star's conversation as the Star and its channel. */
+  const posterOf = (caller: ToolCaller) =>
+    stars.posterOf(caller.thread.id).pipe(
+      Effect.mapError(unavailable),
+      Effect.map((own): Poster => own ?? { thread: caller.thread.id }),
+    );
 
   /** Whether a record's poster is the caller: for a Star, any of its channels. */
   const isOwn = (caller: Poster) => (poster: Poster) =>
@@ -141,22 +107,11 @@ export const make = Effect.fn("PultTools.makeAsks")(function* (stars: Stars, ask
       ? "star" in poster && poster.star === caller.star
       : "thread" in poster && poster.thread === caller.thread;
 
-  const ask = Effect.fn("PultTools.ask")(function* (input: typeof AskTool.parametersSchema.Type) {
-    const { poster, root } = yield* caller;
-    return yield* asks.post(poster, root, input);
-  });
-
-  const settle = Effect.fn("PultTools.settleAsk")(function* (
-    input: typeof SettleTool.parametersSchema.Type,
-  ) {
-    const { poster } = yield* caller;
-    return yield* asks.settleOwn(input.id, isOwn(poster));
-  });
-
   const list = Effect.fn("PultTools.listAsks")(function* (
     input: typeof ListTool.parametersSchema.Type,
+    caller: ToolCaller,
   ) {
-    const { poster, fenced } = yield* caller;
+    const poster = yield* posterOf(caller);
     if (input.star !== undefined && input.thread !== undefined)
       return yield* refused("Name a `star` or a `thread`, not both.");
     if (input.channel !== undefined && input.thread !== undefined)
@@ -167,8 +122,8 @@ export const make = Effect.fn("PultTools.makeAsks")(function* (stars: Stars, ask
       return yield* refused("A `channel` is a Star's: name the Star with `star`.");
     const thread = input.thread ?? (named || !("thread" in poster) ? undefined : poster.thread);
     const own = "star" in poster ? star === poster.star : thread === poster.thread;
-    if (fenced && !own)
-      return yield* new OrchestratorMcpFailure({
+    if (caller.fenced && !own)
+      return yield* new AskRefused({
         code: "capability_denied",
         message:
           "This work was started through a linked environment, so it may list only its own asks. A link paired with full access is not limited this way.",
@@ -179,12 +134,19 @@ export const make = Effect.fn("PultTools.makeAsks")(function* (stars: Stars, ask
     return { asks: found };
   });
 
-  return toolkitRegistration(
-    AsksToolkit,
-    McpToolAccess.toLayer(AsksToolkit, {
-      pult_ask: McpToolAccess.actsAsCaller(ask),
-      pult_ask_settle: McpToolAccess.actsAsCaller(settle),
-      pult_ask_list: McpToolAccess.readsAsCaller(list),
-    }),
-  );
+  yield* host.tools.register(AsksToolkit, {
+    pult_ask: {
+      access: "acts-as-caller",
+      handle: (input, caller) =>
+        Effect.flatMap(posterOf(caller), (poster) =>
+          asks.post(poster, caller.folder ?? undefined, input),
+        ),
+    },
+    pult_ask_settle: {
+      access: "acts-as-caller",
+      handle: (input, caller) =>
+        Effect.flatMap(posterOf(caller), (poster) => asks.settleOwn(input.id, isOwn(poster))),
+    },
+    pult_ask_list: { access: "reads-as-caller", handle: list },
+  });
 });

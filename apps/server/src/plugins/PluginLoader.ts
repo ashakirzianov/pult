@@ -18,6 +18,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Scope from "effect/Scope";
 import type { McpServer } from "effect/ai";
 import type { HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -25,6 +26,8 @@ import effectPackage from "effect/package.json" with { type: "json" };
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import { CONTRACT, type ExtensionHost, Manifest } from "./contract.ts";
 import * as ExtensionContract from "./ExtensionContract.ts";
 import * as ExtensionUi from "./ExtensionUi.ts";
@@ -207,7 +210,12 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
   const config = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const ui = yield* ExtensionUi.ExtensionUi;
+  const services: ExtensionContract.Services = {
+    threads: yield* ThreadManagementService.ThreadManagementService,
+    projects: yield* ProjectService.ProjectService,
+    ui: yield* ExtensionUi.ExtensionUi,
+    random: yield* SecureRandom.SecureRandom,
+  };
   // Everything the server provided to this layer, for the plugins to run with.
   const context = yield* Effect.context<McpServer.McpServer>();
   const pluginsDir = path.join(config.baseDir, "plugins");
@@ -272,10 +280,10 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
       Effect.sync(() => {
         route = handler;
       });
-    const host = hostFor(ExtensionContract.make(name, dataDir, context, ui), serve);
+    const host = hostFor(ExtensionContract.make(name, dataDir, context, services), serve);
     const scope = yield* Scope.make();
     // What it published goes with the activation, a failed one's too.
-    yield* Scope.addFinalizer(scope, ui.drop(name));
+    yield* Scope.addFinalizer(scope, services.ui.drop(name));
     yield* Effect.suspend(() => {
       const activated: unknown = activate(host);
       return isActivation(activated)

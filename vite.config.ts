@@ -487,7 +487,11 @@ export default defineConfig({
         // Pult's plugin takes the server's modules and Effect only through its host entry
         // (docs/internals/plugins.md, Bundled plugins); its tests may reach the loader.
         files: ["plugins/pult/src/**"],
-        excludeFiles: ["plugins/pult/src/host.ts", "plugins/pult/src/**/*.test.ts"],
+        excludeFiles: [
+          "plugins/pult/src/host.ts",
+          "plugins/pult/src/extension.ts",
+          "plugins/pult/src/**/*.test.ts",
+        ],
         rules: {
           "eslint/no-restricted-imports": [
             "error",
@@ -497,6 +501,35 @@ export default defineConfig({
                 {
                   group: ["effect", "effect/**", "@effect/**", "**/apps/server/**"],
                   message: "Import the server's modules and Effect from the plugin's ./host.ts.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        // Pult's features moved onto the extension contract take it, and Effect, from the plugin's
+        // ./extension.ts alone, as an installed extension would (xaxis `pult/decisions`, `pult-plugin`).
+        files: ["plugins/pult/src/asks/**"],
+        // The routes stay on the raw tier until the asks' rows replace them.
+        excludeFiles: ["plugins/pult/src/asks/**/*.test.ts", "plugins/pult/src/asks/routes.ts"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            {
+              paths: RESTRICTED_IMPORT_PATHS,
+              patterns: [
+                {
+                  group: [
+                    "../host.ts",
+                    "effect",
+                    "effect/**",
+                    "@effect/**",
+                    "@t3tools/**",
+                    "**/apps/server/**",
+                  ],
+                  message:
+                    "Import the extension contract and Effect from the plugin's ../extension.ts.",
                 },
               ],
             },

@@ -3,7 +3,12 @@
  * a server service, a `Context` or an MCP module; an addition does not bump `CONTRACT` (xaxis
  * `pult/decisions`, `extension-contract`; docs/internals/plugins.md).
  */
-import type { ExtensionComposed, ExtensionSlot, ExtensionSlotItem } from "@t3tools/contracts";
+import type {
+  ExtensionComposed,
+  ExtensionSlot,
+  ExtensionSlotItem,
+  MessageHeaderCaption,
+} from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
@@ -34,6 +39,24 @@ export const Thread = Schema.Struct({
   deletedAt: Schema.NullOr(Schema.String),
 });
 export type Thread = typeof Thread.Type;
+
+/** A project as data; `archivedAt` an ISO string. */
+export const Project = Schema.Struct({
+  id: Schema.String,
+  workspaceRoot: Schema.String,
+  archivedAt: Schema.NullOr(Schema.String),
+});
+export type Project = typeof Project.Type;
+
+/** The extension's own message into a thread (`threads.send`). */
+export interface ThreadMessage {
+  readonly threadId: string;
+  /** Non-empty: the message's command and id are `<name>:<key>`, and a key sent again sends nothing. */
+  readonly key: string;
+  /** The line its agent reads above the text, one line, and the caption the page draws over it; the server names the extension in it. */
+  readonly header?: { readonly line: string; readonly caption: MessageHeaderCaption | null };
+  readonly text: string;
+}
 
 /** Who calls a tool: always a thread, since no extension tool is offered to an outside client. */
 export const ToolCaller = Schema.Struct({
@@ -113,6 +136,20 @@ export interface ExtensionHost {
       toolkit: Toolkit.Toolkit<Tools>,
       handlers: ToolHandlers<Tools>,
     ) => Effect.Effect<void, never, Scope.Scope>;
+  };
+  readonly threads: {
+    /** The thread, or null for an id of none. */
+    readonly get: (id: string) => Effect.Effect<Thread | null, HostCallError>;
+    /** The extension's own message, queued behind the thread's work, under no mode ceiling. */
+    readonly send: (message: ThreadMessage) => Effect.Effect<void, HostCallError>;
+  };
+  readonly projects: {
+    readonly list: () => Effect.Effect<ReadonlyArray<Project>, HostCallError>;
+    /** A new project of the folder, its id minted by the server. */
+    readonly create: (input: {
+      readonly title: string;
+      readonly workspaceRoot: string;
+    }) => Effect.Effect<Project, HostCallError>;
   };
   /**
    * The page's UI slots. What is published is state: a reconnect or a second page gets the whole

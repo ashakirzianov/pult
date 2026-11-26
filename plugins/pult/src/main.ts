@@ -4,13 +4,13 @@
  * `host.serve` dispatch below; its tools register last.
  */
 import * as Asks from "./asks/asks.ts";
-import { tellRetiredAsks } from "./asks/retired.ts";
 import { asksRoute } from "./asks/routes.ts";
 import * as AskTools from "./asks/tools.ts";
 import {
   Effect,
   HttpServerResponse,
   Layer,
+  Path,
   type PluginHost,
   ProcessRunner,
   ThreadLaunchGuard,
@@ -25,6 +25,8 @@ import * as ListTool from "./stars/listTool.ts";
 import * as MessageTool from "./stars/messageTool.ts";
 import * as SleepTool from "./stars/sleepTool.ts";
 import { starsRoute } from "./stars/routes.ts";
+import { forAsks } from "./stars/forAsks.ts";
+import { tellRetiredAsks } from "./stars/retiredAsks.ts";
 import * as Stars from "./stars/stars.ts";
 import * as SettledThreads from "./threads/settled.ts";
 import * as XaxisKept from "./xaxis/kept.ts";
@@ -56,7 +58,8 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   const delivering = deliverTo(stars);
   // One open conversation per channel: a launch into a channel that has one is refused.
   yield* (yield* ThreadLaunchGuard.ThreadLaunchGuard).register(stars.guardLaunch);
-  const asks = yield* Asks.make(stars, delivering.deliver);
+  const askStars = forAsks(stars, delivering.deliver, yield* Path.Path);
+  const asks = yield* Asks.make(host.extension, askStars);
   // Delivery waits for the server's commands, so the Stars with files left in `.pult/asks/` are told apart.
   yield* tellRetiredAsks(stars, delivering.deliver).pipe(
     Effect.catch((error) =>
@@ -78,7 +81,6 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
     yield* ListTool.make(stars),
     yield* SleepTool.make(stars),
     yield* UsageLimitsTool.make(),
-    yield* AskTools.make(stars, asks),
   );
   yield* host.serve((request, path) => {
     if ((request.method === "GET" || request.method === "HEAD") && path === "/about")
@@ -102,4 +104,5 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   });
   // A tool is replaced by name on every activation and never removed, so the tools register last.
   yield* Layer.build(tools);
+  yield* AskTools.register(host.extension, askStars, asks);
 });

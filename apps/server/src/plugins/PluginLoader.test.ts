@@ -1,7 +1,9 @@
 import { expect, it } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   AuthOrchestrationReadScope,
+  messageHeaderOf,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -46,6 +48,12 @@ const PROJECT = ProjectId.make("project-1");
 const THREAD = ThreadId.make("thread-1");
 const PROVIDER = ProviderInstanceId.make("codex");
 
+/** What the fakes recorded: each message sent into a thread, and each project created. */
+const recorded = {
+  sent: [] as Array<Record<string, unknown>>,
+  projects: [] as Array<{ id: string; workspaceRoot: string; archivedAt: string | null }>,
+};
+
 /** One live thread in a project rooted at `/work/project`, its run on. */
 const layerThreads = Layer.mergeAll(
   Layer.succeed(ThreadManagementService, {
@@ -62,12 +70,29 @@ const layerThreads = Layer.mergeAll(
             }
           : null,
       ),
+    hasReceipt: (commandId: string) =>
+      Effect.sync(() => recorded.sent.some((each) => each.commandId === commandId)),
+    sendToThread: (input: Record<string, unknown>) =>
+      Effect.sync(() => {
+        recorded.sent.push(input);
+      }),
   } as unknown as ThreadManagementService["Service"]),
   Layer.succeed(ProjectService, {
     getShell: (projectId: ProjectId) =>
       Effect.succeed(
         projectId === PROJECT ? Option.some({ workspaceRoot: "/work/project" }) : Option.none(),
       ),
+    listShells: () => Effect.sync(() => recorded.projects),
+    create: (input: { projectId: string; workspaceRoot: string }) =>
+      Effect.sync(() => {
+        const project = {
+          id: input.projectId,
+          workspaceRoot: input.workspaceRoot,
+          archivedAt: null,
+        };
+        recorded.projects.push(project);
+        return project;
+      }),
   } as unknown as ProjectService["Service"]),
 );
 
@@ -76,6 +101,7 @@ const layerBase = Layer.mergeAll(
   ExtensionUi.layer,
   layerThreads,
   ServerConfig.layerTest(process.cwd(), { prefix: "t3-plugin-loader-test-" }),
+  NodeCrypto.layer,
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const scopeOf = (thread: ThreadId | undefined): McpInvocationContext.McpInvocationScope => ({
@@ -419,6 +445,70 @@ it.effect("a bundled plugin that fails to activate is listed as failed and the r
   }).pipe(Effect.scoped, Effect.provide(layerBase)),
 );
 
+/** An extension calling the threads and projects of the contract, its answers recorded as events. */
+const THREADS_ACTIVATE = `
+  const note = (label, effect) =>
+    Effect.matchEffect(effect, {
+      onFailure: (error) => Effect.sync(() => events.push(\`\${label} \${error._tag} \${error.call}: \${error.message}\`)),
+      onSuccess: (value) => Effect.sync(() => events.push(\`\${label} \${JSON.stringify(value)}\`)),
+    });
+  yield* note("get", host.threads.get("thread-1"));
+  yield* note("get unknown", host.threads.get("nobody"));
+  const message = {
+    threadId: "thread-1",
+    key: "hello",
+    header: { line: "[From the extension]", caption: null },
+    text: "Hi",
+  };
+  yield* note("send", host.threads.send(message));
+  yield* note("send again", host.threads.send(message));
+  yield* note("send empty key", host.threads.send({ ...message, key: "" }));
+  yield* note("send broken line", host.threads.send({ ...message, key: "x", header: { line: "a\\nb", caption: null } }));
+  yield* note("send unknown", host.threads.send({ ...message, threadId: "nobody" }));
+  yield* note("create", Effect.map(host.projects.create({ title: "Asks", workspaceRoot: "/work/asks" }), (project) => project.workspaceRoot));
+  yield* note("list", Effect.map(host.projects.list(), (projects) => projects.map((project) => project.workspaceRoot)));
+`;
+
+it.effect(
+  "an extension reads a thread, sends its own message once per key under a header naming it, and creates and lists projects; an empty key, a header line that breaks and an unknown thread fail the call",
+  () =>
+    Effect.gen(function* () {
+      events().length = 0;
+      recorded.sent.length = 0;
+      recorded.projects.length = 0;
+      yield* writeExtension("alpha", { activate: THREADS_ACTIVATE });
+      yield* startLoaderWith({});
+      expect(events().slice(1, -1)).toEqual([
+        `get ${JSON.stringify({ id: THREAD, projectId: PROJECT, worktreePath: null, settledAt: "2026-11-20T10:00:00.000Z", archivedAt: null, deletedAt: null })}`,
+        "get unknown null",
+        "send undefined",
+        "send again undefined",
+        "send empty key HostCallError threads.send: the key is empty",
+        expect.stringMatching(
+          /^send broken line HostCallError threads\.send: the header does not decode/,
+        ),
+        'send unknown HostCallError threads.send: there is no thread "nobody"',
+        'create "/work/asks"',
+        'list ["/work/asks"]',
+      ]);
+      expect(recorded.sent).toHaveLength(1);
+      expect(recorded.sent[0]).toMatchObject({
+        threadId: THREAD,
+        commandId: "alpha:hello",
+        messageId: "alpha:hello",
+        text: "Hi",
+        mode: "queue",
+        createdBy: "agent",
+        creationSource: "server",
+      });
+      expect(messageHeaderOf(recorded.sent[0]?.context as never)).toEqual({
+        extension: "alpha",
+        line: "[From the extension]",
+        caption: null,
+      });
+    }).pipe(Effect.scoped, Effect.provide(layerBase)),
+);
+
 /** An extension publishing one shelf row, its actions moving it, its send handler answering with a thread. */
 const UI_ACTIVATE = `
   const row = (shelf) => ({
@@ -577,12 +667,15 @@ it("the extension entry exports the contract and the Effect namespaces, and noth
   expect(Object.keys(await import("../extensionHost.ts")).toSorted()).toEqual([
     "ActionRefused",
     "CONTRACT",
+    "DateTime",
     "Effect",
     "FileSystem",
     "HostCallError",
     "Manifest",
     "Path",
+    "Project",
     "Schema",
+    "Semaphore",
     "SendRefused",
     "Thread",
     "Tool",

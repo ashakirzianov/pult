@@ -1,9 +1,9 @@
-// The Stars' asks before `pult_ask` (`asks.ts`): files a Star wrote in `.pult/asks/`, which Pult no
+// The Stars' asks before `pult_ask` (`../asks/asks.ts`): files a Star wrote in `.pult/asks/`, which Pult no
 // longer reads. Each Star with any left there is told once, at the plugin's start, to post again
 // what is still open; nothing is imported, since a file names no channel to answer in.
 import { Cause, Effect, FileSystem, Path } from "../host.ts";
-import { caption, type Deliver } from "../stars/deliver.ts";
-import type { Stars } from "../stars/stars.ts";
+import { caption, type Deliver } from "./deliver.ts";
+import type { Stars } from "./stars.ts";
 
 const RETIRED_DIRECTORY = ".pult/asks";
 

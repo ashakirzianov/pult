@@ -32,8 +32,8 @@ import {
   ThreadLaunchGuard,
   ThreadManagementService,
 } from "../host.ts";
-import { asksFolderOf } from "../asks/asks.ts";
 import { AGENTS_TEXT, agentsOutdated } from "./agents.ts";
+import { asksFolderOf } from "./forAsks.ts";
 import { type Channel, isChannel, taggedChannel } from "./channels.ts";
 import {
   AGENTS_FILE,
@@ -844,7 +844,7 @@ export const make = Effect.gen(function* () {
   });
 
   const view = Effect.gen(function* () {
-    // The asks folder's project is hidden as a Star's is (`asks.ts`).
+    // The asks folder's project is hidden as a Star's is (`../asks/asks.ts`).
     const asksFolder = asksFolderOf(directory, path);
     const hidden = (yield* projects.listShells())
       .filter(
