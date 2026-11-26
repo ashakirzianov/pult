@@ -64,7 +64,11 @@ import type {
   ISCMResourceDecorations,
   ISCMResourceGroup,
 } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
-import { DEFAULT_EDITOR_ASSOCIATION } from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
+import {
+  BINARY_DIFF_EDITOR_ID,
+  DEFAULT_EDITOR_ASSOCIATION,
+  TEXT_DIFF_EDITOR_ID,
+} from "@codingame/monaco-vscode-api/vscode/vs/workbench/common/editor";
 import { HISTORY_VIEW_PANE_ID } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm";
 import {
   ProjectId,
@@ -156,6 +160,10 @@ const RESOLVABLE_CONFLICT = "pult-xaxis-conflict";
 
 /** While the view shows one thread's checkout, under its card: for `when` clauses. */
 const ChangesFilteredContext = new RawContextKey<boolean>("pult.changesFiltered", false);
+/** The decorated files with uncommitted changes, each by its URI's string as the editor group's `resource` key holds it: Show File Changes' `when`. */
+const ChangedFilesContext = new RawContextKey<Record<string, true>>("pult.changedFiles", {});
+/** Shows the diff of a tab's file while it has uncommitted changes: an editor title action. */
+const SHOW_FILE_CHANGES_COMMAND = "pult-shell.showFileChanges";
 
 /** The content provider's query: a change, or a file of a commit the Graph lists, and which of its sides. */
 type Side =
@@ -733,6 +741,7 @@ type Services = {
   readonly quickInput: IQuickInputService;
   readonly extUri: IExtUri;
   readonly filteredKey: IContextKey<boolean>;
+  readonly changedFilesKey: IContextKey<Record<string, true>>;
 };
 
 /**
@@ -775,6 +784,8 @@ class ChangesView {
   private readonly loadedTurns = new Map<string, Turn>();
   /** The decorated files, by `decorationKey`: what the view shows but a turn's. */
   private decorated = new Map<string, Change>();
+  /** The decorated working-tree changes, by `decorationKey`: what Show File Changes opens. */
+  private uncommitted = new Map<string, Change>();
   private readonly contents = new Map<
     string,
     Promise<{ readonly oldContents: string; readonly newContents: string }>
@@ -848,6 +859,7 @@ class ChangesView {
         quickInput,
         extUri: uriIdentity.extUri,
         filteredKey,
+        changedFilesKey: ChangedFilesContext.bindTo(contextKeys),
       },
       views,
     );
@@ -1243,6 +1255,17 @@ class ChangesView {
     if (!sameKeys(previous, decorated)) {
       this.decorationsChanged.fire([...previous.values(), ...decorated.values()].map(fileUri));
     }
+    // A clean working tree's branch changes stay badged, but have nothing left to commit.
+    const uncommitted = new Map(
+      [...decorated].filter(([, change]) => change.sourceKind === "working-tree"),
+    );
+    if (!sameKeys(this.uncommitted, uncommitted))
+      this.services.changedFilesKey.set(
+        Object.fromEntries(
+          [...uncommitted.values()].map((change) => [fileUri(change).toString(), true]),
+        ),
+      );
+    this.uncommitted = uncommitted;
     setChangesCard(
       thread === undefined
         ? undefined
@@ -1941,6 +1964,12 @@ class ChangesView {
     });
   }
 
+  /** The diff of the file `uri` names, while it has uncommitted changes. */
+  async openFileChanges(uri: URI): Promise<void> {
+    const change = this.uncommitted.get(decorationKey(uri));
+    if (change !== undefined) await this.open(change, false);
+  }
+
   private async sideContents(uri: URI): Promise<string> {
     const query = JSON.parse(uri.query) as Side;
     if ("commit" in query) {
@@ -2418,6 +2447,30 @@ export function registerChanges(): void {
 
       async run(): Promise<void> {
         await (await started)?.showAll();
+      }
+    },
+  );
+  // A changed file's tab, but its diff's, whose primary side is the same file.
+  const fileChanged = ContextKeyExpr.and(
+    ContextKeyExpr.in("resource", ChangedFilesContext.key),
+    ContextKeyExpr.notEquals("activeEditor", TEXT_DIFF_EDITOR_ID),
+    ContextKeyExpr.notEquals("activeEditor", BINARY_DIFF_EDITOR_ID),
+  );
+  registerAction2(
+    class extends Action2 {
+      constructor() {
+        super({
+          id: SHOW_FILE_CHANGES_COMMAND,
+          title: { value: "Show File Changes", original: "Show File Changes" },
+          category,
+          icon: Codicon.gitCompare,
+          menu: { id: MenuId.EditorTitle, when: fileChanged, group: "navigation", order: 2 },
+        });
+      }
+
+      // The tab bar passes its group's file.
+      async run(_accessor: unknown, resource: unknown): Promise<void> {
+        if (URI.isUri(resource)) await (await started)?.openFileChanges(resource);
       }
     },
   );
