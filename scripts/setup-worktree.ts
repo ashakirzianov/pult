@@ -41,9 +41,25 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   });
 }
 
-const projectRoot = process.env.T3CODE_PROJECT_ROOT;
-if (!projectRoot) {
-  throw new Error("T3CODE_PROJECT_ROOT is not set. Run this through the t3.json setup action.");
+// Pult: run by hand in a worktree, the main checkout is the one owning git's common dir.
+const projectRoot = process.env.T3CODE_PROJECT_ROOT || mainCheckoutFromGit();
+
+function mainCheckoutFromGit(): string {
+  const [topLevel, commonDir] = NodeChildProcess.execFileSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"],
+    { cwd: worktree, encoding: "utf8" },
+  )
+    .trim()
+    .split("\n");
+  // A submodule, a bare clone's worktree or a checkout nested in another repository would
+  // name the wrong main checkout; nobody runs setup there yet.
+  if (topLevel !== NodeFS.realpathSync(worktree) || NodePath.basename(commonDir!) !== ".git") {
+    throw new Error(
+      `Cannot tell the main checkout of ${worktree} from git (top level ${topLevel}, common dir ${commonDir}). Set T3CODE_PROJECT_ROOT.`,
+    );
+  }
+  return NodePath.dirname(commonDir!);
 }
 
 // Use the shell for Windows vp shims. Unattended installs need pnpm's confirmation
