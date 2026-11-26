@@ -1,13 +1,15 @@
-// A Star's conversation as a transcript (`star-conversations`): front matter (thread, started,
-// ended, environment, title, turns), then `### User · <time>`, `### Star · <time> · messageId="<id>"`
-// (a JSON string; an older file's names none) and `### Tool · <time> · <line>` sections. An
-// earlier page wrote `partial: true` over the latest turns; the plugin writes only whole ones.
+// A Star's conversation as a transcript (`star-conversations`): front matter, then `### User · <time>`
+// (`· header=<caption JSON>` for a message with a header, its body the header's line, a blank line,
+// the text), `### Star · <time> · messageId="<id>"` and `### Tool · <time> · <line>` sections; an
+// older file's headings name neither, and an earlier page wrote `partial: true` over the latest turns.
 import {
   idleCompactionOf,
+  MessageHeaderCaption,
+  messageHeaderOf,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
-import { DateTime } from "../host.ts";
+import { DateTime, Schema } from "../host.ts";
 import type { Channel } from "./channels.ts";
 import { CHANNELS_DIRECTORY, quoted, readFrontMatter } from "./record.ts";
 
@@ -68,6 +70,20 @@ const ESCAPED_MARKER = /^\\(\\*### (?:User|Star|Tool) · )/gm;
 const HEADING = /^### (User|Star|Tool) · (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)(?: · (.*))?$/;
 /** What a Star heading's detail starts with when it names its message, the id after it as a JSON string. */
 const MESSAGE_ID = "messageId=";
+/** What a User heading's detail starts with for a message with a header, its caption after it as JSON. */
+const HEADER = "header=";
+const decodeCaption = Schema.decodeUnknownSync(Schema.NullOr(MessageHeaderCaption));
+
+/** A User heading's caption, null for a header without one; undefined for a heading of a message without a header, a throw for a marked one whose caption does not decode. */
+function captionOf(detail: string): MessageHeaderCaption | null | undefined {
+  if (!detail.startsWith(HEADER)) return undefined;
+  const raw = detail.slice(HEADER.length);
+  try {
+    return decodeCaption(JSON.parse(raw));
+  } catch (cause) {
+    throw new Error(`A User heading's header is no caption: ${raw}`, { cause });
+  }
+}
 
 /** A Star heading's message id; undefined for an older heading that names none, a throw for a marked one that is no JSON string. */
 function messageIdOf(detail: string): string | undefined {
@@ -158,11 +174,16 @@ export function formatTranscript(
       const text = (item.textOmitted === true ? message?.text : item.text)?.trim() ?? "";
       if (text === "") continue;
       if (item.type === "user_message") turns += 1;
+      const header =
+        item.type === "user_message" ? messageHeaderOf(item.context ?? message?.context) : null;
       const heading =
-        item.type === "user_message"
-          ? `User · ${second(message?.createdAt ?? time)}`
-          : `Star · ${second(message?.createdAt ?? time)} · ${MESSAGE_ID}${JSON.stringify(item.messageId)}`;
-      sections.push(`### ${heading}\n\n${text.replace(MARKER, "\\$1$2")}\n`);
+        item.type === "assistant_message"
+          ? `Star · ${second(message?.createdAt ?? time)} · ${MESSAGE_ID}${JSON.stringify(item.messageId)}`
+          : header === null
+            ? `User · ${second(message?.createdAt ?? time)}`
+            : `User · ${second(message?.createdAt ?? time)} · ${HEADER}${JSON.stringify(header.caption)}`;
+      const body = header === null ? text : `${header.line}\n\n${text}`;
+      sections.push(`### ${heading}\n\n${body.replace(MARKER, "\\$1$2")}\n`);
       continue;
     }
     const line = toolLine(item);
@@ -181,7 +202,14 @@ export function formatTranscript(
 
 /** One entry of a transcript as the fold shows it. */
 export type TranscriptEntry =
-  | { readonly kind: "user" | "tool"; readonly at: string; readonly text: string }
+  | { readonly kind: "tool"; readonly at: string; readonly text: string }
+  | {
+      readonly kind: "user";
+      readonly at: string;
+      readonly text: string;
+      /** A message with a header's caption, null for a header without one, its line cut from `text`; absent for a message without a header. */
+      readonly caption?: MessageHeaderCaption | null;
+    }
   | {
       readonly kind: "star";
       readonly at: string;
@@ -218,15 +246,31 @@ export function parseTranscript(text: string): Transcript | undefined {
   const { fields, body } = matter;
   const entries: TranscriptEntry[] = [];
   let open:
-    | { kind: "user" | "star"; at: string; messageId: string | undefined; lines: string[] }
+    | {
+        kind: "user" | "star";
+        at: string;
+        messageId: string | undefined;
+        caption: MessageHeaderCaption | null | undefined;
+        lines: string[];
+      }
     | undefined;
   const close = () => {
     if (open === undefined) return;
-    const { kind, at, messageId } = open;
+    const { kind, at, messageId, caption } = open;
     const text = open.lines.join("\n").trim().replace(ESCAPED_MARKER, "$1");
-    entries.push(
-      messageId === undefined ? { kind, at, text } : { kind: "star", at, text, messageId },
-    );
+    if (caption !== undefined) {
+      // The header's line, then a blank line, then the message's own words.
+      const cut = text.indexOf("\n\n");
+      entries.push({
+        kind: "user",
+        at,
+        text: cut === -1 ? "" : text.slice(cut + 2).trim(),
+        caption,
+      });
+    } else
+      entries.push(
+        messageId === undefined ? { kind, at, text } : { kind: "star", at, text, messageId },
+      );
     open = undefined;
   };
   for (const line of body.split(/\r?\n/)) {
@@ -238,8 +282,9 @@ export function parseTranscript(text: string): Transcript | undefined {
     close();
     const [, role, at = "", detail = ""] = heading;
     if (role === "Tool") entries.push({ kind: "tool", at, text: detail });
-    else if (role === "User") open = { kind: "user", at, messageId: undefined, lines: [] };
-    else open = { kind: "star", at, messageId: messageIdOf(detail), lines: [] };
+    else if (role === "User")
+      open = { kind: "user", at, messageId: undefined, caption: captionOf(detail), lines: [] };
+    else open = { kind: "star", at, messageId: messageIdOf(detail), caption: undefined, lines: [] };
   }
   close();
   return {

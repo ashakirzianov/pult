@@ -24,7 +24,7 @@ import {
   toolkitRegistration,
 } from "../host.ts";
 import { CHANNEL_PATTERN, childTag, taggedChannel } from "./channels.ts";
-import type { Deliver } from "./deliver.ts";
+import { caption, type Deliver, type From, headerTitle } from "./deliver.ts";
 import { starName } from "./record.ts";
 import type { Star, Stars } from "./stars.ts";
 
@@ -64,7 +64,7 @@ const PultToolkit = Toolkit.make(StarMessageTool);
 const refused = (message: string) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message });
 
-const named = (star: Star) => `"${starName(star)}" (${star.id})`;
+const named = (star: Star) => `"${headerTitle(starName(star))}" (${star.id})`;
 
 /** The tool's registration, to build in the plugin's activation once everything else is up. */
 export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver: Deliver) {
@@ -82,8 +82,8 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     if (shell === null) return `thread ${threadId}`;
     const project = yield* projects.getShell(shell.projectId);
     return project._tag === "Some"
-      ? `thread ${threadId} "${shell.title}" in project "${project.value.title}"`
-      : `thread ${threadId} "${shell.title}"`;
+      ? `thread ${threadId} "${headerTitle(shell.title)}" in project "${headerTitle(project.value.title)}"`
+      : `thread ${threadId} "${headerTitle(shell.title)}"`;
   }, Effect.mapError(unavailable));
 
   const messageStar = Effect.fn("PultTools.messageStar")(function* (
@@ -110,12 +110,21 @@ export const make = Effect.fn("PultTools.make")(function* (stars: Stars, deliver
     const tagged = shell?.tags?.includes(childTag(star.id)) ? taggedChannel(shell.tags) : undefined;
     const channel = input.channel ?? tagged;
     // Another Star's conversation is named as the Star and its channel: an answer sent to that thread would revive it cold.
-    const from =
+    const from: From =
       own === undefined
-        ? yield* threadLine(threadId, shell)
-        : own.star.id === star.id
-          ? `your channel ${own.channel}`
-          : `Star ${named(own.star)}, its channel ${own.channel}`;
+        ? {
+            line: yield* threadLine(threadId, shell),
+            caption: caption("From", headerTitle(shell?.title ?? `thread ${threadId}`), {
+              thread: threadId,
+            }),
+          }
+        : {
+            line:
+              own.star.id === star.id
+                ? `your channel ${own.channel}`
+                : `Star ${named(own.star)}, its channel ${own.channel}`,
+            caption: caption("From", headerTitle(starName(own.star)), null, own.channel),
+          };
     const key =
       input.clientRequestId === undefined
         ? yield* newKey

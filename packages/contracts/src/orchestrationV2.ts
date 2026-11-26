@@ -1,4 +1,5 @@
 import { OrchestrationMessageContext } from "./composerContext.ts";
+import { messageHeaderOf } from "./messageHeader.ts";
 import { withRecordIdTable } from "./orchestrationV2IdTable.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -654,9 +655,18 @@ export function withMessageSenderNote(
     readonly scheduledTaskId?: ScheduledTaskId | undefined;
     readonly senderThreadId?: ThreadId | undefined;
     readonly linkedSender?: OrchestrationV2LinkedSender | undefined;
+    readonly context?: OrchestrationMessageContext | undefined;
   },
   text: string,
 ): string {
+  // Pult: a message with a header (`messageHeader.ts`) names its sender in the header's line, upstream's rule for a command kept.
+  const header = messageHeaderOf(message.context);
+  if (header !== null)
+    return LEADING_COMMAND.test(text)
+      ? text
+      : text === ""
+        ? header.line
+        : `${header.line}\n\n${text}`;
   const agent = message.createdBy === "agent";
   const note =
     agent && message.linkedSender !== undefined

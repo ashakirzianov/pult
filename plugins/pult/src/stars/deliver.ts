@@ -6,10 +6,12 @@ import {
   type ModelSelection,
   type RuntimeMode,
   CommandId,
+  type MessageHeaderCaption,
   MessageId,
   OrchestratorMcpFailure,
   type OrchestrationV2ThreadShell,
   type ThreadId,
+  withMessageHeader,
 } from "@t3tools/contracts";
 
 import {
@@ -42,11 +44,31 @@ import type { Conversations, Star, Stars } from "./stars.ts";
  */
 export type Sender = { readonly thread: ThreadId } | "plugin";
 
+/** Who a delivery names as its sender, in its header (`messageHeader.ts`): the line `[From <line>, to your channel <to>]` the Star reads, and the caption the page draws. */
+export interface From {
+  readonly line: string;
+  readonly caption: MessageHeaderCaption | null;
+}
+
+/** A title as a header names it (`messageHeader.ts` holds a header to one line): its whitespace one space, cut to 500 characters, so a line of two titles stays within its 2,000. */
+export const headerTitle = (title: string) => {
+  const characters = Array.from(title.replace(/\s+/gu, " ").trim());
+  return characters.length <= 500 ? characters.join("") : `${characters.slice(0, 499).join("")}…`;
+};
+
+/** A caption of Pult's: plain text, a name in bold opening `open` where the page resolves it, a note after a dot. */
+export const caption = (
+  lead: string,
+  name: string | null = null,
+  open: MessageHeaderCaption["open"] = null,
+  note: string | null = null,
+): MessageHeaderCaption => ({ reply: false, lead, name, open, note });
+
 export interface Delivery {
   readonly star: Star;
+  /** The sender's own words, the message's stored text. */
   readonly text: string;
-  /** One line naming the sender, written into the stored text as `[From <from>, to your channel <to>]`. */
-  readonly from: string;
+  readonly from: From;
   /** The channel it is for, a slug; the Star's default channel where it names none. */
   readonly to?: Channel | undefined;
   /** One per message: a repeat delivers nothing new. */
@@ -129,7 +151,10 @@ export const make = Effect.gen(function* () {
     yield* deliver({
       star,
       text: `The settings of your channel \`${channel}\`, \`${settingsFile(channel)}\` over \`${SHARED_SETTINGS_FILE}\`, cannot be read or served as written on this environment: ${broken.problems.join("; ")}. A choice this environment cannot serve falls back to every channel's file, then to conversation history, and a \`rotate-on-context\` Pult cannot read counts as \`250k\`, so the wakes go ahead. Fix the files; Pult tells you once per content.`,
-      from: "Pult, about your channel settings",
+      from: {
+        line: "Pult, about your channel settings",
+        caption: caption("From Pult, about your channel settings"),
+      },
       key,
       to: channel,
       sender: "plugin",
@@ -164,7 +189,10 @@ export const make = Effect.gen(function* () {
     yield* deliver({
       star,
       text: `\`default-channel\` in \`${RECORD_FILE}\` is "${written}", which is no channel's slug: lowercase letters, digits and hyphens, starting with a letter or a digit, up to 51 characters. Pult reads it as \`${star.defaultChannel}\` until it names one. Pult tells you once per content.`,
-      from: `Pult, about ${RECORD_FILE}`,
+      from: {
+        line: `Pult, about ${RECORD_FILE}`,
+        caption: caption(`From Pult, about ${RECORD_FILE}`),
+      },
       key,
       sender: "plugin",
     }).pipe(
@@ -212,7 +240,11 @@ export const make = Effect.gen(function* () {
             ? Effect.void
             : McpThreadAccess.assertTargetWithinLimits(limit, target);
 
-        const stored = `[From ${from}, to your channel ${to}]\n\n${text}`;
+        const context = withMessageHeader(undefined, {
+          extension: "pult",
+          line: `[From ${from.line}, to your channel ${to}]`,
+          caption: from.caption,
+        });
         const senderField = sender === "plugin" ? {} : { senderThreadId: sender.thread };
         const creation = {
           createdBy: "agent" as const,
@@ -269,8 +301,9 @@ export const make = Effect.gen(function* () {
               tags: [channelTag(to)],
               initialMessage: {
                 messageId: wake.messageId,
-                text: stored,
+                text,
                 attachments: [],
+                context,
                 ...senderField,
               },
               ...creation,
@@ -303,8 +336,9 @@ export const make = Effect.gen(function* () {
               projectId: star.projectId,
               threadId: current.id,
               ...send,
-              text: stored,
+              text,
               attachments: [],
+              context,
               mode: "queue",
               ...senderField,
               ...creation,

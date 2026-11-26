@@ -7,7 +7,7 @@ import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
 
 import { DateTime, Effect, FileSystem, Layer, Option, Path, ServerConfig } from "../host.ts";
-import type { Deliver, Delivered, Delivery } from "../stars/deliver.ts";
+import { caption, type Deliver, type Delivered, type Delivery } from "../stars/deliver.ts";
 import type { Star, StarsView } from "../stars/stars.ts";
 import { fakeServer } from "../stars/testing.ts";
 import type { CommandOutcome, RunCommand } from "./command.ts";
@@ -215,7 +215,10 @@ describe("the pass", () => {
         {
           star: h.star,
           text: "Time for the standup.",
-          from: "schedule standup, due 2026-11-10 09:00 UTC",
+          from: {
+            line: "schedule standup, due 2026-11-10 09:00 UTC",
+            caption: caption("From schedule", "standup", null, "due 2026-11-10 09:00 UTC"),
+          },
           key: "schedule:standup:2026-11-10T09:00:00.000Z",
           to: undefined,
           sender: "plugin",
@@ -270,7 +273,7 @@ describe("the pass", () => {
       yield* h.clock("2026-11-10T10:30:00Z");
       yield* h.pass;
       assert.deepStrictEqual(
-        h.deliveries.map((each) => each.from),
+        h.deliveries.map((each) => each.from.line),
         ["schedule standup, due 2026-11-10 09:00 UTC, delivered 1h 30m late"],
       );
       assert.deepStrictEqual(yield* h.records("standup"), ["2026-11-10T09-00Z.yaml"]);
@@ -394,7 +397,10 @@ describe("the pass", () => {
       yield* h.pass;
       assert.strictEqual(h.deliveries.length, 1);
       const [told] = h.deliveries;
-      assert.strictEqual(told?.from, "Pult, about schedule standup");
+      assert.deepStrictEqual(told?.from, {
+        line: "Pult, about schedule standup",
+        caption: caption("From Pult, about schedule standup"),
+      });
       // A file that is no schedule names no channel: it lands in the default channel.
       assert.strictEqual(told?.to, undefined);
       assert.strictEqual(
@@ -447,7 +453,7 @@ describe("the pass", () => {
 
       assert.deepStrictEqual(yield* h.records("standup"), ["2026-11-10T09-00Z.yaml"]);
       assert.deepStrictEqual(
-        h.deliveries.map((each) => each.from),
+        h.deliveries.map((each) => each.from.line),
         [
           "Pult, about schedule dangling",
           "Pult, about schedule filed",
@@ -457,7 +463,8 @@ describe("the pass", () => {
         ],
       );
       assert.match(
-        h.deliveries.find((each) => each.from === "Pult, about schedule malformed")?.text ?? "",
+        h.deliveries.find((each) => each.from.line === "Pult, about schedule malformed")?.text ??
+          "",
         /it has no `timezone`/,
       );
       const view = yield* h.view;
@@ -491,7 +498,7 @@ describe("the pass", () => {
       yield* h.pass;
       assert.deepStrictEqual(yield* h.records("timeless"), []);
       assert.deepStrictEqual(
-        h.deliveries.map((each) => each.from),
+        h.deliveries.map((each) => each.from.line),
         ["Pult, about schedule timeless"],
       );
       const [timeless] = yield* h.view;
@@ -536,7 +543,7 @@ describe("the pass", () => {
       yield* h.clock("2026-11-11T09:00:06Z");
       yield* h.pass;
       assert.strictEqual(h.deliveries.length, 2);
-      assert.strictEqual(h.deliveries[1]?.from, "Pult, about schedule missed");
+      assert.strictEqual(h.deliveries[1]?.from.line, "Pult, about schedule missed");
       assert.include(
         h.deliveries[1]?.text ?? "",
         "it is a one-off for 2026-11-10 09:00 UTC, which had passed when the file was written",
@@ -572,7 +579,7 @@ describe("the pass", () => {
       yield* h.pass;
       assert.isTrue(yield* h.schedules.firing);
       assert.deepStrictEqual(
-        h.deliveries.map((each) => each.from),
+        h.deliveries.map((each) => each.from.line),
         [
           "schedule standup, due 2026-11-10 09:00 UTC, delivered 11m late",
           "Pult, about schedule typo",
@@ -595,7 +602,15 @@ describe("the pass", () => {
           {
             star: h.star,
             text: "New mail came in.\n\nFrom: a@example.com\n",
-            from: "schedule mail's command, ran 2026-11-10 08:15 UTC",
+            from: {
+              line: "schedule mail's command, ran 2026-11-10 08:15 UTC",
+              caption: caption(
+                "From schedule",
+                "mail",
+                null,
+                "its command, ran 2026-11-10 08:15 UTC",
+              ),
+            },
             key: "schedule:mail:2026-11-10T08:15:00.000Z",
             to: "mail",
             sender: "plugin",
@@ -658,7 +673,7 @@ describe("the pass", () => {
         yield* h.pass;
       }
       assert.strictEqual(h.commands.length, 5);
-      const told = h.deliveries.map((each) => [each.key, each.to, each.from]);
+      const told = h.deliveries.map((each) => [each.key, each.to, each.from.line]);
       assert.deepStrictEqual(told, [
         [
           "schedule-command-failed:mail:2026-11-10T08:15:00.000Z",

@@ -161,6 +161,8 @@ export interface ThreadManagementSendInput {
   readonly linkedSender?: OrchestrationV2LinkedSender;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
+  /** Pult: the message's context, a header's record among it (`messageHeader.ts`). */
+  readonly context?: import("@t3tools/contracts").OrchestrationMessageContext;
   readonly modelSelection?: ModelSelection;
   readonly mode: ThreadManagementSendMode;
   /** Start a new provider session; the orchestrator queues it instead of steering. */
@@ -983,6 +985,8 @@ const make = Effect.gen(function* () {
       ...(input.linkedSender === undefined ? {} : { linkedSender: input.linkedSender }),
       text: input.text,
       attachments: input.attachments,
+      // Pult: the send's context (`ThreadManagementSendInput.context`).
+      ...(input.context === undefined ? {} : { context: input.context }),
       ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
       ...(input.freshContext ? { freshContext: true } : {}),
       ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),

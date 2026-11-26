@@ -198,6 +198,18 @@ it.effect(
             snoozedUntil: null,
             settled: null,
             replies: ["serde", "miniserde"],
+            // The header the page's composer attaches to the reply (`messageHeader.ts`), its line as `prefix` for an older page.
+            header: {
+              extension: "pult",
+              line: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
+              caption: {
+                reply: true,
+                lead: "Reply to the ask",
+                name: "Which crate?",
+                open: { row: posted.id },
+                note: null,
+              },
+            },
             prefix: `[In reply to your ask ${posted.id} "Which crate?", to your channel main]`,
           },
           expect.objectContaining({
@@ -206,6 +218,9 @@ it.effect(
             file: `${tree}/notes/q.md`,
             poster: { thread: "worker" },
             replies: ["Ship it"],
+            header: expect.objectContaining({
+              line: `[In reply to your ask ${filed.id} "Ship it?"]`,
+            }),
             prefix: `[In reply to your ask ${filed.id} "Ship it?"]`,
           }),
         ],
@@ -279,7 +294,18 @@ it.effect(
       });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
-        text: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel main]\n\nThe user settled this ask after replying to it. \`pult_ask\` with its id reopens it for 7 days.`,
+        text: "The user settled this ask after replying to it. `pult_ask` with its id reopens it for 7 days.",
+        header: {
+          extension: "pult",
+          line: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel main]`,
+          caption: {
+            reply: false,
+            lead: "From Pult, about the ask",
+            name: "Which crate?",
+            open: { row: posted.id },
+            note: null,
+          },
+        },
         creationSource: "server",
       });
       // Told once: a settle of a settled ask changes nothing.
@@ -293,7 +319,18 @@ it.effect(
       yield* send("POST", `/asks/${filed.id}/settle`);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "worker",
-        text: `[From Pult, about your ask ${filed.id} "Ship it?"]\n\nThe user settled this ask without replying to it. \`pult_ask\` with its id reopens it for 7 days.`,
+        text: "The user settled this ask without replying to it. `pult_ask` with its id reopens it for 7 days.",
+        header: {
+          extension: "pult",
+          line: `[From Pult, about your ask ${filed.id} "Ship it?"]`,
+          caption: {
+            reply: false,
+            lead: "From Pult, about the ask",
+            name: "Ship it?",
+            open: { row: filed.id },
+            note: null,
+          },
+        },
       });
 
       // The poster's own settle is silent, and asking again with the id reopens it, a new text replacing the old.

@@ -12,7 +12,7 @@ import {
   ThreadManagementService,
 } from "../host.ts";
 import { childTag, taggedChannel } from "./channels.ts";
-import type { Deliver } from "./deliver.ts";
+import { caption, type Deliver, headerTitle } from "./deliver.ts";
 import type { Stars } from "./stars.ts";
 
 /** How often the pass looks; the scheduler ticks more often. */
@@ -48,12 +48,15 @@ export const make = Effect.fn("ChildFailures.make")(function* (
     // The thread sender's form (`star-delivery`), as `pult_star_message` writes it.
     const about =
       project._tag === "Some"
-        ? `thread ${thread.id} "${thread.title}" in project "${project.value.title}"`
-        : `thread ${thread.id} "${thread.title}"`;
+        ? `thread ${thread.id} "${headerTitle(thread.title)}" in project "${headerTitle(project.value.title)}"`
+        : `thread ${thread.id} "${headerTitle(thread.title)}"`;
     yield* deliver({
       star,
       text: `Its latest run failed at ${DateTime.formatIso(failedAt).slice(11, 16)} UTC and it has stopped: ${thread.lastError ?? "no error recorded"} (${thread.lastErrorClass ?? "unknown"}). It runs again only when it is sent a message. Pult tells you once per failed run; a run stopped by a usage limit is not told.`,
-      from: `Pult, about ${about}`,
+      from: {
+        line: `Pult, about ${about}`,
+        caption: caption("From Pult, about", headerTitle(thread.title), { thread: thread.id }),
+      },
       key,
       // The thread carries this Star's child tag, so its channel tag counts (`star-channels`).
       to: taggedChannel(thread.tags),

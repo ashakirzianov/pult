@@ -2,6 +2,8 @@ export * from "./baseSchemas.ts";
 export * from "./assistantCitations.ts";
 export * from "./composerContext.ts";
 export * from "./composerContextClipboard.ts";
+// Pult: a message's header (`messageHeader.ts`).
+export * from "./messageHeader.ts";
 export * from "./background.ts";
 export * from "./acpRegistry.ts";
 export * from "./auth.ts";

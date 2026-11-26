@@ -5,7 +5,10 @@
 import {
   type CommandId,
   type DiscoveredLocalServer,
+  type MessageHeader,
+  messageHeaderOf,
   MessageId,
+  type OrchestrationMessageContext,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
@@ -143,6 +146,8 @@ export interface FakeMessage {
   readonly commandId: CommandId;
   readonly messageId: MessageId | undefined;
   readonly text: string;
+  /** The header its context carries (`messageHeader.ts`), null for none. */
+  readonly header: MessageHeader | null;
   readonly senderThreadId: ThreadId | undefined;
   readonly createdBy: string;
   readonly creationSource: string;
@@ -213,6 +218,7 @@ function fakeThreads() {
       messageId: MessageId;
       senderThreadId?: ThreadId;
       text: string;
+      context?: OrchestrationMessageContext;
       mode: string;
       createdBy: string;
       creationSource: string;
@@ -226,6 +232,7 @@ function fakeThreads() {
         commandId: input.commandId,
         messageId: input.messageId,
         text: input.text,
+        header: messageHeaderOf(input.context),
         senderThreadId: input.senderThreadId,
         createdBy: input.createdBy,
         creationSource: input.creationSource,
@@ -441,6 +448,7 @@ function fakeLaunches(
         commandId: messageCommandId,
         messageId: input.initialMessage.messageId,
         text: input.initialMessage.text,
+        header: messageHeaderOf(input.initialMessage.context),
         senderThreadId: input.initialMessage.senderThreadId,
         createdBy: input.createdBy,
         creationSource: input.creationSource,

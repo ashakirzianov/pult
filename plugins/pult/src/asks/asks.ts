@@ -9,6 +9,8 @@ import {
   type OrchestrationV2ThreadShell,
   ProjectId,
   ThreadId,
+  type MessageHeader,
+  withMessageHeader,
 } from "@t3tools/contracts";
 
 import {
@@ -25,7 +27,7 @@ import {
   ThreadManagementService,
 } from "../host.ts";
 import { type Channel, CHANNEL_PATTERN } from "../stars/channels.ts";
-import type { Deliver } from "../stars/deliver.ts";
+import { caption, type Deliver, headerTitle } from "../stars/deliver.ts";
 import type { Stars } from "../stars/stars.ts";
 
 /** How long a settled ask is kept after its settle. */
@@ -82,11 +84,21 @@ export const Ask = Schema.Struct({
 export type Ask = typeof Ask.Type;
 
 /**
- * The line a reply opens with, written here and served with the ask. A Star's names its posting
- * channel, as the settle notice does (Anton's ruling, 2026-11-21).
+ * The header a reply carries (`messageHeader.ts`), written here and served with the ask, which the
+ * page's composer attaches: its line a Star's names its posting channel, as the settle notice does
+ * (Anton's ruling, 2026-11-21).
  */
-const replyPrefix = (ask: Pick<Ask, "id" | "title" | "poster">) =>
-  `[In reply to your ask ${ask.id} "${ask.title}"${"star" in ask.poster ? `, to your channel ${ask.poster.channel}` : ""}]`;
+const replyHeader = (ask: Pick<Ask, "id" | "title" | "poster">): MessageHeader => ({
+  extension: "pult",
+  line: `[In reply to your ask ${ask.id} "${headerTitle(ask.title)}"${"star" in ask.poster ? `, to your channel ${ask.poster.channel}` : ""}]`,
+  caption: {
+    reply: true,
+    lead: "Reply to the ask",
+    name: headerTitle(ask.title),
+    open: { row: ask.id },
+    note: null,
+  },
+});
 
 /** What the user's settle tells the poster, below the delivery's line (`settleNotice`). */
 const settleText = (replied: boolean) =>
@@ -164,7 +176,8 @@ export interface ListFilter {
 export interface AsksView {
   readonly folder: string;
   readonly projectId: ProjectId | null;
-  readonly asks: ReadonlyArray<Ask & { readonly prefix: string }>;
+  /** Each with the header its reply carries, and that header's line as `prefix` for a page older than headers. */
+  readonly asks: ReadonlyArray<Ask & { readonly header: MessageHeader; readonly prefix: string }>;
 }
 
 export type Action =
@@ -516,13 +529,21 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
     return {
       folder,
       projectId: yield* projectId,
-      asks: all.map(({ ask }) => ({ ...ask, prefix: replyPrefix(ask) })).toSorted(byPosted),
+      asks: all
+        .map(({ ask }) => {
+          const header = replyHeader(ask);
+          return { ...ask, header, prefix: header.line };
+        })
+        .toSorted(byPosted),
     };
   });
 
   /** Tells the poster of the user's settle, once per posting: a retry after a failure tells it again, a repeat replays. */
   const tellSettled = Effect.fn("Asks.tellSettled")(function* (record: AskRecord) {
-    const about = `Pult, about your ask ${record.id} "${record.title}"`;
+    const about = `Pult, about your ask ${record.id} "${headerTitle(record.title)}"`;
+    const notice = caption("From Pult, about the ask", headerTitle(record.title), {
+      row: record.id,
+    });
     const text = settleText(record.replied !== null);
     const key = `ask-settled:${record.id}:${record.posted}`;
     if ("star" in record.poster) {
@@ -533,7 +554,14 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
           starId: record.poster.star,
         });
       // `[From <from>, to your channel <to>]`, the notice's line.
-      yield* deliver({ star, text, from: about, to: record.poster.channel, key, sender: "plugin" });
+      yield* deliver({
+        star,
+        text,
+        from: { line: about, caption: notice },
+        to: record.poster.channel,
+        key,
+        sender: "plugin",
+      });
       return;
     }
     const shell = yield* threads.getThreadShell(record.poster.thread);
@@ -545,8 +573,13 @@ export const make = Effect.fn("Asks.make")(function* (stars: Stars, deliver: Del
       threadId: shell.id,
       commandId: CommandId.make(id),
       messageId: MessageId.make(id),
-      text: `[From ${about}]\n\n${text}`,
+      text,
       attachments: [],
+      context: withMessageHeader(undefined, {
+        extension: "pult",
+        line: `[From ${about}]`,
+        caption: notice,
+      }),
       mode: "queue",
       createdBy: "agent",
       creationSource: "server",

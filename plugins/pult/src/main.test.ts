@@ -698,8 +698,9 @@ it.effect(
         workspaceRoot: `${server.tmp}/repo`,
         createWorkspaceRootIfMissing: true,
       });
+      // A title's line break goes into a header as a space: a header is one line.
       const worker = server.threads.add(created.id, "worker", {
-        title: "Worker",
+        title: "Worker\n of it",
         runtimeMode: "full-access",
         activeRunId: RunId.make("worker-run"),
       });
@@ -740,7 +741,18 @@ it.effect(
         "pult:channel:main",
       ]);
       expect(server.threads.messages[0]).toMatchObject({
-        text: '[From thread worker "Worker" in project "Repo", to your channel main]\n\nDone.',
+        text: "Done.",
+        header: {
+          extension: "pult",
+          line: '[From thread worker "Worker of it" in project "Repo", to your channel main]',
+          caption: {
+            reply: false,
+            lead: "From",
+            name: "Worker of it",
+            open: { thread: "worker" },
+            note: null,
+          },
+        },
         senderThreadId: "worker",
         creationSource: "mcp",
         // The wrapper's limits, the caller's own modes.
@@ -770,7 +782,12 @@ it.effect(
       });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "launched-2",
-        text: "[From your channel main, to your channel work]\n\nBuild it.",
+        text: "Build it.",
+        // The Star's own name and the channel it hands from: its conversation opens nothing.
+        header: {
+          line: "[From your channel main, to your channel work]",
+          caption: { lead: "From", name: "Vega", open: null, note: "main" },
+        },
         senderThreadId: "star-thread",
       });
       // Its work conversation messaging its own channel is refused nothing: it queues itself a turn.
@@ -782,9 +799,10 @@ it.effect(
         isError: false,
         body: { outcome: "queued", threadId: "launched-2" },
       });
-      expect(server.threads.messages.at(-1)?.text).toBe(
-        "[From your channel work, to your channel work]\n\nLater.",
-      );
+      expect(server.threads.messages.at(-1)).toMatchObject({
+        text: "Later.",
+        header: { line: "[From your channel work, to your channel work]" },
+      });
       // A client outside a thread, a read-only client.
       expect(
         yield* refusal(scopeOf({ client: "full-access" }), { star: "vega-id", message: "x" }),
@@ -906,7 +924,13 @@ it.effect(
       const landed = () => {
         const message = server.threads.messages.at(-1);
         const thread = message === undefined ? undefined : server.threads.byId(message.threadId);
-        return { thread: thread?.shell.id, tags: thread?.shell.tags, text: message?.text };
+        return {
+          thread: thread?.shell.id,
+          tags: thread?.shell.tags,
+          line: message?.header?.line,
+          caption: message?.header?.caption,
+          text: message?.text,
+        };
       };
 
       // A child tagged for a channel wakes it in a thread of its own, user and work untouched.
@@ -916,7 +940,15 @@ it.effect(
       expect(landed()).toEqual({
         thread: "launched-1",
         tags: ["pult:channel:unit-2"],
-        text: '[From thread builder "builder" in project "Repo", to your channel unit-2]\n\nDone.',
+        line: '[From thread builder "builder" in project "Repo", to your channel unit-2]',
+        caption: {
+          reply: false,
+          lead: "From",
+          name: "builder",
+          open: { thread: "builder" },
+          note: null,
+        },
+        text: "Done.",
       });
       expect([user.runs.length, work.runs.length]).toEqual([1, 1]);
       // No channel tag, or another Star's child tag beside one: the record's default channel.
@@ -933,7 +965,9 @@ it.effect(
       expect(landed()).toEqual({
         thread: work.shell.id,
         tags: ["pult:channel:work"],
-        text: '[From Star "Deneb" (deneb-id), its channel review, to your channel work]\n\nA question.',
+        line: '[From Star "Deneb" (deneb-id), its channel review, to your channel work]',
+        caption: { reply: false, lead: "From", name: "Deneb", open: null, note: "review" },
+        text: "A question.",
       });
       // A channel that is no slug is invalid parameters, and nothing lands.
       const count = server.threads.messages.length;

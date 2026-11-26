@@ -17,7 +17,7 @@ import {
   WorkspaceEntries,
 } from "../host.ts";
 import type { Channel } from "../stars/channels.ts";
-import type { Deliver } from "../stars/deliver.ts";
+import { caption, type Deliver, type From } from "../stars/deliver.ts";
 import type { CommandOutcome, RunCommand } from "./command.ts";
 import type { Star, Stars, StarsView } from "../stars/stars.ts";
 import {
@@ -301,8 +301,8 @@ export const make = Effect.fn("Schedules.make")(function* (
     star: Star,
     schedule: Schedule,
     due: number,
-    /** The message and its sender's line, or why the run failed before it had one. */
-    message: { readonly text: string; readonly from: string } | { readonly failed: string },
+    /** The message and its sender, or why the run failed before it had one. */
+    message: { readonly text: string; readonly from: From } | { readonly failed: string },
   ) {
     const outcome =
       "failed" in message
@@ -369,9 +369,13 @@ export const make = Effect.fn("Schedules.make")(function* (
   ) {
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const late = now - due > LATE_MS ? `, delivered ${lateness(now - due)} late` : "";
+    const when = `due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`;
     yield* fire(star, schedule, due, {
       text: schedule.text,
-      from: `schedule ${schedule.name}, due ${wallClock(schedule.zone, due)} ${schedule.timezone}${late}`,
+      from: {
+        line: `schedule ${schedule.name}, ${when}`,
+        caption: caption("From schedule", schedule.name, null, when),
+      },
     });
   });
 
@@ -388,6 +392,7 @@ export const make = Effect.fn("Schedules.make")(function* (
     const key = `${star.id}:${schedule.name}`;
     ran.set(key, due);
     const started = DateTime.toEpochMillis(yield* DateTime.now);
+    const ranAt = `${wallClock(schedule.zone, started)} ${schedule.timezone}`;
     const outcome: CommandOutcome = yield* runCommand(star.root, command);
     if (outcome.kind !== "failed") failing.delete(key);
     switch (outcome.kind) {
@@ -396,7 +401,10 @@ export const make = Effect.fn("Schedules.make")(function* (
       case "printed":
         yield* fire(star, schedule, due, {
           text: `${schedule.text}\n\n${outcome.output}`,
-          from: `schedule ${schedule.name}'s command, ran ${wallClock(schedule.zone, started)} ${schedule.timezone}`,
+          from: {
+            line: `schedule ${schedule.name}'s command, ran ${ranAt}`,
+            caption: caption("From schedule", schedule.name, null, `its command, ran ${ranAt}`),
+          },
         });
         return true;
       case "failed":
@@ -406,7 +414,10 @@ export const make = Effect.fn("Schedules.make")(function* (
           yield* deliver({
             star,
             text: `\`${SCHEDULES_DIRECTORY}/${schedule.name}.md\`'s command failed: ${outcome.error}. Pult tells you again only after it has run cleanly.`,
-            from: `Pult, about schedule ${schedule.name}`,
+            from: {
+              line: `Pult, about schedule ${schedule.name}`,
+              caption: caption(`From Pult, about schedule ${schedule.name}`),
+            },
             key: `schedule-command-failed:${schedule.name}:${iso(due)}`,
             to: schedule.to,
             sender: "plugin",
@@ -433,7 +444,10 @@ export const make = Effect.fn("Schedules.make")(function* (
     yield* deliver({
       star,
       text: `\`${SCHEDULES_DIRECTORY}/${file.name}.md\` will not run: ${why}. Fix the file or delete it; Pult tells you once per content.`,
-      from: `Pult, about schedule ${file.name}`,
+      from: {
+        line: `Pult, about schedule ${file.name}`,
+        caption: caption(`From Pult, about schedule ${file.name}`),
+      },
       key,
       // A file that is no schedule names no channel: the default channel's.
       sender: "plugin",

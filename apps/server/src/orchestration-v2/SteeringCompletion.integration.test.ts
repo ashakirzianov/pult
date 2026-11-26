@@ -20,6 +20,7 @@ import {
   TurnItemId,
   type ModelSelection,
   type OrchestrationV2DomainEvent,
+  withMessageHeader,
 } from "@t3tools/contracts";
 import {
   expandAssistantCitationsForProvider,
@@ -3525,12 +3526,19 @@ it.effect("replays an accepted steer after its target turn completes", () =>
         messageId: MessageId.make("message:steer"),
         text: "Please report the test result",
         attachments: [],
+        // Pult: a header's line reaches the provider in place of upstream's note (`messageHeader.ts`).
+        context: withMessageHeader(undefined, {
+          extension: "pult",
+          line: "[From Pult, about your asks, to your channel main]",
+          caption: null,
+        }),
         mode: "steer",
         createdBy: "agent",
         creationSource: "mcp",
       } as const;
       const accepted = yield* threadManagement.sendToThread(input);
       assert.equal(accepted.delivery, "steered");
+      assert.equal(accepted.message.text, input.text);
       yield* worker.drain();
 
       const waiting = yield* orchestrator.streamDomainEvents.pipe(
@@ -3580,7 +3588,7 @@ it.effect("replays an accepted steer after its target turn completes", () =>
       assert.equal(fresh._tag, "ThreadManagementNoSteerableRunError");
       yield* worker.drain();
       assert.deepEqual(steered, [
-        `[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]\n\n${input.text}`,
+        `[From Pult, about your asks, to your channel main]\n\n${input.text}`,
       ]);
       assert.lengthOf(started, 1);
     }).pipe(

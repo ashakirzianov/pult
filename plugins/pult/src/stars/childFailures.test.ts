@@ -11,7 +11,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { Effect } from "../host.ts";
 import * as ChildFailures from "./childFailures.ts";
-import type { Deliver, Delivered, Delivery } from "./deliver.ts";
+import { caption, type Deliver, type Delivered, type Delivery } from "./deliver.ts";
 import type { Star } from "./stars.ts";
 import { at, fakeServer } from "./testing.ts";
 
@@ -78,7 +78,10 @@ describe("the child failures pass", () => {
       assert.strictEqual(h.deliveries.length, 1);
       const [told] = h.deliveries;
       assert.strictEqual(told?.star.id, "star-1");
-      assert.strictEqual(told?.from, 'Pult, about thread g5 "Build g5" in project "pult"');
+      assert.deepStrictEqual(told?.from, {
+        line: 'Pult, about thread g5 "Build g5" in project "pult"',
+        caption: caption("From Pult, about", "Build g5", { thread: "g5" }),
+      });
       assert.strictEqual(
         told?.text,
         "Its latest run failed at 12:00 UTC and it has stopped: Claude API unknown (provider_error). It runs again only when it is sent a message. Pult tells you once per failed run; a run stopped by a usage limit is not told.",

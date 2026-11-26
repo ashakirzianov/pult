@@ -10,6 +10,7 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
+  withMessageHeader,
 } from "@t3tools/contracts";
 
 import { DateTime } from "../host.ts";
@@ -153,6 +154,19 @@ function conversation(
   };
 }
 
+/** A delivery's header (`messageHeader.ts`): its line the Star read, its caption the page draws. */
+const delivered = {
+  extension: "pult",
+  line: '[From thread w "Fix the totals" in project "pult", to your channel main]',
+  caption: {
+    reply: false,
+    lead: "From",
+    name: "Fix the totals",
+    open: { thread: "w" },
+    note: null,
+  },
+} as const;
+
 const messages = [
   message("m1", "user", "What is on this week?", "2026-11-03T14:02:11.250Z"),
   message(
@@ -164,6 +178,11 @@ const messages = [
   // Two replies in one second saying the same, told apart by their ids alone, one needing quotes.
   message('m"3\\', "assistant", "Done.", "2026-11-03T14:10:00.100Z"),
   message("m4", "assistant", "Done.", "2026-11-03T14:10:00.900Z"),
+  message("m5", "user", "Totals fixed.", "2026-11-03T14:15:00.000Z", {
+    createdBy: "agent",
+    creationSource: "mcp",
+    context: withMessageHeader(undefined, delivered),
+  }),
   message("compact", "user", "/compact", "2026-11-03T14:20:00.000Z", {
     createdBy: "agent",
     creationSource: "server",
@@ -181,6 +200,10 @@ const items = [
   } as OrchestrationV2TurnItem,
   said('m"3\\', "assistant", "Done.", "2026-11-03T14:10:00.100Z"),
   said("m4", "assistant", "Done.", "2026-11-03T14:10:00.900Z"),
+  {
+    ...said("m5", "user", "Totals fixed.", "2026-11-03T14:15:00.000Z"),
+    context: withMessageHeader(undefined, delivered),
+  } as OrchestrationV2TurnItem,
   said("compact", "user", "/compact", "2026-11-03T14:20:00.000Z"),
 ];
 
@@ -227,7 +250,7 @@ started: "2026-11-03T14:02:11.250Z"
 ended: "2026-11-03T14:32:40.000Z"
 environment: "MacBook"
 title: "Plan the week"
-turns: 1
+turns: 2
 ---
 
 ### User · 2026-11-03T14:02:11Z
@@ -250,6 +273,12 @@ Done.
 ### Star · 2026-11-03T14:10:00Z · messageId="m4"
 
 Done.
+
+### User · 2026-11-03T14:15:00Z · header={"reply":false,"lead":"From","name":"Fix the totals","open":{"thread":"w"},"note":null}
+
+[From thread w "Fix the totals" in project "pult", to your channel main]
+
+Totals fixed.
 `,
     );
   });
@@ -279,6 +308,13 @@ describe("parseTranscript", () => {
       },
       { kind: "star", at: "2026-11-03T14:10:00Z", text: "Done.", messageId: 'm"3\\' },
       { kind: "star", at: "2026-11-03T14:10:00Z", text: "Done.", messageId: "m4" },
+      // The header's line, which the Star read, cut from the bubble the page draws under the caption.
+      {
+        kind: "user",
+        at: "2026-11-03T14:15:00Z",
+        text: "Totals fixed.",
+        caption: delivered.caption,
+      },
     ]);
     assert.deepStrictEqual(transcriptHead(text), {
       ended: "2026-11-03T14:32:40.000Z",
@@ -300,11 +336,16 @@ describe("parseTranscript", () => {
     assert.throws(() =>
       parseTranscript(`${front}\n### Star · 2026-11-03T14:02:30Z · messageId=7\n\nOld.\n`),
     );
+    assert.throws(() =>
+      parseTranscript(
+        `${front}\n### User · 2026-11-03T14:02:30Z · header={"lead":7}\n\n[x]\n\nNew.\n`,
+      ),
+    );
   });
 
   it("reads back a partial transcript, an earlier page's from a window of the latest turns", () => {
     const whole = formatTranscript(conversation(items, messages), "MacBook") ?? "";
-    const text = whole.replace(/^turns: 1\n/m, "turns: 1\npartial: true\n");
+    const text = whole.replace(/^turns: 2\n/m, "turns: 2\npartial: true\n");
     assert.strictEqual(parseTranscript(text)?.partial, true);
     assert.deepStrictEqual(transcriptHead(text), {
       ended: "2026-11-03T14:32:40.000Z",

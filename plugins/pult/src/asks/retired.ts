@@ -2,7 +2,7 @@
 // longer reads. Each Star with any left there is told once, at the plugin's start, to post again
 // what is still open; nothing is imported, since a file names no channel to answer in.
 import { Cause, Effect, FileSystem, Path } from "../host.ts";
-import type { Deliver } from "../stars/deliver.ts";
+import { caption, type Deliver } from "../stars/deliver.ts";
 import type { Stars } from "../stars/stars.ts";
 
 const RETIRED_DIRECTORY = ".pult/asks";
@@ -25,7 +25,7 @@ export const tellRetiredAsks = Effect.fn("Asks.tellRetired")(function* (
     yield* deliver({
       star,
       text: RETIRED_ASKS_NOTICE,
-      from: "Pult, about your asks",
+      from: { line: "Pult, about your asks", caption: caption("From Pult, about your asks") },
       key: "asks-retired",
       sender: "plugin",
     }).pipe(

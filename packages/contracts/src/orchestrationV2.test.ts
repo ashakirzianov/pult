@@ -11,6 +11,8 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./index.ts";
+import { OrchestrationMessageContext } from "./composerContext.ts";
+import { messageHeaderOf, withMessageHeader, withoutMessageHeader } from "./messageHeader.ts";
 import {
   latestProviderTurnForAttempt,
   OrchestrationV2CheckpointFileSummary,
@@ -743,5 +745,51 @@ describe("withMessageSenderNote", () => {
     [{ createdBy: "agent", creationSource: "server" }, "Hi", "Hi"],
   ] as const)("labels %j's message %j for the provider", (message, text, expected) => {
     expect(withMessageSenderNote(message, text)).toBe(expected);
+  });
+});
+
+// Pult: a message's header (`messageHeader.ts`).
+const decodeMessageContext = Schema.decodeSync(OrchestrationMessageContext);
+describe("a message's header", () => {
+  const thread = {
+    createdBy: "agent",
+    creationSource: "mcp",
+    senderThreadId: ThreadId.make("t"),
+  } as const;
+  const header = {
+    extension: "pult",
+    line: "[From Pult, about your asks, to your channel main]",
+    caption: {
+      reply: false,
+      lead: "From Pult, about your asks",
+      name: null,
+      open: null,
+      note: null,
+    },
+  } as const;
+  // Through the stored context's schema, as the server keeps and serves it.
+  const context = decodeMessageContext(withMessageHeader(undefined, header));
+
+  it.each([
+    [thread, "Hi", `${header.line}\n\nHi`],
+    [{ createdBy: "user", creationSource: "web" }, "Hi", `${header.line}\n\nHi`],
+    [thread, "", header.line],
+    [thread, "/compact", "/compact"],
+  ] as const)(
+    "names %j's message %j by its line in place of upstream's note",
+    (sender, text, expected) => {
+      expect(withMessageSenderNote({ ...sender, context }, text)).toBe(expected);
+    },
+  );
+
+  it("is read back from the stored context, and taken out of it", () => {
+    expect(messageHeaderOf(context)).toEqual(header);
+    expect(messageHeaderOf(withoutMessageHeader(context))).toBeNull();
+    expect(withoutMessageHeader(context).records).toEqual([]);
+  });
+
+  it("refuses a second header, and a line of two lines", () => {
+    expect(() => withMessageHeader(context, header)).toThrow("at most one header");
+    expect(() => withMessageHeader(undefined, { ...header, line: "[From a]\n[From b]" })).toThrow();
   });
 });

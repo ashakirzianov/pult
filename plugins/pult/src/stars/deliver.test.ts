@@ -22,6 +22,9 @@ import * as Stars from "./stars.ts";
 import { at, fakeServer, run } from "./testing.ts";
 
 const worker = ThreadId.make("worker");
+const { caption } = Delivery;
+/** A schedule's sender, as the schedules name one. */
+const standup = { line: 'schedule "standup"', caption: caption("From schedule", "standup") };
 const fullAccess = { runtimeMode: "full-access", interactionMode: "default" } as const;
 const work = { tags: [channelTag("work")] } satisfies Partial<OrchestrationV2ThreadShell>;
 const model = (name: string) => ({ instanceId: ProviderInstanceId.make("codex"), model: name });
@@ -153,7 +156,7 @@ const harness = Effect.gen(function* () {
     );
   /** As the plugin, to the default channel unless it names one. */
   const fromPlugin = (key: string, text = "Hello", to?: Channel) =>
-    deliver({ star, text, from: 'schedule "standup"', to, key, sender: "plugin" });
+    deliver({ star, text, from: standup, to, key, sender: "plugin" });
   /** As a thread through `McpToolAccess.writesThreads`, which provides the caller's limits; to `work` unless it names another. */
   const fromThread = (
     key: string,
@@ -163,7 +166,7 @@ const harness = Effect.gen(function* () {
     deliver({
       star,
       text: "Done.",
-      from: "thread worker",
+      from: { line: "thread worker", caption: caption("From", "worker", { thread: worker }) },
       to,
       key,
       sender: { thread: worker },
@@ -253,13 +256,20 @@ describe("deliver", () => {
         {
           threadId: message?.threadId,
           text: message?.text,
+          header: message?.header,
           senderThreadId: message?.senderThreadId,
           createdBy: message?.createdBy,
           creationSource: message?.creationSource,
         },
         {
           threadId: ThreadId.make("launched-1"),
-          text: '[From schedule "standup", to your channel main]\n\nTime for the standup.',
+          // The sender's words, its line and caption in the header (`messageHeader.ts`).
+          text: "Time for the standup.",
+          header: {
+            extension: "pult",
+            line: '[From schedule "standup", to your channel main]',
+            caption: standup.caption,
+          },
           senderThreadId: undefined,
           createdBy: "agent",
           creationSource: "server",
@@ -283,7 +293,13 @@ describe("deliver", () => {
             Effect.map((star) => star!),
           );
         const send = (star: Stars.Star, key: string) =>
-          h.deliver({ star, text: "Hello", from: "x", key, sender: "plugin" });
+          h.deliver({
+            star,
+            text: "Hello",
+            from: { line: "x", caption: null },
+            key,
+            sender: "plugin",
+          });
         yield* send(yield* recorded("default-channel: user"), "k1");
         const misnamed = yield* recorded("default-channel: User");
         yield* send(misnamed, "k2");
@@ -293,7 +309,7 @@ describe("deliver", () => {
           [["pult:channel:user"], ["pult:channel:main"]],
         );
         assert.deepStrictEqual(
-          h.threads.messages.map((each) => each.text.split("\n")[0]),
+          h.threads.messages.map((each) => each.header?.line),
           [
             "[From x, to your channel user]",
             "[From x, to your channel main]",
@@ -304,6 +320,10 @@ describe("deliver", () => {
         assert.include(
           h.threads.messages[2]?.text,
           '`default-channel` in `.pult/star.yaml` is "User", which is no channel\'s slug',
+        );
+        assert.deepStrictEqual(
+          h.threads.messages[2]?.header?.caption,
+          caption("From Pult, about .pult/star.yaml"),
         );
       }).pipe(Effect.scoped),
   );
@@ -327,13 +347,15 @@ describe("deliver", () => {
       assert.deepStrictEqual(
         {
           text: message?.text,
+          line: message?.header?.line,
           senderThreadId: message?.senderThreadId,
           createdBy: message?.createdBy,
           creationSource: message?.creationSource,
           limit: message?.limit,
         },
         {
-          text: "[From thread worker, to your channel work]\n\nDone.",
+          text: "Done.",
+          line: "[From thread worker, to your channel work]",
           senderThreadId: worker,
           createdBy: "agent",
           creationSource: "mcp",
@@ -611,7 +633,7 @@ describe("deliver", () => {
           open.runs.map((each) => each.id),
           ["open-run"],
         );
-        assert.include(h.threads.messages[0]?.text, "to your channel unit-2]");
+        assert.include(h.threads.messages[0]?.header?.line, "to your channel unit-2]");
       }).pipe(Effect.scoped),
   );
 
@@ -658,11 +680,13 @@ describe("deliver", () => {
             modelSelection: launch?.modelSelection,
             runtimeMode: launch?.runtimeMode,
             initialMessage: launch?.initialMessage?.text,
+            line: h.threads.messages[0]?.header?.line,
           },
           {
             modelSelection: selected(SOL),
             runtimeMode: "auto",
-            initialMessage: '[From schedule "standup", to your channel captures]\n\nFile these.',
+            initialMessage: "File these.",
+            line: '[From schedule "standup", to your channel captures]',
           },
         );
         // A channel with no file of its own takes every channel's.
@@ -683,7 +707,9 @@ describe("deliver", () => {
         yield* h.fromPlugin("k4", "Again.", "captures");
         assert.deepStrictEqual(h.launches.launches[2]?.modelSelection, selected(opus));
         // Nothing was wrong, so nothing was told.
-        assert.isFalse(h.threads.messages.some((each) => each.text.startsWith("[From Pult")));
+        assert.isFalse(
+          h.threads.messages.some((each) => each.header?.line.startsWith("[From Pult") === true),
+        );
       }).pipe(Effect.scoped),
   );
 
@@ -742,9 +768,14 @@ describe("deliver", () => {
           notice?.text,
           '`provider` in `.pult/channels/captures/settings.yaml` "codex-narrow" does not offer runtime mode "auto"',
         );
+        assert.deepStrictEqual(notice?.header, {
+          extension: "pult",
+          line: "[From Pult, about your channel settings, to your channel captures]",
+          caption: caption("From Pult, about your channel settings"),
+        });
         assert.match(
           notice!.text,
-          /^\[From Pult, about your channel settings, to your channel captures\]\n\nThe settings of your channel `captures`, `\.pult\/channels\/captures\/settings\.yaml` over `\.pult\/channels\/settings\.yaml`, cannot be read or served/u,
+          /^The settings of your channel `captures`, `\.pult\/channels\/captures\/settings\.yaml` over `\.pult\/channels\/settings\.yaml`, cannot be read or served/u,
         );
         // Without the files, the channel wakes at the Star's newest conversation's model.
         yield* h.fs.remove(h.path.join(h.star.root, SHARED_SETTINGS_FILE));
@@ -864,7 +895,7 @@ describe("deliver", () => {
           h.deliver({
             star: h.star,
             text: "x",
-            from: "y",
+            from: { line: "y", caption: null },
             to: "work",
             key: "k2",
             sender: { thread: worker },
