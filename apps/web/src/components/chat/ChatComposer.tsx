@@ -90,7 +90,7 @@ import {
 } from "../../composer-logic";
 import { DEFAULT_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { ComposerReplySuggestions } from "./ComposerReplySuggestions";
-import { useShellPlaceholder } from "./ShellComposerOptions";
+import { ShellComposerOptions, useShellPlaceholder } from "./ShellComposerOptions";
 import { useComposerScheduledSend } from "./ComposerScheduledSend";
 import { deriveComposerSendState, getAntigravitySendBlockReason } from "../ChatView.logic";
 import { threadHasStarted } from "../../lib/chatThreadActions";
@@ -531,6 +531,8 @@ const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   // Pult: the app around the view may name who the message goes to.
   const shellPlaceholder = useShellPlaceholder();
+  // Pult: a composer the app handles sends no access, so no ceiling refuses it nor offers a switch.
+  const offersAccess = use(ShellComposerOptions).send === null;
   const gt = useGT();
   const m = useMessages();
   const {
@@ -1021,7 +1023,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     m,
   );
   // A thread or draft already above the ceiling would be refused; offer the broadest mode left.
-  const runtimeModeCeilingDenial = runtimeModeDenial(managedPolicy, compatibleRuntimeMode, m);
+  const runtimeModeCeilingDenial = offersAccess
+    ? runtimeModeDenial(managedPolicy, compatibleRuntimeMode, m)
+    : undefined;
   const runtimeModeCeilingFallback =
     runtimeModeCeilingDenial === undefined
       ? undefined

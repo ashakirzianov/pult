@@ -33,6 +33,7 @@ import {
 } from "./ComposerModelEffort";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
+import { ShellComposerOptions } from "./ShellComposerOptions";
 
 /**
  * The composer footer controls: the model picker (which also holds effort, speed and
@@ -137,6 +138,8 @@ export function ComposerControlsBar(props: {
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
   // Pult: the app's bar always names the thread's access, its own item there.
   const accessInSlot = use(ComposerControlsSlot) !== null;
+  // Pult: a composer the app handles sends no access, so it offers none to pick.
+  const offersAccess = use(ShellComposerOptions).send === null;
   const {
     accessDisplay,
     showModeBlock,
@@ -145,7 +148,8 @@ export function ComposerControlsBar(props: {
     overflowShowsPermissions,
     pickerOwnsModeShortcut,
   } = resolveComposerControlsOwnership({
-    matchesDefault: !accessInSlot && (accessMatchesDefault || props.permissionsShownInStrip),
+    matchesDefault:
+      !offersAccess || (!accessInSlot && (accessMatchesDefault || props.permissionsShownInStrip)),
     collapsed: composerControlsCollapsed,
     measuredHiddenBlockCount,
   });
@@ -226,7 +230,7 @@ export function ComposerControlsBar(props: {
       triggerSuffix={effort.suffix}
       triggerDetail={effort.detail}
       triggerShortcuts={
-        pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
+        pickerOwnsModeShortcut && offersAccess ? "composer.effort composer.mode" : "composer.effort"
       }
       effortColumn={<ComposerEffortColumn traits={traitsInput} />}
       footer={

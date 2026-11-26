@@ -28,6 +28,7 @@ import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFo
 import { composerFloatingLayerProps, focusCheckedPermission } from "./composerEventScope";
 import { EffortGlyph, FastBolt, resolveEffortGlyph } from "./EffortGlyph";
 import { DockedPickerContext } from "./ProviderModelPicker";
+import { ShellComposerOptions } from "./ShellComposerOptions";
 import {
   getTraitsSectionVisibility,
   type TraitsSelectionInput,
@@ -725,15 +726,19 @@ export function ComposerPickerFooter(props: {
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  // Pult: a composer the app handles sends no access, so it offers none to pick.
+  const offersAccess = use(ShellComposerOptions).send === null;
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
       {props.traits ? <SpeedControl traits={props.traits} /> : null}
       {props.traits ? <UltracodeControl traits={props.traits} /> : null}
-      <PermissionsMenu
-        runtimeMode={props.runtimeMode}
-        options={props.runtimeModeOptions}
-        onChange={props.onRuntimeModeChange}
-      />
+      {offersAccess ? (
+        <PermissionsMenu
+          runtimeMode={props.runtimeMode}
+          options={props.runtimeModeOptions}
+          onChange={props.onRuntimeModeChange}
+        />
+      ) : null}
     </div>
   );
 }

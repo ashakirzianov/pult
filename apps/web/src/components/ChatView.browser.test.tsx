@@ -14,6 +14,7 @@ import {
   withMessageHeader,
   type IssueDetail,
   type ScheduledTaskUpsertInput,
+  type ServerConfig,
   type IssueRef,
   type ThreadIssueLink,
 } from "@t3tools/contracts";
@@ -475,8 +476,9 @@ const CHANNEL_HEADER: MessageHeader = {
 async function renderShellDraft(
   reply: ShellReply | null,
   send: ShellComposerOptions["send"] = null,
+  managedPolicy?: ServerConfig["managedPolicy"],
 ) {
-  const environment = installFakeEnvironment([]);
+  const environment = installFakeEnvironment([], managedPolicy ? { managedPolicy } : {});
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -616,7 +618,7 @@ it("a reply's composer names where it goes and offers the suggested replies, a c
   expect(messageHeaderOf(launches[0]?.initialMessage?.context)).toEqual(CHANNEL_HEADER);
 });
 
-it("a handled composer's send hands the app its text and uploaded attachment, keeping its content until the answer, a refusal its error", async () => {
+it("a handled composer offers no access to pick, and its send hands the app its text and uploaded attachment, keeping its content until the answer, a refusal its error", async () => {
   const sends: Array<Parameters<NonNullable<ShellComposerOptions["send"]>>[0]> = [];
   let answer: (outcome: Error | null) => void = () => {};
   const send = vi.fn((message: (typeof sends)[number]) => {
@@ -625,9 +627,27 @@ it("a handled composer's send hands the app its text and uploaded attachment, ke
       answer = (outcome) => (outcome === null ? resolve({ thread: "t1" }) : reject(outcome));
     });
   });
-  await using draft = await renderShellDraft(null, send);
+  // A ceiling below the draft's access, which a send that carries none never meets.
+  await using draft = await renderShellDraft(null, send, {
+    organization: "Acme",
+    lockedSettings: [],
+    limits: { maxRuntimeMode: "approval-required" },
+  });
   using _uploads = acceptAttachmentUploads();
   const { editor, launches } = draft;
+  // Its sends carry no access, so neither a chip, the overflow, nor the model picker answers composer.mode...
+  expect(document.querySelector('[data-composer-shortcut~="composer.mode"]')).toBeNull();
+  // ...and the picker's footer holds no permissions.
+  const modelPicker = document.querySelector<HTMLElement>(
+    '[data-composer-shortcut~="composer.effort"]',
+  );
+  await userEvent.click(modelPicker!);
+  await vi.waitFor(() =>
+    expect(document.querySelector("[data-model-picker-content]")).not.toBeNull(),
+  );
+  expect(document.querySelector("[data-composer-permissions-trigger]")).toBeNull();
+  await userEvent.keyboard("{Escape}");
+  expect(page.getByText("Acme limits threads to", { exact: false }).query()).toBeNull();
   await userEvent.click(editor);
   await insertText("Ship it");
   const clipboardData = new DataTransfer();

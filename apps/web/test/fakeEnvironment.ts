@@ -616,6 +616,7 @@ export function installFakeEnvironment(
     /** Commands left unanswered even when accepting, until `rejectPendingCommand`. */
     readonly holdCommand?: (command: OrchestrationV2Command) => boolean;
     readonly providers?: ReadonlyArray<unknown>;
+    readonly managedPolicy?: ServerConfig["managedPolicy"];
   },
 ): Disposable {
   threads = fixtures;
@@ -625,6 +626,7 @@ export function installFakeEnvironment(
       fixtures.some((thread) => (thread.issues?.length ?? 0) > 0),
     ),
     keybindings: options?.keybindings ?? DEFAULT_RESOLVED_KEYBINDINGS,
+    ...(options?.managedPolicy ? { managedPolicy: options.managedPolicy } : {}),
   };
   dispatched = [];
   acceptCommands = options?.acceptCommands === true;

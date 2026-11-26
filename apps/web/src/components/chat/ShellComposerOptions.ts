@@ -26,7 +26,7 @@ export interface ShellComposerOptions {
    * Hands each send to the app, which answers with the thread it landed in (a composer an
    * extension handles, `extensions.send`): the attachments uploaded, no message drawn, the
    * composer locked and its content kept until the answer, cleared on it, a refusal its error.
-   * Its draft becomes no thread, so it shows no environment or branch picker. Null for upstream's send.
+   * Its draft becomes no thread and its sends carry no access, so it shows no environment, branch or access picker. Null for upstream's send.
    */
   readonly send: ((message: ExtensionComposed) => Promise<unknown>) | null;
 }
