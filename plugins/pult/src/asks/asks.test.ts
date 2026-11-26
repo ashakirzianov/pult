@@ -130,6 +130,276 @@ it.effect(
         expect.arrayContaining(["asks"]),
       );
 
+      // What agents see of the asks, pinned: the three tools as `tools/list` lists them, and a refusal's text.
+      expect(
+        mcp.tools
+          .filter((entry) => entry.tool.name.startsWith("pult_ask"))
+          .map((entry) => JSON.parse(JSON.stringify(entry.tool))),
+      ).toMatchInlineSnapshot(`
+        [
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": true,
+              "readOnlyHint": false,
+              "title": "Ask the user",
+            },
+            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
+            "inputSchema": {
+              "properties": {
+                "file": {
+                  "description": "The file the ask is about, which Pult never deletes.",
+                  "type": "string",
+                },
+                "id": {
+                  "description": "One of your own asks, to ask it again.",
+                  "type": "string",
+                },
+                "replies": {
+                  "description": "1 to 4 reply options, each a distinct single line of at most 200 characters, offered beside the reply input. A click fills the input, the user may edit it before sending, and the reply arrives as any reply does: nothing tells you which option was clicked. Asking again replaces them; left out, the ask has none.",
+                  "items": {
+                    "type": "string",
+                  },
+                  "type": "array",
+                },
+                "text": {
+                  "description": "Markdown for Pult to keep as the ask's context, deleted with the ask.",
+                  "maxLength": 120000,
+                  "type": "string",
+                },
+                "title": {
+                  "description": "One line; by default the context's first line.",
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            "name": "pult_ask",
+            "outputSchema": {
+              "additionalProperties": true,
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "posted",
+                      ],
+                      "type": "string",
+                    },
+                  ],
+                },
+              },
+              "required": [
+                "id",
+                "status",
+              ],
+              "type": "object",
+            },
+          },
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": true,
+              "readOnlyHint": false,
+              "title": "Settle an ask",
+            },
+            "description": "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. It is removed 7 days after its settle; until then \`pult_ask\` with its \`id\` reopens it.",
+            "inputSchema": {
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+              },
+              "required": [
+                "id",
+              ],
+              "type": "object",
+            },
+            "name": "pult_ask_settle",
+            "outputSchema": {
+              "additionalProperties": true,
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "settled",
+                      ],
+                      "type": "string",
+                    },
+                  ],
+                },
+              },
+              "required": [
+                "id",
+                "status",
+              ],
+              "type": "object",
+            },
+          },
+          {
+            "annotations": {
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": true,
+              "readOnlyHint": true,
+              "title": "List asks",
+            },
+            "description": "The asks posted in Pult on this server, by default your own: for a Star, every channel's. Name a Star by \`star\` (its id, with \`channel\` for one of its channels) or a thread by \`thread\` to list theirs. Each row has its \`status\`: \`posted\` (in the user's Inbox), \`replied\` (the user replied), \`snoozed\` (until \`snoozedUntil\`), or \`settled\` (\`settled\` is when, its thread's settle for a thread's ask while that thread is settled); settled asks are listed only with \`settled: true\`. Work started from a linked environment lists only its own.",
+            "inputSchema": {
+              "properties": {
+                "channel": {
+                  "description": "One of the Star's channels, a slug.",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,50}$",
+                  "type": "string",
+                },
+                "settled": {
+                  "description": "Whether to list settled asks too.",
+                  "type": "boolean",
+                },
+                "star": {
+                  "description": "A Star's id.",
+                  "type": "string",
+                },
+                "thread": {
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            "name": "pult_ask_list",
+            "outputSchema": {
+              "additionalProperties": true,
+              "properties": {
+                "asks": {
+                  "items": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "file": {
+                        "type": "string",
+                      },
+                      "id": {
+                        "type": "string",
+                      },
+                      "posted": {
+                        "type": "string",
+                      },
+                      "poster": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": true,
+                            "properties": {
+                              "channel": {
+                                "pattern": "^[a-z0-9][a-z0-9-]{0,50}$",
+                                "type": "string",
+                              },
+                              "star": {
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "star",
+                              "channel",
+                            ],
+                            "type": "object",
+                          },
+                          {
+                            "additionalProperties": true,
+                            "properties": {
+                              "thread": {
+                                "type": "string",
+                              },
+                            },
+                            "required": [
+                              "thread",
+                            ],
+                            "type": "object",
+                          },
+                        ],
+                      },
+                      "replied": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                          },
+                          {
+                            "type": "null",
+                          },
+                        ],
+                      },
+                      "replies": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                      "settled": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                          },
+                          {
+                            "type": "null",
+                          },
+                        ],
+                      },
+                      "snoozedUntil": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                          },
+                          {
+                            "type": "null",
+                          },
+                        ],
+                      },
+                      "status": {
+                        "enum": [
+                          "posted",
+                          "replied",
+                          "snoozed",
+                          "settled",
+                        ],
+                        "type": "string",
+                      },
+                      "title": {
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "status",
+                      "file",
+                      "poster",
+                      "posted",
+                      "replied",
+                      "snoozedUntil",
+                      "settled",
+                      "replies",
+                    ],
+                    "type": "object",
+                  },
+                  "type": "array",
+                },
+              },
+              "required": [
+                "asks",
+              ],
+              "type": "object",
+            },
+          },
+        ]
+      `);
+
       // A Star, its conversation with the user open and warm; a worker in a repository's worktree.
       const root = path.join(server.directory, "star");
       yield* fs.makeDirectory(path.join(root, ".pult"), { recursive: true });
@@ -168,6 +438,27 @@ it.effect(
       });
       const star = as("vega-user");
       const work = as("worker");
+      expect(
+        yield* mcp
+          .callTool({ name: "pult_ask", arguments: { file: "a.md", text: "b" } })
+          .pipe(
+            Effect.provideService(
+              McpInvocationContext.McpInvocationContext,
+              scopeOf({ thread: "worker" }),
+            ),
+            Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          ),
+      ).toMatchInlineSnapshot(`
+        CallToolResult {
+          "content": [
+            {
+              "text": "{"_tag":"OrchestratorMcpFailure","code":"invalid_request","message":"Pass \`file\` or \`text\`, not both."}",
+              "type": "text",
+            },
+          ],
+          "isError": true,
+        }
+      `);
 
       // A Star posts Markdown Pult keeps, in the asks folder, registered as a hidden project.
       const posted = yield* star.ask({
