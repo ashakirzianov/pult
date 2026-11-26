@@ -1377,9 +1377,12 @@ export default function ChatView(props: ChatViewProps) {
   // onEnvironmentChange only retargets an unsent draft. envLocked alone does not
   // rule out a started thread: one whose machine is offline never loads its
   // messages, so it would otherwise be offered a machine picker that does nothing.
+  const shellComposerSend = use(ShellComposerOptions).send;
   // Pult: with a slot for the composer's controls, a draft's environment is a picker even with one to pick.
   const canChangeEnvironment =
     (hasMultipleEnvironments || composerControlsSlot !== null) &&
+    // Pult: a composer the app handles is a draft that becomes no thread, so it has no environment to pick.
+    shellComposerSend === null &&
     !envLocked &&
     draftId !== null &&
     !draftThread?.promotedTo;
@@ -4020,7 +4023,8 @@ export default function ChatView(props: ChatViewProps) {
                             data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                             className="relative z-0"
                           >
-                            {showComposerContextStrip && (
+                            {/* Pult: nor a branch to pick in a composer the app handles. */}
+                            {showComposerContextStrip && shellComposerSend === null && (
                               <ComposerControlsSlotItem item="context">
                                 <div className="pointer-events-auto">
                                   <BranchToolbar

@@ -3,6 +3,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { askRef, type PageAsk, asksOn, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { extensionRows } from "../extensions/index.ts";
+import { type PageRow, rowRef, shownRows } from "../extensions/ui.ts";
+import { ExtensionRow } from "./ExtensionRow.tsx";
 import { secretStore } from "../secrets/model.ts";
 import type { PageSecret } from "../secrets/secrets.ts";
 
@@ -44,6 +47,7 @@ import { JumpHint } from "./JumpHint.tsx";
 import { LimitsShelf } from "./LimitsShelf.tsx";
 import {
   askKey,
+  extensionRowKey,
   draftCards as draftCardsOf,
   draftKey,
   inboxRows,
@@ -245,6 +249,22 @@ export function PanelView() {
   const askCard = (ask: PageAsk) => (
     <AskCard key={askKey(ask)} ask={ask} environment={chip(ask.environmentId)} now={now} />
   );
+  // Extensions' rows, each on its shelf after its asks; a `star-mark` poster's none while Show Star is off.
+  const extensions = shownRows(
+    useSyncExternalStore(extensionRows.subscribe, extensionRows.get),
+    starsShown,
+  );
+  const extensionKeyOf = (page: PageRow) => extensionRowKey({ ...page, key: page.row.key });
+  const extensionRow = (page: PageRow) => (
+    <ExtensionRow
+      key={extensionKeyOf(page)}
+      page={page}
+      environment={chip(page.environmentId)}
+      now={now}
+    />
+  );
+  const extensionsOn = (shelf: PageRow["row"]["shelf"]) =>
+    extensions.filter((page) => page.row.shelf === shelf);
   const secrets = shownAsks(
     useSyncExternalStore(secretStore.subscribe, secretStore.get),
     starsShown,
@@ -262,10 +282,12 @@ export function PanelView() {
     new Map(rows.map((row) => [key(row), row] as const));
   const asksByKey = byKey(asks, askKey);
   const secretsByKey = byKey(secrets, secretKey);
+  const extensionsByKey = byKey(extensions, extensionKeyOf);
   const inbox = inboxRows({
     drafts: draftCards,
     secrets,
     asks: asks.map(askRef),
+    extensions: extensions.map(rowRef),
     threads: state.threads,
     environmentIds: [...environments.keys()],
   }).map((row) => {
@@ -276,6 +298,8 @@ export function PanelView() {
         return secretCard(found(secretsByKey, row.key));
       case "ask":
         return askCard(found(asksByKey, row.key));
+      case "extension":
+        return extensionRow(found(extensionsByKey, row.key));
       case "thread":
         return card(row.thread);
       case "star":
@@ -329,10 +353,11 @@ export function PanelView() {
       case "snoozed": {
         const threads = name === "working" ? working : snoozed;
         const shelved = asksOn(asks, name);
-        const count = threads.length + shelved.length;
+        const count = threads.length + shelved.length + extensionsOn(name).length;
         return (
           <Shelf key={name} name={name} empty={count === 0}>
             {shelved.map(askCard)}
+            {extensionsOn(name).map(extensionRow)}
             {threads.map(card)}
           </Shelf>
         );
@@ -345,10 +370,12 @@ export function PanelView() {
             empty={
               settled.length === 0 &&
               state.settled.count === 0 &&
-              asksOn(asks, "settled").length === 0
+              asksOn(asks, "settled").length === 0 &&
+              extensionsOn("settled").length === 0
             }
           >
             {asksOn(asks, "settled").map(askCard)}
+            {extensionsOn("settled").map(extensionRow)}
             <SettledTail
               threads={settled}
               shelf={state.settled}

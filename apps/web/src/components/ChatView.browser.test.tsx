@@ -472,7 +472,10 @@ const CHANNEL_HEADER: MessageHeader = {
   line: "[To your channel review]",
   caption: null,
 };
-async function renderShellDraft(reply: ShellReply | null) {
+async function renderShellDraft(
+  reply: ShellReply | null,
+  send: ShellComposerOptions["send"] = null,
+) {
   const environment = installFakeEnvironment([]);
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
@@ -508,6 +511,7 @@ async function renderShellDraft(reply: ShellReply | null) {
         creationTags: ["pult:channel:review"],
         creationHeader: { get: () => CHANNEL_HEADER, subscribe: () => () => {} },
         reply,
+        send,
       }}
     >
       <AppRoot router={router} />
@@ -632,6 +636,56 @@ it("a draft's first send as a reply carries its header in place of the channel's
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
   expect(launches[0]?.initialMessage?.text).toBe("Yes");
   expect(messageHeaderOf(launches[0]?.initialMessage?.context)).toEqual(header);
+});
+
+it("a handled composer's send hands the app its text and uploaded attachment, keeping its content until the answer, a refusal its error", async () => {
+  const sends: Array<Parameters<NonNullable<ShellComposerOptions["send"]>>[0]> = [];
+  let answer: (outcome: Error | null) => void = () => {};
+  const send = vi.fn((message: (typeof sends)[number]) => {
+    sends.push(message);
+    return new Promise<unknown>((resolve, reject) => {
+      answer = (outcome) => (outcome === null ? resolve({ thread: "t1" }) : reject(outcome));
+    });
+  });
+  await using draft = await renderShellDraft(null, send);
+  using _uploads = acceptAttachmentUploads();
+  const { editor, launches } = draft;
+  await userEvent.click(editor);
+  await insertText("Ship it");
+  const clipboardData = new DataTransfer();
+  clipboardData.items.add(new File([PNG], "shot.png", { type: "image/png" }));
+  editor
+    .element()
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+  await expect.element(page.getByRole("img", { name: "shot.png" })).toBeVisible();
+  await userEvent.keyboard("{Enter}");
+
+  await vi.waitFor(() => expect(sends).toHaveLength(1));
+  expect(sends[0]).toMatchObject({
+    // With the attachment's marker, as any send writes it, its record in the context.
+    text: expect.stringMatching(/^Ship\sit !\[shot\.png\]\(t3-context:/),
+    attachments: [expect.objectContaining({ id: "upload-1", type: "image" })],
+    model: null,
+    runtimeMode: null,
+    interactionMode: null,
+  });
+  // No header of its own: the handler writes where it lands.
+  expect(messageHeaderOf(sends[0]?.context)).toBeNull();
+  // Pending, the content stays; refused, it stays with the handler's words.
+  expect(editor.element().textContent).toMatch(/^Ship it/);
+  await act(() => answer(new Error("The channel is busy.")));
+  await expect.element(page.getByText("The channel is busy.")).toBeVisible();
+  expect(editor.element().textContent).toMatch(/^Ship it/);
+  await expect.element(page.getByRole("img", { name: "shot.png" })).toBeVisible();
+
+  await userEvent.click(editor);
+  await userEvent.keyboard("{Enter}");
+  await vi.waitFor(() => expect(sends).toHaveLength(2));
+  await act(() => answer(null));
+  await vi.waitFor(() => expect(editor.element().textContent).not.toMatch(/Ship it/));
+  expect(page.getByRole("img", { name: "shot.png" }).query()).toBeNull();
+  // It became no thread.
+  expect(launches).toHaveLength(0);
 });
 
 // Pult: the app around the view draws a message's header (`ShellMessagePresentation`).

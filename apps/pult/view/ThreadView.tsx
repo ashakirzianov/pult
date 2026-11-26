@@ -168,6 +168,7 @@ function makeMount() {
       const creationTags = next.kind === "draft" ? (next.tags ?? null) : null;
       const creationHeader = next.kind === "draft" ? (options.creationHeader ?? null) : null;
       const reply = options.reply ?? null;
+      const send = options.send ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
       if (
         additions.header !== options.timelineHeader ||
@@ -176,12 +177,13 @@ function makeMount() {
         additions.composer.placeholder !== placeholder ||
         JSON.stringify(additions.composer.creationTags) !== JSON.stringify(creationTags) ||
         additions.composer.creationHeader !== creationHeader ||
-        additions.composer.reply !== reply
+        additions.composer.reply !== reply ||
+        additions.composer.send !== send
       )
         additions = {
           header: options.timelineHeader,
           draftModel: options.draftModel,
-          composer: { draftHero, placeholder, creationTags, creationHeader, reply },
+          composer: { draftHero, placeholder, creationTags, creationHeader, reply, send },
         };
       changed();
     },
@@ -515,6 +517,8 @@ export interface MountOptions {
   readonly draftModel?: ShellValue<unknown>;
   /** The reply the mount's sends are, its header on each and its `sent` told of each (an answer to a Star's ask). */
   readonly reply?: ShellReply;
+  /** Hands each of the mount's sends to the shell, its draft becoming no thread (a composer an extension handles, `src/extensions/`). */
+  readonly send?: ShellComposerOptions["send"];
   /** The header the message that creates a thread from the mount's draft carries, read as it is sent (a Star channel's first message, the line `[To your channel <slug>]`); a reply's header stands in for it. */
   readonly creationHeader?: ShellValue<MessageHeader>;
   /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
@@ -547,6 +551,7 @@ const NO_ADDITIONS: Additions = {
     creationTags: null,
     creationHeader: null,
     reply: null,
+    send: null,
   },
 };
 

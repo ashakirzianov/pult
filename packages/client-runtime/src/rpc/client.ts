@@ -72,6 +72,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeServerLifecycle
   // Pult: the desktop app's update state on the server's machine.
   | typeof WS_METHODS.serverSubscribeDesktopApp
+  // Pult: the items extensions publish into the page's UI slots.
+  | typeof WS_METHODS.extensionsSubscribeUi
   | typeof WS_METHODS.scheduledTasksSubscribe
   | typeof WS_METHODS.workflowsSubscribe
   | typeof WS_METHODS.workflowsCounts

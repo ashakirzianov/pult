@@ -1,5 +1,6 @@
 import { msg } from "gt-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { hasExplicitComposerModelSelection } from "../../lib/chatThreadActions";
 import { m } from "~/i18n/messages";
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
 import { readWorktreeBaseBranch } from "../../worktreeRepositoryChoiceStore";
@@ -417,7 +418,7 @@ export function useComposerSend(input: ComposerSendInput) {
     respondingRequestIdsRef.current = respondingRequestIds;
   }, [pendingApprovals, respondingRequestIds]);
   // Pult: what the app around the view has this composer's sends carry (`ShellComposerOptions`).
-  const { creationTags, creationHeader, reply } = use(ShellComposerOptions);
+  const { creationTags, creationHeader, reply, send: shellSend } = use(ShellComposerOptions);
 
   const onSend = async (
     e?: { preventDefault: () => void },
@@ -1354,6 +1355,49 @@ export function useComposerSend(input: ComposerSendInput) {
         }
         return;
       }
+    }
+    // Pult: a composer the app handles hands its message over once its attachments are uploaded, and draws none itself (`ShellComposerOptions.send`).
+    if (shellSend !== null) {
+      if (multipleModelSelections !== null)
+        throw new Error("todo: a handled composer's send to several models at once.");
+      if (isCurrentRouteThread())
+        beginLocalDispatch({ preparingWorktree: false, submissionIntent: "foreground" });
+      const draftAtSend = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
+      try {
+        const attachments = await prepareTurnAttachments({
+          environmentId,
+          attachments: composerAttachmentsSnapshot,
+          usesAttachmentUploads: turnUsesAttachmentUploads,
+          draftTarget: composerDraftTarget,
+        });
+        await shellSend({
+          // No header: the handler writes where the message lands.
+          ...withMessageContext({
+            text: messageTextForSend,
+            context: buildComposerMessageContext(
+              boundAttachmentIds(attachments, composerAttachmentsSnapshot),
+            ),
+          }),
+          attachments,
+          // The handler's choice stands unless the user picked here.
+          model: hasExplicitComposerModelSelection(draftAtSend) ? ctxSelectedModelSelection : null,
+          runtimeMode: null,
+          interactionMode: null,
+        });
+        clearComposerDraftContent(composerDraftTarget);
+        if (currentRouteThreadKeyRef.current === routeThreadKey) {
+          promptRef.current = "";
+          composerRef.current?.resetCursorState();
+        }
+        if (turnUsesAttachmentUploads) releaseDraftAttachments(composerAttachmentsSnapshot);
+        setThreadError(threadIdForSend, null);
+      } catch (error) {
+        setThreadError(threadIdForSend, thrownErrorMessage(error, m) ?? String(error));
+      } finally {
+        sendInFlightRef.current = false;
+        if (isCurrentRouteThread()) resetLocalDispatch();
+      }
+      return;
     }
     if (sendQueuesBehindSetup) {
       setSetupQueueSendThreadKey(activeThreadKey);

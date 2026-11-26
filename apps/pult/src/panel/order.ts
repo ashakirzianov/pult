@@ -150,6 +150,17 @@ export interface AskRef {
   readonly shelf: "inbox" | "working" | "snoozed" | "settled";
 }
 
+/** An extension's row on a thread shelf, as the panel's order reads it (`src/extensions/ui.ts`). */
+export interface ExtensionRowRef {
+  readonly environmentId: string;
+  readonly extension: string;
+  readonly key: string;
+  readonly shelf: "inbox" | "working" | "snoozed" | "settled";
+}
+
+export const extensionRowKey = (row: Omit<ExtensionRowRef, "shelf">) =>
+  `extension:${JSON.stringify([row.environmentId, row.extension, row.key])}`;
+
 /** An ask's row's key, beside the cards' in the jump hints. */
 export const askKey = (ask: Pick<AskRef, "environmentId" | "id">) =>
   `ask:${ask.environmentId}/${ask.id}`;
@@ -257,6 +268,7 @@ export type JumpTarget<File extends FileRef, Thread extends ThreadRef = ShellThr
   | { readonly kind: "draft"; readonly key: string; readonly draft: ProjectDraft }
   | { readonly kind: "secret"; readonly key: string; readonly secret: SecretRef }
   | { readonly kind: "ask"; readonly key: string; readonly ask: AskRef }
+  | { readonly kind: "extension"; readonly key: string; readonly row: ExtensionRowRef }
   | { readonly kind: "thread"; readonly key: string; readonly thread: Thread };
 
 /** What the panel shows, as `jumpTargets` reads it. */
@@ -272,6 +284,8 @@ export interface PanelRows<File extends FileRef, Thread extends ThreadRef = Shel
   readonly secrets: ReadonlyArray<SecretRef>;
   /** The asks' rows, each on its shelf, in the model's order (`shownAsks`, `src/asks/asks.ts`). */
   readonly asks: ReadonlyArray<AskRef>;
+  /** Extensions' rows, each on its shelf, after its ask rows, by extension then as published. */
+  readonly extensions: ReadonlyArray<ExtensionRowRef>;
   /** The store's threads, in its order. */
   readonly threads: ReadonlyArray<Thread>;
   /** The key of the selected card: a thread's, its root's for a subagent, or a draft's. */
@@ -308,6 +322,8 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
     panel.asks
       .filter((ask) => ask.shelf === shelf)
       .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask }));
+  const extensionsOn = (shelf: ExtensionRowRef["shelf"]) =>
+    extensionRowsOn<File, Thread>(panel.extensions, shelf);
   const rows = (shelf: PanelShelf): JumpTarget<File, Thread>[] => {
     switch (shelf) {
       case "stars":
@@ -321,10 +337,11 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
         return inboxRows(panel);
       case "working":
       case "snoozed":
-        return [...asksOn(shelf), ...on(shelf).map(threadTarget)];
+        return [...asksOn(shelf), ...extensionsOn(shelf), ...on(shelf).map(threadTarget)];
       case "settled":
         return [
           ...asksOn("settled"),
+          ...extensionsOn("settled"),
           ...settledTail(on("settled"), panel.settledCount, panel.selection).map(threadTarget),
         ];
       case "limits":
@@ -337,12 +354,12 @@ export function jumpTargets<File extends FileRef, Thread extends ThreadRef>(
 /**
  * Inbox's rows, top to bottom, which the panel draws, counts and jumps to:
  * the draft cards, then the secrets' rows, then the posted asks' rows, then
- * the pinned and active threads' cards, none while no environment is held.
+ * the extensions' rows on Inbox, then the pinned and active threads' cards, none while no environment is held.
  */
 export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
   panel: Pick<
     PanelRows<File, Thread>,
-    "drafts" | "secrets" | "asks" | "threads" | "environmentIds"
+    "drafts" | "secrets" | "asks" | "extensions" | "threads" | "environmentIds"
   >,
 ): JumpTarget<File, Thread>[] {
   return [
@@ -359,9 +376,20 @@ export function inboxRows<File extends FileRef, Thread extends ThreadRef>(
     ...panel.asks
       .filter((ask) => ask.shelf === "inbox")
       .map((ask): JumpTarget<File, Thread> => ({ kind: "ask", key: askKey(ask), ask })),
+    ...extensionRowsOn<File, Thread>(panel.extensions, "inbox"),
     ...(panel.environmentIds.length === 0
       ? []
       : panel.threads.filter((thread) => thread.shelf === "pinned" || thread.shelf === "active")
     ).map((thread): JumpTarget<File, Thread> => ({ kind: "thread", key: keyOf(thread), thread })),
   ];
+}
+
+/** The extensions' rows on `shelf`, in the order they come. */
+function extensionRowsOn<File extends FileRef, Thread extends ThreadRef>(
+  rows: ReadonlyArray<ExtensionRowRef>,
+  shelf: ExtensionRowRef["shelf"],
+): JumpTarget<File, Thread>[] {
+  return rows
+    .filter((row) => row.shelf === shelf)
+    .map((row) => ({ kind: "extension", key: extensionRowKey(row), row }));
 }

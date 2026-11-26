@@ -11,6 +11,8 @@ import { starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { askRef, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { extensionRows } from "../extensions/index.ts";
+import { rowRef, shownRows } from "../extensions/ui.ts";
 import { secretStore } from "../secrets/model.ts";
 import {
   explorerSelected,
@@ -85,6 +87,7 @@ function currentTargets(): JumpTarget<URI>[] {
     stars: starsOnShelf(starStore.get()).map((star) => star.id),
     secrets: shownAsks(secretStore.get(), starEnabled.get()),
     asks: shownAsks(askStore.get(), starEnabled.get()).map(askRef),
+    extensions: shownRows(extensionRows.get(), starEnabled.get()).map(rowRef),
     environmentIds,
     files: openExplorerFiles.get().files,
     drafts: draftCards(
@@ -215,6 +218,15 @@ function jump(target: JumpTarget<URI> | undefined): Promise<void> {
           "pult-shell.openAsk",
           target.ask.environmentId,
           target.ask.id,
+        ),
+      );
+    case "extension":
+      return getService(ICommandService).then((commands) =>
+        commands.executeCommand<void>(
+          "pult-shell.openExtensionRow",
+          target.row.environmentId,
+          target.row.extension,
+          target.row.key,
         ),
       );
     case "thread":

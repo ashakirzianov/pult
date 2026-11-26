@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "react";
 
 import { askRef, asksOn, shownAsks } from "../asks/asks.ts";
 import { askStore } from "../asks/model.ts";
+import { extensionRows } from "../extensions/index.ts";
+import { rowRef, shownRows } from "../extensions/ui.ts";
 import { secretStore } from "../secrets/model.ts";
 import { limitsShelf } from "../limits/limits.ts";
 import { limitsStore } from "../limits/model.ts";
@@ -70,6 +72,12 @@ export function TrayShelves() {
   const starsShown = useSyncExternalStore(starEnabled.subscribe, starEnabled.get);
   const stars = useSyncExternalStore(starStore.subscribe, starStore.get);
   const asks = shownAsks(useSyncExternalStore(askStore.subscribe, askStore.get), starsShown);
+  const extensions = shownRows(
+    useSyncExternalStore(extensionRows.subscribe, extensionRows.get),
+    starsShown,
+  ).map(rowRef);
+  const extensionsOn = (shelf: (typeof extensions)[number]["shelf"]) =>
+    extensions.filter((row) => row.shelf === shelf).length;
   const secrets = shownAsks(
     useSyncExternalStore(secretStore.subscribe, secretStore.get),
     starsShown,
@@ -127,6 +135,7 @@ export function TrayShelves() {
           drafts,
           secrets,
           asks: asks.map(askRef),
+          extensions,
           threads: state.threads,
           environmentIds: state.environments.map((environment) => environment.id),
         }).length;
@@ -141,7 +150,7 @@ export function TrayShelves() {
       }
       case "working":
       case "snoozed": {
-        const count = on(shelf).length + asksOn(asks, shelf).length;
+        const count = on(shelf).length + asksOn(asks, shelf).length + extensionsOn(shelf);
         return {
           badge: count > 0 ? count : undefined,
           empty: count === 0,
@@ -151,7 +160,7 @@ export function TrayShelves() {
       }
       case "settled":
         // Every settled thread, the older ones the shells leave out among them, and ask, as the shelf's header counts.
-        const settledAsks = asksOn(asks, "settled").length;
+        const settledAsks = asksOn(asks, "settled").length + extensionsOn("settled");
         return {
           badge: undefined,
           empty: on("settled").length === 0 && state.settled.count === 0 && settledAsks === 0,

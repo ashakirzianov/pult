@@ -137,10 +137,10 @@ async function act(
 }
 
 /** A custom wake, typed in the shell's input box: a duration or a local time. */
-async function customWake(): Promise<string | undefined> {
+async function customWake(title = "Snooze until"): Promise<string | undefined> {
   const quickInput = await getService(IQuickInputService);
   const text = await quickInput.input({
-    title: "Snooze until",
+    title,
     prompt: "A duration such as 45m, 2h or 3d, or a local time such as 2026-10-20 09:00",
     validateInput: async (value) =>
       value.trim() !== "" && parseCustomSnooze(value, new Date()) === null
@@ -317,12 +317,13 @@ export const showSnoozeMenu = (target: ThreadRef, anchor: HTMLElement, onHide: (
     threadStore.thread(target.environmentId, target.id),
   );
 
-/** The snooze presets under `anchor`, a thread's Before cache expires first, the time picked, Custom…'s asked for, given to `snooze`; an ask's card's clock (`src/panel/AskCard.tsx`) names no thread. */
+/** The snooze presets under `anchor`, a thread's Before cache expires first, the time picked, Custom…'s asked for under `title`, given to `snooze`; an extension row's instant (`src/panel/ExtensionRow.tsx`) names no thread. */
 export async function showSnoozePresets(
   anchor: HTMLElement,
   onHide: () => void,
   snooze: (snoozedUntil: string) => void,
   thread?: ShellThread,
+  title?: string,
 ): Promise<void> {
   const menus = await getService(IContextMenuService);
   menus.showContextMenu({
@@ -330,7 +331,7 @@ export async function showSnoozePresets(
     getActions: () =>
       snoozeActions((wake) => {
         if (wake !== CUSTOM_WAKE) return snooze(wake);
-        void customWake().then((until) => {
+        void customWake(title).then((until) => {
           if (until !== undefined) snooze(until);
         });
       }, thread),

@@ -6,7 +6,6 @@
 import {
   getService,
   ICommandService,
-  IInstantiationService,
   INotificationService,
   IQuickInputService,
 } from "@codingame/monaco-vscode-api";
@@ -19,13 +18,13 @@ import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench
 
 import type { MountOptions, ViewTarget } from "../../view/main.tsx";
 import { connection } from "../connection/index.ts";
+import { openPosterThread } from "../extensions/index.ts";
 import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
-import { channelModel, starById, starStore, starTarget } from "../stars/model.ts";
+import { channelModel, starById, starStore } from "../stars/model.ts";
 import { starEnabled } from "../stars/settings.ts";
 import { afterDraftWake } from "../stars/tab.tsx";
-import { StarThreadInput } from "../threads/pane.tsx";
-import { selectStar, selectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
+import { selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { type PageAsk, posterName, replyDestination, shownAsks } from "./asks.ts";
 import { actOnPageAsk, askById, askStore } from "./model.ts";
@@ -67,34 +66,6 @@ async function replied(ask: PageAsk, environmentId: string): Promise<void> {
     );
   if (askById(ask.environmentId, ask.id)?.posted !== ask.posted) return;
   await actOnPageAsk(ask, { kind: "replied" });
-}
-
-/** Open the thread that accepted the send, even if its Star has another channel or home open. */
-async function openReplyThread(
-  poster: PageAsk["poster"],
-  environmentId: string,
-  threadId: string,
-): Promise<void> {
-  if ("thread" in poster) return selectThread(environmentId, threadId);
-
-  const star = starById(poster.star);
-  if (star === undefined) return selectThread(environmentId, threadId);
-  await selectStar(star.id);
-  if (selectedStar() !== star.id) return;
-  const current = starById(star.id) ?? star;
-  const lead = starTarget(current);
-  if (lead?.kind === "thread" && lead.environmentId === environmentId && lead.threadId === threadId)
-    return;
-
-  const [editors, instantiation] = await Promise.all([
-    getService(IEditorService),
-    getService(IInstantiationService),
-  ]);
-  // The channel's tab, as its row opens it, following the channel on this environment.
-  await editors.openEditor(
-    instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel, star.id),
-    { revealIfOpened: true },
-  );
 }
 
 /** Where the reply to the ask arrives, read live, so a rename or a settle shows; its name opens the thread it goes into. */
@@ -230,7 +201,7 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
       for (const listener of sendingListeners) listener();
     };
     const openThread = (environmentId: string, threadId: string) =>
-      void openReplyThread(ask.poster, environmentId, threadId).catch(async (error: unknown) => {
+      void openPosterThread(ask.poster, environmentId, threadId).catch(async (error: unknown) => {
         (await getService(INotificationService)).error(
           `Pult could not open the reply's thread: ${String(error)}`,
         );

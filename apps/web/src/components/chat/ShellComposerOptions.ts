@@ -2,7 +2,7 @@
 // mount's composer, and what its sends carry, which upstream's app never sets.
 // Pult sets it on a Star's tab and its composer strip (`apps/pult/src/stars/tab.tsx`),
 // and on a Star channel's draft (`apps/pult/view/ThreadView.tsx`).
-import type { MessageHeader } from "@t3tools/contracts";
+import type { ExtensionComposed, MessageHeader } from "@t3tools/contracts";
 import { createContext, use, useSyncExternalStore } from "react";
 
 /** A value the app keeps and changes, read live. */
@@ -22,11 +22,18 @@ export interface ShellComposerOptions {
   readonly creationHeader: ShellValue<MessageHeader> | null;
   /** The reply this composer's sends are (an answer to a Star's ask); null for a plain message. */
   readonly reply: ShellReply | null;
+  /**
+   * Hands each send to the app, which answers with the thread it landed in (a composer an
+   * extension handles, `extensions.send`): the attachments uploaded, no message drawn, the
+   * composer locked and its content kept until the answer, cleared on it, a refusal its error.
+   * Its draft becomes no thread, so it shows no environment or branch picker. Null for upstream's send.
+   */
+  readonly send: ((message: ExtensionComposed) => Promise<unknown>) | null;
 }
 
 export interface ShellReply {
-  /** The header the sent message carries (`messageHeader.ts`): the line its agent reads above what the user wrote, the caption drawn over it. */
-  readonly header: MessageHeader;
+  /** The header the sent message carries (`messageHeader.ts`): the line its agent reads above what the user wrote, the caption drawn over it; null where the app's `send` writes it. */
+  readonly header: MessageHeader | null;
   /** Where the reply arrives, named on a line above the message input (`ComposerReplySuggestions`) all the while it is written. */
   readonly destination: ShellValue<ShellReplyDestination>;
   /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
@@ -53,6 +60,7 @@ export const ShellComposerOptions = createContext<ShellComposerOptions>({
   creationTags: null,
   creationHeader: null,
   reply: null,
+  send: null,
 });
 
 const NO_PLACEHOLDER: ShellValue<string | null> = { get: () => null, subscribe: () => () => {} };
