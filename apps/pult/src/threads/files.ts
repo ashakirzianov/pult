@@ -18,6 +18,7 @@ import { connection } from "../connection/index.ts";
 import { makeFileLinks, rootsKey } from "../files/linkable.ts";
 import {
   baseName,
+  joinPath,
   locate,
   namesEnvironment,
   parentOf,
@@ -100,7 +101,11 @@ export async function openDocumentFile(
   );
 }
 
-/** Opens `path` as `input` resolves it, `where` naming in a notice what was searched. */
+/**
+ * Opens `path` as `input` resolves it, a folder holding a `bundle.md` (an
+ * xaxis bundle, `x.task`) as that file, `where` naming in a notice what was
+ * searched.
+ */
 async function openPath(
   environmentId: string,
   input: Omit<ResolveInput, "path" | "exists">,
@@ -139,6 +144,14 @@ async function openPath(
       break;
   }
   if (opened === undefined) return;
+  const head = joinPath(opened, "bundle.md");
+  const isFolder = (await files.stat(pultResource(environmentId, opened)).catch(() => undefined))
+    ?.isDirectory;
+  if (
+    isFolder === true &&
+    (await files.exists(pultResource(environmentId, head)).catch(() => false))
+  )
+    opened = head;
   await editors.openEditor({
     resource: pultResource(environmentId, opened),
     options:
