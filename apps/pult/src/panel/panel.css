@@ -730,10 +730,18 @@
   white-space: nowrap;
 }
 
-.pult-schedule-kind {
+/* Over the workbench's 16px for codicons in a part (`.monaco-workbench-part .codicon[class*='codicon-']`), which a lower specificity loses to. */
+.pult-schedule .pult-schedule-head .pult-schedule-kind.codicon {
   flex: none;
   font-size: 14px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* The Schedules shelf's `calendar` at its rows' icons' 14px (`StarSchedules.tsx`), centred in a 16px icon's room so its label lines up with the other shelves'. */
+.pult-details-shelf[data-shelf="schedules"] .pult-shelf-icon.codicon {
+  font-size: 14px;
+  margin-left: 1px;
+  margin-right: -2px;
 }
 
 .pult-schedule-next {
