@@ -251,7 +251,11 @@ function ThreadPlace({ details }: { details: ThreadDetailsState }) {
         ? {}
         : {
             title: path,
-            open: () => run("pult-shell.openThreadExplorer"),
+            // The thread named, which on a Star's child's tab is not the selection's.
+            open: () =>
+              thread === undefined
+                ? run("pult-shell.openThreadExplorer")
+                : run("pult-shell.openThreadExplorer", thread.environmentId, thread.id),
           }),
     },
   ];

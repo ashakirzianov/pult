@@ -73,7 +73,7 @@ const ROTATE_FROM: Record<ChannelSettings["rotateFrom"], string> = {
 /**
  * The selected channel's details (`pult/decisions`, `view-right-panel`):
  * the channel whose tab is active, the default channel on the Star's own
- * tab, left out on a file's or a child's tab. Its conversation, when it
+ * tab, left out on a file's tab, a child's showing the child's own. Its conversation, when it
  * started and when it sleeps, or since when it sleeps; where the home the
  * Star is drawn from serves `star-channel-settings`, the model a fresh
  * conversation takes and when it refreshes its context, each with the file

@@ -199,12 +199,14 @@ export async function showThreads(): Promise<void> {
 
 /**
  * The Explorer tab, narrowed to the selected thread's checkout, its worktree
- * else its project's root: the root is the workspace's only folder then, as
- * the explorer shows the workspace's folders and the page's `pult:` provider
- * serves them (`src/files/`). A thread with no checkout cannot narrow; its
- * card says so.
+ * else its project's root, or to `thread`'s (a Star's child's, whose tab's
+ * Thread shelf names it, the selection being the Star) until the selection
+ * changes: the root is the workspace's only folder then, as the explorer
+ * shows the workspace's folders and the page's `pult:` provider serves them
+ * (`src/files/`). A thread with no checkout cannot narrow; its card says so.
  */
-async function openThreadExplorer(): Promise<void> {
+async function openThreadExplorer(thread?: ThreadSelection): Promise<void> {
+  if (thread !== undefined) lastSelected = thread;
   if (threadRootOfScope() === undefined) {
     (await getService(INotificationService)).info(
       "Pult: the selected thread has no project folder to explore.",
@@ -650,8 +652,12 @@ export function registerExplorerCommands(): void {
         });
       }
 
-      run(): Promise<void> {
-        return openThreadExplorer();
+      run(_accessor: unknown, environmentId: unknown, threadId: unknown): Promise<void> {
+        return openThreadExplorer(
+          typeof environmentId === "string" && typeof threadId === "string"
+            ? { environmentId, threadId }
+            : undefined,
+        );
       }
     },
   );

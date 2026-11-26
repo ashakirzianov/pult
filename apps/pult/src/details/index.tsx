@@ -124,11 +124,18 @@ function threadViewOf(editor: unknown): DetailsCardsTarget | null {
   return null;
 }
 
-/** What the cards show while open over a thread's view: the selection's details, a thread's, a draft's or a Star's. */
+/**
+ * What the cards show while open over a thread's view: the selection's
+ * details, a thread's, a draft's or a Star's; on a Star's child's tab (a
+ * `StarThreadInput` with no slug) the child's own, a regular thread's,
+ * where a channel's tab keeps the Star's.
+ */
 function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | null {
   const subject = detailsSubject();
   switch (subject.kind) {
     case "star":
+      if (editor instanceof StarThreadInput && editor.slug === null && over.kind === "thread")
+        return { view: over, subject: over };
       return {
         view: over,
         subject: {
