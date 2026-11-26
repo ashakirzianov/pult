@@ -1,7 +1,10 @@
-import type {
-  IEditorOverrideServices,
-  IWorkbenchConstructionOptions,
+import {
+  IClipboardService,
+  IExplorerService,
+  type IEditorOverrideServices,
+  type IWorkbenchConstructionOptions,
 } from "@codingame/monaco-vscode-api";
+import { SyncDescriptor } from "@codingame/monaco-vscode-api/vscode/vs/platform/instantiation/common/descriptors";
 import getAccessibilityServiceOverride from "@codingame/monaco-vscode-accessibility-service-override";
 import getBulkEditServiceOverride from "@codingame/monaco-vscode-bulk-edit-service-override";
 import getCommentsServiceOverride from "@codingame/monaco-vscode-comments-service-override";
@@ -40,13 +43,16 @@ import getWorkbenchServiceOverride from "@codingame/monaco-vscode-workbench-serv
 import getWorkingCopyServiceOverride from "@codingame/monaco-vscode-working-copy-service-override";
 import getWorkspaceTrustOverride from "@codingame/monaco-vscode-workspace-trust-service-override";
 
+import { PultClipboardService, PultExplorerService } from "./desktop/clipboard.ts";
+
 /**
  * The workbench's services: the full workbench (layout, editor groups, views)
  * with a worker extension host for the VSIXes the user installs from Open VSX,
  * secrets, storage, files, configuration, the editor's own (themes, grammars,
  * languages, search, markers) and source control, for the page's changes
- * view. Terminal, debug, testing, notebooks, chat and the rest are
- * left out on purpose.
+ * view, and the clipboard, which pastes the files desktop VS Code copied
+ * (`src/desktop/clipboard.ts`). Terminal, debug, testing, notebooks, chat
+ * and the rest are left out on purpose.
  */
 export function workbenchServices(): IEditorOverrideServices {
   return {
@@ -99,6 +105,8 @@ export function workbenchServices(): IEditorOverrideServices {
       isKeybindingConfigurationVisible: () => true,
       shouldUseGlobalPicker: () => true,
     }),
+    [IClipboardService.toString()]: new SyncDescriptor(PultClipboardService, [], true),
+    [IExplorerService.toString()]: new SyncDescriptor(PultExplorerService, [], true),
   };
 }
 

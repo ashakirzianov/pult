@@ -182,7 +182,8 @@ function isMixedContent(origin: string, httpBaseUrl: string): boolean {
   return url.protocol === "http:" && !isLoopback(url.hostname);
 }
 
-function isLoopback(hostname: string): boolean {
+/** Whether `hostname` names this machine: the page's mixed-content rule, and the environment a copied file is on (`src/desktop/clipboard.ts`). */
+export function isLoopback(hostname: string): boolean {
   return (
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||

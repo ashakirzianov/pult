@@ -52,6 +52,14 @@ export interface PultDesktop {
    */
   onPreviewCite(listener: (cite: PreviewCite) => void): void;
   /**
+   * The files desktop VS Code's explorer copied, as their `file:` URIs, none
+   * for anything else on the clipboard: the private pasteboard type VS Code
+   * writes, which a page never sees (`src/desktop/clipboard.ts`).
+   */
+  readonly clipboard: {
+    readFiles(): Promise<string[]>;
+  };
+  /**
    * The OS's spell checker, the one Chromium's text fields use
    * (`src/spelling/index.ts`): `misspelled` and `suggestions` answer at once,
    * each a synchronous call to the browser process; `learn` adds a word to

@@ -33,6 +33,12 @@ export function exposePultDesktop(version: string): void {
         return () => ipcRenderer.off(Channel.windowFullScreen, handler);
       },
     },
+    clipboard: {
+      readFiles: async () =>
+        (await invoke<string>(Channel.clipboardReadFiles))
+          .split(/\r?\n/)
+          .filter((line) => line !== ""),
+    },
     keepRendering: (keep) => invoke(Channel.windowKeepRendering, keep ? "on" : "off"),
     longFrame: (frame) => invoke(Channel.longFrame, JSON.stringify(frame)),
     onPreviewCite(listener) {

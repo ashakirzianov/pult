@@ -12,6 +12,8 @@ export const Channel = {
   /** Pult.app's alone (`upstreamHost.ts`): `on` while the page's browser host waits on a capture, `off` after. */
   windowKeepRendering: "pult-desktop:window.keepRendering",
   spellingLearn: "pult-desktop:spelling.learn",
+  /** The files desktop VS Code copied, as `clipboard.ts` reads them. */
+  clipboardReadFiles: "pult-desktop:clipboard.readFiles",
   /** Pult.app's alone (`upstreamHost.ts`): a long animation frame, as JSON, for the freeze log (`freezeLog.ts`). */
   longFrame: "pult-desktop:longFrame",
   /** Pult.app's alone (`upstreamHost.ts`): the page takes Cite from a browser's context menu (`pultGuestMenuItems`). */

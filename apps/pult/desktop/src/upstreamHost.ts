@@ -21,6 +21,7 @@ import {
   type WebContents,
 } from "electron";
 
+import { copiedFileList } from "./clipboard.ts";
 import { captureStack, openFreezeLog } from "./freezeLog.ts";
 import type { PreviewCite } from "../../src/desktop/api.ts";
 import { Channel, learnSpelling, titleBarLayout, type Reply } from "./ipc.ts";
@@ -30,7 +31,8 @@ import { openSecretStore } from "./secretStore.ts";
  * Answers `window.pultDesktop` for the page at `pageOrigin` (upstream's
  * `<scheme>://app`): the secrets in `userData`'s `secrets.json`, the title
  * bar's layout, the window's full screen, the window kept rendering for a
- * browser's capture, a word the spell checker learns, the page's long frames into the
+ * browser's capture, a word the spell checker learns, the files desktop VS Code
+ * copied, the page's long frames into the
  * freeze log in `logDir` (`freezeLog.ts`), and the app's version; and on a window's
  * `unresponsive`, once per spell, its page's JS stack into that log; and the
  * page's subscription to a browser menu's Cite (`pultGuestMenuItems`). Called after
@@ -48,15 +50,15 @@ export function installPultDesktop(input: {
   };
   const handle = <T>(
     channel: string,
-    answer: (event: IpcMainInvokeEvent, ...args: string[]) => T,
+    answer: (event: IpcMainInvokeEvent, ...args: string[]) => T | Promise<T>,
   ) =>
-    ipcMain.handle(channel, (event, ...args: unknown[]): Reply<T> => {
+    ipcMain.handle(channel, async (event, ...args: unknown[]): Promise<Reply<T>> => {
       if (!fromPage(event))
         return { ok: false, error: `Pult refused ${channel} from ${event.senderFrame?.origin}.` };
       if (!args.every((arg) => typeof arg === "string"))
         return { ok: false, error: `${channel} takes strings.` };
       try {
-        return { ok: true, value: answer(event, ...args) };
+        return { ok: true, value: await answer(event, ...args) };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
@@ -98,6 +100,7 @@ export function installPultDesktop(input: {
     if (!capturing) contents.setBackgroundThrottling(true);
   });
   handle(Channel.spellingLearn, (event, word) => learnSpelling(event.sender, word));
+  handle(Channel.clipboardReadFiles, copiedFileList);
   handle(Channel.longFrame, (_event, frame) =>
     freezeLog("long-animation-frame", JSON.parse(frame)),
   );

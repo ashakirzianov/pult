@@ -24,6 +24,7 @@ import {
 
 import { appDisplayName, appUserDataName } from "../../src/identity.ts";
 import { Channel, learnSpelling, titleBarLayout, VERSION_ARG, type Reply } from "./ipc.ts";
+import { copiedFileList } from "./clipboard.ts";
 import { openSecretStore } from "./secretStore.ts";
 import { windowState } from "./windowState.ts";
 
@@ -59,6 +60,7 @@ void app.whenReady().then(() => {
   handleSecrets();
   handleWindowState();
   handleSpelling();
+  handle(Channel.clipboardReadFiles, copiedFileList);
   openWindow();
   // macOS keeps the app running with no window; the Dock icon opens one again.
   app.on("activate", () => {
@@ -246,9 +248,9 @@ function handleSpelling(): void {
  */
 function handle<T>(
   channel: string,
-  answer: (event: IpcMainInvokeEvent, ...args: string[]) => T,
+  answer: (event: IpcMainInvokeEvent, ...args: string[]) => T | Promise<T>,
 ): void {
-  ipcMain.handle(channel, (event, ...args: unknown[]): Reply<T> => {
+  ipcMain.handle(channel, async (event, ...args: unknown[]): Promise<Reply<T>> => {
     if (!fromPage(event))
       return {
         ok: false,
@@ -257,7 +259,7 @@ function handle<T>(
     if (!args.every((arg) => typeof arg === "string"))
       return { ok: false, error: `${channel} takes strings.` };
     try {
-      return { ok: true, value: answer(event, ...args) };
+      return { ok: true, value: await answer(event, ...args) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
