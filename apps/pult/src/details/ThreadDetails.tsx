@@ -9,6 +9,7 @@ import {
 } from "../changes/view.ts";
 import { isNoRepository, subscribeRepositories } from "../changes/repositories.ts";
 import { extensionRows } from "../extensions/index.ts";
+import { localFileManager, openInFileManager } from "../files/reveal.ts";
 import type { PageRow } from "../extensions/ui.ts";
 import { keyOf, openShelves } from "../panel/order.ts";
 import {
@@ -237,11 +238,13 @@ function ThreadAsks({ asks, now }: { asks: ReadonlyArray<PageRow>; now: number }
 /**
  * Where the thread works: Folder, its project's name over the path, its
  * worktree else its project's root, a click opening the Explorer narrowed to
- * it, and its Environment while several are held. A draft's Folder alone,
- * its project's root.
+ * it, with Open in Finder (the kind's word) on this machine's server alone
+ * (`localFileManager`), and its Environment while several are held. A
+ * draft's Folder alone, its project's root.
  */
 function ThreadPlace({ details }: { details: ThreadDetailsState }) {
-  const { thread, project, environment } = details;
+  const { subject, thread, project, environment } = details;
+  const fileManager = useSyncExternalStore(localFileManager.subscribe, localFileManager.get);
   const name = thread?.projectName ?? project?.name ?? "";
   const path = thread === undefined ? (project?.root ?? null) : thread.checkoutRoot;
   const rows: DetailsRow[] = [
@@ -259,6 +262,17 @@ function ThreadPlace({ details }: { details: ThreadDetailsState }) {
               thread === undefined
                 ? run("pult-shell.openThreadExplorer")
                 : run("pult-shell.openThreadExplorer", thread.environmentId, thread.id),
+            ...(fileManager?.environmentId === subject.environmentId
+              ? {
+                  actions: [
+                    {
+                      label: fileManager.openTitle,
+                      run: () =>
+                        void openInFileManager(fileManager.environmentId, path, { reveal: false }),
+                    },
+                  ],
+                }
+              : {}),
           }),
     },
   ];
