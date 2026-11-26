@@ -13,6 +13,7 @@ import { registerFilesCommands } from "./commands.ts";
 import { projectsUnder, PULT_SCHEME, toUriPath } from "./paths.ts";
 import { endedTurns } from "./projects.ts";
 import { PultFileSystemProvider, workspaceDecorations } from "./provider.ts";
+import { registerRevealInFileManager } from "./reveal.ts";
 import {
   allWorkspaceFiles,
   environmentShell,
@@ -41,6 +42,7 @@ export function registerPultFiles(): void {
   const provider = new PultFileSystemProvider();
   registerCustomProvider(PULT_SCHEME, provider);
   registerFilesCommands();
+  registerRevealInFileManager();
   void followWorkspace(provider);
 }
 
