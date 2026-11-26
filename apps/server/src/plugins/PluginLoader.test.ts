@@ -11,10 +11,14 @@ import {
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Fiber from "effect/Fiber";
+import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import { McpSchema, McpServer } from "effect/ai";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import effectPackage from "effect/package.json" with { type: "json" };
@@ -26,6 +30,7 @@ import { layerInProcessMcpServer } from "../mcp/McpHttpServer.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { ProjectService } from "../project/ProjectService.ts";
+import * as ExtensionUi from "./ExtensionUi.ts";
 import * as PluginLoader from "./PluginLoader.ts";
 
 /** Fixture extensions import the entry by path: vitest serves them, not Node's resolver. */
@@ -68,6 +73,7 @@ const layerThreads = Layer.mergeAll(
 
 const layerBase = Layer.mergeAll(
   layerInProcessMcpServer,
+  ExtensionUi.layer,
   layerThreads,
   ServerConfig.layerTest(process.cwd(), { prefix: "t3-plugin-loader-test-" }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
@@ -105,7 +111,7 @@ const mcpClient = McpSchema.McpServerClient.of({
  * import, activation and disposal; `activate` replaces its activation's body.
  */
 const extensionSource = (name: string, options: { readonly activate?: string } = {}) => `
-import { Effect, Schema, Tool, Toolkit } from ${JSON.stringify(HOST_IMPORT)};
+import { ActionRefused, Effect, HostCallError, Schema, SendRefused, Tool, Toolkit } from ${JSON.stringify(HOST_IMPORT)};
 const events = globalThis.__pluginLoaderTestEvents;
 events.push("import ${name}");
 const Whoami = Tool.make("${name}_whoami", {
@@ -413,15 +419,171 @@ it.effect("a bundled plugin that fails to activate is listed as failed and the r
   }).pipe(Effect.scoped, Effect.provide(layerBase)),
 );
 
+/** An extension publishing one shelf row, its actions moving it, its send handler answering with a thread. */
+const UI_ACTIVATE = `
+  const row = (shelf) => ({
+    key: "a",
+    shelf,
+    title: "Ship it?",
+    poster: { thread: "thread-1" },
+    status: { icon: "inbox", label: "Asked" },
+    actions: [
+      { id: "snooze", label: "Snooze", icon: "clock", input: { kind: "instant", label: "Snooze until" } },
+      { id: "settle", label: "Settle", icon: "check", text: true },
+    ],
+    open: { reply: { target: { handled: { project: "project-1" } }, chips: [{ label: "Yes", text: "Yes" }] } },
+  });
+  yield* host.ui.publish("shelf-row", [row("inbox")]);
+  yield* host.ui.onAction(({ slot, key, action, value }) =>
+    action === "settle"
+      ? Effect.fail(new ActionRefused({ message: "not now" }))
+      : Effect.sync(() => events.push(\`act \${slot} \${key} \${action} \${value}\`)).pipe(
+          Effect.andThen(host.ui.publish("shelf-row", [row("snoozed")])),
+          Effect.orDie,
+        ),
+  );
+  yield* host.ui.onSend(({ key, message }) =>
+    message.text === "no"
+      ? Effect.fail(new SendRefused({ message: "not here" }))
+      : Effect.sync(() => {
+          events.push(\`send \${key} \${JSON.stringify(message)}\`);
+          return { thread: "thread-1" };
+        }),
+  );
+  // A second handler, a repeated key, an undecodable item and an unknown slot fail their calls.
+  for (const call of [
+    host.ui.onSend(() => Effect.succeed({ thread: "x" })),
+    host.ui.publish("shelf-row", [row("inbox"), row("inbox")]),
+    host.ui.publish("shelf-row", [{ key: "x" }]),
+    host.ui.publish("nowhere", []),
+  ]) {
+    const error = yield* Effect.flip(call);
+    events.push(\`\${error instanceof HostCallError} \${error.call}: \${error.message.split(":")[1].trim()}\`);
+  }
+`;
+
+it.effect(
+  "an extension's published items are state the page follows; an action and a handled send reach its handlers, each unknown name refused, and the items go with its activation",
+  () =>
+    Effect.gen(function* () {
+      events().length = 0;
+      yield* writeExtension("alpha", { activate: UI_ACTIVATE });
+      const ui = yield* ExtensionUi.ExtensionUi;
+      const scope = yield* Scope.make();
+      yield* Layer.buildWithScope(PluginLoader.layer({}), scope);
+      expect(events().slice(1, 5)).toEqual([
+        "true ui.onSend: it has a handler already, one per activation",
+        'true ui.publish: the key "a" repeats in "shelf-row"',
+        'true ui.publish: an item of "shelf-row" does not decode',
+        'true ui.publish: there is no slot "nowhere"',
+      ]);
+
+      // A subscriber gets the whole set, then each change: the action's own publish, then the list gone.
+      const following = yield* ui.published.pipe(
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      const until = "2026-11-27T09:00:00.000Z";
+      yield* ui.act({
+        extension: "alpha",
+        slot: "shelf-row",
+        key: "a",
+        action: "snooze",
+        value: until,
+      });
+      expect(events()).toContain(`act shelf-row a snooze ${until}`);
+      const message = {
+        text: "Ship it",
+        attachments: [
+          {
+            type: "image" as const,
+            id: "upload-1",
+            name: "a.png",
+            mimeType: "image/png",
+            sizeBytes: 3,
+          },
+        ],
+        model: null,
+        runtimeMode: null,
+        interactionMode: null,
+      };
+      expect(yield* ui.send({ extension: "alpha", slot: "shelf-row", key: "a", message })).toEqual({
+        thread: "thread-1",
+      });
+      expect(events()).toContain(`send a ${JSON.stringify(message)}`);
+
+      const refusal = <A>(effect: Effect.Effect<A, { readonly message: string }>) =>
+        Effect.map(Effect.flip(effect), (error) => error.message);
+      const act = (fields: Partial<Parameters<typeof ui.act>[0]>) =>
+        refusal(
+          ui.act({
+            extension: "alpha",
+            slot: "shelf-row",
+            key: "a",
+            action: "snooze",
+            value: until,
+            ...fields,
+          }),
+        );
+      expect([
+        yield* act({ extension: "beta" }),
+        yield* act({ slot: "nowhere" }),
+        yield* act({ key: "b" }),
+        yield* act({ action: "wake" }),
+        yield* act({ value: undefined }),
+        yield* act({ value: "soon" }),
+        yield* act({ action: "settle" }),
+        yield* act({ action: "settle", value: undefined }),
+        yield* refusal(
+          ui.send({
+            extension: "alpha",
+            slot: "shelf-row",
+            key: "a",
+            message: { ...message, text: "no" },
+          }),
+        ),
+      ]).toEqual([
+        'The extension "beta" has nothing in the slot "shelf-row".',
+        'There is no slot "nowhere".',
+        'The extension "alpha" has no item "b" in "shelf-row".',
+        'The item "a" has no action "wake".',
+        'The action "snooze" needs a value.',
+        'The action "snooze" needs an ISO 8601 time.',
+        'The action "settle" takes no value.',
+        "not now",
+        "not here",
+      ]);
+
+      yield* Scope.close(scope, Exit.void);
+      const seen = [...(yield* Fiber.join(following))].map(({ extension, slot, items }) => ({
+        extension,
+        slot,
+        shelves: items.map((item) => (item as { shelf: string }).shelf),
+      }));
+      expect(seen).toEqual([
+        { extension: "alpha", slot: "shelf-row", shelves: ["inbox"] },
+        { extension: "alpha", slot: "shelf-row", shelves: ["snoozed"] },
+        { extension: "alpha", slot: "shelf-row", shelves: [] },
+      ]);
+      // Gone with its activation: its handlers too.
+      expect(yield* act({})).toBe('The extension "alpha" has nothing in the slot "shelf-row".');
+    }).pipe(Effect.scoped, Effect.provide(layerBase)),
+);
+
 it("the extension entry exports the contract and the Effect namespaces, and nothing else", async () => {
   // Taking a name off, or adding one, is a change to what every extension may use.
   expect(Object.keys(await import("../extensionHost.ts")).toSorted()).toEqual([
+    "ActionRefused",
     "CONTRACT",
     "Effect",
     "FileSystem",
+    "HostCallError",
     "Manifest",
     "Path",
     "Schema",
+    "SendRefused",
     "Thread",
     "Tool",
     "ToolAccess",

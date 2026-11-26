@@ -94,6 +94,7 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as ExtensionUi from "./plugins/ExtensionUi.ts";
 import * as PluginsHttp from "./plugins/http.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
@@ -873,6 +874,8 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   // The same layer the event sink uses; memoized, subscriptions and batch ranking share it.
   Layer.provideMerge(ThreadViewers.layer),
   Layer.provideMerge(layerResourceDiagnostics),
+  // Pult: one set of extensions' UI items, written by the plugins' loader and read by the socket.
+  Layer.provideMerge(ExtensionUi.layer),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   // Layers memoize by reference, so this is the same policy the settings layer reads.

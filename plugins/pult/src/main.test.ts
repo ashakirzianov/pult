@@ -61,6 +61,7 @@ import * as McpHttpServer from "../../../apps/server/src/mcp/McpHttpServer.ts";
 import { bundledPlugins } from "../../../apps/server/src/plugins/bundled.ts";
 import * as PluginsHttp from "../../../apps/server/src/plugins/http.ts";
 import * as PluginLoader from "../../../apps/server/src/plugins/PluginLoader.ts";
+import * as ExtensionUi from "../../../apps/server/src/plugins/ExtensionUi.ts";
 import {
   Cause,
   Context,
@@ -174,6 +175,7 @@ it.effect("the plugin activates over the production orchestration services", () 
     const context = yield* Layer.build(runtime);
     const loaderContext = yield* Layer.build(
       PluginLoader.layer(bundledPlugins).pipe(
+        Layer.provideMerge(ExtensionUi.layer),
         Layer.provide(Layer.succeedContext(context)),
         Layer.provide(
           Layer.mergeAll(
@@ -219,6 +221,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
     const loader = Context.get(
       yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provide(Layer.mergeAll(server.layer, McpServer.McpServer.layer)),
         ),
       ).pipe(Effect.provideService(HostProcess.Platform, "darwin")),
@@ -667,6 +670,7 @@ it.effect(
       const server = yield* fakeServer;
       const context = yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
         ),
       );
@@ -845,6 +849,7 @@ it.effect(
       const server = yield* fakeServer;
       const context = yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
         ),
       );
@@ -987,6 +992,7 @@ it.effect(
       const server = yield* fakeServer;
       const context = yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
         ),
       );
@@ -1086,6 +1092,7 @@ it.effect(
       const server = yield* fakeServer;
       const context = yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
         ),
       );
@@ -1251,6 +1258,7 @@ it.effect("pult_usage_limits refreshes stale limits, then paces each window on w
     ];
     const context = yield* Layer.build(
       PluginLoader.layer(bundledPlugins).pipe(
+        Layer.provideMerge(ExtensionUi.layer),
         Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
       ),
     );

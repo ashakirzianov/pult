@@ -253,6 +253,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryReceiver.ts";
+import * as ExtensionUi from "./plugins/ExtensionUi.ts";
 import * as ServerActivity from "./serverActivity.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -1489,6 +1490,7 @@ export const layerWsRpc = (
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
       const serverActivity = yield* ServerActivity.ServerActivity;
       const desktopTelemetry = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
+      const extensionUi = yield* ExtensionUi.ExtensionUi;
       const threadSearch = yield* ThreadSearch.ThreadSearch;
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -1961,6 +1963,7 @@ export const layerWsRpc = (
           secretRequestReferences: true,
           serverActivity: true,
           desktopAppStatus: true,
+          extensionUi: true,
           reviewLog: true,
           vcsResolveConflict: true,
           featureFlags: {
@@ -2478,6 +2481,12 @@ export const layerWsRpc = (
               ),
             ),
           ),
+        // Pult: the items extensions publish into the page's UI slots, then each change.
+        [WS_METHODS.extensionsSubscribeUi]: (_input) => extensionUi.published,
+        // Pult: an item's action, to its extension's action handler.
+        [WS_METHODS.extensionsAct]: (input) => extensionUi.act(input),
+        // Pult: a handled composer's send, to its extension's send handler.
+        [WS_METHODS.extensionsSend]: (input) => extensionUi.send(input),
         [WS_METHODS.serverSearchAcpRegistry]: (input) =>
           acpRegistryCatalog
             .search(input)

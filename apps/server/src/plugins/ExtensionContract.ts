@@ -21,6 +21,7 @@ import { fencingLinkOrigin } from "../mcp/linkOrigin.ts";
 import { loadCaller } from "../mcp/threadAccess.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import type { ExtensionHost, Thread, ToolCaller, ToolHandler } from "./contract.ts";
+import type { ExtensionUi } from "./ExtensionUi.ts";
 
 const unreachable = (value: never): never => {
   throw new Error(`unreachable: ${JSON.stringify(value)}`);
@@ -109,6 +110,7 @@ export const make = (
   name: string,
   dataDir: string,
   context: Context.Context<McpServer.McpServer>,
+  ui: ExtensionUi["Service"],
 ): ExtensionHost => ({
   name,
   dataDir,
@@ -120,5 +122,10 @@ export const make = (
         toolkit.tools,
         handlers as Readonly<Record<string, ToolHandler<Tool.Any>>>,
       ),
+  },
+  ui: {
+    publish: (slot, items) => ui.publish(name, slot, items),
+    onAction: (handle) => ui.onAction(name, handle),
+    onSend: (handle) => ui.onSend(name, handle),
   },
 });

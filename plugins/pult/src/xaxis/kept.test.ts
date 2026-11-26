@@ -18,6 +18,7 @@ import * as EnvironmentAuth from "../../../../apps/server/src/auth/EnvironmentAu
 import { bundledPlugins } from "../../../../apps/server/src/plugins/bundled.ts";
 import * as PluginsHttp from "../../../../apps/server/src/plugins/http.ts";
 import * as PluginLoader from "../../../../apps/server/src/plugins/PluginLoader.ts";
+import * as ExtensionUi from "../../../../apps/server/src/plugins/ExtensionUi.ts";
 import * as ServerSettings from "../../../../apps/server/src/serverSettings.ts";
 import * as VcsProcess from "../../../../apps/server/src/vcs/VcsProcess.ts";
 import {
@@ -105,7 +106,12 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
           ),
         ).pipe(Layer.provideMerge(server.layer));
         const loader = Context.get(
-          yield* Layer.build(PluginLoader.layer(bundledPlugins).pipe(Layer.provide(layer))),
+          yield* Layer.build(
+            PluginLoader.layer(bundledPlugins).pipe(
+              Layer.provideMerge(ExtensionUi.layer),
+              Layer.provide(layer),
+            ),
+          ),
           PluginLoader.PluginLoader,
         );
         expect((yield* loader.list).find((plugin) => plugin.name === "pult")).toMatchObject({

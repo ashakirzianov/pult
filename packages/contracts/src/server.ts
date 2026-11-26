@@ -788,6 +788,8 @@ export const ServerConfig = Schema.Struct({
   serverActivity: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether server.subscribeDesktopApp exists; absent on stock servers. */
   desktopAppStatus: Schema.optionalKey(Schema.Boolean),
+  /** Pult: whether extensions.subscribeUi, act and send exist; absent on stock servers, whose page draws no extension items. */
+  extensionUi: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether review.getLog and review.getRefs exist; absent on stock servers, which show no history. */
   reviewLog: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether vcs.resolveConflict exists; absent on stock servers, whose xaxis conflicts are fixed by hand. */

@@ -6,6 +6,7 @@ import {
   authScopeRequiredResponse,
   AssetCreateUrlInput,
   AuthAccessReadScope,
+  AuthAccessWriteScope,
   ServerSettingsPatch,
   ProviderInstanceMutation,
   requiredScopesForServerSettingsPatch,
@@ -71,6 +72,10 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetActivity]: AuthOrchestrationReadScope,
   [WS_METHODS.serverSubscribeDesktopApp]: AuthOrchestrationReadScope,
+  // Pult: extensions' UI slots; an action writes as a plugin route's POST does, a send as a thread's.
+  [WS_METHODS.extensionsSubscribeUi]: AuthOrchestrationReadScope,
+  [WS_METHODS.extensionsAct]: AuthAccessWriteScope,
+  [WS_METHODS.extensionsSend]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverGetNpmRelease]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationReadScope,
   [WS_METHODS.serverUpdateProvider]: AuthProvidersManageScope,

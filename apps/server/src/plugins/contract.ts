@@ -3,6 +3,7 @@
  * a server service, a `Context` or an MCP module; an addition does not bump `CONTRACT` (xaxis
  * `pult/decisions`, `extension-contract`; docs/internals/plugins.md).
  */
+import type { ExtensionComposed, ExtensionSlot, ExtensionSlotItem } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
@@ -60,6 +61,43 @@ export type ToolHandlers<Tools extends Record<string, Tool.Any>> = {
   readonly [Name in keyof Tools]: ToolHandler<Tools[Name]>;
 };
 
+/** A call of the host refused: what was called, and why. */
+export class HostCallError extends Schema.TaggedError<HostCallError>()("HostCallError", {
+  call: Schema.String,
+  message: Schema.String,
+}) {}
+
+/** An action handler's refusal, its message shown to the user. */
+export class ActionRefused extends Schema.TaggedError<ActionRefused>()("ActionRefused", {
+  message: Schema.String,
+}) {}
+
+/** A send handler's refusal, its message the composer's error; the composer keeps its content. */
+export class SendRefused extends Schema.TaggedError<SendRefused>()("SendRefused", {
+  message: Schema.String,
+}) {}
+
+/** The slots an extension publishes into, and their items' shapes (`@t3tools/contracts`'s `extensionUi.ts`). */
+export type Slot = ExtensionSlot;
+export type SlotItem<S extends Slot> = ExtensionSlotItem<S>;
+export type Composed = ExtensionComposed;
+
+/** What a click on an item's action tells its extension. */
+export interface UiAction {
+  readonly slot: Slot;
+  readonly key: string;
+  readonly action: string;
+  /** The action's input, ISO 8601 for an instant; undefined for an action with none. */
+  readonly value: string | undefined;
+}
+
+/** What a handled composer's Send hands its extension. */
+export interface UiSend {
+  readonly slot: Slot;
+  readonly key: string;
+  readonly message: Composed;
+}
+
 /** What `activate` gets. */
 export interface ExtensionHost {
   readonly name: string;
@@ -75,6 +113,26 @@ export interface ExtensionHost {
       toolkit: Toolkit.Toolkit<Tools>,
       handlers: ToolHandlers<Tools>,
     ) => Effect.Effect<void, never, Scope.Scope>;
+  };
+  /**
+   * The page's UI slots. What is published is state: a reconnect or a second page gets the whole
+   * set, and it goes when the activation's scope closes. A handler's own publish reaches the page
+   * before its answer does, so a pending item is replaced by its new state.
+   */
+  readonly ui: {
+    /** Replaces the extension's whole list for `slot`; a malformed item or a key repeated in it fails the call. */
+    readonly publish: <S extends Slot>(
+      slot: S,
+      items: ReadonlyArray<SlotItem<S>>,
+    ) => Effect.Effect<void, HostCallError>;
+    /** At `activate`, once: every action of the extension's items. */
+    readonly onAction: (
+      handle: (action: UiAction) => Effect.Effect<void, ActionRefused>,
+    ) => Effect.Effect<void, HostCallError>;
+    /** At `activate`, once: every send of a composer the extension handles, answered with the thread it landed in. */
+    readonly onSend: (
+      handle: (send: UiSend) => Effect.Effect<{ readonly thread: string }, SendRefused>,
+    ) => Effect.Effect<void, HostCallError>;
   };
 }
 

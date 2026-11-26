@@ -27,6 +27,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import { CONTRACT, type ExtensionHost, Manifest } from "./contract.ts";
 import * as ExtensionContract from "./ExtensionContract.ts";
+import * as ExtensionUi from "./ExtensionUi.ts";
 
 /** The bare specifier an extension's build leaves external; resolved to the extension entry here. */
 const HOST_SPECIFIER = "@pult/extension-host";
@@ -206,6 +207,7 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
   const config = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const ui = yield* ExtensionUi.ExtensionUi;
   // Everything the server provided to this layer, for the plugins to run with.
   const context = yield* Effect.context<McpServer.McpServer>();
   const pluginsDir = path.join(config.baseDir, "plugins");
@@ -270,8 +272,10 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
       Effect.sync(() => {
         route = handler;
       });
-    const host = hostFor(ExtensionContract.make(name, dataDir, context), serve);
+    const host = hostFor(ExtensionContract.make(name, dataDir, context, ui), serve);
     const scope = yield* Scope.make();
+    // What it published goes with the activation, a failed one's too.
+    yield* Scope.addFinalizer(scope, ui.drop(name));
     yield* Effect.suspend(() => {
       const activated: unknown = activate(host);
       return isActivation(activated)

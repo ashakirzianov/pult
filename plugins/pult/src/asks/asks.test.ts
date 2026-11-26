@@ -16,6 +16,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as McpHttpServer from "../../../../apps/server/src/mcp/McpHttpServer.ts";
 import { bundledPlugins } from "../../../../apps/server/src/plugins/bundled.ts";
 import * as PluginLoader from "../../../../apps/server/src/plugins/PluginLoader.ts";
+import * as ExtensionUi from "../../../../apps/server/src/plugins/ExtensionUi.ts";
 import {
   Cause,
   Context,
@@ -78,6 +79,7 @@ it.effect(
       const path = yield* Path.Path;
       const context = yield* Layer.build(
         PluginLoader.layer(bundledPlugins).pipe(
+          Layer.provideMerge(ExtensionUi.layer),
           Layer.provideMerge(Layer.mergeAll(server.layer, McpHttpServer.layerInProcessMcpServer)),
         ),
       );

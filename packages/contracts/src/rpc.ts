@@ -505,6 +505,13 @@ import {
   SourceControlSignInResult,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  ExtensionActInput,
+  ExtensionSendInput,
+  ExtensionSendResult,
+  ExtensionUiPublished,
+  ExtensionUiRefused,
+} from "./extensionUi.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -621,6 +628,12 @@ export const WS_METHODS = {
   serverGetActivity: "server.getActivity",
   /** Pult: the desktop app's update state, as the app on the server's machine reports it. */
   serverSubscribeDesktopApp: "server.subscribeDesktopApp",
+  /** Pult: the items extensions publish into the page's UI slots, then each change. */
+  extensionsSubscribeUi: "extensions.subscribeUi",
+  /** Pult: a click on an extension item's action, to the extension's action handler. */
+  extensionsAct: "extensions.act",
+  /** Pult: a handled composer's send, to the extension's send handler, answered with its thread. */
+  extensionsSend: "extensions.send",
   serverGetNpmRelease: "server.getNpmRelease",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
@@ -816,6 +829,27 @@ const WsServerSubscribeDesktopAppRpc = Rpc.make(WS_METHODS.serverSubscribeDeskto
   success: DesktopUpdateStateSchema,
   error: EnvironmentAuthorizationError,
   stream: true,
+});
+
+/** Pult: every extension's list for each slot it published into, then each list as it changes. */
+const WsExtensionsSubscribeUiRpc = Rpc.make(WS_METHODS.extensionsSubscribeUi, {
+  payload: Schema.Struct({}),
+  success: ExtensionUiPublished,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** Pult: answers once the handler has, its own publish already streamed. */
+const WsExtensionsActRpc = Rpc.make(WS_METHODS.extensionsAct, {
+  payload: ExtensionActInput,
+  error: Schema.Union([ExtensionUiRefused, EnvironmentAuthorizationError]),
+});
+
+/** Pult: answers with the thread the handler sent the message into. */
+const WsExtensionsSendRpc = Rpc.make(WS_METHODS.extensionsSend, {
+  payload: ExtensionSendInput,
+  success: ExtensionSendResult,
+  error: Schema.Union([ExtensionUiRefused, EnvironmentAuthorizationError]),
 });
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
@@ -2586,6 +2620,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerGetActivityRpc,
   WsServerSubscribeDesktopAppRpc,
+  WsExtensionsSubscribeUiRpc,
+  WsExtensionsActRpc,
+  WsExtensionsSendRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,

@@ -4,6 +4,8 @@ export * from "./composerContext.ts";
 export * from "./composerContextClipboard.ts";
 // Pult: a message's header (`messageHeader.ts`).
 export * from "./messageHeader.ts";
+// Pult: the shapes extensions publish into the page's UI slots (`extensionUi.ts`).
+export * from "./extensionUi.ts";
 export * from "./background.ts";
 export * from "./acpRegistry.ts";
 export * from "./auth.ts";
