@@ -194,7 +194,7 @@ it.effect(
               "readOnlyHint": false,
               "title": "Ask the user",
             },
-            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
+            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
             "inputSchema": {
               "properties": {
                 "file": {
@@ -735,6 +735,20 @@ it.effect(
 
       // A plain thread's asks follow it: settled while it is, gone once archived, each told by its event.
       expect(yield* act(filed.id, "unsettle")).toBe("done");
+      // A settle that crosses its poster asking again, as Pult tells the poster, settles nothing.
+      yield* work.ask({ id: filed.id });
+      const sendToThread = server.threads.service.sendToThread;
+      server.threads.service.sendToThread = ((input) => {
+        server.threads.service.sendToThread = sendToThread;
+        return TestClock.adjust(1000).pipe(
+          Effect.andThen(work.ask({ id: filed.id })),
+          Effect.andThen(sendToThread(input)),
+        );
+      }) as typeof sendToThread;
+      expect(yield* act(filed.id, "settle")).toBe(
+        "The ask was asked again as you settled it, so it is not settled: settle it again if you mean the ask as asked now.",
+      );
+      expect((yield* work.list()).asks).toMatchObject([{ id: filed.id, status: "posted" }]);
       worker.shell = {
         ...worker.shell,
         settledOverride: "settled",

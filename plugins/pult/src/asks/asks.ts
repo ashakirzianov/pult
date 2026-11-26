@@ -574,8 +574,8 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
   const act: Asks["act"] = Effect.fn("Asks.act")(function* (id, action) {
     const find = loadOne(id);
     // Told before it is written, so a notice that fails fails the settle, to be tried again.
+    const before = action.kind === "settle" ? yield* lock.withPermits(1)(find) : undefined;
     if (action.kind === "settle") {
-      const before = yield* lock.withPermits(1)(find);
       if (before === undefined) return undefined;
       if (before.ask.status !== "settled")
         yield* tellSettled(before.record).pipe(Effect.mapError(failed("tell")));
@@ -593,6 +593,12 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
               refused: "The ask reads as settled because its thread is: un-settle the thread.",
             };
           if (action.kind === "replied" && record.posted !== action.posted) return { record };
+          // Asked again while its poster was told, so the settle is of a posting gone by.
+          if (action.kind === "settle" && record.posted !== before?.record.posted)
+            return {
+              refused:
+                "The ask was asked again as you settled it, so it is not settled: settle it again if you mean the ask as asked now.",
+            };
           const next: AskRecord =
             action.kind === "replied"
               ? // A reply moves it to Working, from Snoozed too.
