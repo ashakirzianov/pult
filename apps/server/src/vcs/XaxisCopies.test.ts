@@ -371,12 +371,13 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       () =>
         Effect.gen(function* () {
           const workflow = yield* GitWorkflowService.GitWorkflowService;
+          const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
           const make = () =>
             workflow
               .createWorktree({ cwd: root, refName: "main", path: null })
               .pipe(Effect.map((result) => result.worktree.path));
           const clean = (path: string, activeThreadIds: ReadonlyArray<string> = []) =>
-            workflow.cleanSettledCopy({ cwd: root, path, activeThreadIds });
+            driver.cleanSettledCopy({ cwd: root, path, activeThreadIds });
 
           const shared = yield* make();
           assert.deepEqual(yield* clean(shared, ["thread:other"]), {
@@ -390,9 +391,9 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
           const edited = yield* make();
           NodeFS.writeFileSync(NodePath.join(edited, "f.txt"), "edited\n");
           const keptEdit = yield* clean(edited);
-          assert.isFalse(keptEdit?.removed);
+          assert.isFalse(keptEdit.removed);
           assert.include(
-            keptEdit?.removed === false ? keptEdit.reason : "",
+            keptEdit.removed === false ? keptEdit.reason : "",
             "holds 1 uncommitted change",
           );
           assert.isTrue(NodeFS.existsSync(edited));
@@ -402,7 +403,7 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
           committed(xaxis(stacked, "commit", "-m", "not landed"));
           const keptStack = yield* clean(stacked);
           assert.include(
-            keptStack?.removed === false ? keptStack.reason : "",
+            keptStack.removed === false ? keptStack.reason : "",
             "holds 1 commit not landed",
           );
           assert.isTrue(NodeFS.existsSync(stacked));

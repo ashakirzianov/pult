@@ -34,6 +34,7 @@ import * as ManagedPolicy from "../../../apps/server/src/policy/ManagedPolicy.ts
 import * as McpSessions from "../../../apps/server/src/mcp/McpSessionRegistry.testkit.ts";
 import * as ModelManifest from "../../../apps/server/src/provider/ModelManifest.ts";
 import * as PreviewManager from "../../../apps/server/src/preview/Manager.ts";
+import * as PortScanner from "../../../apps/server/src/preview/PortScanner.ts";
 import * as ProjectCloneTracker from "../../../apps/server/src/project/ProjectCloneTracker.ts";
 import * as ProjectEnrichmentService from "../../../apps/server/src/project/ProjectEnrichmentService.ts";
 import * as ProjectStore from "../../../apps/server/src/orchestration-v2/ProjectStore.ts";
@@ -181,6 +182,9 @@ it.effect("the plugin activates over the production orchestration services", () 
             // Not the runtime's either: the server's source control layers sit beside it.
             Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
             Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+            // Nor its preview layers, which the settle reactions ask for.
+            Layer.mock(PreviewManager.PreviewManager)({}),
+            Layer.mock(PortScanner.PortDiscovery)({ trackAgent: () => () => undefined }),
             // Nor its desktop layers, which install-at-rest asks for: one receiver under both, as the server has it.
             Layer.merge(HostPowerMonitor.layer, DesktopAppUpdate.layer).pipe(
               Layer.provideMerge(DesktopTelemetryReceiver.layer),

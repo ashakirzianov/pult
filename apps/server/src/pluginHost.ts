@@ -60,6 +60,10 @@ export * as McpToolAccess from "./mcp/McpToolAccess.ts";
 export { toolkitRegistration } from "./mcp/McpHttpServer.ts";
 // The Pult plugin's Star messages: upstream's rule that a thread's target be no broader than it.
 export * as McpThreadAccess from "./mcp/threadAccess.ts";
+// The Pult plugin's settle reactions: a settled or archived thread's previews close, and the
+// listening servers its agent started stop.
+export * as PortScanner from "./preview/PortScanner.ts";
+export * as PreviewManager from "./preview/Manager.ts";
 // The Pult plugin's schedules: a watcher's command, run in its Star's folder.
 export * as ProcessRunner from "./processRunner.ts";
 // The Pult plugin's Stars: projects found, created, adopted and titled.
@@ -70,7 +74,7 @@ export * as ProviderRegistry from "./provider/ProviderRegistry.ts";
 export * as Scheduler from "./scheduling/Scheduler.ts";
 // The Pult plugin's install-at-rest: it installs once the server has been at rest long enough.
 export * as ServerActivity from "./serverActivity.ts";
-// The Pult plugin's install-at-rest: the user's `autoUpdateDesktopApp`.
+// The Pult plugin's install-at-rest: the user's `autoUpdateDesktopApp`; its settle reactions: a project's settle script.
 export * as ServerSettings from "./serverSettings.ts";
 // The Pult plugin's Stars: the transcripts' folder and label.
 export * as ServerEnvironment from "./environment/ServerEnvironment.ts";

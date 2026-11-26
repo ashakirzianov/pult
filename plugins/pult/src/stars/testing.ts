@@ -1,16 +1,20 @@
-// Fakes of the server's project and thread stores, its launches, startup, environment, scheduler, usage limits
-// and source control (unused, the kept xaxis checkout's suite bringing the real driver),
-// for the Stars' tests and the plugin's: a server whose home is `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
+// Fakes of the server's project and thread stores, its committed events, launches, startup, environment,
+// scheduler, usage limits, previews, port discovery and source control (a settled copy's cleanup, the kept
+// xaxis checkout's suite bringing the real driver), for the Stars' tests and the plugin's: a server whose home is
+// `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
   type CommandId,
+  type DiscoveredLocalServer,
   MessageId,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
+  type PreviewStopLocalServerInput,
   type ProjectId,
   type ProjectWatchEntriesEvent,
   RunId,
@@ -30,12 +34,15 @@ import {
   FileSystem,
   Layer,
   Path,
+  PortScanner,
+  PreviewManager,
   ProjectService,
   ProviderRegistry,
   Scheduler,
   ServerConfig,
   ServerEnvironment,
   ServerRuntimeStartup,
+  ServerSettings,
   Stream,
   ThreadLaunchGuard,
   ThreadLaunchService,
@@ -49,6 +56,25 @@ import {
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
 
 const ON: ReadonlySet<string> = new Set(["preparing", "queued", "starting", "running", "waiting"]);
+
+/** What a fake took, in order; `taken(count)` waits until it has taken `count` in all. */
+function recorder<T>() {
+  const items: T[] = [];
+  const waiters: Array<{ count: number; resume: () => void }> = [];
+  const push = (item: T) => {
+    items.push(item);
+    for (const waiter of waiters.filter((each) => items.length >= each.count)) {
+      waiters.splice(waiters.indexOf(waiter), 1);
+      waiter.resume();
+    }
+  };
+  const taken = (count: number) =>
+    Effect.callback<void>((resume) => {
+      if (items.length >= count) resume(Effect.void);
+      else waiters.push({ count, resume: () => resume(Effect.void) });
+    });
+  return { items, push, taken };
+}
 
 /** The project store, in memory: `create` makes the folder where asked and refuses a root taken. */
 function fakeProjects(fs: FileSystem.FileSystem) {
@@ -134,6 +160,12 @@ function fakeThreads() {
   const settleWaiters: Array<{ count: number; resume: () => void }> = [];
   const receipts = new Set<string>();
   const messages: FakeMessage[] = [];
+  /** Each subscription to the committed events, in order: offer an event to it, or end or fail it. */
+  const events = recorder<{
+    readonly queue: Parameters<
+      Parameters<typeof Stream.callback<OrchestrationV2DomainEvent>>[0]
+    >[0];
+  }>();
   const byId = (threadId: ThreadId) => threads.find((each) => each.shell.id === threadId);
   const projection = (thread: FakeThread): OrchestrationV2ThreadProjection => ({
     ...v2Projection,
@@ -200,8 +232,10 @@ function fakeThreads() {
       });
     }),
     getShellSnapshot: (options: {
+      location?: "active" | "archive";
       projectId?: ProjectId;
       unsettledOnly?: boolean;
+      worktreePath?: string;
       threadIds?: ReadonlyArray<ThreadId>;
     }) =>
       Effect.sync(() => ({
@@ -209,11 +243,26 @@ function fakeThreads() {
           .map((each) => each.shell)
           .filter(
             (shell) =>
+              shell.deletedAt === null &&
+              (options.location === undefined ||
+                (options.location === "active") === (shell.archivedAt === null)) &&
               (options.projectId === undefined || shell.projectId === options.projectId) &&
+              (options.worktreePath === undefined || shell.worktreePath === options.worktreePath) &&
               (options.threadIds === undefined || options.threadIds.includes(shell.id)) &&
               (options.unsettledOnly !== true || shell.settledOverride !== "settled"),
           ),
       })),
+    /** The thread's row, a deleted one's included, as the store keeps it; its subagents if asked. */
+    getThreadRecords: (threadId: ThreadId, fields: ReadonlyArray<string>) =>
+      fields.every((field) => field === "subagents")
+        ? Effect.sync(() => ({
+            thread: byId(threadId)!.shell,
+            subagents: byId(threadId)?.subagents ?? [],
+          }))
+        : Effect.die(new Error(`unexpected records read: ${fields.join(", ")}`)),
+    streamDomainEvents: Stream.callback<OrchestrationV2DomainEvent>((queue) =>
+      Effect.sync(() => events.push({ queue })),
+    ),
     listOlderSettledThreads: (query: {
       before: { settledAt: string; threadId?: ThreadId };
       projectIds?: ReadonlyArray<ProjectId>;
@@ -266,7 +315,12 @@ function fakeThreads() {
         snapshotSequence: 0,
         projection: projection(byId(threadId)!),
       })),
-    getThreadShell: (threadId: ThreadId) => Effect.sync(() => byId(threadId)?.shell ?? null),
+    // A deleted thread has no shell, as the store reads it.
+    getThreadShell: (threadId: ThreadId) =>
+      Effect.sync(() => {
+        const shell = byId(threadId)?.shell;
+        return shell === undefined || shell.deletedAt !== null ? null : shell;
+      }),
     dispatch: Effect.fn("FakeThreads.dispatch")(function* (command: {
       type: string;
       threadId: ThreadId;
@@ -332,7 +386,7 @@ function fakeThreads() {
       if (settles.length >= count) resume(Effect.void);
       else settleWaiters.push({ count, resume: () => resume(Effect.void) });
     });
-  return { threads, settles, settled, receipts, messages, add, take, byId, service };
+  return { threads, settles, settled, receipts, messages, events, add, take, byId, service };
 }
 
 /** The input a launch got, as the fake recorded it. */
@@ -476,6 +530,19 @@ export const fakeServer = Effect.gen(function* () {
     refreshed: Array<"providers" | "sources">;
     onRefresh: () => void;
   } = { providers: [], sources: [], refreshed: [], onRefresh: () => {} };
+  /** The threads whose previews closed; a close for a thread of `failFor` dies. */
+  const previews = { closed: recorder<ThreadId>(), failFor: new Set<ThreadId>() };
+  /** The settled copies the xaxis driver was asked to clean, each removed. */
+  const copies = recorder<{
+    readonly cwd: string;
+    readonly path: string;
+    readonly activeThreadIds: ReadonlyArray<string>;
+  }>();
+  /** The listening servers each scan finds, and those stopped. */
+  const ports = {
+    servers: [] as Array<DiscoveredLocalServer>,
+    stopped: recorder<PreviewStopLocalServerInput>(),
+  };
   const layer = Layer.mergeAll(
     ServerConfig.layerTest(tmp, path.join(tmp, ".t3")),
     Layer.succeed(
@@ -530,7 +597,26 @@ export const fakeServer = Effect.gen(function* () {
       current: Effect.sync(() => limits.sources),
       refresh: Effect.sync(() => void limits.refreshed.push("sources")),
     } as unknown as UsageLimitSources.UsageLimitSources["Service"]),
-    Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
+    Layer.mock(PreviewManager.PreviewManager)({
+      close: (input: { threadId: ThreadId }) =>
+        previews.failFor.has(input.threadId)
+          ? Effect.die(new Error("closing the previews failed"))
+          : Effect.sync(() => previews.closed.push(input.threadId)),
+    }),
+    Layer.mock(PortScanner.PortDiscovery)({
+      scan: () => Effect.sync(() => ports.servers),
+      trackAgent: () => () => undefined,
+      stopServer: (input: PreviewStopLocalServerInput) =>
+        Effect.sync(() => ports.stopped.push(input)),
+    }),
+    ServerSettings.layerTest(),
+    Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({
+      cleanSettledCopy: (input) =>
+        Effect.sync(() => {
+          copies.push(input);
+          return { removed: true } as const;
+        }),
+    }),
     Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
     Layer.succeed(WorkspaceEntries.WorkspaceEntries, {
       watch: (input: { cwd: string }) =>
@@ -554,6 +640,9 @@ export const fakeServer = Effect.gen(function* () {
     launches,
     guards,
     limits,
+    previews,
+    ports,
+    copies,
     tmp,
     directory,
     runPass,

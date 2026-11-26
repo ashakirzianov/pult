@@ -29,16 +29,12 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import * as GitManager from "../git/GitManager.ts";
-import * as GitWorkflowService from "../git/GitWorkflowService.ts";
-import * as PreviewManager from "../preview/Manager.ts";
-import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import { XAXIS_MARKER } from "../vcs/XaxisVcsDriver.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import {
@@ -362,10 +358,7 @@ export const make = Effect.gen(function* () {
     quietOpenReadAt.clear();
   });
   const terminals = yield* TerminalManager.TerminalManager;
-  const previews = yield* PreviewManager.PreviewManager;
-  const ports = yield* PortScanner.PortDiscovery;
   const projectScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
-  const vcs = yield* GitWorkflowService.GitWorkflowService;
   // Repeated thread.settled retains settledAt; run the action only once per settlement.
   const settleActionRunAt = new Map<ThreadId, number>();
   const noPullRequestRechecks = makeNoPullRequestRechecks();
@@ -802,83 +795,12 @@ export const make = Effect.gen(function* () {
       return sweepThread(threadId).pipe(FiberSet.run(threadSweeps), Effect.asVoid);
     });
 
-  // Pult (xaxis `pult/decisions`, `xaxis-copy-cleanup`): a settled thread's copy of a project kept
-  // in xaxis goes once no other thread is on it and it holds no work; a kept one is logged with why.
-  const cleanSettledCopy = Effect.fn("ThreadSettlementServiceV2.cleanSettledCopy")(
-    function* (thread: Pick<OrchestrationV2ThreadShell, "id" | "projectId">, worktreePath: string) {
-      if (!(yield* fileSystem.exists(path.join(worktreePath, XAXIS_MARKER)))) return;
-      const projectShells = yield* projectStore.listShells();
-      const project = projectShells.find((candidate) => candidate.id === thread.projectId);
-      if (
-        project === undefined ||
-        projectShells.some((candidate) => candidate.workspaceRoot === worktreePath)
-      )
-        return;
-      const { threads } = yield* projections.getShellSnapshot();
-      const activeThreadIds = threads
-        .filter(
-          (other) =>
-            other.id !== thread.id &&
-            other.worktreePath === worktreePath &&
-            other.deletedAt === null &&
-            other.archivedAt === null &&
-            other.settledOverride !== "settled",
-        )
-        .map((other) => other.id);
-      const copy = yield* vcs.cleanSettledCopy({
-        cwd: project.workspaceRoot,
-        path: worktreePath,
-        activeThreadIds,
-      });
-      if (copy === null) return;
-      yield* copy.removed
-        ? Effect.logInfo("removed a settled thread's copy", { threadId: thread.id, worktreePath })
-        : Effect.logInfo("kept a settled thread's copy", {
-            threadId: thread.id,
-            worktreePath,
-            reason: copy.reason,
-          });
-    },
-    (effect, thread, worktreePath) =>
-      effect.pipe(
-        Effect.catchCauseIf(
-          (cause) => !Cause.hasInterruptsOnly(cause),
-          (cause) =>
-            Effect.logWarning("cleaning up a settled thread's copy failed", {
-              threadId: thread.id,
-              worktreePath,
-              cause: Cause.pretty(cause),
-            }),
-        ),
-      ),
-  );
-
   // Skip settle scripts in shared checkouts where other threads may still work.
   const cleanUpSettledThread = Effect.fn("ThreadSettlementServiceV2.cleanUpSettledThread")(
     function* (threadId: ThreadId) {
       const settled = yield* projections.getThread(threadId);
       if (settled.deletedAt !== null || settled.settledOverride !== "settled") return;
       yield* terminals.closeOnSettle({ threadId });
-      yield* previews.close({ threadId });
-      // Pult (xaxis `pult/decisions`, `settle-stops-agent-servers`): settling a thread, automatic
-      // settles included, stops the listening servers its agent started, which nothing else
-      // reaches on macOS once their shell returns. Terminals' servers stay `closeOnSettle`'s.
-      for (const server of yield* ports.scan()) {
-        if (server.agent?.threadId !== threadId || server.pid === null) continue;
-        const target = { pid: server.pid, port: server.port };
-        yield* ports.stopServer(target).pipe(
-          Effect.catchTags({
-            PreviewStopLocalServerError: ({ reason }) =>
-              reason === "not-found"
-                ? Effect.void
-                : Effect.logWarning("stopping a settled thread's server failed", {
-                    threadId,
-                    ...target,
-                    reason,
-                  }),
-          }),
-        );
-      }
       const worktreePath = settled.worktreePath;
       if (worktreePath === null) return;
       if (!(yield* fileSystem.exists(worktreePath))) {
@@ -924,9 +846,6 @@ export const make = Effect.gen(function* () {
       if (run.status === "started" && run.completion) {
         yield* run.completion.pipe(Effect.forkDetach);
       }
-      // Pult: a copy a settle script runs in is the script's, and a link's is not ours to touch
-      // (`cleanSettledCopy` below).
-      if (run.status === "no-script") yield* cleanSettledCopy(thread, worktreePath);
     },
     (effect, threadId) =>
       effect.pipe(
@@ -941,67 +860,10 @@ export const make = Effect.gen(function* () {
       ),
   );
 
-  // Pult (xaxis `pult/decisions`, `settle-cascades-to-subagents`): settling a thread settles its
-  // subagent threads, whose idle rows otherwise outlive it; un-settling it restores none. Each
-  // child's own settlement cascades to its subagents in turn, and a child the server refuses to
-  // settle, one still running, is logged and left as it is.
-  const settleSubagent = Effect.fn("ThreadSettlementServiceV2.settleSubagent")(
-    function* (threadId: ThreadId, childThreadId: ThreadId) {
-      const child = yield* projections.getThread(childThreadId);
-      if (
-        child.settledOverride === "settled" ||
-        child.archivedAt !== null ||
-        child.deletedAt !== null
-      )
-        return;
-      const uuid = yield* random.uuidV4();
-      yield* orchestrator.dispatch({
-        type: "thread.settle",
-        commandId: CommandId.make(`server:settle-subagent:${childThreadId}:${uuid}`),
-        threadId: childThreadId,
-      });
-    },
-    (effect, threadId, childThreadId) =>
-      effect.pipe(
-        Effect.catchCauseIf(
-          (cause) => !Cause.hasInterruptsOnly(cause),
-          (cause) =>
-            Effect.logWarning("settling a settled thread's subagent failed", {
-              threadId,
-              childThreadId,
-              cause: Cause.pretty(cause),
-            }),
-        ),
-      ),
-  );
-  const settleSubagentsOf = Effect.fn("ThreadSettlementServiceV2.settleSubagentsOf")(
-    function* (threadId: ThreadId) {
-      if ((yield* projections.getThread(threadId)).settledOverride !== "settled") return;
-      const { subagents } = yield* projections.getThreadRecords(threadId, ["subagents"]);
-      for (const childThreadId of new Set(subagents.map((subagent) => subagent.childThreadId))) {
-        if (childThreadId !== null) yield* settleSubagent(threadId, childThreadId);
-      }
-    },
-    (effect, threadId) =>
-      effect.pipe(
-        Effect.catchCauseIf(
-          (cause) => !Cause.hasInterruptsOnly(cause),
-          (cause) =>
-            Effect.logWarning("settling a settled thread's subagents failed", {
-              threadId,
-              cause: Cause.pretty(cause),
-            }),
-        ),
-      ),
-  );
-
   const processEvent = (event: OrchestrationV2DomainEvent) => {
     switch (event.type) {
       case "thread.settled":
-        return cleanUpSettledThread(event.threadId).pipe(
-          Effect.andThen(settleSubagentsOf(event.threadId)),
-          Effect.andThen(enqueueFullSweep()),
-        );
+        return cleanUpSettledThread(event.threadId).pipe(Effect.andThen(enqueueFullSweep()));
       case "thread.archived":
       case "thread.deleted":
         return enqueueFullSweep();

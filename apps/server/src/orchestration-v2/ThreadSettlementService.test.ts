@@ -7,7 +7,6 @@ import {
   ProjectId,
   EventId,
   GitCommandError,
-  NodeId,
   ProviderInstanceId,
   MessageId,
   RuntimeRequestId,
@@ -15,15 +14,12 @@ import {
   type OrchestrationV2Run,
   ThreadId,
   TurnItemId,
-  type DiscoveredLocalServer,
   type OrchestrationProjectShell,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ShellSnapshot,
-  type OrchestrationV2Subagent,
   type OrchestrationV2ThreadShell,
-  type PreviewStopLocalServerInput,
   type PullRequestSummary,
   type ServerSettings as ContractServerSettings,
   type ServerSettingsPatch,
@@ -45,10 +41,7 @@ import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
 import * as GitManager from "../git/GitManager.ts";
-import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
-import * as PreviewManager from "../preview/Manager.ts";
-import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerActivation from "../serverActivation.ts";
@@ -492,7 +485,6 @@ describe("autoSettlementSettingsKey", () => {
 });
 
 type AutoSettleCommand = Extract<OrchestrationV2Command, { readonly type: "thread.auto-settle" }>;
-type SettleCommand = Extract<OrchestrationV2Command, { readonly type: "thread.settle" }>;
 
 const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(1));
 
@@ -602,10 +594,6 @@ interface HarnessOptions {
   readonly onCloseIdle?: () => Effect.Effect<void>;
   readonly hasActiveSubprocess?: (input: { readonly threadId: string }) => Effect.Effect<boolean>;
   readonly currentThreads?: ReadonlyArray<OrchestrationV2AppThread>;
-  /** Each thread's subagent records, by thread id; none where a thread is missing. */
-  readonly subagents?: Readonly<Record<string, ReadonlyArray<OrchestrationV2Subagent>>>;
-  /** The listening servers each port scan finds; none when omitted. */
-  readonly servers?: ReadonlyArray<DiscoveredLocalServer>;
   readonly projections?: ProjectionStore.ProjectionStoreV2Shape;
 }
 
@@ -636,9 +624,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
   const domainEvents = yield* PubSub.unbounded<OrchestrationV2DomainEvent>();
   const observedEvents = yield* Queue.unbounded<EventId>();
   const closedIdle = yield* Queue.unbounded<{ readonly threadId: string }>();
-  const closedPreviews = yield* Queue.unbounded<{ readonly threadId: string }>();
-  const stoppedServers = yield* Queue.unbounded<PreviewStopLocalServerInput>();
-  const settles = yield* Queue.unbounded<SettleCommand>();
   const scriptRuns =
     yield* Queue.unbounded<ProjectSetupScriptRunner.ProjectSetupScriptRunnerInput>();
 
@@ -679,9 +664,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     });
 
   const dispatch: Orchestrator.OrchestratorV2Shape["dispatch"] = (command) => {
-    if (command.type === "thread.settle") {
-      return Queue.offer(settles, command).pipe(Effect.as({ sequence: 1, storedEvents: [] }));
-    }
     if (command.type !== "thread.auto-settle") {
       return Effect.die(new Error(`Unexpected command: ${command.type}`));
     }
@@ -750,10 +732,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           ? Effect.succeed(thread)
           : Effect.die(new Error(`Unexpected thread read: ${threadId}`));
       },
-      getThreadRecords: (threadId, fields) =>
-        fields.length === 1 && fields[0] === "subagents"
-          ? Effect.succeed({ subagents: options.subagents?.[threadId] ?? [] } as never)
-          : Effect.die(new Error(`Unexpected records read: ${fields.join(", ")}`)),
     }),
     Layer.mock(Orchestrator.OrchestratorV2)({
       streamDomainEvents: Stream.fromPubSub(domainEvents).pipe(
@@ -766,14 +744,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
         Queue.offer(closedIdle, input).pipe(Effect.andThen(options.onCloseIdle?.() ?? Effect.void)),
       hasActiveSubprocess: (input) => options.hasActiveSubprocess?.(input) ?? Effect.succeed(false),
     }),
-    Layer.mock(PreviewManager.PreviewManager)({
-      close: (input) => Queue.offer(closedPreviews, input),
-    }),
-    Layer.mock(PortScanner.PortDiscovery)({
-      scan: () => Effect.succeed(options.servers ?? []),
-      stopServer: (input) => Queue.offer(stoppedServers, input),
-      trackAgent: () => () => undefined,
-    }),
     Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
       runForThread: (input) =>
         Queue.offer(scriptRuns, input).pipe(
@@ -781,7 +751,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
           Effect.as({ status: "no-script" } as const),
         ),
     }),
-    Layer.mock(GitWorkflowService.GitWorkflowService)({}),
     Layer.mock(GitManager.GitManager)({
       branchPullRequest,
       invalidateStatus: (cwd) => Ref.update(invalidatedCwds, (cwds) => [...cwds, cwd]),
@@ -826,9 +795,6 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     summaryRecovery,
     invalidatedCwds,
     closedIdle,
-    closedPreviews,
-    stoppedServers,
-    settles,
     scriptRuns,
     observedEvents,
     publishEvent: (event: OrchestrationV2DomainEvent) => PubSub.publish(domainEvents, event),
@@ -2402,124 +2368,6 @@ describe("ThreadSettlementServiceV2 terminals", () => {
           assert.strictEqual((yield* Queue.take(fixture.scriptRuns)).threadId, marker.id);
         }).pipe(Effect.provide(fixture.layer));
       }),
-  );
-
-  it.effect(
-    "closes the previews and stops the agent's servers of a settled thread, not a re-engaged one's",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const settled = appThread("reengaged-thread", "settled");
-          const reengaged = appThread("reengaged-thread", "active");
-          const marker = appThread("marker-thread", "settled");
-          const server = (
-            port: number,
-            owner: Pick<DiscoveredLocalServer, "terminal" | "agent">,
-          ): DiscoveredLocalServer => ({
-            host: "localhost",
-            port,
-            url: `http://localhost:${port}/`,
-            processName: "node",
-            pid: port + 10_000,
-            ...owner,
-          });
-          const fixture = yield* makeHarness({
-            snapshot: makeSnapshot([]),
-            currentThreads: [reengaged, marker],
-            // The settled thread's agent's server comes last, so once it is stopped the pass
-            // has already passed over the others.
-            servers: [
-              server(5101, { terminal: null, agent: { threadId: reengaged.id } }),
-              server(5102, { terminal: { threadId: marker.id, terminalId: "dev" }, agent: null }),
-              server(5103, { terminal: null, agent: { threadId: marker.id } }),
-            ],
-          });
-
-          yield* Effect.gen(function* () {
-            const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-            yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-            yield* fixture.publishEvent(settledEvent(settled));
-            yield* fixture.publishEvent(settledEvent(marker));
-            assert.deepStrictEqual(yield* Queue.take(fixture.closedPreviews), {
-              threadId: marker.id,
-            });
-            assert.strictEqual(yield* Queue.size(fixture.closedPreviews), 0);
-            assert.deepStrictEqual(yield* Queue.take(fixture.stoppedServers), {
-              pid: 15_103,
-              port: 5103,
-            });
-            assert.strictEqual(yield* Queue.size(fixture.stoppedServers), 0);
-          }).pipe(Effect.provide(fixture.layer));
-        }),
-      ),
-  );
-
-  it.effect("settles a settled thread's subagents, and un-settling it leaves them settled", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const parent = appThread("parent-thread", "settled");
-        const subagentThread = (
-          id: string,
-          settledOverride: OrchestrationV2AppThread["settledOverride"],
-        ): OrchestrationV2AppThread => ({
-          ...appThread(id, settledOverride),
-          lineage: {
-            parentThreadId: parent.id,
-            relationshipToParent: "subagent",
-            rootThreadId: parent.id,
-          },
-        });
-        const idle = subagentThread("idle-subagent", null);
-        const alreadySettled = subagentThread("settled-subagent", "settled");
-        const marker = appThread("marker-thread", "settled");
-        const record = (child: OrchestrationV2AppThread | null): OrchestrationV2Subagent => ({
-          id: NodeId.make(`node:${child?.id ?? "remote"}`),
-          threadId: parent.id,
-          runId: null,
-          parentNodeId: NodeId.make("node:parent"),
-          origin: "provider_native",
-          createdBy: "agent",
-          driver: "codex" as OrchestrationV2Subagent["driver"],
-          providerInstanceId: ProviderInstanceId.make("codex"),
-          providerThreadId: null,
-          childThreadId: child?.id ?? null,
-          nativeTaskRef: null,
-          prompt: "Review",
-          title: "Review",
-          model: null,
-          status: "completed",
-          result: null,
-          startedAt: null,
-          completedAt: null,
-          updatedAt: DateTime.makeUnsafe(NOW),
-        });
-        const fixture = yield* makeHarness({
-          snapshot: makeSnapshot([]),
-          currentThreads: [parent, idle, alreadySettled, marker],
-          subagents: { [parent.id]: [record(idle), record(alreadySettled), record(null)] },
-        });
-
-        yield* Effect.gen(function* () {
-          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
-          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
-          yield* fixture.publishEvent(settledEvent(parent));
-          const settle = yield* Queue.take(fixture.settles);
-          assert.strictEqual(settle.threadId, idle.id);
-          yield* Queue.take(fixture.closedIdle);
-          yield* fixture.publishEvent({
-            type: "thread.unsettled",
-            id: EventId.make("event:unsettled:parent-thread"),
-            threadId: parent.id,
-            occurredAt: DateTime.makeUnsafe(NOW),
-            payload: { ...parent, settledOverride: "active", settledAt: null },
-          });
-          // The marker's cleanup runs after the un-settlement, so no settle has come of it.
-          yield* fixture.publishEvent(settledEvent(marker));
-          yield* Queue.take(fixture.closedIdle);
-          assert.strictEqual(yield* Queue.size(fixture.settles), 0);
-        }).pipe(Effect.provide(fixture.layer));
-      }),
-    ),
   );
 
   it.effect("runs the settle script in the thread's own worktree", () =>

@@ -26,6 +26,7 @@ import * as MessageTool from "./stars/messageTool.ts";
 import * as SleepTool from "./stars/sleepTool.ts";
 import { starsRoute } from "./stars/routes.ts";
 import * as Stars from "./stars/stars.ts";
+import * as SettledThreads from "./threads/settled.ts";
 import * as XaxisKept from "./xaxis/kept.ts";
 
 /**
@@ -48,6 +49,8 @@ const features: ReadonlyArray<string> = [
 ];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
+  // What settling or archiving a thread does beyond upstream's settle.
+  yield* SettledThreads.make();
   const deliverTo = yield* Delivery.make;
   const stars = yield* Stars.make;
   const delivering = deliverTo(stars);
