@@ -1,14 +1,16 @@
 // The asks as the page draws them (`model.ts`), apart from the workbench so
 // `node --test src/panel/order.test.ts` and `src/stars/notices.test.ts` can
 // run what reads them: their shelves and their posters' names.
+import type { MessageHeader } from "@t3tools/contracts";
+
 import type { AskStatus, RouteAsk } from "../stars/plugin.ts";
 import { type Star, starName } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 
-/** An ask of an environment's plugin, with the line its reply opens with. */
+/** An ask of an environment's plugin, with the header its reply carries (`messageHeader.ts`). */
 export interface PageAsk extends RouteAsk {
   readonly environmentId: string;
-  readonly prefix: string;
+  readonly header: MessageHeader;
 }
 
 /** The shelf an ask's row sits on, by its status. */

@@ -5,6 +5,8 @@
 // routes serve everything the page knows of a Star, each answer decoded
 // strictly, so an answer of another shape fails loudly.
 
+import type { MessageHeader, MessageHeaderCaption, MessageHeaderOpen } from "@t3tools/contracts";
+
 /** The plugin's feature of keeping the Stars: where `about` lists it, the server finds, keeps and serves its Stars, and the page draws them. */
 export const STARS_FEATURE = "stars";
 
@@ -255,11 +257,11 @@ export interface RouteAsk {
   readonly replies: ReadonlyArray<string>;
 }
 
-/** What `GET asks` answers: the asks folder (a host path) and its hidden project, null before its first Markdown, and every ask by `posted`, each with the line its reply opens with. */
+/** What `GET asks` answers: the asks folder (a host path) and its hidden project, null before its first Markdown, and every ask by `posted`, each with the header its reply carries. */
 export interface AsksAnswer {
   readonly folder: string;
   readonly projectId: string | null;
-  readonly asks: ReadonlyArray<RouteAsk & { readonly prefix: string }>;
+  readonly asks: ReadonlyArray<RouteAsk & { readonly header: MessageHeader }>;
 }
 
 /** A model as the server's threads carry it, the fields the page checks; the view decodes it in full. */
@@ -343,6 +345,8 @@ export interface TranscriptEntry {
   readonly text: string;
   /** A Star reply's message; null for any other entry, and for a reply written before transcripts named it or served by an older plugin. */
   readonly messageId: string | null;
+  /** A user entry's header caption (`messageHeader.ts`), its line already cut from `text`; null for none. */
+  readonly caption: MessageHeaderCaption | null;
 }
 
 /** A transcript as `GET /stars/<id>/conversations/<name>` serves it, parsed. */
@@ -505,6 +509,26 @@ const starsAnswer = struct<StarsAnswer>({
 const entryKind: Decode<TranscriptEntry["kind"]> = (value, at) =>
   value === "user" || value === "star" || value === "tool" ? value : fail(at, "user, star or tool");
 
+const headerOpen: Decode<MessageHeaderOpen> = (value, at) => {
+  if (isFields(value) && typeof value.thread === "string") return { thread: value.thread };
+  if (isFields(value) && typeof value.row === "string") return { row: value.row };
+  return fail(at, "{ thread } or { row }");
+};
+
+const headerCaption = struct<MessageHeaderCaption>({
+  reply: boolean,
+  lead: string,
+  name: nullable(string),
+  open: nullable(headerOpen),
+  note: nullable(string),
+});
+
+const messageHeader = struct<MessageHeader>({
+  extension: string,
+  line: string,
+  caption: nullable(headerCaption),
+});
+
 const transcript = struct<Transcript>({
   threadId: string,
   started: string,
@@ -518,6 +542,8 @@ const transcript = struct<Transcript>({
       at: string,
       text: string,
       messageId: optional(string),
+      // Null for a header of none (a channel's first message), absent for no header.
+      caption: optional(nullable(headerCaption)),
     }),
   ),
 });
@@ -556,7 +582,15 @@ const asksAnswer = struct<AsksAnswer>({
   projectId: nullable(string),
   asks: arrayOf((value, at) => ({
     ...routeAsk(value, at),
-    prefix: struct<{ prefix: string }>({ prefix: string })(value, at).prefix,
+    // A plugin older than headers serves the reply's line alone, as `prefix`.
+    header:
+      isFields(value) && value.header === undefined
+        ? {
+            extension: "pult",
+            line: struct<{ prefix: string }>({ prefix: string })(value, at).prefix,
+            caption: null,
+          }
+        : messageHeader(isFields(value) ? value.header : undefined, `${at}.header`),
   })),
 });
 

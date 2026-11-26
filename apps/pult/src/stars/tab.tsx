@@ -66,7 +66,7 @@ function heldStar(starId: string) {
   return star;
 }
 
-/** The line a message starting a conversation in `channel` opens with (`conversationOpening`), as the view's draft send reads it. */
+/** The header of a message starting a conversation in `channel` (`conversationOpening`), as the view's draft send reads it. */
 const openingOf = (channel: () => string) => ({
   get: () => conversationOpening(channel()),
   subscribe: starStore.subscribe,
@@ -104,7 +104,7 @@ export function starComposerOptions(starId: string) {
       subscribe: starStore.subscribe,
     },
     draftModel,
-    creationPrefix: openingOf(() => heldStar(starId).defaultChannel),
+    creationHeader: openingOf(() => heldStar(starId).defaultChannel),
     draftSent: (environmentId: string, threadId: string) =>
       void afterDraftWake(starId, environmentId, threadId, heldStar(starId).defaultChannel),
   };
@@ -161,7 +161,7 @@ export function StarContent({
       channel && asleep
         ? {
             draftModel: channelModel(starId, channel.environmentId, channel.slug),
-            creationPrefix: openingOf(() => channel.slug),
+            creationHeader: openingOf(() => channel.slug),
             draftSent: (environmentId: string, threadId: string) =>
               void afterDraftWake(starId, environmentId, threadId, channel.slug),
           }

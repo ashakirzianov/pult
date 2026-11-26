@@ -2,6 +2,7 @@
 // mount's composer, and what its sends carry, which upstream's app never sets.
 // Pult sets it on a Star's tab and its composer strip (`apps/pult/src/stars/tab.tsx`),
 // and on a Star channel's draft (`apps/pult/view/ThreadView.tsx`).
+import type { MessageHeader } from "@t3tools/contracts";
 import { createContext, use, useSyncExternalStore } from "react";
 
 /** A value the app keeps and changes, read live. */
@@ -17,15 +18,15 @@ export interface ShellComposerOptions {
   readonly placeholder: ShellValue<string> | null;
   /** The tags a thread created by this composer's draft is created with (a Star channel's); null for none. */
   readonly creationTags: ReadonlyArray<string> | null;
-  /** The line the message that creates a thread from this composer's draft opens with, above what the user wrote (a Star channel's); null for none. A reply's prefix stands in for it. */
-  readonly creationPrefix: ShellValue<string> | null;
+  /** The header the message that creates a thread from this composer's draft carries (a Star channel's, `messageHeader.ts`); null for none. A reply's header stands in for it. */
+  readonly creationHeader: ShellValue<MessageHeader> | null;
   /** The reply this composer's sends are (an answer to a Star's ask); null for a plain message. */
   readonly reply: ShellReply | null;
 }
 
 export interface ShellReply {
-  /** The line the sent message opens with, above what the user wrote. */
-  readonly prefix: string;
+  /** The header the sent message carries (`messageHeader.ts`): the line its agent reads above what the user wrote, the caption drawn over it. */
+  readonly header: MessageHeader;
   /** Where the reply arrives, named on a line above the message input (`ComposerReplySuggestions`) all the while it is written. */
   readonly destination: ShellValue<ShellReplyDestination>;
   /** The replies its poster suggests, offered above the message input (`ComposerReplySuggestions`). */
@@ -50,7 +51,7 @@ export const ShellComposerOptions = createContext<ShellComposerOptions>({
   draftHero: true,
   placeholder: null,
   creationTags: null,
-  creationPrefix: null,
+  creationHeader: null,
   reply: null,
 });
 

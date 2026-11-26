@@ -201,7 +201,7 @@ class AsksModel {
         reading.answer = {
           ...reading.answer,
           asks: reading.answer.asks.map((each) =>
-            each.id === ask.id ? { ...acted, prefix: each.prefix } : each,
+            each.id === ask.id ? { ...acted, header: each.header } : each,
           ),
         };
       return true;

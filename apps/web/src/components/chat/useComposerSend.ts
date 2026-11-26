@@ -32,6 +32,8 @@ import {
   type ThreadId,
   ProviderInteractionMode,
   RuntimeMode,
+  withMessageHeader,
+  withoutMessageHeader,
 } from "@t3tools/contracts";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import {
@@ -415,7 +417,7 @@ export function useComposerSend(input: ComposerSendInput) {
     respondingRequestIdsRef.current = respondingRequestIds;
   }, [pendingApprovals, respondingRequestIds]);
   // Pult: what the app around the view has this composer's sends carry (`ShellComposerOptions`).
-  const { creationTags, creationPrefix, reply } = use(ShellComposerOptions);
+  const { creationTags, creationHeader, reply } = use(ShellComposerOptions);
 
   const onSend = async (
     e?: { preventDefault: () => void },
@@ -437,7 +439,7 @@ export function useComposerSend(input: ComposerSendInput) {
     // decline approvals for a draft that changed meanwhile.
     let promptAtSend = detachedOverride ? detachedOverride.prompt : promptRef.current;
     if (
-      // Pult: a reply is sent as written, its prefix on it, never read as a command.
+      // Pult: a reply is sent as written, its header on it, never read as a command.
       reply === null &&
       usageLimitsOffered &&
       usageLimitsKey !== null &&
@@ -1049,7 +1051,7 @@ export function useComposerSend(input: ComposerSendInput) {
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
     // rebinds them to the persisted id.
-    const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
+    const buildComposerMessageContext = (attachmentIds: ReadonlyArray<string>) =>
       buildMessageContext({
         terminalContexts: composerTerminalContextsSnapshot,
         reviewComments: composerReviewCommentsSnapshot,
@@ -1062,22 +1064,24 @@ export function useComposerSend(input: ComposerSendInput) {
           attachmentId: attachmentIds[index] ?? attachment.id,
         })),
       });
+    // Pult: a reply carries the header the app hands it (`messageHeader.ts`), and so does the message creating a draft's thread.
+    const header = reply?.header ?? (isLocalDraftThread ? (creationHeader?.get() ?? null) : null);
+    const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) => {
+      const context = buildComposerMessageContext(attachmentIds);
+      return header === null ? context : withMessageHeader(context, header);
+    };
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const formattedMessageText = formatOutgoingPrompt({
+    const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
       text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
     });
-    // Pult: a reply opens with the line the app hands it, and so does the message creating a draft's thread.
-    const opening = reply?.prefix ?? (isLocalDraftThread ? (creationPrefix?.get() ?? null) : null);
-    const outgoingMessageText =
-      opening === null ? formattedMessageText : `${opening}\n\n${formattedMessageText}`;
     if (
       isCurrentRouteThread() &&
       composerRef.current?.validateProviderInput(outgoingMessageText) === false
@@ -1270,7 +1274,11 @@ export function useComposerSend(input: ComposerSendInput) {
         respondingRequestIdsRef.current.includes(approval.requestId),
       );
       if (approvalFeedbackTarget !== undefined) {
-        if (composerAttachmentsSnapshot.length > 0 || outgoingMessageContext !== undefined) {
+        if (
+          composerAttachmentsSnapshot.length > 0 ||
+          // Pult: the app's header is no context the user added; feedback goes as plain text, without it.
+          (withoutMessageHeader(outgoingMessageContext)?.records.length ?? 0) > 0
+        ) {
           setThreadError(
             threadIdForSend,
             m(msg("Send approval feedback without attachments or added context.")),

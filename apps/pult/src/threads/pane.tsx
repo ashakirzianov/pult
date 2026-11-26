@@ -107,6 +107,7 @@ export function threadView() {
       connection: () => connection.context(),
       openThread: (environmentId, threadId) =>
         run("pult-shell.selectThread", environmentId, threadId),
+      openAsk: (environmentId, id) => run("pult-shell.openAsk", environmentId, id),
       // A draft the view went to, which it remembered as the project's.
       openDraft: (environmentId, projectId) =>
         run("pult-shell.newThread", environmentId, projectId),

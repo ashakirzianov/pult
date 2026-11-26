@@ -3,11 +3,15 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environ
 import {
   EnvironmentId,
   IssueTrackerKind,
+  type MessageHeader,
+  messageHeaderOf,
+  type OrchestrationMessageContext,
   ORCHESTRATION_V2_WS_METHODS,
   RunId,
   ScheduledTaskId,
   ThreadId,
   WS_METHODS,
+  withMessageHeader,
   type IssueDetail,
   type ScheduledTaskUpsertInput,
   type IssueRef,
@@ -29,6 +33,7 @@ import { AppRoot } from "~/AppRoot";
 // takes 6-11s; importing it here keeps that out of the test's timeout.
 import "~/components/ChatView";
 import { ShellComposerOptions, type ShellReply } from "~/components/chat/ShellComposerOptions";
+import { ShellMessagePresentation } from "~/components/chat/ShellMessagePresentation";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "~/diffPanelStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
@@ -461,7 +466,12 @@ it("a failed image-only first send of a new thread keeps the new draft", async (
   expect(page.getByText("Copy message", { exact: true }).query()).toBeNull();
 });
 
-// Pult: the app around the view names a draft's creation tags, its first message's line and a reply (`ShellComposerOptions`).
+// Pult: the app around the view names a draft's creation tags, its first message's header and a reply (`ShellComposerOptions`).
+const CHANNEL_HEADER: MessageHeader = {
+  extension: "pult",
+  line: "[To your channel review]",
+  caption: null,
+};
 async function renderShellDraft(reply: ShellReply | null) {
   const environment = installFakeEnvironment([]);
   __setClientSettingsForTests({
@@ -473,8 +483,10 @@ async function renderShellDraft(reply: ShellReply | null) {
   useComposerDraftStore
     .getState()
     .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId, { threadId });
-  const launches: Array<{ readonly tags?: unknown; readonly initialMessage?: { text: string } }> =
-    [];
+  const launches: Array<{
+    readonly tags?: unknown;
+    readonly initialMessage?: { text: string; context?: OrchestrationMessageContext };
+  }> = [];
   const launch = answerRpc(
     ORCHESTRATION_V2_WS_METHODS.launchThread,
     (input: (typeof launches)[number]) => {
@@ -494,7 +506,7 @@ async function renderShellDraft(reply: ShellReply | null) {
         draftHero: true,
         placeholder: null,
         creationTags: ["pult:channel:review"],
-        creationPrefix: { get: () => "[To your channel review]", subscribe: () => () => {} },
+        creationHeader: { get: () => CHANNEL_HEADER, subscribe: () => () => {} },
         reply,
       }}
     >
@@ -519,7 +531,7 @@ async function renderShellDraft(reply: ShellReply | null) {
   };
 }
 
-it("a draft's first send carries the app's creation tags and opens with its line", async () => {
+it("a draft's first send carries the app's creation tags and its header, its text the user's", async () => {
   await using draft = await renderShellDraft(null);
   await userEvent.click(draft.editor);
   await insertText("Hello");
@@ -527,10 +539,11 @@ it("a draft's first send carries the app's creation tags and opens with its line
 
   await vi.waitFor(() => expect(draft.launches).toHaveLength(1));
   expect(draft.launches[0]?.tags).toEqual(["pult:channel:review"]);
-  expect(draft.launches[0]?.initialMessage?.text).toBe("[To your channel review]\n\nHello");
+  expect(draft.launches[0]?.initialMessage?.text).toBe("Hello");
+  expect(messageHeaderOf(draft.launches[0]?.initialMessage?.context)).toEqual(CHANNEL_HEADER);
 });
 
-it("a draft's first send as a reply opens with its prefix in place of the line, and tells it sending, then sent", async () => {
+it("a draft's first send as a reply carries its header in place of the channel's, and tells it sending, then sent", async () => {
   const sending = vi.fn();
   const sent = vi.fn();
   const suggestions = ["Yes", "Not yet"];
@@ -540,8 +553,19 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
   const awake = { name: "Beta · review", note: "into its open conversation", open: openThread };
   let destination: { name: string; note: string; open: (() => void) | null } = asleep;
   const destinationListeners = new Set<() => void>();
+  const header: MessageHeader = {
+    extension: "pult",
+    line: '[In reply to your ask a1 "Ship it?"]',
+    caption: {
+      reply: true,
+      lead: "Reply to the ask",
+      name: "Ship it?",
+      open: { row: "a1" },
+      note: null,
+    },
+  };
   await using draft = await renderShellDraft({
-    prefix: '[In reply to your ask a1 "Ship it?"]',
+    header,
     destination: {
       get: () => destination,
       subscribe: (listener) => {
@@ -606,7 +630,75 @@ it("a draft's first send as a reply opens with its prefix in place of the line, 
   expect(sending.mock.invocationCallOrder[0]).toBeLessThan(sent.mock.invocationCallOrder[0]!);
   expect(launches).toHaveLength(1);
   expect(launches[0]?.tags).toEqual(["pult:channel:review"]);
-  expect(launches[0]?.initialMessage?.text).toBe('[In reply to your ask a1 "Ship it?"]\n\nYes');
+  expect(launches[0]?.initialMessage?.text).toBe("Yes");
+  expect(messageHeaderOf(launches[0]?.initialMessage?.context)).toEqual(header);
+});
+
+// Pult: the app around the view draws a message's header (`ShellMessagePresentation`).
+it("a message with a header draws the app's caption in place of upstream's, its bubble the body, its copy no header", async () => {
+  const header: MessageHeader = {
+    extension: "pult",
+    line: '[From Pult, about your ask a1 "Ship it?", to your channel main]',
+    caption: {
+      reply: false,
+      lead: "From Pult, about the ask",
+      name: "Ship it?",
+      open: null,
+      note: null,
+    },
+  };
+  const base = threadWithHistory("thread-header", 1);
+  const [asked, ...rest] = base.items;
+  const thread = {
+    ...base,
+    items: [
+      {
+        ...asked!,
+        text: "The user settled this ask.",
+        createdBy: "agent",
+        creationSource: "server",
+        context: withMessageHeader(undefined, header),
+      } as typeof asked & {},
+      ...rest,
+    ],
+  };
+  using _environment = installFakeEnvironment([thread]);
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const presented: Array<MessageHeader | null> = [];
+  const present = (shown: MessageHeader | null) => {
+    presented.push(shown);
+    return shown === null
+      ? null
+      : { label: null, fallbackLabel: "Pult", caption: <p>{shown.caption?.lead}</p> };
+  };
+  using write = vi.spyOn(navigator.clipboard, "write").mockResolvedValue(undefined);
+  using writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${thread.id}`] }),
+  );
+  await router.load();
+  await using _app = await render(
+    <ShellMessagePresentation value={present}>
+      <AppRoot router={router} />
+    </ShellMessagePresentation>,
+    // AppRoot brings its own router.
+    { router: false },
+  );
+
+  await expect.element(page.getByText("From Pult, about the ask")).toBeVisible();
+  expect(page.getByText("Sent by T3 Code").query()).toBeNull();
+  expect(presented).toContainEqual(header);
+  const bubble = document.querySelector("[data-user-message-bubble]")!;
+  expect(bubble.textContent).toContain("The user settled this ask.");
+  expect(bubble.textContent).not.toContain("[From Pult");
+  // Copy takes the body alone: the header's record goes into no clipboard fragment.
+  await userEvent.hover(page.getByText("The user settled this ask."));
+  await page.getByRole("button", { name: "Copy message" }).first().click();
+  await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith("The user settled this ask."));
+  expect(write).not.toHaveBeenCalled();
 });
 
 it("the send button's menu schedules the message on its thread and clears the composer", async () => {

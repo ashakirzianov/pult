@@ -216,7 +216,7 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
     replying.opened,
     ask.environmentId,
     ask.id,
-    ask.prefix,
+    ask.header,
     found.target,
   ]);
   let options = kept.get(key);
@@ -245,7 +245,7 @@ export function replyComposer(activeResource: string | undefined): ReplyComposer
         },
       },
       reply: {
-        prefix: ask.prefix,
+        header: ask.header,
         destination: replyDestinationOf(ask, target, openThread),
         suggestions: replySuggestions(ask),
         // An awake thread's tab opens as the send starts; a draft's thread opens once the send creates it.

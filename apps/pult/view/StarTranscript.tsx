@@ -5,13 +5,14 @@
 // conversations, upstream's system divider. Rendered inside the view's own
 // providers and router (`MountOptions.timelineHeader`), which upstream's
 // markdown needs.
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, type MessageHeaderCaption } from "@t3tools/contracts";
 import { MoonIcon, WrenchIcon } from "lucide-react";
 
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "~/components/chat/TimelineRowParts";
 import { TimelineSystemDivider } from "~/components/chat/TimelineSystemDivider";
 import { cn } from "~/lib/utils";
+import { MessageCaption } from "./MessageCaption.tsx";
 
 /** One entry of a transcript, as the Pult plugin's transcript route serves it (`src/stars/plugin.ts`). */
 export interface TranscriptEntry {
@@ -20,6 +21,8 @@ export interface TranscriptEntry {
   readonly text: string;
   /** A Star reply's message; null for any other entry and for a reply whose transcript names none. */
   readonly messageId: string | null;
+  /** A user entry's header caption, its line cut from `text` by the plugin; null for none. */
+  readonly caption: MessageHeaderCaption | null;
 }
 
 /** The reply a cited passage is being brought into view in (`src/stars/fold.tsx`), and where its body goes. */
@@ -49,8 +52,18 @@ function Entry({
   if (entry.kind === "user") {
     return (
       <div className="flex flex-col items-end gap-1 pb-4" title={entry.at}>
+        {/* The transcripts are Pult's, as are the headers they keep. */}
+        {entry.caption === null ? null : (
+          <MessageCaption
+            caption={entry.caption}
+            extension="pult"
+            environmentId={place.environmentId}
+          />
+        )}
         <div className="relative min-w-0 max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
-          <MessageAuthorHeading>You</MessageAuthorHeading>
+          <MessageAuthorHeading>
+            {entry.caption === null ? "You" : (entry.caption.name ?? entry.caption.lead)}
+          </MessageAuthorHeading>
           <ChatMarkdown
             text={entry.text}
             cwd={place.cwd}

@@ -11,6 +11,7 @@ import type {
   RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
+import { withMessageHeader } from "@t3tools/contracts";
 
 import { channelOf, conversationOpening } from "./stars.ts";
 
@@ -278,7 +279,7 @@ const HANDOFF_TITLE = "Reconcile your repository";
 
 /**
  * The handoff's first turn, which creates its thread in the Star's default
- * `channel`, tagged with it and opening with its line
+ * `channel`, tagged with it and carrying its header
  * (`conversationOpening`): at the modes of the conversation `handoffModel`
  * picked, and at the Star's model choice for the channel its plugin
  * resolved at them as the handoff wakes, else at that conversation's model,
@@ -305,8 +306,9 @@ export function handoffTurn(input: {
     message: {
       messageId: input.messageId,
       role: "user" as const,
-      text: `${conversationOpening(input.channel)}\n\n${input.text}`,
+      text: input.text,
       attachments: [],
+      context: withMessageHeader(undefined, conversationOpening(input.channel)),
     },
     runtimeMode,
     interactionMode,

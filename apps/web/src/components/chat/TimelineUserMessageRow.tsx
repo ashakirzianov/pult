@@ -8,8 +8,10 @@ import {
   type EnvironmentId,
   type MessageId,
   type ScheduledTaskId,
+  messageHeaderOf,
   type ServerProviderSkill,
   ThreadId,
+  withoutMessageHeader,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
@@ -91,6 +93,7 @@ import {
   TimelineRowTimestamp,
 } from "./TimelineRowParts";
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
+import { ShellMessagePresentation } from "./ShellMessagePresentation";
 import {
   resolvePreviewAnnotationImage,
   userMessageFileLabel,
@@ -494,12 +497,22 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
   );
   const userMessage = resolveUserMessagePresentation(row.message);
+  // Pult: the app draws a message's header (`ShellMessagePresentation`).
+  const presentation = use(ShellMessagePresentation)(
+    messageHeaderOf(row.message.context),
+    ctx.activeThreadEnvironmentId,
+  );
   // Messages from other agents fold to one line so the user's own messages stay easy to find.
   const folded = userMessage.attribution === "agent";
   const [expanded, setExpanded] = useState(false);
   const revealFoldRef = findRevealRef(() => setExpanded(true));
   const senderShell = useQuietThreadShell(folded ? senderRef : null);
-  const senderTitle = senderShell?.title.trim() || row.message.linkedSender?.title.trim();
+  // Pult: a folded message's header names its sender where the app sets a label.
+  const senderTitle =
+    presentation?.label ||
+    senderShell?.title.trim() ||
+    row.message.linkedSender?.title.trim() ||
+    presentation?.fallbackLabel;
   const senderLabel =
     senderTitle || gt("Agent", { $context: "sender of a message from another agent" });
   // Only an environment this client is connected to can open the sender's thread there.
@@ -507,7 +520,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const canOpenSender =
     senderRef !== null &&
     (row.message.linkedSender === undefined || linkedSenderEnvironment !== null);
-  const resolvedContext = resolveUserMessageContext({ ...row.message, text: userMessage.text });
+  // Pult: the header's record is the app's to draw, never resolved, chipped or copied with the message's context.
+  const resolvedContext = resolveUserMessageContext({
+    ...row.message,
+    context: withoutMessageHeader(row.message.context),
+    text: userMessage.text,
+  });
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
   const attachmentReferences = collectComposerContextReferences(resolvedContext.text).flatMap(
@@ -905,7 +923,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       className="group @container flex flex-col items-end gap-1"
       data-user-message-attribution={folded ? "agent" : undefined}
     >
-      {userMessage.attribution === "t3code" ? (
+      {/* Pult: an unfolded message's header draws its caption, in place of upstream's. */}
+      {!folded && presentation ? (
+        presentation.caption
+      ) : userMessage.attribution === "t3code" ? (
         <p
           className="me-1 text-2xs text-muted-foreground/70"
           data-user-message-attribution="t3code"

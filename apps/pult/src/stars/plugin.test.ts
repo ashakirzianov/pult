@@ -401,15 +401,23 @@ NodeTest.describe("decodeTranscript", () => {
       { kind: "tool", at: "2026-11-01T10:00:01.000Z", text: "Read a.md" },
       { kind: "star", at: "2026-11-01T10:00:02.000Z", text: "hello", messageId: "m1" },
       { kind: "star", at: "2026-11-01T10:00:03.000Z", text: "older" },
+      {
+        kind: "user",
+        at: "2026-11-01T10:00:04.000Z",
+        text: "Done.",
+        caption: { reply: false, lead: "From", name: "w", open: { thread: "w" }, note: null },
+      },
+      // A channel's first message: a header with no caption.
+      { kind: "user", at: "2026-11-01T10:00:05.000Z", text: "Start.", caption: null },
     ],
   };
 
   NodeTest.test(
-    "reads a transcript's entries, a reply's message id null where it names none",
+    "reads a transcript's entries, a reply's message id and a message's caption null where it names none",
     () => {
       NodeAssert.deepStrictEqual(decodeTranscript(transcript), {
         ...transcript,
-        entries: transcript.entries.map((entry) => ({ messageId: null, ...entry })),
+        entries: transcript.entries.map((entry) => ({ messageId: null, caption: null, ...entry })),
       });
     },
   );
@@ -538,7 +546,10 @@ NodeTest.describe("the Stars' routes", () => {
       looked.asked[0]?.url,
       "http://127.0.0.1:3773/api/plugins/pult/stars/s1/conversations/by-thread?threadId=t%3A0",
     );
-    NodeAssert.deepEqual(looked.result, found);
+    NodeAssert.deepEqual(looked.result, {
+      ...found,
+      entries: found.entries.map((entry) => ({ ...entry, caption: null })),
+    });
     const unnamed = await askOver(
       () => json({ ...found, name: undefined }),
       () => readStarTranscriptOfThread(credential, "s1", "t:0"),
@@ -561,15 +572,41 @@ NodeTest.describe("the Stars' routes", () => {
         settled: null,
         replies: ["Postgres", "SQLite"],
       };
-      const prefix = '[In reply to your ask a1b2c3d4 "Which backend?", to your channel ask-model]';
+      const line = '[In reply to your ask a1b2c3d4 "Which backend?", to your channel ask-model]';
+      const header = {
+        extension: "pult",
+        line,
+        caption: {
+          reply: true,
+          lead: "Reply to the ask",
+          name: "Which backend?",
+          open: { row: "a1b2c3d4" },
+          note: null,
+        },
+      };
       const read = await askOver(
-        () => json({ folder: "/Users/a/.pult/asks", projectId: null, asks: [{ ...ask, prefix }] }),
+        () =>
+          json({
+            folder: "/Users/a/.pult/asks",
+            projectId: null,
+            asks: [{ ...ask, header, prefix: line }],
+          }),
         () => readAsks(credential),
       );
       NodeAssert.deepEqual(read.result, {
         folder: "/Users/a/.pult/asks",
         projectId: null,
-        asks: [{ ...ask, prefix }],
+        asks: [{ ...ask, header }],
+      });
+      // A plugin older than headers serves the line alone: a header with no caption.
+      const older = await askOver(
+        () => json({ folder: "/f", projectId: null, asks: [{ ...ask, prefix: line }] }),
+        () => readAsks(credential),
+      );
+      NodeAssert.deepEqual(older.result, {
+        folder: "/f",
+        projectId: null,
+        asks: [{ ...ask, header: { extension: "pult", line, caption: null } }],
       });
       const thread = { ...ask, poster: { thread: "t9" } };
       const misshapen = await askOver(

@@ -7,6 +7,7 @@ import {
   RunId,
   ThreadId,
   type ScopedThreadRef,
+  withMessageHeader,
 } from "@t3tools/contracts";
 import { useImperativeHandle, type RefObject } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -364,7 +365,7 @@ describe("useQueuedRunEdit", () => {
     expect(draft?.environmentContexts).toEqual([machine]);
   });
 
-  it("saves only the thread mentions and attachments still in the edited message", async () => {
+  it("saves only the thread mentions and attachments still in the edited message, and its header", async () => {
     const { hook } = setup();
     mocks.editQueuedRun.mockResolvedValue({ _tag: "Success" });
     const kept = threadContextRecord(THREAD_B, "Kept");
@@ -407,6 +408,12 @@ describe("useQueuedRunEdit", () => {
       mimeType: "application/pdf",
       sizeBytes: 40,
     };
+    // Pult: a reply's header (`messageHeader.ts`), which no text references, stays with it.
+    const header = withMessageHeader(undefined, {
+      extension: "pult",
+      line: '[In reply to your ask a1 "Ship it?"]',
+      caption: null,
+    }).records[0]!;
     const messageId = MessageId.make("message-1");
     const text = [
       formatInlineContextReference(threadContextReference(kept)),
@@ -421,7 +428,10 @@ describe("useQueuedRunEdit", () => {
       {
         id: messageId,
         text,
-        context: { version: 1, records: [kept, removed, removedImageRecord, keptFileRecord] },
+        context: {
+          version: 1,
+          records: [kept, removed, removedImageRecord, keptFileRecord, header],
+        },
       },
     ];
     await using _screen = await render(view(THREAD_A, "queued", hook, messages));
@@ -452,7 +462,7 @@ describe("useQueuedRunEdit", () => {
           text: draft?.prompt,
           edit: expect.objectContaining({
             attachments: [keptFile],
-            context: { version: 1, records: [keptFileRecord, kept] },
+            context: { version: 1, records: [keptFileRecord, header, kept] },
           }),
         }),
       }),

@@ -3,6 +3,8 @@
 // answer of the Pult plugin's `stars` route merged by id into Stars, each
 // with its homes and its open channels' live rows; and when the page asks
 // for a Star to be created.
+import type { MessageHeader } from "@t3tools/contracts";
+
 import type { ShellThread } from "../threads/store.ts";
 import type { RouteChannel, RouteModel, RouteSchedule, StarsAnswer } from "./plugin.ts";
 
@@ -109,8 +111,12 @@ export function channelOf(thread: { readonly tags: ReadonlyArray<string> }): str
     .find((slug) => SLUG.test(slug));
 }
 
-/** The line the user's message that starts a conversation in `channel` from the page opens with (`star-channels`): a reply to an ask names the channel already, in the line the plugin serves. */
-export const conversationOpening = (channel: string) => `[To your channel ${channel}]`;
+/** The header of the user's message that starts a conversation in `channel` from the page (`star-channels`, `messageHeader.ts`): its line names the channel, and it draws no caption; a reply to an ask names the channel already, in the header the plugin serves. */
+export const conversationOpening = (channel: string): MessageHeader => ({
+  extension: "pult",
+  line: `[To your channel ${channel}]`,
+  caption: null,
+});
 
 /** A Star's conversations among `threads`: the root threads of its homes' projects with a channel tag, newest first. */
 export function conversationsOf<Thread extends StarThread & Pick<ShellThread, "tags">>(

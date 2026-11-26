@@ -18,6 +18,7 @@ import {
   type AssistantCitation,
   EnvironmentId,
   isOrchestrationV2WorkActive,
+  type MessageHeader,
   ModelSelection,
   ProjectId,
   ThreadId,
@@ -42,6 +43,7 @@ import {
 import { ShellDetailsCardWidth } from "~/components/chat/ShellDetailsCardWidth";
 import { FileLinkGateContext } from "~/components/chat/fileLinkGate";
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
+import { ShellMessagePresentation } from "~/components/chat/ShellMessagePresentation";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "~/components/ui/toast";
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -56,6 +58,7 @@ import { useProjects, useThreadProjection } from "~/state/entities";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { ComposerBarHost, ComposerBarNotices } from "./ComposerBar.tsx";
 import { ContextMeter } from "./ContextMeter.tsx";
+import { captionLabel, MessageCaption } from "./MessageCaption.tsx";
 import {
   draftKey,
   heldDraft,
@@ -163,7 +166,7 @@ function makeMount() {
         next.kind === "draft" && next.tags !== undefined ? false : (options.draftHero ?? true);
       const placeholder = options.placeholder ?? null;
       const creationTags = next.kind === "draft" ? (next.tags ?? null) : null;
-      const creationPrefix = next.kind === "draft" ? (options.creationPrefix ?? null) : null;
+      const creationHeader = next.kind === "draft" ? (options.creationHeader ?? null) : null;
       const reply = options.reply ?? null;
       // The same object for the same additions: a new one renders every reader of them again.
       if (
@@ -172,13 +175,13 @@ function makeMount() {
         additions.composer.draftHero !== draftHero ||
         additions.composer.placeholder !== placeholder ||
         JSON.stringify(additions.composer.creationTags) !== JSON.stringify(creationTags) ||
-        additions.composer.creationPrefix !== creationPrefix ||
+        additions.composer.creationHeader !== creationHeader ||
         additions.composer.reply !== reply
       )
         additions = {
           header: options.timelineHeader,
           draftModel: options.draftModel,
-          composer: { draftHero, placeholder, creationTags, creationPrefix, reply },
+          composer: { draftHero, placeholder, creationTags, creationHeader, reply },
         };
       changed();
     },
@@ -510,10 +513,10 @@ export interface MountOptions {
   readonly draftHero?: boolean;
   readonly placeholder?: ShellValue<string>;
   readonly draftModel?: ShellValue<unknown>;
-  /** The reply the mount's sends are, its prefix opening each and its `sent` told of each (an answer to a Star's ask). */
+  /** The reply the mount's sends are, its header on each and its `sent` told of each (an answer to a Star's ask). */
   readonly reply?: ShellReply;
-  /** The line the message that creates a thread from the mount's draft opens with, read as it is sent (a Star channel's first message, `[To your channel <slug>]`); a reply's prefix stands in for it. */
-  readonly creationPrefix?: ShellValue<string>;
+  /** The header the message that creates a thread from the mount's draft carries, read as it is sent (a Star channel's first message, the line `[To your channel <slug>]`); a reply's header stands in for it. */
+  readonly creationHeader?: ShellValue<MessageHeader>;
   /** Told once the mount's draft has become a thread on the server, its send, whichever mount of the draft sent it. */
   readonly draftSent?: (environmentId: string, threadId: string) => void;
   /**
@@ -542,9 +545,31 @@ const NO_ADDITIONS: Additions = {
     draftHero: true,
     placeholder: null,
     creationTags: null,
-    creationPrefix: null,
+    creationHeader: null,
     reply: null,
   },
+};
+
+/**
+ * How the view draws a message's header (`ShellMessagePresentation`): its caption, and a folded
+ * message's sender named by the caption's name and note, but a thread's, whose live title
+ * upstream's row draws where the view holds it.
+ */
+const presentMessage = (header: MessageHeader | null, environmentId: string) => {
+  const caption = header?.caption ?? null;
+  if (header === null || caption === null) return null;
+  const label = captionLabel(caption);
+  return {
+    label: caption.open !== null && "thread" in caption.open ? null : label,
+    fallbackLabel: label,
+    caption: (
+      <MessageCaption
+        caption={caption}
+        extension={header.extension}
+        environmentId={environmentId}
+      />
+    ),
+  };
 };
 
 /** What the composer renders into the bar in place of what it shows above itself, and the bar's host under its message. */
@@ -570,13 +595,15 @@ function ViewProviders({
       <ComposerControlsSlot value={bar}>
         <ComposerControlsSlotEntries value={composerBarEntries}>
           <ShellComposerOptions value={additions.composer}>
-            <ShellDetailsCardWidth value={detailsCardWidth}>
-              <FileLinkGateContext value={FileLinkGate}>
-                <TimelineHeaderSlot value={additions.header?.element ?? null}>
-                  <RouterProvider router={router} />
-                </TimelineHeaderSlot>
-              </FileLinkGateContext>
-            </ShellDetailsCardWidth>
+            <ShellMessagePresentation value={presentMessage}>
+              <ShellDetailsCardWidth value={detailsCardWidth}>
+                <FileLinkGateContext value={FileLinkGate}>
+                  <TimelineHeaderSlot value={additions.header?.element ?? null}>
+                    <RouterProvider router={router} />
+                  </TimelineHeaderSlot>
+                </FileLinkGateContext>
+              </ShellDetailsCardWidth>
+            </ShellMessagePresentation>
           </ShellComposerOptions>
         </ComposerControlsSlotEntries>
       </ComposerControlsSlot>

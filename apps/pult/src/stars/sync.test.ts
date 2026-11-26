@@ -2,7 +2,13 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
-import { MessageId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  MessageId,
+  messageHeaderOf,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import { starsOf } from "./stars.ts";
 import {
@@ -213,9 +219,14 @@ NodeTest.describe("the handoff", () => {
         "full-access",
         "full-access",
       ]);
-      // In the Star's default channel, its message opening with the channel's line.
+      // In the Star's default channel, its message carrying the channel's header.
       const { message, bootstrap } = turn(null);
-      NodeAssert.equal(message.text, "[To your channel user]\n\nReconcile.");
+      NodeAssert.equal(message.text, "Reconcile.");
+      NodeAssert.deepEqual(messageHeaderOf(message.context), {
+        extension: "pult",
+        line: "[To your channel user]",
+        caption: null,
+      });
       NodeAssert.deepEqual(bootstrap.createThread.tags, ["pult:channel:user"]);
     },
   );
