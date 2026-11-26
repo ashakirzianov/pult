@@ -1,9 +1,6 @@
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { getInitialServerConfig } from "@t3tools/client-runtime/rpc";
-import {
-  type EnvironmentThreadShell,
-  presentThreadShell,
-} from "@t3tools/client-runtime/state/models";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
   type EnvironmentShellState,
   makeEnvironmentShellState,
@@ -19,6 +16,7 @@ import {
 import {
   EnvironmentId,
   type OrchestrationV2ShellSnapshot,
+  type OrchestrationV2ThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -35,9 +33,11 @@ import {
   isStarThread,
   nextWake,
   NO_THREAD_FEATURES,
+  onlyCursorMoved,
   shellProject,
   shelfOf,
   shellThreads,
+  threadPresenter,
 } from "./presentation.ts";
 import { type ThreadFeatures, threadStore } from "./store.ts";
 
@@ -59,6 +59,8 @@ interface HeldShell {
 interface Followed {
   held: (HeldShell & { threads: ReadonlyArray<EnvironmentThreadShell> }) | null;
   readonly olderSettled: OlderSettledThreads;
+  /** Presents its rows, a row the shell kept keeping its presented thread. */
+  readonly present: (row: OrchestrationV2ThreadShell) => EnvironmentThreadShell;
   features: ThreadFeatures | null;
   wasReady: boolean;
   /** A snapshot came since the environment was last not ready. */
@@ -146,6 +148,7 @@ class ThreadsModel {
         followed = {
           held: null,
           olderSettled: new OlderSettledThreads(environmentId, () => this.present(environmentId)),
+          present: threadPresenter(EnvironmentId.make(environmentId)),
           features: null,
           wasReady: false,
           fresh: false,
@@ -165,6 +168,21 @@ class ThreadsModel {
     const followed = this.followed.get(environmentId);
     if (followed === undefined || state === undefined || followed.held?.snapshot === state.snapshot)
       return;
+    const held = followed.held;
+    if (
+      held !== null &&
+      held.generation === state.generation &&
+      held.removedAt === state.removedAt &&
+      onlyCursorMoved(held.snapshot, state.snapshot)
+    ) {
+      // A batch that changed no row: its threads stand as presented, and only `fresh` may move.
+      followed.held = { ...state, threads: held.threads };
+      if (!followed.fresh) {
+        followed.fresh = true;
+        this.publish();
+      }
+      return;
+    }
     followed.held = { ...state, threads: [] };
     followed.fresh = true;
     followed.olderSettled.follow(state.snapshot, state.generation, state.removedAt);
@@ -176,11 +194,10 @@ class ThreadsModel {
     const followed = this.followed.get(environmentId);
     const held = followed?.held;
     if (followed === undefined || held == null) return;
-    const id = EnvironmentId.make(environmentId);
     held.threads = [
       ...held.snapshot.threads,
       ...followed.olderSettled.rows(held.snapshot, held.removedAt),
-    ].map((thread) => presentThreadShell(id, thread));
+    ].map(followed.present);
     this.publish();
   }
 

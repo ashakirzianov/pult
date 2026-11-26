@@ -15,15 +15,19 @@ import * as DateTime from "effect/DateTime";
 
 import {
   v2Project,
+  v2ShellSnapshot,
   v2ThreadShell,
 } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures.ts";
+import { applyShellStreamEvents } from "../../../../packages/client-runtime/src/state/shellReducer.ts";
 import {
   limitedLabel,
   nextWake,
   NO_THREAD_FEATURES,
+  onlyCursorMoved,
   promptCacheWarning,
   shellThreads,
   shelve,
+  threadPresenter,
   threadStatus,
 } from "./presentation.ts";
 
@@ -509,6 +513,47 @@ NodeTest.describe("shellThreads", () => {
       );
     },
   );
+});
+
+NodeTest.describe("a shell batch", () => {
+  const delta = (sequence: number, row: OrchestrationV2ThreadShell) => ({
+    kind: "thread.updated" as const,
+    sequence,
+    location: "active" as const,
+    thread: row,
+  });
+
+  NodeTest.test(
+    "that changes no row moves the cursor alone, and its rows keep their presented threads",
+    () => {
+      const present = threadPresenter(EnvironmentId.make("env"));
+      const before = { ...v2ShellSnapshot, snapshotSequence: 4 };
+      const presented = before.threads.map(present);
+      const after = applyShellStreamEvents(before, [
+        delta(5, { ...v2ThreadShell }),
+        delta(6, v2ThreadShell),
+      ]);
+      NodeAssert.equal(after.snapshotSequence, 6);
+      NodeAssert.equal(onlyCursorMoved(before, after), true);
+      NodeAssert.equal(after.threads.map(present)[0], presented[0]);
+    },
+  );
+
+  NodeTest.test("that changes a row presents that row alone anew", () => {
+    const present = threadPresenter(EnvironmentId.make("env"));
+    const other = { ...v2ThreadShell, id: ThreadId.make("other") };
+    const before = { ...v2ShellSnapshot, threads: [v2ThreadShell, other], snapshotSequence: 4 };
+    const presented = before.threads.map(present);
+    const after = applyShellStreamEvents(before, [delta(5, { ...other, title: "Renamed" })]);
+    NodeAssert.equal(onlyCursorMoved(before, after), false);
+    const next = after.threads.map(present);
+    NodeAssert.equal(next[0], presented[0]);
+    NodeAssert.notEqual(next[1], presented[1]);
+    NodeAssert.equal(next[1]?.title, "Renamed");
+    // A field the snapshot gains or loses is a change too.
+    const cut = { before: NOW, asOfSequence: 4, counts: [] };
+    NodeAssert.equal(onlyCursorMoved(before, { ...before, olderSettled: cut } as never), false);
+  });
 });
 
 NodeTest.describe("promptCacheWarning", () => {

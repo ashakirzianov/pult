@@ -4,6 +4,7 @@
 // from pult-extension's `src/threads/presentation.ts` and `src/shellBridge.ts`.
 import {
   type EnvironmentThreadShell,
+  presentThreadShell,
   resolveThreadWorkingStartedAt,
 } from "@t3tools/client-runtime/state/models";
 import {
@@ -21,7 +22,12 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
-import type { OrchestrationProjectShell } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationProjectShell,
+  OrchestrationV2ShellSnapshot,
+  OrchestrationV2ThreadShell,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import { instantText } from "../stars/schedules.ts";
@@ -306,6 +312,41 @@ export function isStarThread(
  * conversation, and the threads a Star launched while off the Inbox
  * (`shelve`), all on no shelf. Archived and deleted ones go nowhere.
  */
+/**
+ * An environment's shell rows presented (`presentThreadShell`), each row object once: the shell
+ * keeps an unchanged row's object across batches, so a row it kept keeps its presented thread.
+ */
+export function threadPresenter(
+  environmentId: EnvironmentId,
+): (row: OrchestrationV2ThreadShell) => EnvironmentThreadShell {
+  const presented = new WeakMap<OrchestrationV2ThreadShell, EnvironmentThreadShell>();
+  return (row) => {
+    let thread = presented.get(row);
+    if (thread === undefined) {
+      thread = presentThreadShell(environmentId, row);
+      presented.set(row, thread);
+    }
+    return thread;
+  };
+}
+
+/**
+ * `next` holds `previous`'s rows, every field but the cursor the same: a shell batch whose deltas
+ * changed no row moves the cursor alone (`applyShellStreamEvents`), and presents as before.
+ */
+export function onlyCursorMoved(
+  previous: OrchestrationV2ShellSnapshot,
+  next: OrchestrationV2ShellSnapshot,
+): boolean {
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return [...keys].every(
+    (key) =>
+      key === "snapshotSequence" ||
+      previous[key as keyof OrchestrationV2ShellSnapshot] ===
+        next[key as keyof OrchestrationV2ShellSnapshot],
+  );
+}
+
 export function shellThreads(
   environments: ReadonlyArray<EnvironmentShell>,
   now: string,
