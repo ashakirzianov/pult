@@ -225,7 +225,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
       PluginLoader.PluginLoader,
     );
     const [status] = (yield* loader.list).filter((plugin) => plugin.name === "pult");
-    expect(status).toMatchObject({ build: "bundled", status: "loaded", error: undefined });
+    expect(status).toMatchObject({ kind: "bundled", status: "loaded", error: undefined });
 
     const web = HttpRouter.toWebHandler(
       PluginsHttp.layerRoutes(loader).pipe(

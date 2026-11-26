@@ -1,8 +1,8 @@
 /**
- * Loads in-process plugins: the bundled ones compiled into the server, and the installed
- * ones from `<baseDir>/plugins/<name>/builds/<build>/main.mjs`, which it swaps on request:
- * a reload imports the new build first, points `current` at it on success, then closes
- * the old build's scope. See docs/internals/plugins.md.
+ * Loads in-process plugins at startup: the bundled ones compiled into the server, then each
+ * installed extension, `<home>/plugins/<name>/` with an `extension.json` beside its `main.mjs`,
+ * refused before import when this server does not serve its contract or its Effect. A running
+ * one changes only with a restart. See docs/internals/plugins.md.
  */
 import * as NodeModule from "node:module";
 import * as NodeURL from "node:url";
@@ -15,125 +15,77 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
 import type { McpServer } from "effect/ai";
 import type { HttpServerRequest, HttpServerResponse } from "effect/http";
+import effectPackage from "effect/package.json" with { type: "json" };
 
+import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
-import type { ExtensionHost } from "./contract.ts";
+import { CONTRACT, type ExtensionHost, Manifest } from "./contract.ts";
 import * as ExtensionContract from "./ExtensionContract.ts";
-import { hostIdentity, type ServerBuild, serverBuild } from "../pluginHost.ts";
 
-/** The bare specifier a plugin build leaves external; resolved to the host entry here. */
-const HOST_SPECIFIER = "@t3code/plugin-host";
+/** The bare specifier an extension's build leaves external; resolved to the extension entry here. */
+const HOST_SPECIFIER = "@pult/extension-host";
 
-/** Plugin names and build ids are single path segments. */
+/** Plugin names are single path segments. */
 const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-export class PluginNotFoundError extends Schema.TaggedError<PluginNotFoundError>()(
-  "PluginNotFoundError",
-  { plugin: Schema.String },
-) {
-  override get message(): string {
-    return `No plugin named "${this.plugin}" is installed.`;
-  }
-}
+const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-export class PluginNotReloadableError extends Schema.TaggedError<PluginNotReloadableError>()(
-  "PluginNotReloadableError",
-  { plugin: Schema.String },
-) {
-  override get message(): string {
-    return `Plugin "${this.plugin}" is compiled into the server; it changes only with the server's build.`;
-  }
-}
+const decodeManifest = Schema.decodeEffect(Schema.fromJsonString(Manifest));
 
-export class PluginBuildNotFoundError extends Schema.TaggedError<PluginBuildNotFoundError>()(
-  "PluginBuildNotFoundError",
-  { plugin: Schema.String, build: Schema.String },
+export class PluginRefusedError extends Schema.TaggedError<PluginRefusedError>()(
+  "PluginRefusedError",
+  {
+    plugin: Schema.String,
+    reason: Schema.String,
+    /** The extension's own version, when its manifest decoded. */
+    version: Schema.optional(Schema.String),
+  },
 ) {
   override get message(): string {
-    return `Plugin "${this.plugin}" has no build "${this.build}".`;
+    return `Extension "${this.plugin}" is refused: ${this.reason}.`;
   }
 }
 
 export class PluginImportError extends Schema.TaggedError<PluginImportError>()(
   "PluginImportError",
-  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
+  { plugin: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin "${this.plugin}" build "${this.build}" failed to import.`;
-  }
-}
-
-export class PluginIdentityError extends Schema.TaggedError<PluginIdentityError>()(
-  "PluginIdentityError",
-  { plugin: Schema.String, build: Schema.String },
-) {
-  override get message(): string {
-    return `Plugin "${this.plugin}" build "${this.build}" does not share the host's modules: it must re-export identity from ${HOST_SPECIFIER} and leave that specifier external.`;
-  }
-}
-
-export class PluginBuildMismatchError extends Schema.TaggedError<PluginBuildMismatchError>()(
-  "PluginBuildMismatchError",
-  {
-    plugin: Schema.String,
-    build: Schema.String,
-    builtFor: Schema.String,
-    serverBuild: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `Plugin "${this.plugin}" build "${this.build}" was built for ${this.builtFor}; this server is ${this.serverBuild}.`;
+    return `Plugin "${this.plugin}" failed to import.`;
   }
 }
 
 export class PluginActivateError extends Schema.TaggedError<PluginActivateError>()(
   "PluginActivateError",
-  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
+  { plugin: Schema.String, cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Plugin "${this.plugin}" build "${this.build}" failed to activate.`;
+    return `Plugin "${this.plugin}" failed to activate.`;
   }
 }
 
-export class PluginCurrentLinkError extends Schema.TaggedError<PluginCurrentLinkError>()(
-  "PluginCurrentLinkError",
-  { plugin: Schema.String, build: Schema.String, cause: Schema.Defect() },
-) {
-  override get message(): string {
-    return `Plugin "${this.plugin}" build "${this.build}" activated, but its current link could not be written; the build was closed again.`;
-  }
-}
+type PluginLoadError = PluginRefusedError | PluginImportError | PluginActivateError;
 
-export type PluginLoadError =
-  | PluginBuildNotFoundError
-  | PluginImportError
-  | PluginIdentityError
-  | PluginBuildMismatchError
-  | PluginActivateError
-  | PluginCurrentLinkError;
-
-/** The error with its underlying cause, for the reload answer and the status list. */
-export const describeLoadError = (error: PluginLoadError | PluginNotReloadableError): string =>
+const describeLoadError = (error: PluginLoadError): string =>
   "cause" in error ? `${error.message} ${describeCause(error.cause)}` : error.message;
 
 const describeCause = (cause: unknown): string =>
   cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
 
-const describeBuild = (build: ServerBuild): string =>
-  `${build.version}@${build.commit ?? "unknown-commit"}`;
-
+/** A row of `GET /api/plugins`, the list the Extensions tab reads. */
 export interface PluginStatus {
   readonly name: string;
-  /** The build that is running, if any. */
-  readonly build: string | undefined;
-  /** "failed" describes the last attempt; a previous build may still be running. */
-  readonly status: "loaded" | "failed" | "none";
+  /** An extension's own, from its manifest; a bundled plugin's is the server's. */
+  readonly version: string | undefined;
+  readonly kind: "bundled" | "installed";
+  /** `refused`: turned away before any of its code ran; `failed`: its import or activation failed. */
+  readonly status: "loaded" | "failed" | "refused";
   readonly error: string | undefined;
   readonly loadedAt: string | undefined;
 }
@@ -149,84 +101,76 @@ export type PluginRouteHandler = (
   scopes: ReadonlyArray<AuthEnvironmentScope>,
 ) => Effect.Effect<HttpServerResponse.HttpServerResponse>;
 
-/** What `activate` receives. The activation effect already runs with `context` provided. */
+/**
+ * What a bundled plugin's `activate` receives: the raw tier (`context`, `serve`), and the contract
+ * an installed extension of its name would get. The activation already runs with `context` provided.
+ */
 export interface PluginHost {
   readonly name: string;
-  readonly build: string;
   readonly context: Context.Context<McpServer.McpServer>;
-  /**
-   * Serve `/api/plugins/<name>/<path>` with this build. The handler answers once
-   * the build is swapped in, until the next build replaces it; the last call wins.
-   */
+  /** Serve `/api/plugins/<name>/<path>` once activation succeeds; the last call wins. */
   readonly serve: (handler: PluginRouteHandler) => Effect.Effect<void>;
-  /** The contract an installed extension of this name would get, its data directory made. */
   readonly extension: ExtensionHost;
 }
 
-interface PluginModule {
-  readonly identity?: unknown;
-  readonly builtFor?: unknown;
-  readonly activate?: unknown;
-}
-
-/** The build id a bundled plugin is listed with. */
-const BUNDLED_BUILD = "bundled";
-
 /**
- * Plugins compiled into the server, by name: each imports its module, which
- * shares the server's module graph and commit, so the identity and build checks
- * are skipped. A bundled name is never reloaded, and `<baseDir>/plugins/<name>` is ignored.
+ * Plugins compiled into the server, by name, each importing its module, which exports `activate`
+ * returning an Effect. A bundled name shadows `<home>/plugins/<name>`.
  */
 export type BundledPlugins = Readonly<
   Record<string, () => Promise<{ readonly activate: (host: PluginHost) => unknown }>>
 >;
 
-interface RunningBuild {
-  readonly build: string;
+interface Running {
   readonly scope: Scope.Closeable;
   readonly loadedAt: string;
-  /** What `host.serve` registered during activation; published only once the build is swapped in. */
   readonly route: PluginRouteHandler | undefined;
 }
 
 interface PluginRecord {
-  running: RunningBuild | undefined;
-  lastError: string | undefined;
+  readonly status: PluginStatus;
+  readonly running: Running | undefined;
 }
 
 export class PluginLoader extends Context.Service<
   PluginLoader,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginStatus>>;
-    readonly reload: (
-      name: string,
-      build: string,
-    ) => Effect.Effect<
-      PluginStatus,
-      PluginNotFoundError | PluginNotReloadableError | PluginLoadError
-    >;
-    /** The route handler of the plugin's running build, if it registered one. */
+    /** The route handler of a running bundled plugin, if it registered one. */
     readonly route: (name: string) => PluginRouteHandler | undefined;
   }
 >()("t3/plugins/PluginLoader") {}
 
-const isServerBuild = (value: unknown): value is ServerBuild =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { version?: unknown }).version === "string" &&
-  ["string", "undefined"].includes(typeof (value as { commit?: unknown }).commit);
+type Version = readonly [number, number, number];
 
-/** Same version, and the same commit when both sides know theirs. */
-const isCompatibleBuild = (builtFor: ServerBuild): boolean =>
-  builtFor.version === serverBuild.version &&
-  (builtFor.commit === undefined ||
-    serverBuild.commit === undefined ||
-    builtFor.commit === serverBuild.commit);
+const parseVersion = (text: string): Version | undefined => {
+  const match = VERSION_PATTERN.exec(text);
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+};
 
-/** The host entry next to this module in the bundle, or the source in a dev run. */
+const isNewer = (left: Version, right: Version): boolean => {
+  for (const index of [0, 1, 2] as const) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
+};
+
+/** Why an extension built against Effect `wanted` cannot run on `served`: the caret range. */
+const effectRefusal = (wanted: string, served: Version): string | undefined => {
+  const version = parseVersion(wanted);
+  const server = served.join(".");
+  if (version === undefined) return `its manifest's effect "${wanted}" is not a version x.y.z`;
+  if (version[0] !== served[0])
+    return `it was built against Effect ${wanted}, and this server runs Effect ${server}, another major`;
+  if (isNewer(version, served))
+    return `it was built against Effect ${wanted}, newer than this server's ${server}`;
+  return undefined;
+};
+
+/** The extension entry next to this module in the bundle, or the source in a dev run. */
 const resolveHostModuleUrl = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
-  for (const candidate of ["./pluginHost.mjs", "../pluginHost.mjs", "../pluginHost.ts"]) {
+  for (const candidate of ["./extensionHost.mjs", "../extensionHost.mjs", "../extensionHost.ts"]) {
     const url = new URL(candidate, import.meta.url);
     if (yield* fs.exists(NodeURL.fileURLToPath(url)).pipe(Effect.orElseSucceed(() => false))) {
       return url.href;
@@ -236,17 +180,17 @@ const resolveHostModuleUrl = Effect.gen(function* () {
 });
 
 /**
- * What a plugin's `activate` may return. The channels are nominal: a plugin is
- * JavaScript, and whatever it fails with is caught as a cause by the loader.
+ * What `activate` must return. The channels are nominal: a plugin is JavaScript, and whatever it
+ * fails with is caught as a cause.
  */
-const isActivationEffect = (
+const isActivation = (
   value: unknown,
 ): value is Effect.Effect<unknown, Error, Scope.Scope | McpServer.McpServer> =>
   Effect.isEffect(value);
 
 let hostResolutionRegistered = false;
 
-/** Maps the bare specifier to the host entry for every module Node loads from now on. */
+/** Maps the bare specifier to the extension entry for every module Node loads from now on. */
 const registerHostResolution = (hostModuleUrl: string) => {
   if (hostResolutionRegistered) return;
   hostResolutionRegistered = true;
@@ -264,44 +208,24 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
   const path = yield* Path.Path;
   // Everything the server provided to this layer, for the plugins to run with.
   const context = yield* Effect.context<McpServer.McpServer>();
-  const mutex = yield* Semaphore.make(1);
   const pluginsDir = path.join(config.baseDir, "plugins");
   const records = new Map<string, PluginRecord>();
-  let importCount = 0;
+  const servedEffect = parseVersion(effectPackage.version);
+  if (servedEffect === undefined)
+    return yield* Effect.die(
+      new Error(`todo: the server's Effect ${effectPackage.version} is not a version x.y.z`),
+    );
 
   const hostModuleUrl = yield* resolveHostModuleUrl;
   if (hostModuleUrl === undefined) {
-    yield* Effect.logWarning("plugin host entry not found; plugins cannot import it", {
+    yield* Effect.logWarning("extension entry not found; extensions cannot import it", {
       loader: import.meta.url,
     });
   } else {
     registerHostResolution(hostModuleUrl);
   }
 
-  const record = (name: string): PluginRecord => {
-    let existing = records.get(name);
-    if (existing === undefined) {
-      existing = { running: undefined, lastError: undefined };
-      records.set(name, existing);
-    }
-    return existing;
-  };
-
-  const status = (name: string): PluginStatus => {
-    const entry = records.get(name);
-    return {
-      name,
-      build: entry?.running?.build,
-      status:
-        entry?.lastError !== undefined
-          ? "failed"
-          : entry?.running !== undefined
-            ? "loaded"
-            : "none",
-      error: entry?.lastError,
-      loadedAt: entry?.running?.loadedAt,
-    };
-  };
+  const exists = (target: string) => fs.exists(target).pipe(Effect.orElseSucceed(() => false));
 
   const isDirectory = (target: string) =>
     fs.stat(target).pipe(
@@ -321,222 +245,177 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
     ),
   );
 
-  const runActivate = Effect.fn("PluginLoader.runActivate")(function* (
-    activate: (host: PluginHost) => unknown,
-    host: PluginHost,
-    scope: Scope.Closeable,
+  /**
+   * Runs `activate` in a scope of its own, closed again if activation fails, after making the
+   * plugin's data directory. `hostFor` builds its argument from the contract and the route setter.
+   */
+  const activateIn = Effect.fn("PluginLoader.activateIn")(function* (
+    name: string,
+    activate: unknown,
+    hostFor: (extension: ExtensionHost, serve: PluginHost["serve"]) => unknown,
   ) {
-    const activated = activate(host);
-    if (isActivationEffect(activated)) {
-      yield* activated.pipe(Scope.provide(scope), Effect.provide(context));
-      return;
-    }
-    const resolved = yield* Effect.promise(() => Promise.resolve(activated));
-    if (typeof resolved === "function") {
-      const dispose = resolved as () => unknown;
-      yield* Scope.addFinalizer(
-        scope,
-        Effect.promise(() => Promise.resolve(dispose())).pipe(Effect.ignore),
-      );
-    }
-  });
-
-  const loadBuild = Effect.fn("PluginLoader.loadBuild")(function* (name: string, build: string) {
-    const mainPath = path.join(pluginsDir, name, "builds", build, "main.mjs");
-    if (
-      !SEGMENT_PATTERN.test(build) ||
-      !(yield* fs.exists(mainPath).pipe(Effect.orElseSucceed(() => false)))
-    ) {
-      return yield* new PluginBuildNotFoundError({ plugin: name, build });
-    }
-    // A fresh URL each time, so re-importing the same build id bypasses the module cache.
-    importCount += 1;
-    const url = `${NodeURL.pathToFileURL(mainPath).href}?load=${importCount}`;
-    const module = yield* Effect.tryPromise({
-      try: () => import(url) as Promise<PluginModule>,
-      catch: (cause) => new PluginImportError({ plugin: name, build, cause }),
-    });
-    if (module.identity !== hostIdentity) {
-      return yield* new PluginIdentityError({ plugin: name, build });
-    }
-    if (!isServerBuild(module.builtFor) || !isCompatibleBuild(module.builtFor)) {
-      return yield* new PluginBuildMismatchError({
-        plugin: name,
-        build,
-        builtFor: isServerBuild(module.builtFor)
-          ? describeBuild(module.builtFor)
-          : "an unknown build (no builtFor export)",
-        serverBuild: describeBuild(serverBuild),
-      });
-    }
-    const activate = module.activate;
     if (typeof activate !== "function") {
       return yield* new PluginActivateError({
         plugin: name,
-        build,
-        cause: new Error("main.mjs does not export activate"),
+        cause: new Error("its module does not export activate"),
       });
     }
-    return yield* activateBuild(name, build, activate as (host: PluginHost) => unknown);
-  });
-
-  /** Activates a build in a scope of its own, closed again if activation fails. */
-  const activateBuild = Effect.fn("PluginLoader.activateBuild")(function* (
-    name: string,
-    build: string,
-    activate: (host: PluginHost) => unknown,
-  ) {
-    const scope = yield* Scope.make();
-    // The route stays with this build until swapIn publishes it, so a build that
-    // serves and then fails never displaces the running build's handler.
-    let route: PluginRouteHandler | undefined;
     const dataDir = path.join(config.stateDir, "plugins", name);
     yield* fs
       .makeDirectory(dataDir, { recursive: true })
-      .pipe(Effect.mapError((cause) => new PluginActivateError({ plugin: name, build, cause })));
-    const host: PluginHost = {
-      name,
-      build,
-      context,
-      serve: (handler) =>
-        Effect.sync(() => {
-          route = handler;
-        }),
-      extension: ExtensionContract.make(name, dataDir, context),
-    };
-    yield* runActivate(activate, host, scope).pipe(
+      .pipe(Effect.mapError((cause) => new PluginActivateError({ plugin: name, cause })));
+    // Published only once activation succeeds, so a plugin that serves and then fails serves nothing.
+    let route: PluginRouteHandler | undefined;
+    const serve: PluginHost["serve"] = (handler) =>
+      Effect.sync(() => {
+        route = handler;
+      });
+    const host = hostFor(ExtensionContract.make(name, dataDir, context), serve);
+    const scope = yield* Scope.make();
+    yield* Effect.suspend(() => {
+      const activated: unknown = activate(host);
+      return isActivation(activated)
+        ? activated
+        : Effect.die(new Error("activate did not return an Effect"));
+    }).pipe(
+      Scope.provide(scope),
+      Effect.provide(context),
+      // The activation's failure is the one reported; a finalizer failing as it closes is logged.
       Effect.catchCause((cause) =>
         Scope.close(scope, Exit.void).pipe(
-          Effect.andThen(
-            new PluginActivateError({ plugin: name, build, cause: Cause.squash(cause) }),
+          Effect.catchCause((closing) =>
+            Effect.logWarning("plugin finalizer failed", { name, cause: Cause.pretty(closing) }),
           ),
+          Effect.andThen(new PluginActivateError({ plugin: name, cause: Cause.squash(cause) })),
         ),
       ),
     );
     const loadedAt = DateTime.formatIso(yield* DateTime.now);
-    return { build, scope, loadedAt, route } satisfies RunningBuild;
+    return { scope, loadedAt, route } satisfies Running;
+  });
+
+  /** Records the outcome of loading `name`. */
+  const settle = Effect.fn("PluginLoader.settle")(function* (
+    name: string,
+    kind: PluginStatus["kind"],
+    version: string | undefined,
+    attempt: Effect.Effect<Running, PluginLoadError>,
+  ) {
+    const outcome = yield* Effect.exit(attempt);
+    if (Exit.isSuccess(outcome)) {
+      const running = outcome.value;
+      records.set(name, {
+        status: {
+          name,
+          version,
+          kind,
+          status: "loaded",
+          error: undefined,
+          loadedAt: running.loadedAt,
+        },
+        running,
+      });
+      return yield* Effect.logInfo("plugin loaded", { name, kind, version });
+    }
+    const error = Cause.squash(outcome.cause) as PluginLoadError;
+    const described = describeLoadError(error);
+    records.set(name, {
+      status: {
+        name,
+        version: (error._tag === "PluginRefusedError" ? error.version : undefined) ?? version,
+        kind,
+        status: error._tag === "PluginRefusedError" ? "refused" : "failed",
+        error: described,
+        loadedAt: undefined,
+      },
+      running: undefined,
+    });
+    yield* Effect.logWarning("plugin did not load", { name, kind, error: described });
+  });
+
+  const refused = (name: string, reason: string, version?: string) =>
+    new PluginRefusedError({ plugin: name, reason, ...(version === undefined ? {} : { version }) });
+
+  /** The manifest of `name`, if this server serves what it names. Nothing of the extension runs. */
+  const admit = Effect.fn("PluginLoader.admit")(function* (name: string) {
+    const dir = path.join(pluginsDir, name);
+    const text = yield* fs.readFileString(path.join(dir, "extension.json")).pipe(Effect.option);
+    if (Option.isNone(text)) {
+      return yield* refused(
+        name,
+        (yield* exists(path.join(dir, "builds")))
+          ? "it is a plugin of the retired form (builds/, no extension.json); rebuild it as an extension"
+          : "it has no extension.json",
+      );
+    }
+    const manifest = yield* decodeManifest(text.value).pipe(
+      Effect.mapError((error) =>
+        refused(name, `its extension.json does not decode: ${error.message}`),
+      ),
+    );
+    const effect = effectRefusal(manifest.effect, servedEffect);
+    if (effect !== undefined) return yield* refused(name, effect, manifest.version);
+    if (manifest.contract !== CONTRACT)
+      return yield* refused(
+        name,
+        `it was built against contract ${manifest.contract}, and this server serves ${CONTRACT}`,
+        manifest.version,
+      );
+    return manifest;
   });
 
   /**
-   * Repoints `current` atomically. A failure here fails the reload: a build that
-   * `current` does not name would be gone at the next startup, so it is not loaded.
+   * Loads one installed extension: the one function an install calls too, for a name that is not
+   * running, so an install takes effect at once.
    */
-  const pointCurrent = Effect.fn("PluginLoader.pointCurrent")(
-    function* (name: string, build: string) {
-      const currentPath = path.join(pluginsDir, name, "current");
-      const tmpPath = `${currentPath}.tmp`;
-      yield* fs.remove(tmpPath).pipe(Effect.ignore);
-      yield* fs.symlink(path.join("builds", build), tmpPath);
-      yield* fs
-        .rename(tmpPath, currentPath)
-        .pipe(Effect.tapError(() => fs.remove(tmpPath).pipe(Effect.ignore)));
-    },
-    (effect, name, build) =>
-      effect.pipe(
-        Effect.catchCause((cause) =>
-          Effect.fail(
-            new PluginCurrentLinkError({ plugin: name, build, cause: Cause.squash(cause) }),
-          ),
-        ),
-      ),
-  );
-
-  const swapIn = Effect.fn("PluginLoader.swapIn")(function* (name: string, running: RunningBuild) {
-    const entry = record(name);
-    const previous = entry.running;
-    entry.running = running;
-    entry.lastError = undefined;
-    if (previous !== undefined) {
-      yield* Scope.close(previous.scope, Exit.void);
-    }
-    yield* Effect.logInfo("plugin loaded", { name, build: running.build });
-  });
-
-  const noteFailure = Effect.fn("PluginLoader.noteFailure")(function* (
-    name: string,
-    error: PluginLoadError,
-  ) {
-    const described = describeLoadError(error);
-    record(name).lastError = described;
-    yield* Effect.logWarning("plugin failed to load", {
+  const loadInstalled = Effect.fn("PluginLoader.loadInstalled")(function* (name: string) {
+    if (records.get(name)?.running !== undefined)
+      return yield* Effect.die(
+        new Error(`todo: "${name}" is running; replacing a running extension takes a restart`),
+      );
+    const manifest = yield* admit(name).pipe(
+      Effect.tapError((error) => settle(name, "installed", undefined, Effect.fail(error))),
+      Effect.option,
+    );
+    if (Option.isNone(manifest)) return;
+    const url = NodeURL.pathToFileURL(path.join(pluginsDir, name, "main.mjs")).href;
+    yield* settle(
       name,
-      build: error.build,
-      error: described,
-    });
-  });
-
-  const reload: PluginLoader["Service"]["reload"] = (name, build) =>
-    mutex.withPermits(1)(
-      Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          if (isBundled(name)) {
-            return yield* new PluginNotReloadableError({ plugin: name });
-          }
-          if (
-            !SEGMENT_PATTERN.test(name) ||
-            !(yield* restore(isDirectory(path.join(pluginsDir, name))))
-          ) {
-            return yield* new PluginNotFoundError({ plugin: name });
-          }
-          // A request naming a build that does not exist is a 404, not a failed plugin.
-          const running = yield* restore(loadBuild(name, build)).pipe(
-            Effect.tapError((error) =>
-              error._tag === "PluginBuildNotFoundError" ? Effect.void : noteFailure(name, error),
-            ),
-          );
-          // From here the new build is running: repoint and swap without a gap an
-          // interrupt could leave the build orphaned in, or `current` ahead of the swap.
-          yield* pointCurrent(name, build).pipe(
-            Effect.tapError((error) =>
-              Scope.close(running.scope, Exit.void).pipe(Effect.andThen(noteFailure(name, error))),
-            ),
-          );
-          yield* swapIn(name, running);
-          return status(name);
-        }),
+      "installed",
+      manifest.value.version,
+      Effect.tryPromise({
+        try: () => import(url) as Promise<{ readonly activate?: unknown }>,
+        catch: (cause) => new PluginImportError({ plugin: name, cause }),
+      }).pipe(
+        Effect.flatMap((module) => activateIn(name, module.activate, (extension) => extension)),
       ),
     );
-
-  const loadCurrent = Effect.fn("PluginLoader.loadCurrent")(
-    function* (name: string) {
-      const target = yield* fs.readLink(path.join(pluginsDir, name, "current")).pipe(Effect.option);
-      if (target._tag === "None") {
-        record(name);
-        return;
-      }
-      const build = path.basename(target.value);
-      const running = yield* loadBuild(name, build).pipe(
-        Effect.tapError((error) => noteFailure(name, error)),
-      );
-      yield* swapIn(name, running);
-    },
-    (effect) => Effect.ignore(effect),
-  );
-
-  const loadBundled = Effect.fn("PluginLoader.loadBundled")(
-    function* (name: string, load: BundledPlugins[string]) {
-      const module = yield* Effect.tryPromise({
-        try: load,
-        catch: (cause) => new PluginImportError({ plugin: name, build: BUNDLED_BUILD, cause }),
-      });
-      yield* swapIn(name, yield* activateBuild(name, BUNDLED_BUILD, module.activate));
-    },
-    (effect, name) =>
-      effect.pipe(
-        Effect.tapError((error) => noteFailure(name, error)),
-        Effect.ignore,
-      ),
-  );
-
-  const list = Effect.gen(function* () {
-    const names = new Set([...(yield* installedNames), ...records.keys()]);
-    return [...names].sort().map(status);
   });
+
+  const loadBundled = (name: string, load: BundledPlugins[string]) =>
+    settle(
+      name,
+      "bundled",
+      packageJson.version,
+      Effect.tryPromise({
+        try: load,
+        catch: (cause) => new PluginImportError({ plugin: name, cause }),
+      }).pipe(
+        Effect.flatMap((module) =>
+          activateIn(name, module.activate, (extension, serve) => ({
+            name,
+            context,
+            serve,
+            extension,
+          })),
+        ),
+      ),
+    );
 
   yield* Effect.forEach(Object.entries(bundled), ([name, load]) => loadBundled(name, load), {
     discard: true,
   });
-  yield* Effect.forEach(yield* installedNames, loadCurrent, { discard: true });
+  yield* Effect.forEach(yield* installedNames, loadInstalled, { discard: true });
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
       records.values(),
@@ -546,7 +425,10 @@ const make = Effect.fn("PluginLoader.make")(function* (bundled: BundledPlugins) 
     ),
   );
 
-  return PluginLoader.of({ list, reload, route: (name) => records.get(name)?.running?.route });
+  return PluginLoader.of({
+    list: Effect.sync(() => [...records.keys()].sort().map((name) => records.get(name)!.status)),
+    route: (name) => records.get(name)?.running?.route,
+  });
 });
 
 /** The loader over `bundled`, the plugins compiled into the server (`bundled.ts`); tests pass their own. */

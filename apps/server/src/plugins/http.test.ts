@@ -39,7 +39,6 @@ it.effect("plugin routes read with the read scope and write with the write scope
     const seen: Array<{ method: string; path: string; scopes: ReadonlyArray<string> }> = [];
     const loader = PluginLoader.PluginLoader.of({
       list: Effect.succeed([]),
-      reload: () => Effect.die("not used by these routes"),
       route: (name) =>
         name === "alpha"
           ? (request, path, scopes) => {

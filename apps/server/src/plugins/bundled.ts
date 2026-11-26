@@ -1,6 +1,6 @@
 import type { BundledPlugins } from "./PluginLoader.ts";
 
-/** The plugins compiled into the server, activated at startup as build `bundled`. */
+/** The plugins compiled into the server, activated at startup, listed as kind `bundled`. */
 export const bundledPlugins: BundledPlugins = {
   pult: () => import("../../../../plugins/pult/src/main.ts"),
 };

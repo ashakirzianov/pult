@@ -1,6 +1,6 @@
 /**
- * The plugin surface over HTTP: the installed list, the explicit reload, and
- * the running builds' own routes, all behind the environment's session auth.
+ * The plugin surface over HTTP: the list, and the bundled plugins' own routes,
+ * all behind the environment's session auth.
  */
 import {
   AuthAccessWriteScope,
@@ -9,7 +9,6 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
@@ -41,8 +40,6 @@ const authenticate = Effect.fn("plugins.authenticate")(function* (scope: AuthEnv
   return session;
 });
 
-const decodeReloadBody = Schema.decodeUnknownEffect(Schema.Struct({ build: Schema.String }));
-
 // Handlers run in the request fiber's context, which carries the server's services
 // but not this layer's own, so the loader is resolved once here and closed over.
 const layerList = (loader: PluginLoader.PluginLoader["Service"]) =>
@@ -52,49 +49,6 @@ const layerList = (loader: PluginLoader.PluginLoader["Service"]) =>
     Effect.gen(function* () {
       yield* authenticate(AuthOrchestrationReadScope);
       return HttpServerResponse.jsonUnsafe(yield* loader.list);
-    }),
-  );
-
-const layerReload = (loader: PluginLoader.PluginLoader["Service"]) =>
-  HttpRouter.add(
-    "POST",
-    "/api/plugins/:name/reload",
-    Effect.gen(function* () {
-      yield* authenticate(AuthAccessWriteScope);
-      const name = (yield* HttpRouter.params).name ?? "";
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      const body = yield* request.json.pipe(Effect.flatMap(decodeReloadBody), Effect.option);
-      if (body._tag === "None") {
-        return HttpServerResponse.jsonUnsafe(
-          { error: 'The body must be JSON with a "build" string.' },
-          { status: 400 },
-        );
-      }
-      return yield* loader.reload(name, body.value.build).pipe(
-        Effect.map((plugin) => HttpServerResponse.jsonUnsafe(plugin)),
-        Effect.catchTags({
-          PluginNotFoundError: (error) =>
-            Effect.succeed(
-              HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 404 }),
-            ),
-          PluginBuildNotFoundError: (error) =>
-            Effect.succeed(
-              HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 404 }),
-            ),
-        }),
-        // The previous build keeps running; the requester gets the cause.
-        Effect.catch((error) =>
-          Effect.map(loader.list, (plugins) =>
-            HttpServerResponse.jsonUnsafe(
-              {
-                error: PluginLoader.describeLoadError(error),
-                plugin: plugins.find((plugin) => plugin.name === name),
-              },
-              { status: 409 },
-            ),
-          ),
-        ),
-      );
     }),
   );
 
@@ -128,7 +82,7 @@ const layerPluginRoutes = (loader: PluginLoader.PluginLoader["Service"]) =>
 
 /** The routes over a given loader; the server's `layer` provides the real one. */
 export const layerRoutes = (loader: PluginLoader.PluginLoader["Service"]) =>
-  Layer.mergeAll(layerList(loader), layerReload(loader), layerPluginRoutes(loader));
+  Layer.mergeAll(layerList(loader), layerPluginRoutes(loader));
 
 export const layer = Layer.unwrap(Effect.map(PluginLoader.PluginLoader, layerRoutes)).pipe(
   Layer.provide(PluginLoader.layer(bundledPlugins)),

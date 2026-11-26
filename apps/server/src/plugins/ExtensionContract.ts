@@ -5,13 +5,14 @@
  * `toolkitRegistration`, so upstream's checks run for an extension's calls unchanged.
  */
 import { OrchestratorMcpFailure, type OrchestrationV2ThreadShell } from "@t3tools/contracts";
-import type * as Context from "effect/Context";
+import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { McpSchema, type Tool, Toolkit } from "effect/ai";
+// oxlint-disable-next-line t3code/no-raw-mcp-registration -- read for the names it already has; registration goes through toolkitRegistration.
+import { McpSchema, McpServer, type Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { toolkitRegistration } from "../mcp/McpHttpServer.ts";
@@ -61,7 +62,7 @@ const callerOf = Effect.gen(function* () {
 
 const register = Effect.fn("ExtensionContract.register")(function* (
   name: string,
-  context: Context.Context<never>,
+  context: Context.Context<McpServer.McpServer>,
   declared: Readonly<Record<string, Tool.Any>>,
   handlers: Readonly<Record<string, ToolHandler<Tool.Any> | undefined>>,
 ) {
@@ -72,6 +73,13 @@ const register = Effect.fn("ExtensionContract.register")(function* (
     if (!tool.name.startsWith(`${name}_`))
       return yield* Effect.die(
         new Error(`Extension "${name}" registers "${tool.name}", which is not named ${name}_*.`),
+      );
+    // Nor one the server already has: `foo` and `foo_bar` may both name `foo_bar_x`.
+    if (
+      Context.get(context, McpServer.McpServer).tools.some((each) => each.tool.name === tool.name)
+    )
+      return yield* Effect.die(
+        new Error(`Extension "${name}" registers "${tool.name}", which the server already has.`),
       );
     const handler = handlers[tool.name];
     if (handler === undefined)
@@ -100,7 +108,7 @@ const register = Effect.fn("ExtensionContract.register")(function* (
 export const make = (
   name: string,
   dataDir: string,
-  context: Context.Context<never>,
+  context: Context.Context<McpServer.McpServer>,
 ): ExtensionHost => ({
   name,
   dataDir,
