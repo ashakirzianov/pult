@@ -11,7 +11,8 @@ export interface DetailsRowAction {
 /**
  * A row of a thread's shelves: a label, a value and actions, the shape an
  * extension's details section takes (`pult/decisions`, `extension-ui`), with
- * its codicon, a line under its label and what its click opens.
+ * its codicon, a line under its label, what its click opens, and a field
+ * under it all, as a Star's settings take a value.
  */
 export interface DetailsRow {
   readonly key: string;
@@ -23,6 +24,8 @@ export interface DetailsRow {
   readonly open?: () => void;
   readonly selected?: boolean;
   readonly actions?: ReadonlyArray<DetailsRowAction>;
+  /** Under its line, at its label's inset: a control, rows of its own, or lines that wrap. */
+  readonly field?: ReactNode;
 }
 
 /** A shelf's rows, in the subagents' look. */
@@ -72,6 +75,9 @@ export function DetailsRows({ label, rows }: { label: string; rows: ReadonlyArra
                 {action.label}
               </button>
             ))}
+            {row.field === undefined ? null : (
+              <div className="pult-details-row-field">{row.field}</div>
+            )}
           </li>
         );
       })}

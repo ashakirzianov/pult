@@ -140,42 +140,21 @@
   left: 0;
 }
 
-.pult-star-settings {
-  color: var(--vscode-foreground);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.pult-star-settings .pult-settings-row {
-  gap: 6px;
-  padding: 6px 8px;
-}
-
-.pult-star-settings .pult-star-settings-field {
-  flex-direction: column;
-  align-items: stretch;
+/* A Star's settings and its channel's (`StarSettings.tsx`, `ChannelDetails.tsx`), in a thread's rows:
+   the settings page's inputs and swatches in their fields, the lines under a label prose, read whole. */
+.pult-star-settings .pult-details-row-description {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .pult-star-settings .pult-settings-input {
   width: 100%;
 }
 
+/* Wrapping in a narrow panel, room for the chosen one's ring. */
 .pult-star-settings .pult-settings-swatches {
   flex-wrap: wrap;
-  justify-content: flex-end;
-  flex-shrink: 1;
   padding: 2px;
-}
-
-/* The selected channel's details: Star Settings' rows, a value read at the row's end. */
-.pult-channel-details .pult-channel-value {
-  flex-shrink: 0;
-  color: var(--vscode-descriptionForeground);
-  text-align: right;
-}
-
-.pult-channel-details .pult-channel-model-actions {
-  justify-content: flex-start;
 }
 
 /* The view's model picker, drawn into this element from the view's tree (`view/DetailsModelPicker.tsx`). */
@@ -185,12 +164,6 @@
   max-width: 100%;
 }
 
-.pult-channel-details .pult-channel-problems {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-}
-
 .pult-channel-details .pult-settings-input-refused,
 .pult-channel-details .pult-settings-input-refused:focus {
   outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
@@ -198,15 +171,12 @@
   color: var(--vscode-errorForeground);
 }
 
-.pult-channel-details .pult-subagents-list {
-  margin: 2px -8px -4px;
-}
-
 /* A thread's rows (`rows.tsx`): the subagents' look, a line under the label, actions at the row's end. */
 .pult-details-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
   min-width: 0;
 }
 
@@ -232,6 +202,29 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A row's field, on a line of its own under the row's, at its label's inset (past the row's padding, icon and gap):
+   a control, rows of its own with their icons there, or lines that wrap. */
+.pult-details-row-field {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  margin-top: -4px;
+  padding: 0 8px 6px 32px;
+}
+
+.pult-details-row-field > .pult-details-rows {
+  margin: 0 -8px -6px;
+}
+
+.pult-details-row-error {
+  color: var(--vscode-errorForeground);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .pult-details-row-action {

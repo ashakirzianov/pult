@@ -1,5 +1,5 @@
 import { getService, ICommandService } from "@codingame/monaco-vscode-api";
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { onDidChangePluginFeatures, pluginFeatures } from "../stars/about.ts";
 import {
@@ -21,6 +21,7 @@ import { scheduleRows } from "../stars/schedules.ts";
 import { type CardRows, drawnHome, type Star, type StarHome } from "../stars/stars.ts";
 import type { ShellThread } from "../threads/store.ts";
 import { detailsCards } from "./cards.ts";
+import { type DetailsRow, DetailsRows } from "./rows.tsx";
 import { DetailsShelf } from "./shelves.tsx";
 
 function run(command: string, ...args: unknown[]): void {
@@ -143,101 +144,105 @@ function ChannelShelf({
   );
   const write = (changes: Parameters<typeof writeChannelSettings>[3]) =>
     void writeChannelSettings(environmentId, star.id, slug, changes);
+  const rows: DetailsRow[] = [
+    {
+      key: "conversation",
+      icon: "comment-discussion",
+      label: "Conversation",
+      description:
+        thread === null ? "Wakes for its next message" : (sleepsText(sleeps, now) ?? undefined),
+      value:
+        thread !== null
+          ? `Since ${clockText(thread.createdAt, now)}`
+          : asleepSince === null
+            ? "Asleep"
+            : `Asleep since ${clockText(asleepSince, now)}`,
+    },
+  ];
+  if (settings !== undefined) {
+    rows.push(
+      {
+        key: "model",
+        icon: "sparkle",
+        label: "Model",
+        description:
+          settings.modelFrom === null
+            ? "The composer's, until a conversation or a file names one"
+            : MODEL_FROM[settings.modelFrom],
+        actions:
+          settings.modelFrom === "channel"
+            ? [
+                {
+                  label: "Every channel's",
+                  title: "Remove this channel's model, so it takes every channel's settings",
+                  run: () => write({ model: null }),
+                },
+              ]
+            : [],
+        field: (
+          <>
+            {thread === null ? null : (
+              <span className="pult-details-row-description">From its next conversation</span>
+            )}
+            <ModelPickerSlot
+              environmentId={environmentId}
+              projectId={home.projectId}
+              selection={settings.model}
+              onPick={(model) => write({ model })}
+            />
+          </>
+        ),
+      },
+      {
+        key: "rotate",
+        icon: "refresh",
+        label: "Refresh context",
+        description: ROTATE_FROM[settings.rotateFrom],
+        field: (
+          <RotateField
+            value={rotateOnContextText(settings.rotateOnContext)}
+            onSave={(rotateOnContext) => write({ rotateOnContext })}
+          />
+        ),
+      },
+    );
+    if (settings.problems.length > 0)
+      rows.push({
+        key: "problems",
+        icon: "warning",
+        label: "Problems",
+        field: settings.problems.map((problem) => (
+          <span key={problem} className="pult-details-row-error">
+            {problem}
+          </span>
+        )),
+      });
+  }
+  if (schedules.length > 0)
+    rows.push({
+      key: "schedules",
+      icon: "calendar",
+      label: "Schedules that land here",
+      field: (
+        <DetailsRows
+          label="Schedules that land here"
+          rows={schedules.map((row) => ({
+            key: row.name,
+            icon: row.kind === "once" ? "clockface" : "history",
+            label: row.label,
+            title: row.hover,
+            open: () => run("pult-shell.openStarSchedule", star.id, row.name),
+          }))}
+        />
+      ),
+    });
   return (
     <DetailsShelf
       name="channel"
       className="pult-star-settings pult-channel-details"
       status={<span className="pult-card-status">{slug}</span>}
     >
-      <div className="pult-settings-group">
-        <div className="pult-settings-row">
-          <div className="pult-settings-row-text">
-            <div className="pult-settings-row-label">Conversation</div>
-            <div className="pult-settings-row-description">
-              {thread === null ? "Wakes for its next message" : sleepsText(sleeps, now)}
-            </div>
-          </div>
-          <div className="pult-channel-value">
-            {thread !== null
-              ? `Since ${clockText(thread.createdAt, now)}`
-              : asleepSince === null
-                ? "Asleep"
-                : `Asleep since ${clockText(asleepSince, now)}`}
-          </div>
-        </div>
-        {settings === undefined ? null : (
-          <>
-            <div className="pult-settings-row pult-star-settings-field">
-              <div className="pult-settings-row-text">
-                <div className="pult-settings-row-label">Model</div>
-                <div className="pult-settings-row-description">
-                  {settings.modelFrom === null
-                    ? "The composer's, until a conversation or a file names one"
-                    : MODEL_FROM[settings.modelFrom]}
-                </div>
-                {thread === null ? null : (
-                  <div className="pult-settings-row-description">From its next conversation</div>
-                )}
-              </div>
-              <div className="pult-settings-row-actions pult-channel-model-actions">
-                <ModelPickerSlot
-                  environmentId={environmentId}
-                  projectId={home.projectId}
-                  selection={settings.model}
-                  onPick={(model) => write({ model })}
-                />
-                {settings.modelFrom === "channel" ? (
-                  <button
-                    type="button"
-                    className="pult-settings-button"
-                    title="Remove this channel's model, so it takes every channel's settings"
-                    onClick={() => write({ model: null })}
-                  >
-                    Every channel's
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <RotateField
-              value={rotateOnContextText(settings.rotateOnContext)}
-              from={ROTATE_FROM[settings.rotateFrom]}
-              onSave={(rotateOnContext) => write({ rotateOnContext })}
-            />
-            {settings.problems.length === 0 ? null : (
-              <div className="pult-settings-row pult-channel-problems">
-                {settings.problems.map((problem) => (
-                  <div key={problem} className="pult-settings-row-error">
-                    {problem}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {schedules.length === 0 ? null : (
-          <div className="pult-settings-row pult-star-settings-field">
-            <div className="pult-settings-row-label">Schedules that land here</div>
-            <ul className="pult-subagents-list" aria-label="Schedules that land here">
-              {schedules.map((row) => (
-                <li key={row.name}>
-                  <button
-                    type="button"
-                    className="pult-subagent"
-                    title={row.hover}
-                    onClick={() => run("pult-shell.openStarSchedule", star.id, row.name)}
-                  >
-                    <i
-                      className={`codicon codicon-${row.kind === "once" ? "clockface" : "history"}`}
-                      aria-hidden
-                    />
-                    <span className="pult-subagent-title">{row.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      <DetailsRows label="Channel" rows={rows} />
     </DetailsShelf>
   );
 }
@@ -275,21 +280,18 @@ function ModelPickerSlot({
 }
 
 /**
- * Refresh context's field, in the Star settings' look: `400k`, `never`, or
- * empty to remove the channel's own key, written on Enter or leaving it,
- * Escape writing nothing; what the plugin would refuse stays in the field in
- * the error colour, unwritten.
+ * Refresh context's field: `400k`, `never`, or empty to remove the
+ * channel's own key, written on Enter or leaving it, Escape writing nothing;
+ * what the plugin would refuse stays in the field in the error colour,
+ * unwritten, with a line saying what it takes.
  */
 function RotateField({
   value,
-  from,
   onSave,
 }: {
   value: string;
-  from: string;
   onSave: (value: RotateOnContext | null) => void;
 }) {
-  const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
   const cancelled = useRef(false);
   const refused = draft !== null && parseRotateOnContext(draft) === undefined;
@@ -306,22 +308,16 @@ function RotateField({
     onSave(parsed);
   };
   return (
-    <div className="pult-settings-row pult-star-settings-field">
-      <div className="pult-settings-row-text">
-        <label className="pult-settings-row-label" htmlFor={id}>
-          Refresh context
-        </label>
-        <div className="pult-settings-row-description">{from}</div>
-        {refused ? (
-          <div className="pult-settings-row-error">
-            Thousands of tokens with a k, as 400k, or never.
-          </div>
-        ) : null}
-      </div>
+    <>
+      {refused ? (
+        <span className="pult-details-row-error">
+          Thousands of tokens with a k, as 400k, or never.
+        </span>
+      ) : null}
       <input
-        id={id}
         className={`pult-settings-input${refused ? " pult-settings-input-refused" : ""}`}
         type="text"
+        aria-label="Refresh context"
         spellCheck={false}
         placeholder="250k"
         aria-invalid={refused || undefined}
@@ -336,6 +332,6 @@ function RotateField({
           }
         }}
       />
-    </div>
+    </>
   );
 }
