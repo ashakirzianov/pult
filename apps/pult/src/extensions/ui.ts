@@ -13,6 +13,9 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type { RoutePoster } from "../stars/plugin.ts";
+import type { Star } from "../stars/stars.ts";
+
 /** A shelf row as the page holds it: with the environment and the extension that published it. */
 export interface PageRow {
   readonly environmentId: string;
@@ -222,3 +225,24 @@ export const replyMountKey = (opened: number, page: PageRow) =>
     page.row.key,
     page.row.open.reply?.target,
   ]);
+
+/** Where the page opens the thread a reply landed in (`index.ts`): a thread poster's own thread, and the thread itself for a Star the page does not hold. */
+export type ReplyLanding =
+  | { readonly kind: "thread" }
+  | { readonly kind: "star"; readonly star: string }
+  | { readonly kind: "channel"; readonly star: string; readonly slug: string };
+
+/**
+ * A Star's reply lands on the Star's tab for its default channel and on the channel's tab for any
+ * other. The poster's channel decides it, not the conversation the page's Stars name, since a reply
+ * that wakes a fresh conversation is answered before the Stars' read knows it.
+ */
+export const replyLanding = (
+  poster: RoutePoster,
+  star: Pick<Star, "id" | "defaultChannel"> | undefined,
+): ReplyLanding =>
+  "thread" in poster || star === undefined
+    ? { kind: "thread" }
+    : poster.channel === star.defaultChannel
+      ? { kind: "star", star: star.id }
+      : { kind: "channel", star: star.id, slug: poster.channel };

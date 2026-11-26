@@ -2,7 +2,7 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeTest from "node:test";
 
-import { ExtensionItems, replyMountKey, type Transport } from "./ui.ts";
+import { ExtensionItems, replyLanding, replyMountKey, type Transport } from "./ui.ts";
 
 const row = (key: string, shelf = "inbox", extra: Record<string, unknown> = {}) => ({
   key,
@@ -139,4 +139,35 @@ NodeTest.describe("ExtensionItems", () => {
     );
     NodeAssert.notEqual(replyMountKey(2, model.row("env", "a", "x")!), first);
   });
+});
+
+NodeTest.describe("replyLanding", () => {
+  // The decision takes no conversation, so a reply that wakes a fresh one, which the page's Stars
+  // do not know yet, lands where a reply into an open one does.
+  const star = { id: "s1", defaultChannel: "desk" };
+
+  NodeTest.test("lands a default channel's reply on the Star's tab, open or fresh", () => {
+    NodeAssert.deepEqual(replyLanding({ star: "s1", channel: "desk" }, star), {
+      kind: "star",
+      star: "s1",
+    });
+  });
+
+  NodeTest.test("lands another channel's reply on that channel's tab, open or fresh", () => {
+    NodeAssert.deepEqual(replyLanding({ star: "s1", channel: "main" }, star), {
+      kind: "channel",
+      star: "s1",
+      slug: "main",
+    });
+  });
+
+  NodeTest.test(
+    "lands a thread poster's reply, and a Star's the page does not hold, on the thread",
+    () => {
+      NodeAssert.deepEqual(replyLanding({ thread: "t1" }, undefined), { kind: "thread" });
+      NodeAssert.deepEqual(replyLanding({ star: "gone", channel: "desk" }, undefined), {
+        kind: "thread",
+      });
+    },
+  );
 });

@@ -28,11 +28,11 @@ import { toUriPath } from "../files/paths.ts";
 import { pultResource } from "../files/workspace.ts";
 import { posterName } from "../panel/poster.ts";
 import type { RoutePoster } from "../stars/plugin.ts";
-import { starById, starStore, starTarget } from "../stars/model.ts";
-import { StarThreadInput } from "../threads/pane.tsx";
+import { starById, starStore } from "../stars/model.ts";
+import { StarInput, StarThreadInput } from "../threads/pane.tsx";
 import { selectStar, selectThread, selectedStar, selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
-import { ExtensionItems, type PageRow, replyMountKey, type Transport } from "./ui.ts";
+import { ExtensionItems, type PageRow, replyLanding, replyMountKey, type Transport } from "./ui.ts";
 
 function todo(reason: string): never {
   throw new Error(`todo: ${reason}`);
@@ -120,27 +120,36 @@ export function startExtensionUi(): void {
   sync();
 }
 
-/** Open the thread a reply landed in, even if its Star has another channel or home open. */
+/**
+ * Open the thread a reply landed in (`replyLanding`): a Star's default channel on the Star's tab, which
+ * shows its newest conversation, another channel on its tab on this environment, even with another open.
+ */
 async function openPosterThread(
   poster: RoutePoster,
   environmentId: string,
   threadId: string,
 ): Promise<void> {
-  if ("thread" in poster) return selectThread(environmentId, threadId);
-  const star = starById(poster.star);
-  if (star === undefined) return selectThread(environmentId, threadId);
-  await selectStar(star.id);
-  if (selectedStar() !== star.id) return;
-  const lead = starTarget(starById(star.id) ?? star);
-  if (lead?.kind === "thread" && lead.environmentId === environmentId && lead.threadId === threadId)
-    return;
+  const landing = replyLanding(poster, "star" in poster ? starById(poster.star) : undefined);
+  if (landing.kind === "thread") return selectThread(environmentId, threadId);
+  await selectStar(landing.star);
+  if (selectedStar() !== landing.star) return;
   const [editors, instantiation] = await Promise.all([
     getService(IEditorService),
     getService(IInstantiationService),
   ]);
-  // The channel's tab, as its row opens it, following the channel on this environment.
+  // The Star's tab its selection just showed, or the channel's tab, as its row opens it, following the channel on this environment.
   await editors.openEditor(
-    instantiation.createInstance(StarThreadInput, environmentId, threadId, poster.channel, star.id),
+    landing.kind === "star"
+      ? (editors.editors.find(
+          (editor) => editor instanceof StarInput && editor.starId === landing.star,
+        ) ?? instantiation.createInstance(StarInput, landing.star))
+      : instantiation.createInstance(
+          StarThreadInput,
+          environmentId,
+          threadId,
+          landing.slug,
+          landing.star,
+        ),
     { revealIfOpened: true },
   );
 }
