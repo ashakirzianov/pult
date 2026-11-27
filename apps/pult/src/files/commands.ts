@@ -23,7 +23,12 @@ import { buildProjectCreateCommand } from "@t3tools/client-runtime/operations/pr
 import { request } from "@t3tools/client-runtime/rpc";
 import { CommandId, ProjectId, WS_METHODS } from "@t3tools/contracts";
 
-import { connection, ConnectedContext, pickEnvironment } from "../connection/index.ts";
+import {
+  connection,
+  ConnectedContext,
+  environmentName,
+  pickEnvironment,
+} from "../connection/index.ts";
 import { isHiddenProject } from "../stars/hidden.ts";
 import { threadStore } from "../threads/store.ts";
 import {
@@ -36,7 +41,7 @@ import {
   toUriPath,
 } from "./paths.ts";
 import { type ProjectRoot, projectRoots } from "./projects.ts";
-import { environmentServer } from "./server.ts";
+import { environmentHome, environmentServer } from "./server.ts";
 import { environmentShell, knownRoots, pultFolders, pultResource } from "./workspace.ts";
 
 const SEARCH_DELAY_MS = 150;
@@ -64,12 +69,16 @@ function searchRoots(): Array<SearchRoot> {
   });
 }
 
-/** "Pult: Go to File…": quick open over the server's `searchEntries` in every search root. */
+/**
+ * "Pult: Go to File…": quick open over the server's `searchEntries` in every
+ * search root, or for a typed absolute or `~/` path the file there on each
+ * environment the roots name (`pult/decisions`, `files-outside-projects`).
+ */
 async function goToFile(accessor: ServicesAccessor): Promise<void> {
   const editors = accessor.get(IEditorService);
   await searchPick<FileItem>(
     accessor,
-    { placeholder: "Search files by name", searchEmpty: true },
+    { placeholder: "Search files by name, or type a path", searchEmpty: true, listPath: fileAt },
     async (query, folder) => {
       const { entries } = await environmentServer(folder.uri.authority).searchEntries({
         cwd: toHostPath(folder.uri.path),
@@ -138,10 +147,60 @@ async function searchInFiles(accessor: ServicesAccessor): Promise<void> {
   );
 }
 
-/** A quick pick that searches the search roots as the user types, dropping stale answers. */
+/** The file at a typed host path on each environment, where the server says one is: no completion, no browsing. */
+async function fileAt(
+  path: string,
+  environmentIds: ReadonlyArray<string>,
+): Promise<Array<FileItem>> {
+  const found = await Promise.allSettled(
+    environmentIds.map(async (environmentId) => {
+      const uriPath = path.startsWith("~/")
+        ? joinPath(toUriPath(await environmentHome(environmentId)), path.slice(2))
+        : toUriPath(path);
+      const [entry] = (
+        await connection.run(
+          environmentId,
+          request(WS_METHODS.filesystemGetMetadata, { paths: [toHostPath(uriPath)] }),
+        )
+      ).entries;
+      if (entry?.kind !== "file") return [];
+      const environment = connection.environment(environmentId);
+      const several = connection.environments.length > 1 && environment !== undefined;
+      return [
+        {
+          label: baseName(uriPath),
+          description: [
+            ...(several ? [environmentName(environment, connection.environments)] : []),
+            toHostPath(uriPath.slice(0, uriPath.lastIndexOf("/")) || "/"),
+          ].join(" · "),
+          resource: pultResource(environmentId, uriPath),
+          alwaysShow: true,
+        },
+      ];
+    }),
+  );
+  // An environment that fails takes none of the others' files with it; with every one failed the pick says why.
+  const listed = found.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+  const failed = found.find((result) => result.status === "rejected");
+  if (listed.length === 0 && failed !== undefined) throw failed.reason;
+  return listed;
+}
+
+/**
+ * A quick pick that searches the search roots as the user types, dropping
+ * stale answers; a typed host path goes to `listPath`, when given, with the
+ * environments the roots name, in place of the search.
+ */
 async function searchPick<Item extends FileItem>(
   accessor: ServicesAccessor,
-  options: { readonly placeholder: string; readonly searchEmpty: boolean },
+  options: {
+    readonly placeholder: string;
+    readonly searchEmpty: boolean;
+    readonly listPath?: (
+      path: string,
+      environmentIds: ReadonlyArray<string>,
+    ) => Promise<Array<Item>>;
+  },
   search: (query: string, folder: SearchRoot) => Promise<Array<Item>>,
   open: (item: Item) => Promise<unknown>,
 ): Promise<void> {
@@ -164,9 +223,14 @@ async function searchPick<Item extends FileItem>(
     }
     pick.busy = true;
     const failures: Array<string> = [];
+    const path = query.trim();
+    const searches =
+      options.listPath !== undefined && HOST_PATH.test(path)
+        ? [options.listPath(path, [...new Set(folders.map((folder) => folder.uri.authority))])]
+        : folders.map((folder) => search(query, folder));
     const results = await Promise.all(
-      folders.map((folder) =>
-        search(query, folder).catch((error: unknown) => {
+      searches.map((searched) =>
+        searched.catch((error: unknown) => {
           failures.push(error instanceof Error ? error.message : String(error));
           return [];
         }),
@@ -179,6 +243,8 @@ async function searchPick<Item extends FileItem>(
   };
   pick.onDidChangeValue((query) => {
     clearTimeout(timer);
+    // Enter on a typed path never opens the previous query's file.
+    if (options.listPath !== undefined && HOST_PATH.test(query.trim())) pick.items = [];
     timer = setTimeout(() => void run(query), SEARCH_DELAY_MS);
   });
   pick.onDidAccept(() => {
@@ -197,7 +263,7 @@ async function searchPick<Item extends FileItem>(
 
 type ProjectItem = IQuickPickItem & { readonly root?: ProjectRoot; readonly create?: string };
 
-/** A host path typed into Open Project, which it offers to add as a project. */
+/** A host path typed into Open Project, which it offers to add as a project, or into Go to File, which lists the file there. */
 const HOST_PATH = /^(\/|~\/|[A-Za-z]:[\\/])/;
 
 /**
