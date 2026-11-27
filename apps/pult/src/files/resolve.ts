@@ -17,7 +17,7 @@ export type Resolution =
   | { readonly kind: "open"; readonly path: string }
   /** Several files end with the key: the user picks, the thread's project's checkouts first. */
   | { readonly kind: "pick"; readonly key: string; readonly candidates: ReadonlyArray<Candidate> }
-  /** An absolute path under no checkout of the environment, which its server would not read, nor names a file in its kept monore checkout. */
+  /** An absolute path under no checkout of the environment that names no file on its host, nor one in its kept monore checkout. */
   | { readonly kind: "outside" }
   /** No file ends with the key; `error` when every search failed, the first one's message. */
   | { readonly kind: "missing"; readonly key: string; readonly error: string | undefined };
@@ -39,16 +39,18 @@ export interface ResolveInput {
   readonly search: (checkout: Checkout, key: string) => Promise<ReadonlyArray<string>>;
 }
 
-const ABSOLUTE = /^(\/|[A-Za-z]:[\\/])/;
+/** An absolute host path, POSIX or Windows. */
+export const ABSOLUTE = /^(\/|[A-Za-z]:[\\/])/;
 
 /**
  * Where a path the thread view names opens: the literal path in the thread's
  * checkout when it is there; else the files whose path ends with it, whole
  * segments, in the thread's checkout through the server's index, and only
  * with none there in the environment's other checkouts, one opening, several
- * a pick; an absolute path under no checkout is refused before any of it,
- * unless it names a file of the kept monore checkout read from the monore root
- * (`/owner/track/x.md`), which opens.
+ * a pick; an absolute path under no checkout opens in place when the host has
+ * it (`pult/decisions`, `files-outside-projects`), else as the file it names
+ * in the kept monore checkout read from the monore root (`/owner/track/x.md`),
+ * with no search, there being no checkout to search.
  */
 export async function resolveThreadPath(input: ResolveInput): Promise<Resolution> {
   const own = input.checkoutRoot === null ? undefined : toUriPath(input.checkoutRoot);
@@ -66,7 +68,13 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
         input.monoreRoot === null
           ? undefined
           : joinPath(toUriPath(input.monoreRoot), literal.slice(1));
-      return monore !== undefined && (await input.exists(monore))
+      // Asked together, so a turn's paths still go in one metadata call; the host's file wins.
+      const [onHost, inMonore] = await Promise.all([
+        input.exists(literal),
+        monore === undefined ? false : input.exists(monore),
+      ]);
+      if (onHost) return { kind: "open", path: literal };
+      return monore !== undefined && inMonore
         ? { kind: "open", path: monore }
         : { kind: "outside" };
     }

@@ -54,6 +54,7 @@ import { COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS } from "@t3tools/contracts";
 import {
   buildFileLinkParentSuffixByPath,
   fileLinkLabel,
+  resolvePathLinkTarget,
   splitFilePathPosition,
 } from "@t3tools/shared/fileLinks";
 import { inlineCodeFilePathCandidate } from "@t3tools/shared/markdownLinks";
@@ -369,7 +370,12 @@ class ReaderPane extends SimpleEditorPane {
     const chips: Chips = (codes, values) => {
       const files = codes.flatMap((code) => {
         const candidate = inlineCodeFilePathCandidate(code);
-        return candidate === null ? [] : [{ code, position: splitFilePathPosition(candidate) }];
+        if (candidate === null) return [];
+        // A `~/` path from the home the document sits in, as the thread view reads one from its checkout.
+        const path = candidate.startsWith("~/")
+          ? resolvePathLinkTarget(candidate, toHostPath(input.file.path))
+          : candidate;
+        return [{ code, position: splitFilePathPosition(path) }];
       });
       // A frontmatter ref joined to the document's folder, its label the name it spells.
       const kept = keptRoot(input.file.authority);

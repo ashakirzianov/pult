@@ -366,20 +366,28 @@ NodeTest.describe("WorkspaceFiles on a stock server", () => {
   NodeTest.it(
     "refreshes an open file an agent changed at turn end, and only that one",
     async () => {
-      const open = [`${ROOT}/src/a.ts`, `${ROOT}/src/b.ts`];
+      const report = "/tmp/report.md";
+      const open = [`${ROOT}/src/a.ts`, `${ROOT}/src/b.ts`, report];
       const { server, files, changes } = setup(STOCK, open);
       server.put(`${ROOT}/src/b.ts`, "b\n");
+      server.put(report, "draft\n");
       await files.readFile(`${ROOT}/src/a.ts`);
       await files.readFile(`${ROOT}/src/b.ts`);
+      await files.readFile(report);
       const before = await files.stat(`${ROOT}/src/a.ts`);
 
       server.put(`${ROOT}/src/a.ts`, "export const a = 3;\n");
+      server.put(report, "final\n");
       await files.refresh(ROOT);
 
       // An unchanged open file is not reported, so a dirty one meets no spurious conflict.
       NodeAssert.deepEqual(changes, [{ path: `${ROOT}/src/a.ts`, kind: "changed" }]);
       NodeAssert.ok((await files.stat(`${ROOT}/src/a.ts`)).mtime > before.mtime);
       NodeAssert.equal((await files.stat(`${ROOT}/src/b.ts`)).mtime, before.mtime);
+
+      // A file under no root, which no watch covers, is refreshed on its own.
+      await files.refreshOutside();
+      NodeAssert.deepEqual(changes.slice(1), [{ path: report, kind: "changed" }]);
     },
   );
 
@@ -450,13 +458,25 @@ NodeTest.describe("WorkspaceFiles on either server", () => {
       async () => {
         const { server, files } = setup(enabled);
         server.put(`${OTHER_PROJECT}/x.ts`, "x");
+        server.put(`/nowhere/x.ts`, "x");
+        server.put(`/nowhere/logo.png`, "\0PNG");
 
         // A file of another project, outside the folders, reads and writes against that project's root.
         NodeAssert.equal(decode(await files.readFile(`${OTHER_PROJECT}/x.ts`)), "x");
         NodeAssert.equal((await files.stat(`${OTHER_PROJECT}/x.ts`)).readonly, false);
         await files.writeFile(`${OTHER_PROJECT}/x.ts`, text("y"), SAVE);
         NodeAssert.equal(decode(await files.readFile(`${OTHER_PROJECT}/x.ts`)), "y");
-        // A path under no known root is refused.
+        // A path under no known root reads in place, read-only, its bytes over the asset route where the server sends them.
+        NodeAssert.equal(decode(await files.readFile(`/nowhere/x.ts`)), "x");
+        NodeAssert.equal((await files.stat(`/nowhere/x.ts`)).readonly, true);
+        if (enabled.fileAssets)
+          NodeAssert.equal(decode(await files.readFile(`/nowhere/logo.png`)), "\0PNG");
+        else
+          NodeAssert.equal(
+            (await rejection(files.readFile(`/nowhere/logo.png`))).code,
+            "Unavailable",
+          );
+        // Its write is refused.
         NodeAssert.equal(
           (await rejection(files.writeFile(`/nowhere/x.ts`, text("y"), SAVE))).code,
           "NoPermissions",
@@ -479,12 +499,19 @@ NodeTest.describe("WorkspaceFiles on either server", () => {
       async () => {
         const { server } = setup(enabled);
         server.directories.add(HOME);
+        server.put(`${HOME}/report.md`, "r");
         const { files } = openWindow(server, [], [HOME]);
         await files.readFile(`${ROOT}/src/a.ts`);
 
         await files.writeFile(`${ROOT}/src/a.ts`, text("export const a = 2;\n"), SAVE);
 
         NodeAssert.equal(server.files.get(`${ROOT}/src/a.ts`)?.contents, "export const a = 2;\n");
+        // A file of the folder outside the projects, opened by path, is read-only.
+        NodeAssert.equal((await files.stat(`${HOME}/report.md`)).readonly, true);
+        NodeAssert.equal(
+          (await rejection(files.writeFile(`${HOME}/report.md`, text("s"), SAVE))).code,
+          "NoPermissions",
+        );
       },
     );
 

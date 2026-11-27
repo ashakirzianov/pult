@@ -80,6 +80,7 @@ async function followWorkspace(provider: PultFileSystemProvider): Promise<void> 
         void files.syncWatches();
         for (const folder of pultFolders(environment.environmentId))
           void files.refresh(folder.uri.path);
+        void files.refreshOutside();
         reconnected = true;
       }
       state.ready = ready;
@@ -89,12 +90,15 @@ async function followWorkspace(provider: PultFileSystemProvider): Promise<void> 
       void refreshExplorer();
     }
   };
-  // A thread's run that finished may have changed files under its root.
+  // A thread's run that finished may have changed files under its root, or anywhere outside the roots.
   const followTurns = () => {
     for (const [environmentId, state] of followed) {
       const ended = endedTurns(state.completions, environmentShell(environmentId));
       state.completions = ended.seen;
-      for (const root of ended.roots) void workspaceFiles(environmentId).refresh(toUriPath(root));
+      if (ended.roots.size === 0) continue;
+      const files = workspaceFiles(environmentId);
+      for (const root of ended.roots) void files.refresh(toUriPath(root));
+      void files.refreshOutside();
     }
   };
   // A folder above the projects lists only the way to them, so a project added or gone under it changes what it lists.

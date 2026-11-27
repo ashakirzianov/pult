@@ -75,20 +75,32 @@ NodeTest.describe("resolveThreadPath", () => {
   );
 
   NodeTest.test(
-    "refuses an absolute path under no checkout of the environment, unless it names a file of the kept monore checkout",
+    "opens an absolute path under no checkout in place, else as a file of the kept monore checkout, the host's first",
     async () => {
       const { input, searched } = environment(
-        ["/etc/hosts", "/pult/monore/owner/track/x.md"],
+        [
+          "/etc/hosts",
+          "/pult/monore/owner/track/x.md",
+          "/owner/track/both.md",
+          "/pult/monore/owner/track/both.md",
+        ],
         [],
         "/pult/monore/",
       );
-      NodeAssert.deepEqual(await resolveThreadPath(input("/etc/hosts")), { kind: "outside" });
+      NodeAssert.deepEqual(await resolveThreadPath(input("/etc/hosts")), {
+        kind: "open",
+        path: "/etc/hosts",
+      });
       NodeAssert.deepEqual(await resolveThreadPath(input("/repos/pult-starboard/a.ts")), {
         kind: "outside",
       });
       NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/x.md")), {
         kind: "open",
         path: "/pult/monore/owner/track/x.md",
+      });
+      NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/both.md")), {
+        kind: "open",
+        path: "/owner/track/both.md",
       });
       NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/y.md")), {
         kind: "outside",

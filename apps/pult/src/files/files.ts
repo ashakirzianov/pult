@@ -436,7 +436,24 @@ export class WorkspaceFiles implements Disposable {
    * never meets a spurious modified-since conflict.
    */
   async refresh(under: string): Promise<void> {
-    const open = this.host.openPaths().filter((path) => relativeTo(under, path) !== undefined);
+    await this.refreshOpen(
+      this.host.openPaths().filter((path) => relativeTo(under, path) !== undefined),
+    );
+  }
+
+  /**
+   * The open files under no folder and no known root may have changed on the
+   * host: a turn ended anywhere in the environment, or the connection came
+   * back. Nothing watches them.
+   */
+  async refreshOutside(): Promise<void> {
+    const roots = [...this.host.roots(), ...this.host.knownRoots()];
+    await this.refreshOpen(
+      this.host.openPaths().filter((path) => locate(roots, path) === undefined),
+    );
+  }
+
+  private async refreshOpen(open: ReadonlyArray<string>): Promise<void> {
     if (open.length === 0) return;
     const features = await this.server.features().catch(() => undefined);
     if (features === undefined) return;
@@ -517,10 +534,10 @@ export class WorkspaceFiles implements Disposable {
   /**
    * The cwd and path an RPC names for `path`: relative to the innermost
    * workspace folder holding it, else to a project or worktree root, else,
-   * under neither, absolute against any root, which the server refuses as
-   * outside it (`workspace_path_outside_root`, a `NoPermissions`), and a
-   * stock server's stat takes for a file until a read refuses it. A thread's
-   * link outside every checkout never gets here (`src/files/resolve.ts`).
+   * under neither, absolute against any root: the server reads and stats it
+   * in place, and the provider never writes it (`writable`); a stock server's
+   * stat takes it for a file until a read refuses it. A thread's link outside
+   * every checkout gets here (`pult/decisions`, `files-outside-projects`).
    */
   private target(path: string): Target {
     const folder = locate(this.host.roots(), path);
@@ -542,12 +559,23 @@ export class WorkspaceFiles implements Disposable {
    * Where a path is written, if anywhere: against the innermost of the
    * environment's known roots holding it, since the server writes only
    * against a known workspace and a folder above one, as the home is, would be
-   * refused; else against a workspace folder. So a file of another project,
-   * or of a root the folders no longer hold, still saves. Browsing and search
-   * stay the folders'.
+   * refused; else against a workspace folder but one above a known root, as
+   * the environment's folder and the home are, which the server never writes
+   * against, so a file opened there by path reads read-only. So a file of
+   * another project, or of a root the folders no longer hold, still saves.
+   * Browsing and search stay the folders'.
    */
   private editable(path: string): Located | undefined {
-    return locate(this.host.knownRoots(), path) ?? locate(this.host.roots(), path);
+    const known = this.host.knownRoots();
+    const above = (folder: string) =>
+      known.some((root) => root !== folder && relativeTo(folder, root) !== undefined);
+    return (
+      locate(known, path) ??
+      locate(
+        this.host.roots().filter((folder) => !above(folder)),
+        path,
+      )
+    );
   }
 
   /** Writes go only under an editable root, never to a root itself. */
@@ -679,12 +707,10 @@ export class WorkspaceFiles implements Disposable {
     );
   }
 
-  /** A file's bytes over the asset route, which serves any file by a path relative to its root. */
+  /** A file's bytes over the asset route, which serves any file by a path relative to its root, or by its absolute path. */
   private async readAsset(path: string, target: Target, unavailable: string): Promise<Uint8Array> {
     const features = await this.server.features();
-    if (!features.fileAssets || toHostPath(path) === target.relativePath) {
-      throw new FilesError("Unavailable", unavailable);
-    }
+    if (!features.fileAssets) throw new FilesError("Unavailable", unavailable);
     return this.server.readAsset(target.cwd, target.relativePath).catch(failed(path));
   }
 

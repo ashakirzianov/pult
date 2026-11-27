@@ -22,6 +22,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { connection } from "../connection/index.ts";
 import { featuresOf, type WorkspaceServer } from "./files.ts";
+import { ABSOLUTE } from "./resolve.ts";
 
 /** How long a call waits for a connecting environment before it fails as unavailable. */
 const READY_TIMEOUT_MS = 15_000;
@@ -57,7 +58,13 @@ export function environmentServer(environmentId: string): WorkspaceServer {
     // A signed download URL, valid an hour: minted per read and never handed on.
     readAsset: async (cwd, relativePath) => {
       const { relativeUrl } = await call(WS_METHODS.assetsCreateUrl, {
-        resource: { _tag: "draft-workspace-file", cwd, path: relativePath },
+        resource: {
+          _tag: "draft-workspace-file",
+          cwd,
+          path: relativePath,
+          // An absolute path serves as a download only when asked, as a relative one always does.
+          ...(ABSOLUTE.test(relativePath) ? { disposition: "attachment" as const } : {}),
+        },
       });
       // The bearer and its server are held together, so the bearer goes only to the server it is for.
       const credential = connection.credential(environmentId);

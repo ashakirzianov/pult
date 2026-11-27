@@ -105,6 +105,7 @@ NodeTest.test(
       "/etc/hosts",
       "src/missing.ts",
       "/owner/track/about.md",
+      "/tmp/report.md",
     ];
     const starPaths = ["/stars/beta/nope/missing.md", "never.md", "/stars/beta/notes.md"];
     const [first, second, star] = await Promise.all([
@@ -112,7 +113,11 @@ NodeTest.test(
       verdicts("t2", ["b.ts"]),
       verdicts("star", starPaths),
     ]);
-    NodeAssert.deepEqual(first, [true, true, true, false, false, true]);
+    NodeAssert.deepEqual(
+      first,
+      [true, true, true, true, false, true, false],
+      "an absolute path under no checkout is a link while the host has it",
+    );
     NodeAssert.deepEqual(second, [true]);
     NodeAssert.deepEqual(
       star,
@@ -152,20 +157,22 @@ NodeTest.test(
         notified.push(ref.path);
         publish();
       });
-    files.push("/monore/etc/hosts");
+    files.push("/tmp/report.md");
     settle("t1", "2026-11-24T12:00:00Z");
     NodeAssert.deepEqual(
       refs.map((ref) => links.verdict(ref)),
-      [true, true, true, false, false, true],
+      [true, true, true, true, false, true, false],
       "a no reads as no while it is checked again",
     );
     await published;
-    NodeAssert.deepEqual(notified, ["/etc/hosts"], "only the path that now opens is told");
+    NodeAssert.deepEqual(notified, ["/tmp/report.md"], "only the path that now opens is told");
     NodeAssert.deepEqual(
       refs.map((ref) => links.verdict(ref)),
-      [true, true, true, true, false, true],
+      [true, true, true, true, false, true, true],
     );
-    NodeAssert.deepEqual(metadataCalls, [["/monore/etc/hosts", "/repos/pult/src/missing.ts"]]);
+    NodeAssert.deepEqual(metadataCalls, [
+      ["/repos/pult/src/missing.ts", "/tmp/report.md", "/monore/tmp/report.md"],
+    ]);
     NodeAssert.deepEqual(searched.toSorted(), [
       "/repos/axis src/missing.ts",
       "/repos/gone src/missing.ts",
@@ -210,14 +217,14 @@ NodeTest.test(
     reroot([pult]);
     NodeAssert.deepEqual(
       refs.map((ref) => links.verdict(ref)),
-      [true, true, true, true, false, true],
+      [true, true, true, true, false, true, true],
       "a yes and a no read as they did while they are checked again",
     );
     await republished;
     NodeAssert.deepEqual(notified, ["b.ts"], "only the path that no longer opens is told");
     NodeAssert.deepEqual(
       refs.map((ref) => links.verdict(ref)),
-      [true, false, true, true, false, true],
+      [true, false, true, true, false, true, true],
     );
   },
 );

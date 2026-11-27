@@ -128,9 +128,7 @@ async function openPath(
   let opened: string | undefined;
   switch (resolution.kind) {
     case "outside":
-      return void notifications.warn(
-        `Pult opens files only under the environment's projects: ${path}.`,
-      );
+      return void notifications.warn(`No file at ${path}.`);
     case "missing": {
       const failed =
         resolution.error === undefined ? "" : ` The search failed: ${resolution.error}`;

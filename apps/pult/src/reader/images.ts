@@ -72,7 +72,6 @@ export async function readImage(document: URI, src: string): Promise<ImageShown>
   });
   switch (resolution.kind) {
     case "outside":
-      return { refused: "outside the projects" };
     case "missing":
       return { refused: "missing" };
     case "pick":
