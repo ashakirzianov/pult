@@ -8,7 +8,10 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import {
+  replaceComposerContextReferences,
+  threadContextRecord,
+} from "@t3tools/shared/composerContextReferences";
 
 import {
   composerDraftHasUserContent,
@@ -296,4 +299,27 @@ export function moveComposerText(from: ComposerTarget, to: ComposerTarget): void
 /** Calls `listener` on every change of the composer store. */
 export function onDidChangeComposers(listener: () => void): () => void {
   return useComposerDraftStore.subscribe(listener);
+}
+
+/**
+ * Adds `thread` to the composer of `into` as upstream's side chat's Add to
+ * chat does (`SideThreadPane.tsx`): a thread context record the agent reads
+ * with `t3_thread_read`, after the message, not at the caret.
+ */
+export function addThreadToComposer(
+  into: { readonly environmentId: string; readonly threadId: string },
+  thread: { readonly environmentId: string; readonly threadId: string; readonly title: string },
+): void {
+  useComposerDraftStore
+    .getState()
+    .addThreadContexts(
+      scopeThreadRef(EnvironmentId.make(into.environmentId), ThreadId.make(into.threadId)),
+      [
+        threadContextRecord(
+          scopeThreadRef(EnvironmentId.make(thread.environmentId), ThreadId.make(thread.threadId)),
+          thread.title,
+        ),
+      ],
+      { insertAtCaret: false },
+    );
 }

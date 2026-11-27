@@ -18,6 +18,7 @@ const DETAILS_SHELVES = [
   "actions",
   "servers",
   "subagents",
+  "sideChats",
   "schedules",
   "settings",
 ] as const;
@@ -41,6 +42,7 @@ export const THREAD_SHELVES: ReadonlyArray<DetailsShelfName> = [
   "actions",
   "servers",
   "subagents",
+  "sideChats",
   "schedules",
 ];
 
@@ -57,6 +59,7 @@ export const DETAILS_SHELF_ICONS: Record<
   actions: { label: "Actions", icon: "play" },
   servers: { label: "Servers", icon: "server-process" },
   subagents: { label: "Subagents", icon: "hubot" },
+  sideChats: { label: "Side chats", icon: "comment-discussion" },
   schedules: { label: "Schedules", icon: "calendar" },
   settings: { label: "Star Settings", icon: "settings" },
 };

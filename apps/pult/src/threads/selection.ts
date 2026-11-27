@@ -351,13 +351,7 @@ async function openSideChat(sideChat: ShellThread): Promise<void> {
   const editors = await getService(IEditorService);
   const shown = () =>
     holdsThread(parent.environmentId, parent.id) ||
-    editors.editors.some(
-      (editor) =>
-        editor instanceof StarThreadInput &&
-        editor.slug === null &&
-        editor.environmentId === parent.environmentId &&
-        editor.threadId === parent.id,
-    );
+    threadTabs(editors, parent.environmentId, parent.id).length > 0;
   if (!shown()) await selectThread(parent.environmentId, parent.id);
   return enqueue(async () => {
     if (!shown()) return;
@@ -367,6 +361,48 @@ async function openSideChat(sideChat: ShellThread): Promise<void> {
       { pinned: true },
     );
   });
+}
+
+/** The thread's open closable tabs (`StarThreadInput` with no slug): a Star's child's, or a side chat's. */
+function threadTabs(
+  editors: IEditorService,
+  environmentId: string,
+  threadId: string,
+): StarThreadInput[] {
+  return editors.editors.filter(
+    (editor): editor is StarThreadInput =>
+      editor instanceof StarThreadInput &&
+      editor.slug === null &&
+      editor.environmentId === environmentId &&
+      editor.threadId === threadId,
+  );
+}
+
+/**
+ * The thread shown, as a side chat's Add to chat shows its parent: its
+ * closable tab where one is open (a Star's child's), else the thread
+ * selected, its lead tab active.
+ */
+export async function showThreadTab(environmentId: string, threadId: string): Promise<void> {
+  const editors = await getService(IEditorService);
+  const [tab] = threadTabs(editors, environmentId, threadId);
+  if (tab === undefined) return selectThread(environmentId, threadId);
+  await editors.openEditor(tab);
+}
+
+/** Closes the side chat's tabs, a settled side chat's, which has left Pult. */
+export async function closeSideChatTab(environmentId: string, threadId: string): Promise<void> {
+  const groups = await getService(IEditorGroupsService);
+  for (const group of groups.groups) {
+    const closing = group.editors.filter(
+      (editor) =>
+        editor instanceof StarThreadInput &&
+        editor.slug === null &&
+        editor.environmentId === environmentId &&
+        editor.threadId === threadId,
+    );
+    if (closing.length > 0) await group.closeEditors(closing);
+  }
 }
 
 /** Whether `selectThread` would select what is selected already: the thread itself, or the selected Star, its thread's; for a side chat, its parent's. */

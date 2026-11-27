@@ -30,7 +30,7 @@ import {
   threadPresenter,
   threadStatus,
 } from "./presentation.ts";
-import { isSubagent } from "./store.ts";
+import { isSubagent, sideChatsOf } from "./store.ts";
 
 const NOW = "2026-06-20T12:00:00.000Z";
 const ALL = { settlement: true, snooze: true, pinning: true };
@@ -288,6 +288,42 @@ NodeTest.describe("shellThreads", () => {
       NodeAssert.equal(sideChat?.parentId, "active");
       NodeAssert.equal(sideChat?.sideChat, true);
       NodeAssert.equal(sideChat !== undefined && isSubagent(sideChat), false);
+    },
+  );
+
+  NodeTest.test(
+    "lists a thread's unsettled side chats, newest first, for its Side chats shelf",
+    () => {
+      const threads = shellThreads(
+        [
+          {
+            environmentId: "env",
+            threads: [
+              thread("parent"),
+              thread("other"),
+              thread("older", {
+                ...sideChatOf("parent"),
+                createdAt: at("2026-06-20T09:00:00.000Z"),
+              }),
+              thread("newer", {
+                ...sideChatOf("parent"),
+                createdAt: at("2026-06-20T10:00:00.000Z"),
+              }),
+              thread("settled", { ...sideChatOf("parent"), settledOverride: "settled" }),
+              thread("elsewhere", sideChatOf("other")),
+              thread("subagent", subagentOf("parent")),
+            ],
+            projects: [],
+            features: ALL,
+            hidden: NO_HIDDEN,
+          },
+        ],
+        NOW,
+      );
+      NodeAssert.deepEqual(ids(sideChatsOf(threads, { environmentId: "env", id: "parent" })), [
+        "newer",
+        "older",
+      ]);
     },
   );
 

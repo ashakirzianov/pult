@@ -424,6 +424,7 @@ export function shellThreads(
       branch: thread.branch,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
+      hasUserMessage: thread.latestUserMessageAt !== null,
       ageFrom:
         shelf === "settled" || (shelf === null && settled)
           ? resolveSettledThreadTimestamp(thread)

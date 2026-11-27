@@ -84,6 +84,7 @@ export function StarDetails({
       case "actions":
       case "servers":
       case "subagents":
+      case "sideChats":
         return null;
     }
   };

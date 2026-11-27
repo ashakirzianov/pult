@@ -187,11 +187,12 @@ function nextCard(parked: ThreadRef): ShellThread | null {
  * own, or undefined for settling. When it was the selected thread and still
  * is once parked, the selection moves to the next card after it, chosen
  * before the list changes, or with none to a new thread in its project;
- * parking another thread leaves the selection alone.
+ * parking another thread leaves the selection alone. True once the server
+ * took it.
  */
-async function park(target: ThreadRef, wake?: string): Promise<void> {
+async function park(target: ThreadRef, wake?: string): Promise<boolean> {
   const key = scopedKey(target.environmentId, target.id);
-  if (parking.has(key)) return;
+  if (parking.has(key)) return false;
   const parked = thread(target);
   const next = isSelected(target) ? nextCard(target) : undefined;
   parking.add(key);
@@ -210,9 +211,10 @@ async function park(target: ThreadRef, wake?: string): Promise<void> {
   } finally {
     parking.delete(key);
   }
-  if (!done || next === undefined || !isSelected(target)) return;
+  if (!done || next === undefined || !isSelected(target)) return done;
   if (next !== null) await selectThread(next.environmentId, next.id);
   else if (parked !== undefined) newThreadIn(parked.environmentId, parked.projectId);
+  return done;
 }
 
 export const settleThread = (target: ThreadRef) => park(target);

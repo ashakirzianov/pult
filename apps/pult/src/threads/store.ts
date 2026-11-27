@@ -40,6 +40,8 @@ export interface ShellThread {
   readonly branch: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Whether the user has sent it a message: a side chat's Add to chat waits on one. */
+  readonly hasUserMessage: boolean;
   /** What its card's age counts from: a settled thread's settlement, else its latest run's end, which its prompt cache counts from, else its latest message from the user, else its last change. */
   readonly ageFrom: string | null;
   /** When its prompt cache expires, as its server says; null where the server knows no cache lifetime, undefined from a server that predates the field. */
@@ -127,6 +129,24 @@ export interface ThreadState {
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
 export function isSubagent(thread: ShellThread): boolean {
   return thread.shelf === null && !thread.offInbox && thread.parentId !== null && !thread.sideChat;
+}
+
+/** The thread's unsettled side chats, newest first: its details' Side chats shelf. */
+export function sideChatsOf<
+  Thread extends Pick<
+    ShellThread,
+    "environmentId" | "parentId" | "sideChat" | "settled" | "createdAt"
+  >,
+>(threads: ReadonlyArray<Thread>, thread: Pick<ShellThread, "environmentId" | "id">): Thread[] {
+  return threads
+    .filter(
+      (each) =>
+        each.sideChat &&
+        !each.settled &&
+        each.parentId === thread.id &&
+        each.environmentId === thread.environmentId,
+    )
+    .toSorted((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
 }
 
 /** A thread's or project's identity across environments, for maps and keys. */

@@ -22,7 +22,9 @@ import {
   useMinuteClock,
 } from "../panel/PanelView.tsx";
 import { instantText } from "../stars/schedules.ts";
-import { scopedKey, type ShellThread, threadStore } from "../threads/store.ts";
+import { settleThread } from "../threads/park.ts";
+import { closeSideChatTab, showThreadTab } from "../threads/selection.ts";
+import { scopedKey, type ShellThread, sideChatsOf, threadStore } from "../threads/store.ts";
 import { revealTerminal } from "../threads/terminal.ts";
 import type { DetailsCardsTarget, DetailsViewRows } from "../../view/main.tsx";
 import { detailsCards } from "./cards.ts";
@@ -101,6 +103,8 @@ export function useThreadDetails(subject: ThreadSubject) {
     view,
     /** The subagents of its lineage, as its root's card listed them, active first. */
     lineage,
+    /** Its unsettled side chats, newest first. */
+    sideChats: thread === undefined ? [] : sideChatsOf(state.threads, thread),
     activities,
   };
 }
@@ -133,6 +137,13 @@ export function threadShelf(
           (subagent) => details.activities.get(keyOf(subagent)) === "working",
         ).length,
       };
+    case "sideChats":
+      return {
+        holds: details.sideChats.length > 0,
+        count: details.sideChats.filter(
+          (sideChat) => details.activities.get(keyOf(sideChat)) === "working",
+        ).length,
+      };
     case "schedules": {
       const schedules = details.view?.schedules ?? [];
       return {
@@ -154,9 +165,10 @@ export function threadShelf(
  * the rows it posted on Inbox (`ThreadAsks`), its folder and environment
  * (`ThreadPlace`), its checkout's changes (`ThreadChanges`), its project's
  * scripts (`ThreadActions`), its local servers (`ThreadServers`), its
- * lineage's subagents (`ThreadSubagents`) and its scheduled tasks
- * (`ThreadSchedules`), the last but one read from the store, the others
- * from its view (`DetailsViewRows`). A draft's is its Folder alone.
+ * lineage's subagents (`ThreadSubagents`), its side chats
+ * (`ThreadSideChats`) and its scheduled tasks (`ThreadSchedules`), the
+ * subagents and side chats read from the store, the others from its view
+ * (`DetailsViewRows`). A draft's is its Folder alone.
  */
 export function ThreadDetails({ subject }: { subject: ThreadSubject }) {
   const order = useSyncExternalStore(
@@ -190,6 +202,16 @@ export function ThreadDetails({ subject }: { subject: ThreadSubject }) {
             lineage={details.lineage}
             activities={details.activities}
             stops={details.view?.stops ?? []}
+            now={now}
+          />
+        );
+      case "sideChats":
+        return details.thread === undefined ? null : (
+          <ThreadSideChats
+            key={name}
+            thread={details.thread}
+            sideChats={details.sideChats}
+            activities={details.activities}
             now={now}
           />
         );
@@ -455,6 +477,81 @@ function ThreadSubagents({
       />
     </DetailsShelf>
   );
+}
+
+/**
+ * The thread's unsettled side chats (`pult/decisions`, `side-chats`): each
+ * its title and status as a card words it, Working with its elapsed time,
+ * else an age, a click opening its tab, the one whose tab is active
+ * highlighted; Add to chat, once it has a message, adds it to the thread's
+ * composer as upstream's side chat pane does and shows the thread's tab, and
+ * Settle settles it and, once the server took it, closes its tab, after
+ * which it leaves Pult.
+ */
+function ThreadSideChats({
+  thread,
+  sideChats,
+  activities,
+  now,
+}: {
+  thread: ShellThread;
+  sideChats: ReadonlyArray<ShellThread>;
+  activities: Map<string, Activity>;
+  now: number;
+}) {
+  const view = useSyncExternalStore(detailsCards.subscribe, detailsCards.get)?.view;
+  return (
+    <DetailsShelf name="sideChats">
+      <DetailsRows
+        label="Side chats"
+        rows={sideChats.map((sideChat) => {
+          const activity = activities.get(keyOf(sideChat)) ?? null;
+          return {
+            key: keyOf(sideChat),
+            icon: "comment-discussion",
+            label: sideChat.title,
+            title: sideChat.title,
+            selected:
+              view?.kind === "thread" &&
+              view.environmentId === sideChat.environmentId &&
+              view.threadId === sideChat.id,
+            value: <Status thread={sideChat} activity={activity} now={now} />,
+            open: () => run("pult-shell.selectThread", sideChat.environmentId, sideChat.id),
+            actions: [
+              ...(sideChat.hasUserMessage
+                ? [
+                    {
+                      label: "Add to chat",
+                      title: `Add it to the composer of ${thread.title}`,
+                      run: () => void addToChat(thread, sideChat),
+                    },
+                  ]
+                : []),
+              {
+                label: "Settle",
+                run: () => void settleSideChat(sideChat),
+              },
+            ],
+          };
+        })}
+      />
+    </DetailsShelf>
+  );
+}
+
+/** Settles the side chat and, once the server took it, closes its tab. */
+async function settleSideChat(sideChat: ShellThread): Promise<void> {
+  if (await settleThread(sideChat)) await closeSideChatTab(sideChat.environmentId, sideChat.id);
+}
+
+/** The side chat in its thread's composer, then the thread's tab shown. */
+async function addToChat(thread: ShellThread, sideChat: ShellThread): Promise<void> {
+  const drafts = await import("../../view/drafts.ts");
+  drafts.addThreadToComposer(
+    { environmentId: thread.environmentId, threadId: thread.id },
+    { environmentId: sideChat.environmentId, threadId: sideChat.id, title: sideChat.title },
+  );
+  await showThreadTab(thread.environmentId, thread.id);
 }
 
 /**
