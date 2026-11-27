@@ -952,11 +952,15 @@ function useChatMarkdownState(
             ? resolveWorkspaceFilePath(path, cwd)
             : path,
           fileLinkMeta.line,
+          undefined,
+          true,
         )) ?? undefined;
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
-      workspaceLinkLookupQuery(panelPath, cwd) === null
+      workspaceLinkLookupQuery(panelPath, cwd) === null ||
+      // Pult: its panel finds a bare name itself, offering a pick where several match.
+      (needsWorkspaceBasenameLookup(panelPath) && useRightPanelStore.getState().openFileFindsNames)
     ) {
       return openAt(panelPath);
     }
@@ -974,10 +978,12 @@ function useChatMarkdownState(
       return openAt(match ?? panelPath);
     })();
   };
+  /** Pult: `text`, the chip's text as written, which its menu copies (`MarkdownFileLink`). */
   const fileLinkChip = (
     fileLinkMeta: MarkdownFileLinkMeta,
     copyMarkdown: string,
-    mediaSource?: string,
+    mediaSource: string | undefined,
+    text: string,
   ) => {
     const resolveHostPath = () =>
       resolveMarkdownFileHostPath({
@@ -1025,6 +1031,7 @@ function useChatMarkdownState(
           fileLinkParentSuffixByPath,
         )}
         copyMarkdown={copyMarkdown}
+        text={text}
         theme={resolvedTheme}
         threadRef={threadRef}
         onOpen={
@@ -1572,7 +1579,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       source.startsWith("[") && source.includes("](")
         ? source
         : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
-    const chip = fileLinkChip(fileLinkMeta, copyMarkdown, normalizedHref);
+    const chip = fileLinkChip(
+      fileLinkMeta,
+      copyMarkdown,
+      normalizedHref,
+      href ? normalizeMarkdownLinkDestination(href) : normalizedHref,
+    );
     return isMarkdownFileLinkLabel(label, normalizedHref) ? (
       chip
     ) : (
@@ -1596,6 +1608,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fileLinkMeta,
           `\`${codeText}\``,
           inlineCodeFilePathCandidate(codeText) ?? codeText.trim(),
+          codeText.trim(),
         );
       }
       return (
@@ -1677,7 +1690,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     }
     if (shouldRenderMarkdownImageAsFileLink(imageSource, mediaKind)) {
       const fileLinkMeta = resolveMarkdownFileLinkMeta(srcString, cwd, imageBaseDir ?? cwd);
-      if (fileLinkMeta) return fileLinkChip(fileLinkMeta, copyMarkdown, srcString);
+      if (fileLinkMeta) return fileLinkChip(fileLinkMeta, copyMarkdown, srcString, srcString);
     }
     const kind = mediaKind ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;

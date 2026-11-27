@@ -41,10 +41,16 @@ interface MarkdownFileLinkProps {
   line?: number | undefined;
   label: string;
   copyMarkdown: string;
+  /** Pult: the chip's text as written, which its menu copies first. */
+  text: string;
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  onOpenInPanel: (panelPath: string, line: number | undefined) => void;
+  /** Pult: a miss's text, Pult's panel's answer, heads the chip's menu at the chip. */
+  onOpenInPanel: (
+    panelPath: string,
+    line: number | undefined,
+  ) => void | Promise<string | undefined>;
   resolveDragPath: () => Promise<string>;
   resolveCopyPaths: () => Promise<ReturnType<typeof markdownFileCopyPaths>>;
   openInEditorMenuLabel: string;
@@ -67,6 +73,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   line,
   label,
   copyMarkdown,
+  text,
   theme,
   threadRef,
   onOpen,
@@ -119,9 +126,14 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     })();
   };
 
-  const handleOpenInFilePreview = () => {
+  const handleOpenInFilePreview = (at: {
+    position: { x: number; y: number };
+    source: ContextMenuSource;
+  }) => {
     if (threadRef && panelPath) {
-      onOpenInPanel(panelPath, line);
+      void Promise.resolve(onOpenInPanel(panelPath, line)).then((miss) => {
+        if (miss !== undefined) void showFileContextMenu(at.position, at.source, miss);
+      });
       return;
     }
     if (onOpenMedia) {
@@ -211,7 +223,9 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     const failureTitle =
       title === "Relative path"
         ? gt("Failed to copy relative path")
-        : gt("Failed to copy full path");
+        : title === "Text"
+          ? gt("Failed to copy")
+          : gt("Failed to copy full path");
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
         stackedThreadToast({
@@ -223,7 +237,10 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       return;
     }
 
-    const value = resolveValue().then((text) => formatFilePathForClipboard(text, targetPath));
+    // Pult: the chip's text is copied as written.
+    const value = resolveValue().then((text) =>
+      title === "Text" ? text : formatFilePathForClipboard(text, targetPath),
+    );
     // Start the write before workspace lookup finishes so Safari retains the user gesture.
     const write =
       typeof navigator.clipboard.write === "function" && typeof ClipboardItem !== "undefined"
@@ -248,17 +265,20 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     });
   };
 
+  /** Pult: `miss`, why the chip's click opened nothing, heads the menu, a disabled item, which a native menu shows where it drops a header. */
   const showFileContextMenu = async (
     position: { x: number; y: number },
     source: ContextMenuSource,
+    miss?: string,
   ) => {
     const api = readLocalApi();
     if (!api) return;
 
     try {
-      const copyItems = markdownFileCopyMenuItems({ targetPath, workspaceRelativePath });
+      const copyItems = markdownFileCopyMenuItems({ targetPath, workspaceRelativePath, text });
       const clicked = await api.contextMenu.show(
         [
+          ...(miss === undefined ? [] : [{ id: "miss", label: miss, disabled: true }]),
           ...(onOpenMedia ? ([{ id: "preview-media", label: gt("Preview media") }] as const) : []),
           ...(onOpen ? ([{ id: "open", label: openInEditorMenuLabel }] as const) : []),
           ...(onOpenInBrowser
@@ -285,6 +305,10 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       }
       if (clicked === "reveal") {
         handleRevealInFileManager();
+        return;
+      }
+      if (clicked === "copy-text") {
+        handleCopy(() => Promise.resolve(text), "Text");
         return;
       }
       if (clicked === "copy-relative" || clicked === "copy-full") {
@@ -360,7 +384,12 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           handleOpenInBrowser();
           return;
         }
-        handleOpenInFilePreview();
+        // Pult: a miss's menu shows at the chip, as a keyboard's context menu does.
+        const bounds = event.currentTarget.getBoundingClientRect();
+        handleOpenInFilePreview({
+          position: { x: bounds.left, y: bounds.bottom },
+          source: contextMenuSourceOf(event),
+        });
       }}
       onContextMenu={handleContextMenu}
     >
@@ -423,6 +452,7 @@ function areMarkdownFileLinkPropsEqual(
     previous.line === next.line &&
     previous.label === next.label &&
     previous.copyMarkdown === next.copyMarkdown &&
+    previous.text === next.text &&
     previous.theme === next.theme &&
     previous.threadRef === next.threadRef &&
     previous.isAppBundle === next.isAppBundle &&

@@ -200,15 +200,21 @@ interface RightPanelStoreState {
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   /**
    * Pult's hook point: `endLine` closes the lines a citation names, which Pult's shell selects;
-   * this panel reveals `line` alone. Pult's answers with its miss, the text a chip's menu heads
-   * with; this panel answers nothing.
+   * this panel reveals `line` alone. Pult's answers with its miss, which it notifies unless
+   * `showsMiss` (a chip's menu heads with it); this panel answers nothing.
    */
   openFile: (
     ref: ScopedThreadRef,
     relativePath: string,
     line?: number,
     endLine?: number,
+    showsMiss?: boolean,
   ) => void | Promise<string | undefined>;
+  /**
+   * Pult's hook point: whether `openFile` finds a bare file name itself, a pick among several
+   * (Pult's shell), so a chip hands it the name as written; this panel's does not.
+   */
+  openFileFindsNames: boolean;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,
@@ -788,6 +794,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
     (set, get) => ({
       byThreadKey: {},
       pendingMaximizeThreadKey: null,
+      openFileFindsNames: false,
       requestMaximize: (ref) => set({ pendingMaximizeThreadKey: scopedThreadKey(ref) }),
       consumeMaximizeRequest: (ref) => {
         if (get().pendingMaximizeThreadKey !== scopedThreadKey(ref)) return false;

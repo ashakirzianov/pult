@@ -51,14 +51,17 @@ export function followsShowingIn(ref: ScopedThreadRef, from: string | null): boo
 export function routeRightPanel(): void {
   const { open, openProactive } = useRightPanelStore.getState();
   useRightPanelStore.setState({
-    openFile: (ref, path, line, endLine) =>
+    openFile: (ref, path, line, endLine, showsMiss) =>
       threadViewHost().openFile(
         ref.environmentId,
         ref.threadId,
         path,
         line ?? null,
         endLine ?? null,
+        showsMiss === true,
       ),
+    // A bare name is found by the shell's resolver, a pick among several.
+    openFileFindsNames: true,
     open: (ref, kind) => {
       if (kind !== "diff") return open(ref, kind);
       // The view selects the turn and its file in the diff store before opening the surface.

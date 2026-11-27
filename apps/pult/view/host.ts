@@ -29,13 +29,17 @@ export interface ThreadViewHost {
    * whose view takes up the draft the view remembered for the project.
    */
   readonly openDraft: (environmentId: string, projectId: string) => void;
-  /** Answers a miss's text, which the chip clicked shows as its menu's head, or none once it opened or offered a pick. */
+  /**
+   * Answers a miss's text, or none once it opened or offered a pick; the shell notifies the miss
+   * unless `showsMiss`, a chip's click, whose menu heads with it.
+   */
   readonly openFile: (
     environmentId: string,
     threadId: string,
     path: string,
     line: number | null,
     endLine: number | null,
+    showsMiss: boolean,
   ) => Promise<string | undefined>;
   /** The thread's changes, a turn's when the view named one whose checkpoints it knows. */
   readonly openChanges: (

@@ -29,10 +29,15 @@ export function hasMarkdownFilePrimaryAction(input: {
   );
 }
 
+/**
+ * Pult: `text` is the chip's text as written, an inline code span's or a link's destination, its
+ * "Copy <text>" first, so a chip that names no file copies what it said.
+ */
 export function markdownFileCopyMenuItems({
   targetPath,
   workspaceRelativePath,
-}: Pick<MarkdownFileLinkMeta, "targetPath" | "workspaceRelativePath">) {
+  text,
+}: Pick<MarkdownFileLinkMeta, "targetPath" | "workspaceRelativePath"> & { text: string }) {
   const items = [
     {
       id: "copy-full",
@@ -50,6 +55,12 @@ export function markdownFileCopyMenuItems({
       title: m(msg("Relative path")),
     });
   }
+  items.unshift({
+    id: "copy-text",
+    label: m(msg("Copy {text}", { text })),
+    value: text,
+    title: m(msg("Text")),
+  });
   return items;
 }
 

@@ -447,12 +447,19 @@ class ReaderPane extends SimpleEditorPane {
     };
   }
 
-  /** A file chip's click (`render.ts`, `chips`): its file opened as the thread view's chip opens one. */
+  /**
+   * A file chip's click (`render.ts`, `chips`): its file opened as the
+   * thread view's chip opens one, a miss the chip's menu headed by why.
+   */
   private openChip(event: MouseEvent): void {
     const target = event.target as Element | null;
-    const code = target?.closest?.("[data-pult-file]")?.getAttribute("data-pult-file");
+    const chip = target?.closest?.("[data-pult-file]");
+    const code = chip?.getAttribute("data-pult-file");
     const input = this.input;
-    if (code === undefined || code === null || !(input instanceof ReaderInput)) return;
+    if (chip == null || code == null || !(input instanceof ReaderInput)) return;
+    const frame = this.frame.element.getBoundingClientRect();
+    const bounds = chip.getBoundingClientRect();
+    const anchor = { x: frame.left + bounds.left, y: frame.top + bounds.bottom };
     void threadView().then(async (view) => {
       const candidate = view.chipCandidate(code);
       if (candidate === null) return;
@@ -464,7 +471,25 @@ class ReaderPane extends SimpleEditorPane {
         line ?? null,
         endLine ?? null,
       );
-      if (miss !== undefined) StandaloneServices.get(INotificationService).warn(miss);
+      if (miss !== undefined) this.showChipMenu(chip, anchor, miss);
+    });
+  }
+
+  /** A chip's menu: Copy its text as written, under the miss's text when its click opened nothing. */
+  private showChipMenu(chip: Element, anchor: { x: number; y: number }, miss?: string): void {
+    const text = chip.getAttribute("data-pult-text") ?? "";
+    const copy = toAction({
+      id: "pult-shell.reader.copyChip",
+      label: `Copy ${text}`,
+      run: () => StandaloneServices.get(IClipboardService).writeText(text),
+    });
+    const head =
+      miss === undefined
+        ? []
+        : [toAction({ id: "pult-shell.reader.miss", label: miss, enabled: false, run: () => {} })];
+    StandaloneServices.get(IContextMenuService).showContextMenu({
+      getAnchor: () => anchor,
+      getActions: () => [...head, copy],
     });
   }
 
@@ -499,10 +524,19 @@ class ReaderPane extends SimpleEditorPane {
   /**
    * The page's selection's context menu, the workbench's: Cite, while a
    * thread or draft is selected, with the selection as it was when the menu
-   * opened, and Copy. With nothing selected the browser's own, none in the
-   * desktop.
+   * opened, and Copy. On a file chip the chip's, Copy its text. With nothing
+   * selected the browser's own, none in the desktop.
    */
   private showContextMenu(event: MouseEvent): void {
+    const chip = (event.target as Element | null)?.closest?.("[data-pult-text]");
+    if (chip != null) {
+      event.preventDefault();
+      const frame = this.frame.element.getBoundingClientRect();
+      return this.showChipMenu(chip, {
+        x: frame.left + event.clientX,
+        y: frame.top + event.clientY,
+      });
+    }
     const capture = this.capture();
     if (capture?.passage === undefined) return;
     event.preventDefault();

@@ -81,8 +81,8 @@ const urlText = (value: string) =>
  */
 function kept(element: string, name: string, value: string): string | undefined {
   if (name.startsWith("on")) return undefined;
-  // The pane opens the file a chip names; only a chip the shell drew names one (`chip`).
-  if (name === "data-pult-file") return undefined;
+  // The pane opens the file a chip names and copies its text; only a chip the shell drew has them (`chip`).
+  if (name === "data-pult-file" || name === "data-pult-text") return undefined;
   if (!URL_ATTRIBUTES.has(name)) return value;
   if (name === "ping" || name === "srcdoc") return undefined;
   const url = urlText(value);
@@ -186,8 +186,9 @@ function inlineCodeText(node: DefaultTreeAdapterTypes.Element) {
 /**
  * The chip `markup` draws, built by the page's rules, in place of the inline
  * code or ref `text`: `data-pult-file` the file it opens, for the pane's
- * click, and its label, the `context-chip-label` slot's text, placed where
- * the code or ref was.
+ * click, `data-pult-text` the code or ref as written, which its menu copies,
+ * and its label, the `context-chip-label` slot's text, placed where the code
+ * or ref was.
  */
 function chip(
   doc: Document,
@@ -200,6 +201,7 @@ function chip(
   const root = fragment.firstElementChild;
   if (root === null) return fragment;
   root.setAttribute("data-pult-file", file);
+  root.setAttribute("data-pult-text", text.value);
   const label = root.querySelector('[data-slot="context-chip-label"]')?.firstChild;
   const at = text.sourceCodeLocation;
   if (label?.nodeType === doc.TEXT_NODE && at)
