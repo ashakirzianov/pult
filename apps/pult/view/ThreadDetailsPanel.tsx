@@ -5,13 +5,13 @@
 // active editor's; in a pane too narrow for their lane they overlay the conversation. The canvas
 // clears its lane of them as of upstream's card. Upstream's rows and their "Choose what to show"
 // are the fork's web app's alone (`pult/decisions`, `view-right-panel`).
-import type {
-  EditorId,
+import {
+  type EditorId,
   EnvironmentId,
-  ProjectId,
-  ProjectScript,
-  ResolvedKeybindingsConfig,
-  ScopedThreadRef,
+  type ProjectId,
+  type ProjectScript,
+  type ResolvedKeybindingsConfig,
+  type ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -313,12 +313,14 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     if (island === null) return;
     return detailsCards.renderShelves(island);
   }, [island, detailsCards]);
-  // A thread's rows that only the view reads, while its shelves show (a draft has none of them).
+  // A thread's rows that only the view reads, while its shelves show (a draft has none of them):
+  // the shelves' thread's, on a thread's side chat's tab its parent's, with the view's own
+  // project and scripts, the parent's too, a script running in the tab's own drawer.
   const publisher =
     shown?.subject.kind === "thread" ? (
       <DetailsViewRowsPublisher
-        environmentId={environmentId}
-        threadId={threadId}
+        environmentId={EnvironmentId.make(shown.subject.environmentId)}
+        threadId={ThreadId.make(shown.subject.threadId)}
         gitCwd={props.gitCwd}
         scripts={props.activeProjectScripts}
         onRunProjectScript={props.onRunProjectScript}

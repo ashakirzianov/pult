@@ -129,7 +129,9 @@ function reported(title: string) {
 
 /**
  * Hands the shell the thread's rows its view reads while the shelves show it
- * (`ThreadDetailsPanel.tsx`), again whenever what they say changes; each
+ * (`ThreadDetailsPanel.tsx`; on a thread's side chat's tab the shelves are
+ * its parent's, and so is this thread), again whenever what they say
+ * changes; each
  * action calls through the latest props, so a new render alone hands over
  * nothing.
  */
