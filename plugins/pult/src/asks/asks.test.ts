@@ -103,7 +103,11 @@ it.effect(
         );
       const as = (thread: string) => ({
         ask: (args: Record<string, unknown>) => tool("pult_ask", scopeOf({ thread }), args),
-        settle: (id: string) => tool("pult_ask_settle", scopeOf({ thread }), { id }),
+        settle: (id: string, comment?: string) =>
+          tool("pult_ask_settle", scopeOf({ thread }), {
+            id,
+            ...(comment === undefined ? {} : { comment }),
+          }),
         list: (args: Record<string, unknown> = {}) =>
           tool("pult_ask_list", scopeOf({ thread }), args),
       });
@@ -129,18 +133,35 @@ it.effect(
       // The rows as a page follows them (`extensions.subscribeUi`), the last list the asks published.
       const ui = Context.get(context, ExtensionUi.ExtensionUi);
       let published: ReadonlyArray<Record<string, any>> = [];
+      // Each list and each send as it lands, for a step whose publish or notice an event or a timer forks.
+      const landings = yield* Queue.unbounded<void>();
       yield* Effect.forkScoped(
         Stream.runForEach(ui.published, (list) =>
-          Effect.sync(() => {
-            if (list.extension === "pult" && list.slot === "shelf-row")
-              published = list.items as typeof published;
+          Effect.suspend(() => {
+            if (list.extension !== "pult" || list.slot !== "shelf-row") return Effect.void;
+            published = list.items as typeof published;
+            return Queue.offer(landings, undefined);
           }),
         ),
       );
+      const sendToThread = server.threads.service.sendToThread;
+      server.threads.service.sendToThread = ((input) =>
+        sendToThread(input).pipe(
+          Effect.tap(() => Queue.offer(landings, undefined)),
+        )) as typeof sendToThread;
+      /** Once `ready` holds, a publish or a send at a time. */
+      const landed = Effect.fn(function* (ready: () => boolean) {
+        while (!ready()) yield* Queue.take(landings);
+      });
       const rows = Effect.map(
         Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow),
         () => published,
       );
+      const rowsWhen = (ready: (list: typeof published) => boolean) =>
+        Effect.map(
+          landed(() => ready(published)),
+          () => published,
+        );
       const act = (key: string, action: string, value?: string) =>
         ui
           .act({
@@ -176,9 +197,10 @@ it.effect(
           } as never),
         );
 
-      // A run the message started ends completed, as upstream commits it.
-      const completed = (message: FakeMessage) =>
-        Effect.forEach(server.threads.events.items, ({ queue }) =>
+      // A run the message started ends completed, as upstream commits it; `told` awaits the notice it brings.
+      const completed = (message: FakeMessage, told = false) => {
+        const before = server.threads.messages.length;
+        return Effect.forEach(server.threads.events.items, ({ queue }) =>
           Queue.offer(queue, {
             type: "run.updated",
             id: `event:run:${message.messageId}`,
@@ -186,9 +208,10 @@ it.effect(
             occurredAt: at("2026-11-10T13:00:00.000Z"),
             payload: { status: "completed", userMessageId: message.messageId },
           } as never),
-        ).pipe(Effect.andThen(rows));
+        ).pipe(Effect.andThen(told ? landed(() => server.threads.messages.length > before) : rows));
+      };
       const unanswered =
-        "The turn that received the user's reply to this ask ended with the ask neither settled nor asked again, so the user still sees it as being worked on. If the reply needs an answer, put it in the ask and call `pult_ask` with its `id`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per reply.";
+        "The turn that received the user's comment on this ask ended with the ask neither answered nor settled, so the user still sees it as being worked on. If the comment needs an answer, call `pult_ask` with its `id` and your answer as `comment`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per comment.";
 
       // An older page reads `asks` gone from `about` as no asks.
       expect((yield* send("GET", "/about")).body.features).not.toContain("asks");
@@ -208,9 +231,13 @@ it.effect(
               "readOnlyHint": false,
               "title": "Ask the user",
             },
-            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`; if the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. A message opening the same way also tells you, once per reply, when the turn that received a reply ended with the ask neither settled nor asked again. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its \`id\` is then unknown.",
+            "description": "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with \`file\`, in this thread's worktree or project folder (absolute, or relative to it), or pass \`text\`, Markdown Pult keeps for you; exactly one of them for a new ask. \`title\` defaults to the context's first line. The user answers with a comment on the ask: it comes as a message to this conversation (for a Star, to the channel that asked) opening \`[In reply to your ask <id> "<title>"…]\`, and stays on the ask's page with every other comment, in order, the file \`pult_ask_list\` names as \`page\`. Answer it with \`pult_ask\`, the ask's \`id\` and your answer as \`comment\`: it shows on the page and returns the ask to the user's Inbox; while the user's comment is the last, asking again without a \`comment\` is refused. If the user settles the ask, a message opening \`[From Pult, about your ask <id> "<title>"…]\` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. A message opening the same way also tells you, once per comment of the user's, when the turn that received it ended with the ask neither answered nor settled. With the \`id\` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a \`title\` or \`text\` you pass replaces the old, though an ask posted with \`file\` takes no \`text\`: change the file, and say what changed in a \`comment\`. The same \`file\` posted again without an \`id\` is your open ask of that file, asked again. Settle an ask with \`pult_ask_settle\` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, with its page, and its \`id\` is then unknown.",
             "inputSchema": {
               "properties": {
+                "comment": {
+                  "description": "Your answer to the user's comment, or what changed, shown on the ask's page under the earlier comments; with an \`id\` only.",
+                  "type": "string",
+                },
                 "file": {
                   "description": "The file the ask is about, which Pult never deletes.",
                   "type": "string",
@@ -271,9 +298,13 @@ it.effect(
               "readOnlyHint": false,
               "title": "Settle an ask",
             },
-            "description": "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. It is removed 7 days after its settle; until then \`pult_ask\` with its \`id\` reopens it.",
+            "description": "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. A \`comment\` closes it on its page, saying how it ended; it is the one comment that does not return the ask to the Inbox. It is removed 7 days after its settle; until then \`pult_ask\` with its \`id\` reopens it.",
             "inputSchema": {
               "properties": {
+                "comment": {
+                  "description": "A closing comment, shown on the settled ask's page.",
+                  "type": "string",
+                },
                 "id": {
                   "type": "string",
                 },
@@ -316,7 +347,7 @@ it.effect(
               "readOnlyHint": true,
               "title": "List asks",
             },
-            "description": "The asks posted in Pult on this server, by default your own: for a Star, every channel's. Name a Star by \`star\` (its id, with \`channel\` for one of its channels) or a thread by \`thread\` to list theirs. Each row has its \`status\`: \`posted\` (in the user's Inbox), \`replied\` (the user replied), \`snoozed\` (until \`snoozedUntil\`), or \`settled\` (\`settled\` is when, its thread's settle for a thread's ask while that thread is settled); settled asks are listed only with \`settled: true\`. Work started from a linked environment lists only its own.",
+            "description": "The asks posted in Pult on this server, by default your own: for a Star, every channel's. Name a Star by \`star\` (its id, with \`channel\` for one of its channels) or a thread by \`thread\` to list theirs. Each row has its \`status\`: \`posted\` (in the user's Inbox), \`replied\` (the user commented last), \`snoozed\` (until \`snoozedUntil\`), or \`settled\` (\`settled\` is when, its thread's settle for a thread's ask while that thread is settled); settled asks are listed only with \`settled: true\`. Each row's \`page\` is the file the user sees, the ask's context with its comments under it: read it for the exchange so far. Work started from a linked environment lists only its own.",
             "inputSchema": {
               "properties": {
                 "channel": {
@@ -350,6 +381,9 @@ it.effect(
                         "type": "string",
                       },
                       "id": {
+                        "type": "string",
+                      },
+                      "page": {
                         "type": "string",
                       },
                       "posted": {
@@ -442,6 +476,7 @@ it.effect(
                       "title",
                       "status",
                       "file",
+                      "page",
                       "poster",
                       "posted",
                       "replied",
@@ -498,6 +533,11 @@ it.effect(
       const worker = server.threads.add(repo.id, "worker", {
         worktreePath: tree,
         activeRunId: RunId.make("worker-run"),
+      });
+      // A thread whose folder holds the asks folder.
+      const wide = server.threads.add(repo.id, "wide", {
+        worktreePath: server.tmp,
+        activeRunId: RunId.make("wide-run"),
       });
       const star = as("vega-user");
       const work = as("worker");
@@ -611,11 +651,25 @@ it.effect(
         yield* work.ask({ id: posted.id, title: "Mine now" }),
         yield* work.ask({ id: filed.id, text: "Replaced" }),
         yield* star.ask({ id: posted.id, file: "notes.md" }),
+        // A comment answers an ask by its id, and says something within bounds.
+        yield* work.ask({ text: "x", comment: "Hello" }),
+        yield* work.ask({ id: filed.id, comment: " \n" }),
+        yield* work.ask({ id: filed.id, comment: "x".repeat(120001) }),
+        yield* work.settle(filed.id, ""),
+        // A named file is never one of Pult's pages.
+        yield* as(wide.shell.id).ask({ file: `.pult/asks/${posted.id}.md` }),
       ];
       expect(refusals.map((each) => each.refused)).toEqual(
         Array(refusals.length).fill("invalid_request"),
       );
       expect(refusals[5].message).toContain("expired 7 days after its settle");
+      expect(refusals.slice(9).map((each) => each.message)).toEqual([
+        "A `comment` answers one of your asks: pass its `id`, or ask anew without a `comment`.",
+        "`comment` is empty: write your answer, or leave it out.",
+        "`comment` is 120001 characters: at most 120000; put the long part in the ask's file or `text`.",
+        "`comment` is empty: write your answer, or leave it out.",
+        `\`file\` names ${kept}, in Pult's asks folder ${path.dirname(kept)}, where Pult writes the asks' pages: name a file of your own, or pass \`text\`.`,
+      ]);
       // Reply options break a rule whole: none is dropped or cut.
       const brokenReplies = [
         [[], "pass 1 to 4"],
@@ -653,6 +707,14 @@ it.effect(
         status: { icon: "bell-slash", time: { at: until, as: "clock" } },
         actions: [{ id: "wake" }],
       });
+      // An ask from before comments keeps no `text` in its record: its first comment reads it from its file.
+      const recordOf = (yield* fs.readDirectory(server.tmp, { recursive: true })).find((each) =>
+        each.endsWith(`asks/${posted.id}.json`),
+      )!;
+      const record = JSON.parse(yield* fs.readFileString(path.join(server.tmp, recordOf)));
+      expect(record.text).toBe("# Which crate?\n\nserde or miniserde.");
+      delete record.text;
+      yield* fs.writeFileString(path.join(server.tmp, recordOf), JSON.stringify(record));
       // A reply goes into the Star's open conversation under the ask's header, as the user's, and moves it to Working, from Snoozed too.
       yield* TestClock.adjust(1000);
       expect(yield* reply(posted.id, "serde")).toEqual({ thread: "vega-user" });
@@ -675,11 +737,16 @@ it.effect(
       expect((yield* rows)[0]).toMatchObject({
         shelf: "working",
         status: { icon: "comment", time: { at: "2026-11-10T13:00:02.000Z" } },
-        open: { reply: { chips: [] } },
+        open: { file: kept, reply: { chips: [] } },
       });
+      // The reply is the user's comment, on the ask's page under its text.
+      expect(yield* fs.readFileString(kept)).toBe(
+        "# Which crate?\n\nserde or miniserde.\n\n---\n\n## User, 2026-11-10 13:00 UTC\n\nserde\n",
+      );
+      expect((yield* star.list()).asks).toMatchObject([{ id: posted.id, page: kept }]);
       // The turn the reply started ends with the ask still replied: the channel is told, once per reply.
       const starReply = server.threads.messages.at(-1)!;
-      yield* completed(starReply);
+      yield* completed(starReply, true);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
         text: unanswered,
@@ -705,7 +772,7 @@ it.effect(
       });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
-        text: "The user settled this ask after replying to it. `pult_ask` with its id reopens it for 7 days.",
+        text: "The user settled this ask after commenting on it. `pult_ask` with its id reopens it for 7 days.",
         header: {
           extension: "pult",
           line: `[From Pult, about your ask ${posted.id} "Which crate?", to your channel main]`,
@@ -730,7 +797,7 @@ it.effect(
       // A later reply left unanswered is told again; one whose ask is settled as its turn ends is not.
       yield* TestClock.adjust(1000);
       yield* reply(posted.id, "serde, with derive");
-      yield* completed(server.threads.messages.at(-1)!);
+      yield* completed(server.threads.messages.at(-1)!, true);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
         text: unanswered,
@@ -751,8 +818,23 @@ it.effect(
         header: { line: `[In reply to your ask ${filed.id} "Ship it?"]` },
         createdBy: "user",
       });
+      // A file ask's first comment makes its page, which its row opens from then on, the file a chip on it.
+      const filedPage = path.join(path.dirname(kept), `${filed.id}.md`);
+      expect(yield* fs.readFileString(filedPage)).toBe(
+        `Context: \`${tree}/notes/q.md\`\n\n---\n\n## User, 2026-11-10 13:00 UTC\n\nShip it\n`,
+      );
+      expect((yield* rows).find((each) => each.key === filed.id)).toMatchObject({
+        open: { file: filedPage },
+      });
+      expect((yield* work.list()).asks).toMatchObject([
+        { id: filed.id, file: `${tree}/notes/q.md`, page: filedPage },
+      ]);
+      // The same file posted again is asked again, so it too must answer the user.
+      expect((yield* work.ask({ file: "notes/q.md" })).message).toContain(
+        `The user commented last on the ask "${filed.id}"`,
+      );
       const threadReply = server.threads.messages.at(-1)!;
-      yield* completed(threadReply);
+      yield* completed(threadReply, true);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "worker",
         text: unanswered,
@@ -761,7 +843,7 @@ it.effect(
       yield* act(filed.id, "settle");
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "worker",
-        text: "The user settled this ask after replying to it. `pult_ask` with its id reopens it for 7 days.",
+        text: "The user settled this ask after commenting on it. `pult_ask` with its id reopens it for 7 days.",
         header: {
           extension: "pult",
           line: `[From Pult, about your ask ${filed.id} "Ship it?"]`,
@@ -780,24 +862,59 @@ it.effect(
       // Two later replies, the thread's reply, the notices of the turns and the thread's settle, and nothing more.
       expect(server.threads.messages).toHaveLength(told + 6);
       expect((yield* work.settle(posted.id)).refused).toBe("invalid_request");
-      expect(yield* star.ask({ id: posted.id, text: "# Which crate, now?" })).toEqual(posted);
+      // The user commented last, so asking again must answer them.
+      expect(yield* star.ask({ id: posted.id, text: "# Which crate, now?" })).toMatchObject({
+        refused: "invalid_request",
+        message: `The user commented last on the ask "${posted.id}": answer with \`pult_ask\`, its \`id\` and your answer as \`comment\`, or settle it with \`pult_ask_settle\`.`,
+      });
+      // The poster's comment is an asking again: back to Inbox with its chips, on the page under the user's.
+      yield* TestClock.adjust(60_000);
+      expect(
+        yield* star.ask({
+          id: posted.id,
+          text: "# Which crate, now?",
+          comment: "Both are fine. Derive or not?",
+          replies: ["Derive"],
+        }),
+      ).toEqual(posted);
       expect((yield* star.list()).asks).toMatchObject([
-        { id: posted.id, title: "Which crate, now?", status: "posted", replied: null, replies: [] },
+        {
+          id: posted.id,
+          title: "Which crate, now?",
+          status: "posted",
+          replied: null,
+          replies: ["Derive"],
+        },
       ]);
-      expect(yield* fs.readFileString(kept)).toBe("# Which crate, now?");
+      expect((yield* rows).find((each) => each.key === posted.id)).toMatchObject({
+        shelf: "inbox",
+        status: { time: { at: "2026-11-10T13:01:04.000Z" } },
+        open: { file: kept, reply: { chips: [{ label: "Derive", text: "Derive" }] } },
+      });
+      expect(yield* fs.readFileString(kept)).toBe(
+        [
+          "# Which crate, now?",
+          "---",
+          "## User, 2026-11-10 13:00 UTC\n\nserde",
+          "## User, 2026-11-10 13:00 UTC\n\nserde, with derive",
+          "## User, 2026-11-10 13:00 UTC\n\nOr miniserde",
+          "## Agent, 2026-11-10 13:01 UTC\n\nBoth are fine. Derive or not?\n",
+        ].join("\n\n"),
+      );
+      expect(server.threads.messages).toHaveLength(told + 6);
 
       // A plain thread's asks follow it: settled while it is, gone once archived, each told by its event.
       expect(yield* act(filed.id, "unsettle")).toBe("done");
       // A settle that crosses its poster asking again, as Pult tells the poster, settles nothing.
-      yield* work.ask({ id: filed.id });
-      const sendToThread = server.threads.service.sendToThread;
+      expect(yield* work.ask({ id: filed.id, comment: "Shipped. Tag it too?" })).toEqual(filed);
+      const sendOnce = server.threads.service.sendToThread;
       server.threads.service.sendToThread = ((input) => {
-        server.threads.service.sendToThread = sendToThread;
+        server.threads.service.sendToThread = sendOnce;
         return TestClock.adjust(1000).pipe(
           Effect.andThen(work.ask({ id: filed.id })),
-          Effect.andThen(sendToThread(input)),
+          Effect.andThen(sendOnce(input)),
         );
-      }) as typeof sendToThread;
+      }) as typeof sendOnce;
       expect(yield* act(filed.id, "settle")).toBe(
         "The ask was asked again as you settled it, so it is not settled: settle it again if you mean the ask as asked now.",
       );
@@ -808,7 +925,11 @@ it.effect(
         settledAt: at("2026-11-10T12:30:00.000Z"),
       };
       yield* commit("thread.settled", "worker");
-      expect((yield* rows).find((each) => each.key === filed.id)).toMatchObject({
+      expect(
+        (yield* rowsWhen((list) =>
+          list.some((each) => each.key === filed.id && each.shelf === "settled"),
+        )).find((each) => each.key === filed.id),
+      ).toMatchObject({
         shelf: "settled",
         status: { time: { at: "2026-11-10T12:30:00.000Z" } },
       });
@@ -817,16 +938,36 @@ it.effect(
       );
       worker.shell = { ...worker.shell, archivedAt: at("2026-11-10T12:40:00.000Z") };
       yield* commit("thread.archived", "worker");
-      expect((yield* rows).map((each) => each.key)).toEqual([posted.id]);
+      expect(
+        (yield* rowsWhen((list) => list.every((each) => each.key !== filed.id))).map(
+          (each) => each.key,
+        ),
+      ).toEqual([posted.id]);
       expect(yield* fs.exists(`${tree}/notes/q.md`)).toBe(true);
 
-      // A settled ask goes 7 days after its settle, with Pult's Markdown, and its id is then unknown.
+      // The file ask's page goes with it; the poster's file stays.
+      expect(yield* fs.exists(filedPage)).toBe(false);
+
+      // A closing comment settles it on its page, telling nobody; a settled ask takes none.
+      const beforeClosing = server.threads.messages.length;
+      expect(yield* star.settle(posted.id, "Going with serde and derive.")).toEqual({
+        id: posted.id,
+        status: "settled",
+      });
+      expect(yield* fs.readFileString(kept)).toMatch(
+        /## Agent, 2026-11-10 13:01 UTC\n\nBoth are fine\. Derive or not\?\n\n## Agent, settling, 2026-11-10 13:01 UTC\n\nGoing with serde and derive\.\n$/,
+      );
+      expect((yield* rows).find((each) => each.key === posted.id)).toMatchObject({
+        shelf: "settled",
+      });
+      expect(server.threads.messages).toHaveLength(beforeClosing);
+      expect((yield* star.settle(posted.id, "Again")).message).toContain("already settled");
+      // A settled ask goes 7 days after its settle, with its page, and its id is then unknown.
       // Its row goes then too, republished at the expiry with no write.
-      yield* star.settle(posted.id);
       yield* TestClock.adjust(7 * DAY - 1);
       expect(yield* rows).toHaveLength(1);
       yield* TestClock.adjust(1001);
-      expect(yield* rows).toEqual([]);
+      expect(yield* rowsWhen((list) => list.length === 0)).toEqual([]);
       expect(yield* fs.exists(kept)).toBe(false);
       expect((yield* star.ask({ id: posted.id })).refused).toBe("invalid_request");
 

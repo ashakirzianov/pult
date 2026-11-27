@@ -138,16 +138,17 @@ describe("AGENTS.md", () => {
     );
     assert.include(
       AGENTS_TEXT,
-      'a message opening `[From Pult, about your ask <id> "<title>", to your channel <channel>]` tells you if the user settles the ask, or if a turn that received a reply ended with the ask neither settled nor asked again.',
+      'a message opening `[From Pult, about your ask <id> "<title>", to your channel <channel>]` tells you if the user settles the ask, or if a turn that received a comment ended with the ask neither answered nor settled.',
     );
     assert.notInclude(AGENTS_TEXT, ".pult/asks");
   });
 
-  it("tells the Star that an answer to a reply goes into the ask, asked again", () => {
+  it("tells the Star that an answer to a comment is a comment on the ask, and where the rounds are", () => {
     assert.include(
       AGENTS_TEXT,
-      "So put the answer in the ask: change the ask's file so that it opens with your answer (or pass a new `text`, for an ask posted with `text`), then call `pult_ask` with its `id`, which returns it to their Inbox. Answering in the conversation as well is fine; alone it is not enough.",
+      "so answer on the ask: `pult_ask` with its `id` and your answer as `comment`, which shows it on the page and returns the ask to their Inbox.",
     );
+    assert.include(AGENTS_TEXT, "the file `pult_ask_list` names as `page`");
   });
 
   it("calls .pult/schedules/ the Star's, and names the runs' record", () => {

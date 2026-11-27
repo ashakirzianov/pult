@@ -1,5 +1,5 @@
 // The asks as rows on the page's thread shelves (`host.ui`, the `shelf-row` slot): one per ask on the
-// shelf of its status, its actions as a thread card's, its click opening its file with a reply
+// shelf of its status, its actions as a thread card's, its click opening its page with a reply
 // composer the asks handle. Published at activation and after every write, again at the next snooze
 // end or expiry, and when a thread poster's thread settles, un-settles or goes (`threadEvents`).
 import {
@@ -96,7 +96,8 @@ function rowOf(
     status: statusOf(ask),
     actions: actionsOf(ask),
     open: {
-      file: ask.file,
+      // Its page once it has one, the comments under its context.
+      file: ask.page,
       ...(target === undefined
         ? {}
         : {

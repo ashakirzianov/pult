@@ -16,7 +16,7 @@ import type { AskRows } from "./rows.ts";
 
 const AskTool = Tool.make("pult_ask", {
   description:
-    "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with `file`, in this thread's worktree or project folder (absolute, or relative to it), or pass `text`, Markdown Pult keeps for you; exactly one of them for a new ask. `title` defaults to the context's first line. The user's reply comes as a message to this conversation (for a Star, to the channel that asked) opening `[In reply to your ask <id> \"<title>\"…]`; if the user settles the ask, a message opening `[From Pult, about your ask <id> \"<title>\"…]` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. A message opening the same way also tells you, once per reply, when the turn that received a reply ended with the ask neither settled nor asked again. With the `id` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a `title` or `text` you pass replaces the old, though an ask posted with `file` takes no `text`: change the file. The same `file` posted again without an `id` is your open ask of that file, asked again. Settle an ask with `pult_ask_settle` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, and its `id` is then unknown.",
+    "Ask the user something in Pult: the ask waits in the user's Inbox until they answer or settle it. Its context is a file: name the one that already says what you need with `file`, in this thread's worktree or project folder (absolute, or relative to it), or pass `text`, Markdown Pult keeps for you; exactly one of them for a new ask. `title` defaults to the context's first line. The user answers with a comment on the ask: it comes as a message to this conversation (for a Star, to the channel that asked) opening `[In reply to your ask <id> \"<title>\"…]`, and stays on the ask's page with every other comment, in order, the file `pult_ask_list` names as `page`. Answer it with `pult_ask`, the ask's `id` and your answer as `comment`: it shows on the page and returns the ask to the user's Inbox; while the user's comment is the last, asking again without a `comment` is refused. If the user settles the ask, a message opening `[From Pult, about your ask <id> \"<title>\"…]` tells you so; a settle that crossed your asking again is refused, though its message may still reach you, and the ask stays open as you asked it again. A message opening the same way also tells you, once per comment of the user's, when the turn that received it ended with the ask neither answered nor settled. With the `id` of one of your own asks you ask again: it returns to the Inbox, a settled one reopens, and a `title` or `text` you pass replaces the old, though an ask posted with `file` takes no `text`: change the file, and say what changed in a `comment`. The same `file` posted again without an `id` is your open ask of that file, asked again. Settle an ask with `pult_ask_settle` once it is answered or no longer needed; a settled ask is removed 7 days after its settle, with its page, and its `id` is then unknown.",
   parameters: Schema.Struct({
     title: Schema.optional(
       Schema.String.annotate({ description: "One line; by default the context's first line." }),
@@ -34,6 +34,12 @@ const AskTool = Tool.make("pult_ask", {
     id: Schema.optional(
       Schema.String.annotate({ description: "One of your own asks, to ask it again." }),
     ),
+    comment: Schema.optional(
+      Schema.String.annotate({
+        description:
+          "Your answer to the user's comment, or what changed, shown on the ask's page under the earlier comments; with an `id` only.",
+      }),
+    ),
     replies: Schema.optional(
       Schema.Array(Schema.String).annotate({
         description:
@@ -50,8 +56,15 @@ const AskTool = Tool.make("pult_ask", {
 
 const SettleTool = Tool.make("pult_ask_settle", {
   description:
-    "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. It is removed 7 days after its settle; until then `pult_ask` with its `id` reopens it.",
-  parameters: Schema.Struct({ id: Schema.String }),
+    "Settle one of your own asks in Pult (for a Star, an ask of any of its channels) once it is answered or no longer needed: it leaves the user's Inbox for Settled, and nobody is told. A `comment` closes it on its page, saying how it ended; it is the one comment that does not return the ask to the Inbox. It is removed 7 days after its settle; until then `pult_ask` with its `id` reopens it.",
+  parameters: Schema.Struct({
+    id: Schema.String,
+    comment: Schema.optional(
+      Schema.String.annotate({
+        description: "A closing comment, shown on the settled ask's page.",
+      }),
+    ),
+  }),
   success: Schema.Struct({ id: Schema.String, status: Schema.Literals(["settled"]) }),
   failure: AskRefused,
   failureMode: "return",
@@ -61,7 +74,7 @@ const SettleTool = Tool.make("pult_ask_settle", {
 
 const ListTool = Tool.make("pult_ask_list", {
   description:
-    "The asks posted in Pult on this server, by default your own: for a Star, every channel's. Name a Star by `star` (its id, with `channel` for one of its channels) or a thread by `thread` to list theirs. Each row has its `status`: `posted` (in the user's Inbox), `replied` (the user replied), `snoozed` (until `snoozedUntil`), or `settled` (`settled` is when, its thread's settle for a thread's ask while that thread is settled); settled asks are listed only with `settled: true`. Work started from a linked environment lists only its own.",
+    "The asks posted in Pult on this server, by default your own: for a Star, every channel's. Name a Star by `star` (its id, with `channel` for one of its channels) or a thread by `thread` to list theirs. Each row has its `status`: `posted` (in the user's Inbox), `replied` (the user commented last), `snoozed` (until `snoozedUntil`), or `settled` (`settled` is when, its thread's settle for a thread's ask while that thread is settled); settled asks are listed only with `settled: true`. Each row's `page` is the file the user sees, the ask's context with its comments under it: read it for the exchange so far. Work started from a linked environment lists only its own.",
   parameters: Schema.Struct({
     star: Schema.optional(Schema.String.annotate({ description: "A Star's id." })),
     channel: Schema.optional(
@@ -147,9 +160,9 @@ export const register = Effect.fn("PultTools.registerAsks")(function* (
     pult_ask_settle: {
       access: "acts-as-caller",
       handle: (input, caller) =>
-        Effect.flatMap(posterOf(caller), (poster) => asks.settleOwn(input.id, isOwn(poster))).pipe(
-          Effect.tap(() => rows.publish),
-        ),
+        Effect.flatMap(posterOf(caller), (poster) =>
+          asks.settleOwn(input.id, isOwn(poster), input.comment),
+        ).pipe(Effect.tap(() => rows.publish)),
     },
     pult_ask_list: { access: "reads-as-caller", handle: list },
   });

@@ -1,7 +1,7 @@
-// The asks (Beta's `designs/ask-model.md`): one JSON record per ask in the extension's data folder, its
-// context a file the poster names or Markdown Pult keeps in the asks folder, a hidden project; a settled
-// ask goes 7 days after its settle, a plain thread's follow its thread, read when listing. On the
-// extension contract (`../extension.ts`), the Stars reached through one port (`AskStars`).
+// The asks: one JSON record per ask in the extension's data folder, its context a file the poster names
+// or Markdown Pult keeps in the asks folder, a hidden project, and its comments written into its page
+// there; a settled ask goes 7 days after its settle, a plain thread's follow its thread, read when
+// listing. On the extension contract (`../extension.ts`), the Stars reached through one port (`AskStars`).
 import {
   DateTime,
   Effect,
@@ -78,6 +78,15 @@ const Poster = Schema.Union([
 ]);
 export type Poster = typeof Poster.Type;
 
+/** One comment of the exchange: the user's reply, or the poster's answer, a settle's closing one. */
+const AskComment = Schema.Struct({
+  by: Schema.Literals(["user", "poster"]),
+  at: Schema.String,
+  text: Schema.String,
+  closing: Schema.optional(Schema.Literal(true)),
+});
+type AskComment = typeof AskComment.Type;
+
 /** An ask as its file holds it. `kept` is Pult's Markdown, deleted with the ask; a named file never is. */
 const AskRecord = Schema.Struct({
   id: Schema.String,
@@ -93,6 +102,10 @@ const AskRecord = Schema.Struct({
   replies: Schema.optional(Schema.Array(Schema.String)),
   /** The key of the latest reply to this posting, which its message's id carries: the poster is told if the run it started left the ask replied. A record from before it has none. */
   replyKey: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The exchange, in order; a record from before them has none. */
+  comments: Schema.optional(Schema.Array(AskComment)),
+  /** The Markdown of an ask posted with `text`; a record from before it reads its kept file, while that holds only the text. */
+  text: Schema.optional(Schema.String),
 });
 type AskRecord = typeof AskRecord.Type;
 const decodeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(AskRecord));
@@ -107,6 +120,8 @@ export const Ask = Schema.Struct({
   title: Schema.String,
   status: Schema.Literals(ASK_STATUSES),
   file: Schema.String,
+  /** The file the user sees: the ask's page once it has one, else its `file`. */
+  page: Schema.String,
   poster: Poster,
   posted: Schema.String,
   replied: Schema.NullOr(Schema.String),
@@ -135,11 +150,21 @@ const replyHeader = (ask: Pick<Ask, "id" | "title" | "poster">) => ({
 
 /** What the user's settle tells the poster, below the delivery's line (`settleNotice`). */
 const settleText = (replied: boolean) =>
-  `The user settled this ask ${replied ? "after replying to it" : "without replying to it"}. \`pult_ask\` with its id reopens it for 7 days.`;
+  `The user settled this ask ${replied ? "after commenting on it" : "without commenting on it"}. \`pult_ask\` with its id reopens it for 7 days.`;
 
-/** What the poster is told when the turn that received a reply left the ask replied (`pult/decisions`, `ask-reply-unanswered`). */
+/** What the poster is told when the turn that received the user's comment left the ask replied (`pult/decisions`, `ask-reply-unanswered`). */
 const UNANSWERED_TEXT =
-  "The turn that received the user's reply to this ask ended with the ask neither settled nor asked again, so the user still sees it as being worked on. If the reply needs an answer, put it in the ask and call `pult_ask` with its `id`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per reply.";
+  "The turn that received the user's comment on this ask ended with the ask neither answered nor settled, so the user still sees it as being worked on. If the comment needs an answer, call `pult_ask` with its `id` and your answer as `comment`; if nothing is left to ask, settle it with `pult_ask_settle`. Pult tells you once per comment.";
+
+/** A comment's heading on the page, its time to the minute. */
+const commentHeading = (comment: AskComment) =>
+  `## ${comment.by === "user" ? "User" : comment.closing ? "Agent, settling" : "Agent"}, ${comment.at.slice(0, 10)} ${comment.at.slice(11, 16)} UTC`;
+
+/** The page: the ask's text or its file's chip, then each comment under its heading; only the text while it has none. */
+function pageText(head: string, comments: ReadonlyArray<AskComment>): string {
+  if (comments.length === 0) return head;
+  return `${[head.trimEnd(), "---", ...comments.map((each) => `${commentHeading(each)}\n\n${each.text.trim()}`)].join("\n\n")}\n`;
+}
 
 /** The first non-empty line with its leading `#`s dropped, its whitespace one space; `fallback` where that leaves nothing. */
 function contextTitle(text: string, fallback: string): string {
@@ -176,6 +201,19 @@ function checkReplies(replies: ReadonlyArray<string>): ReadonlyArray<string> | {
   return trimmed;
 }
 
+const MAX_COMMENT_LENGTH = 120000;
+
+/** A comment as passed, or what rule it breaks, in the words of the refusal. */
+function checkComment(comment: string): string | { broken: string } {
+  if (comment.trim() === "")
+    return { broken: "`comment` is empty: write your answer, or leave it out." };
+  if (comment.length > MAX_COMMENT_LENGTH)
+    return {
+      broken: `\`comment\` is ${comment.length} characters: at most ${MAX_COMMENT_LENGTH}; put the long part in the ask's file or \`text\`.`,
+    };
+  return comment;
+}
+
 const unknownAsk = (id: string) =>
   refused(
     `No ask has the id "${id}" on this server: it was never posted here, or it expired 7 days after its settle.`,
@@ -201,6 +239,8 @@ export interface PostInput {
   readonly text?: string | undefined;
   readonly id?: string | undefined;
   readonly replies?: ReadonlyArray<string> | undefined;
+  /** The poster's comment on the ask of `id`. */
+  readonly comment?: string | undefined;
 }
 
 export interface ListFilter {
@@ -211,7 +251,12 @@ export interface ListFilter {
 }
 
 export type Action =
-  | { readonly kind: "replied"; readonly posted: string; readonly key: string }
+  | {
+      readonly kind: "replied";
+      readonly posted: string;
+      readonly key: string;
+      readonly text: string;
+    }
   | { readonly kind: "snooze"; readonly until: string | null }
   | { readonly kind: "settle" }
   | { readonly kind: "unsettle" };
@@ -223,10 +268,11 @@ export interface Asks {
     root: string | undefined,
     input: PostInput,
   ) => Effect.Effect<{ readonly id: string; readonly status: "posted" }, AskRefused>;
-  /** `pult_ask_settle`: the poster's own, silently; `mine` says whether a record's poster is the caller. */
+  /** `pult_ask_settle`: the poster's own, silently, with its closing `comment`; `mine` says whether a record's poster is the caller. */
   readonly settleOwn: (
     id: string,
     mine: (poster: Poster) => boolean,
+    comment: string | undefined,
   ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, AskRefused>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<Ask>, AsksError>;
   /** The page's actions; undefined for an unknown ask, a string for one refused. The user's settle tells the poster. */
@@ -268,10 +314,19 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
     Effect.mapError(failed("write")),
   );
 
-  /** Pult's Markdown and the record, gone: the record last, so a removal that fails is retried. */
+  /** The ask's page, Pult's to write: its kept Markdown, or for an ask of a named file the page its first comment made; undefined before that. */
+  const pageOf = (record: AskRecord) =>
+    record.kept
+      ? record.file
+      : (record.comments ?? []).length > 0
+        ? path.join(folder, `${record.id}.md`)
+        : undefined;
+
+  /** Pult's Markdown or page and the record, gone: the record last, so a removal that fails is retried. */
   const remove = Effect.fn("Asks.remove")(
     function* (record: AskRecord) {
-      if (record.kept) yield* fs.remove(record.file, { force: true });
+      const page = pageOf(record);
+      if (page !== undefined) yield* fs.remove(page, { force: true });
       yield* fs.remove(recordFile(record.id), { force: true });
     },
     Effect.mapError(failed("write")),
@@ -311,6 +366,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
       title: record.title,
       status,
       file: record.file,
+      page: pageOf(record) ?? record.file,
       poster: record.poster,
       posted: record.posted,
       replied: record.replied,
@@ -384,6 +440,32 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
     Effect.mapError(failed("write")),
   );
 
+  /** The Markdown of an ask posted with `text`, read from its file for a record from before `text` while the file holds only that; undefined for a named file. */
+  const textOf = Effect.fn("Asks.textOf")(
+    function* (record: AskRecord) {
+      if (!record.kept || record.text !== undefined) return record.text;
+      if ((record.comments ?? []).length > 0)
+        return yield* Effect.die(
+          new Error(`unreachable: the ask ${record.id} has comments and no text`),
+        );
+      return yield* fs.readFileString(record.file);
+    },
+    Effect.mapError(failed("read")),
+  );
+
+  /** Writes the ask's page from its record, which holds its `text` where it is Pult's Markdown. */
+  const writePage = (record: AskRecord) =>
+    record.kept
+      ? record.text === undefined
+        ? Effect.die(new Error(`unreachable: the ask ${record.id} is written with no text`))
+        : keep(record.id, pageText(record.text, record.comments ?? []))
+      : (record.comments ?? []).length === 0
+        ? Effect.die(new Error(`unreachable: the ask ${record.id} has no page to write`))
+        : keep(record.id, pageText(`Context: \`${record.file}\``, record.comments ?? []));
+
+  /** The record and its page, the page first, as an ask's Markdown was written before its record. */
+  const writeWithPage = (record: AskRecord) => Effect.andThen(writePage(record), write(record));
+
   /** A fresh id: eight hex digits, short enough for the reply's line. */
   const freshId = Effect.gen(function* () {
     for (;;) {
@@ -410,6 +492,13 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
           return yield* refused("`title` is empty: leave it out to take the context's first line.");
         const replies = input.replies === undefined ? undefined : checkReplies(input.replies);
         if (replies !== undefined && "broken" in replies) return yield* refused(replies.broken);
+        if (input.comment !== undefined && input.id === undefined)
+          return yield* refused(
+            "A `comment` answers one of your asks: pass its `id`, or ask anew without a `comment`.",
+          );
+        const comment = input.comment === undefined ? undefined : checkComment(input.comment);
+        if (comment !== undefined && typeof comment !== "string")
+          return yield* refused(comment.broken);
         if (input.file !== undefined && root === undefined)
           return yield* refused(
             "This thread has no folder, so it cannot name a `file`: pass `text`.",
@@ -423,6 +512,12 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         if (file !== undefined && (inside.startsWith("..") || path.isAbsolute(inside)))
           return yield* refused(
             `\`file\` names ${file}, outside this thread's folder ${root}: name a file in it, or pass \`text\`.`,
+          );
+        // Pult writes the asks' pages there, which a named file could be.
+        const inAsks = file === undefined ? ".." : path.relative(folder, file);
+        if (file !== undefined && inAsks.split(path.sep)[0] !== ".." && !path.isAbsolute(inAsks))
+          return yield* refused(
+            `\`file\` names ${file}, in Pult's asks folder ${folder}, where Pult writes the asks' pages: name a file of your own, or pass \`text\`.`,
           );
         const fileText =
           file === undefined
@@ -468,11 +563,13 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             return yield* refused(
               `The ask "${record.id}" has the file ${record.file} as its context: change the file, not \`text\`.`,
             );
-          if (input.text !== undefined)
-            yield* fs
-              .writeFileString(record.file, input.text)
-              .pipe(Effect.mapError(failed("write")), Effect.mapError(unavailable));
-          yield* write({
+          const comments = record.comments ?? [];
+          // Asking again without answering the user is the miss comments remove.
+          if (comment === undefined && comments.at(-1)?.by === "user")
+            return yield* refused(
+              `The user commented last on the ask "${record.id}": answer with \`pult_ask\`, its \`id\` and your answer as \`comment\`, or settle it with \`pult_ask_settle\`.`,
+            );
+          const next: AskRecord = {
             ...record,
             title:
               title ??
@@ -485,7 +582,20 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             snoozedUntil: null,
             settled: null,
             replies,
-          }).pipe(Effect.mapError(unavailable));
+            // The comment's time is the posting's, so it moves to Inbox and notifies as an ask asked again.
+            comments:
+              comment === undefined
+                ? record.comments
+                : [...comments, { by: "poster", at: now, text: comment }],
+            text:
+              input.text ??
+              (comment === undefined
+                ? record.text
+                : yield* textOf(record).pipe(Effect.mapError(unavailable))),
+          };
+          yield* (
+            input.text === undefined && comment === undefined ? write(next) : writeWithPage(next)
+          ).pipe(Effect.mapError(unavailable));
           return { id: record.id, status: "posted" as const };
         }
         const context = fileText ?? input.text;
@@ -504,24 +614,43 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
           snoozedUntil: null,
           settled: null,
           replies,
+          ...(file === undefined ? { text: context } : {}),
         }).pipe(Effect.mapError(unavailable));
         return { id, status: "posted" as const };
       }),
     );
 
-  const settleOwn: Asks["settleOwn"] = (id, mine) =>
+  const settleOwn: Asks["settleOwn"] = (id, mine, input) =>
     lock.withPermits(1)(
       Effect.gen(function* () {
+        const comment = input === undefined ? undefined : checkComment(input);
+        if (comment !== undefined && typeof comment !== "string")
+          return yield* refused(comment.broken);
         const found = (yield* load.pipe(Effect.mapError(unavailable))).find(
           (each) => each.record.id === id,
         );
         if (found === undefined) return yield* unknownAsk(id);
-        if (!mine(found.record.poster))
+        const { record } = found;
+        if (!mine(record.poster))
           return yield* refused(`The ask "${id}" is not yours: you may settle only your own.`);
-        if (found.record.settled === null)
-          yield* write({ ...found.record, settled: iso(yield* DateTime.now) }).pipe(
-            Effect.mapError(unavailable),
+        // Its own settle: one of its thread's still takes the poster's closing comment.
+        if (comment !== undefined && record.settled !== null)
+          return yield* refused(
+            `The ask "${id}" is already settled, so it takes no closing \`comment\`: reopen it with \`pult_ask\`, its \`id\` and a \`comment\`, if the user should read more.`,
           );
+        const now = iso(yield* DateTime.now);
+        if (comment !== undefined)
+          yield* writeWithPage({
+            ...record,
+            settled: now,
+            comments: [
+              ...(record.comments ?? []),
+              { by: "poster", at: now, text: comment, closing: true },
+            ],
+            text: yield* textOf(record).pipe(Effect.mapError(unavailable)),
+          }).pipe(Effect.mapError(unavailable));
+        else if (record.settled === null)
+          yield* write({ ...record, settled: now }).pipe(Effect.mapError(unavailable));
         return { id, status: "settled" as const };
       }),
     );
@@ -611,7 +740,20 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             return {
               refused: "The ask reads as settled because its thread is: un-settle the thread.",
             };
-          if (action.kind === "replied" && record.posted !== action.posted) return { record };
+          if (action.kind === "replied") {
+            // The comment is the user's whatever the posting; it marks only the posting it answered replied.
+            const next: AskRecord = {
+              ...record,
+              ...(record.posted === action.posted
+                ? // A reply moves it to Working, from Snoozed too.
+                  { replied: now, replyKey: action.key, snoozedUntil: null }
+                : {}),
+              comments: [...(record.comments ?? []), { by: "user", at: now, text: action.text }],
+              text: yield* textOf(record),
+            };
+            yield* writeWithPage(next);
+            return { record: next };
+          }
           // Asked again while its poster was told, so the settle is of a posting gone by.
           if (action.kind === "settle" && record.posted !== before?.record.posted)
             return {
@@ -619,16 +761,13 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
                 "The ask was asked again as you settled it, so it is not settled: settle it again if you mean the ask as asked now.",
             };
           const next: AskRecord =
-            action.kind === "replied"
-              ? // A reply moves it to Working, from Snoozed too.
-                { ...record, replied: now, replyKey: action.key, snoozedUntil: null }
-              : action.kind === "snooze"
-                ? { ...record, snoozedUntil: action.until }
-                : action.kind === "unsettle"
-                  ? { ...record, settled: null }
-                  : ask.status === "settled"
-                    ? record
-                    : { ...record, settled: now };
+            action.kind === "snooze"
+              ? { ...record, snoozedUntil: action.until }
+              : action.kind === "unsettle"
+                ? { ...record, settled: null }
+                : ask.status === "settled"
+                  ? record
+                  : { ...record, settled: now };
           if (next !== record) yield* write(next);
           return { record: next };
         }),
@@ -659,7 +798,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             .send({ threadId: ask.poster.thread, key, header: from, composed })
             .pipe(Effect.mapError(failed("reply")), Effect.as(ask.poster.thread));
     // The posting it answered: one asked again meanwhile stays in Inbox.
-    yield* act(id, { kind: "replied", posted: ask.posted, key });
+    yield* act(id, { kind: "replied", posted: ask.posted, key, text: composed.text });
     return { thread };
   });
 
