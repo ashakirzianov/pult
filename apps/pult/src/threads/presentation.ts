@@ -80,9 +80,13 @@ function isPresent(thread: EnvironmentThreadShell): boolean {
   return thread.archivedAt === null && thread.deletedAt === null;
 }
 
-/** Threads the sidebar lists on its shelves: present, and no subagent's, which live in their parent. */
+/** Threads the sidebar lists on its shelves: present, and neither a subagent nor a side chat, which live in their parent. */
 function isListed(thread: EnvironmentThreadShell): boolean {
-  return isPresent(thread) && thread.lineage.relationshipToParent !== "subagent";
+  return (
+    isPresent(thread) &&
+    thread.lineage.relationshipToParent !== "subagent" &&
+    thread.lineage.sideChat !== true
+  );
 }
 
 /** The prefix of the tag a Star gives every thread it launches, `pult:child:star:<id>` (its stock instructions, `plugins/pult/src/stars/agents.ts`). */
@@ -378,6 +382,9 @@ export function shellThreads(
   const subagents = threads.filter(
     (thread) => isPresent(thread) && thread.lineage.relationshipToParent === "subagent",
   );
+  const sideChats = threads.filter(
+    (thread) => isPresent(thread) && thread.lineage.sideChat === true,
+  );
   const stars = threads.filter((thread) => isListed(thread) && inStar(thread));
   const shelved = new Set(SHELF_ORDER.flatMap((shelf) => shelves[shelf]));
   const offInbox = threads.filter(
@@ -399,6 +406,7 @@ export function shellThreads(
       settled,
       settledAt: settled ? thread.settledAt : null,
       parentId: thread.lineage.parentThreadId,
+      sideChat: thread.lineage.sideChat === true,
       rootId: thread.lineage.rootThreadId,
       projectId: thread.projectId,
       projectName: project?.title ?? thread.projectId,
@@ -450,6 +458,7 @@ export function shellThreads(
   return [
     ...SHELF_ORDER.flatMap((shelf) => shelves[shelf].map((thread) => present(thread, shelf))),
     ...subagents.map((thread) => present(thread, null)),
+    ...sideChats.map((thread) => present(thread, null)),
     ...stars.map((thread) => present(thread, null)),
     ...offInbox.map((thread) => present(thread, null, true)),
   ];

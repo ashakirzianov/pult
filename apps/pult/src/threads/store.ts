@@ -8,7 +8,7 @@ export interface ShellThread {
   /** Its environment: thread ids are unique only within one. */
   readonly environmentId: string;
   readonly id: string;
-  /** Its shelf; null for a subagent, which the panel lists under its root's card, and for a Star's thread, the Star's conversation (`src/stars/`). */
+  /** Its shelf; null for a subagent, which the panel lists under its root's card, for a side chat, and for a Star's thread, the Star's conversation (`src/stars/`). */
   readonly shelf: ShelfName | null;
   /** On no shelf only as a thread a Star launched, while it would sit on the active one (`shelve` in `presentation.ts`): listed all the same, for its actions and Open Thread. */
   readonly offInbox: boolean;
@@ -18,6 +18,8 @@ export interface ShellThread {
   readonly settledAt: string | null;
   /** The thread that spawned or forked it, in the same environment; null for a thread of its own. */
   readonly parentId: string | null;
+  /** Upstream's side chat of its parent (`lineage.sideChat`, `/side`): no card, a tab among its parent's (`pult/decisions`, `side-chats`). */
+  readonly sideChat: boolean;
   /** The top of its lineage, itself for a thread of its own. */
   readonly rootId: string;
   readonly projectId: string;
@@ -108,7 +110,7 @@ export interface ThreadState {
   /**
    * Every environment's threads, shelf by shelf, each shelf in its order
    * across the environments, as upstream's sidebar lists them; then the
-   * subagents, on no shelf.
+   * subagents and the side chats, on no shelf.
    */
   readonly threads: ReadonlyArray<ShellThread>;
   /** Every environment's projects, threads or none: a new thread's draft names its project. */
@@ -124,7 +126,7 @@ export interface ThreadState {
 
 /** Whether `thread` is a subagent's, which has no card and no shelf of its own. */
 export function isSubagent(thread: ShellThread): boolean {
-  return thread.shelf === null && !thread.offInbox && thread.parentId !== null;
+  return thread.shelf === null && !thread.offInbox && thread.parentId !== null && !thread.sideChat;
 }
 
 /** A thread's or project's identity across environments, for maps and keys. */

@@ -51,6 +51,7 @@ const thread = (
     working: boolean;
     rootId: string;
     tags: ReadonlyArray<string>;
+    sideChat: boolean;
   }> = {},
 ) => ({
   environmentId,
@@ -65,6 +66,7 @@ const thread = (
   workingSince: null,
   ageFrom: createdAt,
   tags: [] as ReadonlyArray<string>,
+  sideChat: false,
   ...overrides,
 });
 /** A conversation of a Star's in `slug`, as the plugin names one: a root thread of its project tagged with its channel. */
@@ -296,7 +298,7 @@ NodeTest.describe("cardRows", () => {
   });
 
   NodeTest.test(
-    "lists each child under its channel's row, the default channel's with none, the default channel's row first, oldest first",
+    "lists each child under its channel's row, the default channel's with none, the default channel's row first, oldest first, and no side chat of one",
     () => {
       const threads = [
         conversation("u", "main"),
@@ -309,6 +311,13 @@ NodeTest.describe("cardRows", () => {
         child("with-main", "2026-11-02T00:00:00.000Z", ["pult:channel:main"]),
         // `user` is an ordinary channel's name, its row sleeping with its child.
         child("with-user", "2026-11-02T00:00:00.000Z", ["pult:channel:user"]),
+        // A side chat of a child carries its tags, and is no child of its own.
+        thread("a", "aside", CREATED, {
+          projectId: "repo",
+          parentId: "early",
+          tags: ["pult:child:star:one", "pult:channel:build"],
+          sideChat: true,
+        }),
         // Another Star's child, and a thread of no Star's.
         thread("a", "other", CREATED, { projectId: "repo", tags: ["pult:child:star:two"] }),
         thread("a", "plain", CREATED, { projectId: "repo" }),

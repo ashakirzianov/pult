@@ -67,6 +67,7 @@ import {
   isTaggedDraft,
   startTaggedDraft,
 } from "./drafts.ts";
+import { followsShowingIn } from "./rightPanel.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
 import { FileLinkGate } from "./fileLinkGate.tsx";
@@ -248,7 +249,15 @@ function followNavigation(router: AnyRouter, mount: Mount, arrived: () => void) 
       mount.promote(environmentId, threadId);
       return;
     }
-    threadViewHost().openThread(environmentId, threadId);
+    // A side chat's parent, which upstream goes to after the shell opened the side chat's tab.
+    if (!followsShowingIn(shown.threadRef, target.kind === "thread" ? target.threadId : null)) {
+      // A side chat's quote routes to its parent, whose view would open its tab (`assistantCitationRoute`): the shell opens the side chat.
+      const citation = assistantCitationFromLocation(router.state.location.href);
+      threadViewHost().openThread(
+        environmentId,
+        citation?.environmentId === environmentId ? citation.threadId : threadId,
+      );
+    }
     goHome();
     return;
   }

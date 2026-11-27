@@ -127,9 +127,11 @@ function threadViewOf(editor: unknown): DetailsCardsTarget | null {
 /**
  * What the cards show while open over a thread's view: the selection's
  * details, a thread's, a draft's or a Star's; on a Star's child's tab (a
- * `StarThreadInput` with no slug) the child's own, a regular thread's,
- * where a channel's tab, and a subagent of a Star's conversation opened as a
- * tab of its own, keep the Star's.
+ * `StarThreadInput` with no slug) the child's own, a regular thread's, and
+ * on its side chat's tab the child's too, where a channel's tab, and a
+ * subagent or a side chat of a Star's conversation opened as a tab of its
+ * own, keep the Star's. A side chat's tab among a thread's shows the
+ * selection's, its parent's.
  */
 function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | null {
   const subject = detailsSubject();
@@ -140,8 +142,16 @@ function cardsOver(over: DetailsCardsTarget, editor: unknown): DetailsCards | nu
         editor.slug === null &&
         over.kind === "thread" &&
         !ofStarConversation(over.environmentId, over.threadId)
-      )
-        return { view: over, subject: over };
+      ) {
+        const thread = threadStore.thread(over.environmentId, over.threadId);
+        return {
+          view: over,
+          subject:
+            thread?.sideChat === true && thread.parentId !== null
+              ? { kind: "thread", environmentId: thread.environmentId, threadId: thread.parentId }
+              : over,
+        };
+      }
       return {
         view: over,
         subject: {

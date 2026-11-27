@@ -95,12 +95,15 @@ export type Activity = "working" | "waiting" | null;
 /**
  * Each thread's activity, by its key: Waiting when upstream parks it on
  * background work, or while it does nothing itself but a subagent below it
- * works; Working while it works.
+ * works; Working while it works. A side chat's work is its own: its parent
+ * does not wait on it.
  */
 export function threadActivities(threads: ReadonlyArray<ShellThread>): Map<string, Activity> {
   const byKey = new Map(threads.map((thread) => [keyOf(thread), thread]));
   const parentOf = (thread: ShellThread | undefined) =>
-    thread?.parentId == null ? null : scopedKey(thread.environmentId, thread.parentId);
+    thread?.parentId == null || thread.sideChat
+      ? null
+      : scopedKey(thread.environmentId, thread.parentId);
   const waitingOnSubagents = new Set<string>();
   for (const thread of threads) {
     if (!thread.working) continue;

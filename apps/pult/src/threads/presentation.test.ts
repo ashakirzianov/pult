@@ -30,6 +30,7 @@ import {
   threadPresenter,
   threadStatus,
 } from "./presentation.ts";
+import { isSubagent } from "./store.ts";
 
 const NOW = "2026-06-20T12:00:00.000Z";
 const ALL = { settlement: true, snooze: true, pinning: true };
@@ -54,6 +55,15 @@ const subagentOf = (root: string) => ({
     rootThreadId: ThreadId.make(root),
     parentThreadId: ThreadId.make(root),
     relationshipToParent: "subagent" as const,
+  },
+});
+
+const sideChatOf = (parent: string) => ({
+  lineage: {
+    rootThreadId: ThreadId.make(parent),
+    parentThreadId: ThreadId.make(parent),
+    relationshipToParent: "fork" as const,
+    sideChat: true,
   },
 });
 
@@ -100,12 +110,13 @@ NodeTest.describe("shelve", () => {
     NodeAssert.deepEqual([...shelves.snoozed, ...shelves.settled], []);
   });
 
-  NodeTest.test("leaves out archived, deleted and subagent threads", () => {
+  NodeTest.test("leaves out archived, deleted, subagent and side chat threads", () => {
     const shelves = shelve(
       [
         thread("archived", { archivedAt: at(NOW) }),
         thread("deleted", { deletedAt: at(NOW) }),
         thread("subagent", subagentOf("root")),
+        thread("side-chat", sideChatOf("root")),
       ],
       NOW,
       () => ALL,
@@ -228,13 +239,22 @@ NodeTest.describe("threadStatus", () => {
 
 NodeTest.describe("shellThreads", () => {
   NodeTest.test(
-    "lists the shelves in order, then the subagents on none, and drops archived threads",
+    "lists the shelves in order, then the subagents and side chats on none, and drops archived threads",
     () => {
       const threads = shellThreads(
         [
           {
             environmentId: "env",
             threads: [
+              thread("side-chat", sideChatOf("active")),
+              // A plain fork is a thread of its own, with a card.
+              thread("fork", {
+                lineage: {
+                  rootThreadId: ThreadId.make("active"),
+                  parentThreadId: ThreadId.make("active"),
+                  relationshipToParent: "fork",
+                },
+              }),
               thread("subagent", subagentOf("active")),
               thread("settled", { settledOverride: "settled" }),
               thread("archived", { archivedAt: at(NOW) }),
@@ -254,14 +274,20 @@ NodeTest.describe("shellThreads", () => {
         [
           ["pinned", "pinned"],
           ["active", "active"],
+          ["fork", "active"],
           ["snoozed", "snoozed"],
           ["settled", "settled"],
           ["subagent", null],
+          ["side-chat", null],
         ],
       );
-      const subagent = threads.at(-1);
+      const [subagent, sideChat] = threads.slice(-2);
       NodeAssert.equal(subagent?.parentId, "active");
       NodeAssert.equal(subagent?.rootId, "active");
+      NodeAssert.equal(subagent !== undefined && isSubagent(subagent), true);
+      NodeAssert.equal(sideChat?.parentId, "active");
+      NodeAssert.equal(sideChat?.sideChat, true);
+      NodeAssert.equal(sideChat !== undefined && isSubagent(sideChat), false);
     },
   );
 

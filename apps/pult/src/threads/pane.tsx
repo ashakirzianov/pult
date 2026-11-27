@@ -623,6 +623,8 @@ export class StarInput extends SimpleEditorInput {
  * project as its description. Unlike a lead tab it closes and is not kept
  * leftmost; it is a singleton, so a second click shows the one open. A channel tab follows that channel on its home, including its draft
  * while asleep. A child and an older saved tab keep their original thread. Its browsers open beside it (`src/preview/tabs.ts`).
+ * A side chat's tab is one too, among its parent's (`openSideChat`, `selection.ts`), `slug` null,
+ * its description `side chat` and its tooltip naming its parent; closing it leaves the side chat as it is.
  */
 export class StarThreadInput extends SimpleEditorInput {
   private labelKey: string | undefined;
@@ -677,11 +679,19 @@ export class StarThreadInput extends SimpleEditorInput {
   }
 
   override getDescription(): string {
-    return this.thread()?.projectName ?? "";
+    const thread = this.thread();
+    return thread?.sideChat === true ? "side chat" : (thread?.projectName ?? "");
   }
 
   override getTitle(): string {
     const thread = this.thread();
+    if (thread?.sideChat === true) {
+      const parent =
+        thread.parentId === null
+          ? undefined
+          : threadStore.thread(thread.environmentId, thread.parentId);
+      return parent === undefined ? "Side chat" : `Side chat of ${parent.title}`;
+    }
     if (this.slug === null)
       return thread === undefined ? "Thread" : `${thread.projectName}: ${thread.title}`;
     return thread === undefined

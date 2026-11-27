@@ -130,7 +130,9 @@ function isTarget(target: ViewTarget, shown: DetailsCardsTarget): boolean {
  * Whether the frame is the cards' view's own: the view's target is that
  * view, and for a thread's or a draft's details the frame is the target's
  * own thread's, a draft's its draft session's, since while the view goes to
- * a new target the router still renders the previous one's.
+ * a new target the router still renders the previous one's. A side chat's
+ * view shows its parent's details (`src/details/index.tsx`): the frame is the
+ * view's thread, not the subject's.
  */
 function showsCards(
   target: ViewTarget,
@@ -143,9 +145,9 @@ function showsCards(
   if (subject.kind === "star") return true;
   if (subject.kind === "thread")
     return (
-      isTarget(target, subject) &&
-      threadRef.environmentId === subject.environmentId &&
-      threadRef.threadId === subject.threadId
+      cards.view.kind === "thread" &&
+      threadRef.environmentId === cards.view.environmentId &&
+      threadRef.threadId === cards.view.threadId
     );
   return (
     isTarget(target, subject) &&

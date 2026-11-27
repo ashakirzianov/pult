@@ -46,11 +46,19 @@ import {
   type LeadTab,
   onDidPromoteDraft,
   StarInput,
+  StarThreadInput,
   ThreadInput,
 } from "./pane.tsx";
 import { PlaceHistory } from "./navigation.ts";
 import { nextAfterParking } from "./parking.ts";
-import { isSubagent, scopedKey, type ShellProject, type ShelfName, threadStore } from "./store.ts";
+import {
+  isSubagent,
+  scopedKey,
+  type ShellProject,
+  type ShellThread,
+  type ShelfName,
+  threadStore,
+} from "./store.ts";
 
 /** The thread whose tabs the editor part shows, in the environment it belongs to. */
 export interface ThreadSelection {
@@ -312,18 +320,60 @@ export function onDidSelectThread(listener: () => void): () => void {
  * the next thread's working set is applied, or an empty part, and its thread
  * tab is opened leftmost in the first group if missing. Switches run one at a
  * time, in call order. A Star's thread, its conversation now or earlier,
- * selects the Star, whose tab shows its conversation.
+ * selects the Star, whose tab shows its conversation. A side chat opens its
+ * tab among its parent's (`openSideChat`).
  */
 export function selectThread(environmentId: string, threadId: string): Promise<void> {
   const thread = threadStore.thread(environmentId, threadId);
+  if (thread?.sideChat === true) return openSideChat(thread);
   const star = thread === undefined ? undefined : starOfThread(thread);
   if (star !== undefined) return selectStar(star.id);
   return enqueue(() => switchTo({ environmentId, threadId }));
 }
 
-/** Whether `selectThread` would select what is selected already: the thread itself, or the selected Star, its thread's. */
+/**
+ * A side chat as a closable tab among its parent's, active (`pult/decisions`,
+ * `side-chats`): where no open tab shows the parent (the selection's lead
+ * tab, or a Star's child's tab), the parent is selected first, as
+ * `selectThread` selects it, a Star's conversation selecting the Star; a
+ * switch cancelled over a modified file opens nothing. A parent the store
+ * does not hold is told, and nothing is selected.
+ */
+async function openSideChat(sideChat: ShellThread): Promise<void> {
+  const parent =
+    sideChat.parentId === null
+      ? undefined
+      : threadStore.thread(sideChat.environmentId, sideChat.parentId);
+  if (parent === undefined)
+    return void (await getService(INotificationService)).info(
+      "This side chat's thread is not loaded.",
+    );
+  const editors = await getService(IEditorService);
+  const shown = () =>
+    holdsThread(parent.environmentId, parent.id) ||
+    editors.editors.some(
+      (editor) =>
+        editor instanceof StarThreadInput &&
+        editor.slug === null &&
+        editor.environmentId === parent.environmentId &&
+        editor.threadId === parent.id,
+    );
+  if (!shown()) await selectThread(parent.environmentId, parent.id);
+  return enqueue(async () => {
+    if (!shown()) return;
+    const instantiation = await getService(IInstantiationService);
+    await editors.openEditor(
+      instantiation.createInstance(StarThreadInput, sideChat.environmentId, sideChat.id, null),
+      { pinned: true },
+    );
+  });
+}
+
+/** Whether `selectThread` would select what is selected already: the thread itself, or the selected Star, its thread's; for a side chat, its parent's. */
 export function holdsThread(environmentId: string, threadId: string): boolean {
   const thread = threadStore.thread(environmentId, threadId);
+  if (thread?.sideChat === true && thread.parentId !== null)
+    return holdsThread(environmentId, thread.parentId);
   const star = thread === undefined ? undefined : starOfThread(thread);
   if (star !== undefined) return isStar(selected) && selected.starId === star.id;
   const current = selectedThread();
@@ -797,8 +847,9 @@ export async function restoreThreadSelection(): Promise<void> {
  * `pult-shell.selectThread [environmentId] [threadId]`, the palette's "Pult:
  * Open Thread…": a thread id alone is the first thread the store lists with
  * it; with no id, a quick pick of every environment's threads in the cards'
- * order, subagents and Stars' threads left out, each one's environment named
- * while the page holds several. `pult-shell.selectStar [starId]`, the
+ * order, subagents and Stars' threads left out, then the unsettled side
+ * chats, each `side chat of <parent>`, each one's environment named while the
+ * page holds several. A side chat opens its tab (`openSideChat`). `pult-shell.selectStar [starId]`, the
  * palette's "Pult: Open Star", the page's Star, picked while it holds
  * several. `pult-shell.selectSettings`, the palette's "Pult: Show
  * Settings", on Cmd+, over the workbench's own binding, opens the Pult
@@ -833,23 +884,34 @@ export function registerSelectThreadCommand(): void {
         const { threads } = threadStore.get();
         const current = selectedThread();
         // The store lists the shelves in the cards' order, pinned and active first; a subagent has none, a thread a Star launched none while off the Inbox.
-        const items = threads.flatMap((thread) =>
-          thread.shelf === null && !thread.offInbox
-            ? []
-            : [
-                {
-                  thread,
-                  label: thread.title,
-                  description: [
-                    thread.projectName,
-                    threadStore.distinguishing(thread.environmentId),
+        const item = (thread: ShellThread, place: string) => ({
+          thread,
+          label: thread.title,
+          description: [thread.projectName, threadStore.distinguishing(thread.environmentId), place]
+            .filter((part) => part !== undefined)
+            .join(" · "),
+        });
+        const items = [
+          ...threads.flatMap((thread) =>
+            thread.shelf === null && !thread.offInbox
+              ? []
+              : [
+                  item(
+                    thread,
                     thread.shelf === null ? "Off the Inbox" : SHELF_LABELS[thread.shelf],
-                  ]
-                    .filter((part) => part !== undefined)
-                    .join(" · "),
-                },
-              ],
-        );
+                  ),
+                ],
+          ),
+          // Then the unsettled side chats, which have no card.
+          ...threads.flatMap((thread) => {
+            if (!thread.sideChat || thread.settled) return [];
+            const parent =
+              thread.parentId === null
+                ? undefined
+                : threadStore.thread(thread.environmentId, thread.parentId);
+            return [item(thread, `side chat of ${parent?.title ?? "a thread not loaded"}`)];
+          }),
+        ];
         const picked = await quickInput.pick(items, {
           placeHolder: "Open a thread",
           matchOnDescription: true,

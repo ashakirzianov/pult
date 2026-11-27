@@ -285,13 +285,13 @@ export interface CardRows<Thread> {
  * What a selected Star's details list, as the page's threads have them now
  * (the Stars' model tells only a change of conversation or of its run): its
  * children, the unsettled threads tagged `pult:child:star:<id>` but its own
- * conversations, each under the row of its channel, its channel tag, the
+ * conversations and their side chats, which carry their parent's tags, each under the row of its channel, its channel tag, the
  * default channel with none, in the order they were created; the default
  * channel's row, always there, its conversation's live row or asleep; then a
  * row per other open channel and per sleeping channel with an unsettled
  * child, by slug.
  */
-export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
+export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags" | "sideChat">>(
   star: Pick<Star<Thread>, "id" | "homes" | "channels" | "defaultChannel">,
   threads: ReadonlyArray<Thread>,
 ): CardRows<Thread> {
@@ -299,7 +299,10 @@ export function cardRows<Thread extends StarThread & Pick<ShellThread, "tags">>(
   const children = threads
     .filter(
       (thread) =>
-        thread.tags.includes(CHILD_TAG + star.id) && !thread.settled && !conversations.has(thread),
+        thread.tags.includes(CHILD_TAG + star.id) &&
+        !thread.settled &&
+        !thread.sideChat &&
+        !conversations.has(thread),
     )
     .toSorted((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   const childrenOf = (slug: string) =>
