@@ -23,7 +23,7 @@ const checkouts = [pult, star, axis, pultFix];
 function environment(
   files: ReadonlyArray<string>,
   failing: ReadonlyArray<string> = [],
-  xaxisRoot: string | null = null,
+  monoreRoot: string | null = null,
 ) {
   const searched: Array<string> = [];
   const input = (path: string, checkoutRoot: string | null = "/repos/pult"): ResolveInput => ({
@@ -31,7 +31,7 @@ function environment(
     checkoutRoot,
     projectId: "pult",
     checkouts,
-    xaxisRoot,
+    monoreRoot,
     exists: async (candidate) => files.includes(candidate),
     search: async ({ root }, key) => {
       searched.push(root);
@@ -75,12 +75,12 @@ NodeTest.describe("resolveThreadPath", () => {
   );
 
   NodeTest.test(
-    "refuses an absolute path under no checkout of the environment, unless it names a file of the kept xaxis checkout",
+    "refuses an absolute path under no checkout of the environment, unless it names a file of the kept monore checkout",
     async () => {
       const { input, searched } = environment(
-        ["/etc/hosts", "/pult/xaxis/owner/track/x.md"],
+        ["/etc/hosts", "/pult/monore/owner/track/x.md"],
         [],
-        "/pult/xaxis/",
+        "/pult/monore/",
       );
       NodeAssert.deepEqual(await resolveThreadPath(input("/etc/hosts")), { kind: "outside" });
       NodeAssert.deepEqual(await resolveThreadPath(input("/repos/pult-starboard/a.ts")), {
@@ -88,7 +88,7 @@ NodeTest.describe("resolveThreadPath", () => {
       });
       NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/x.md")), {
         kind: "open",
-        path: "/pult/xaxis/owner/track/x.md",
+        path: "/pult/monore/owner/track/x.md",
       });
       NodeAssert.deepEqual(await resolveThreadPath(input("/owner/track/y.md")), {
         kind: "outside",

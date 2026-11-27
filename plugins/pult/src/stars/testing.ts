@@ -1,6 +1,6 @@
 // Fakes of the server's project and thread stores, its committed events, launches, startup, environment,
 // scheduler, usage limits, previews, port discovery and source control (a settled copy's cleanup, the kept
-// xaxis checkout's suite bringing the real driver), for the Stars' tests and the plugin's: a server whose home is
+// monore checkout's suite bringing the real driver), for the Stars' tests and the plugin's: a server whose home is
 // `<tmp>/.t3`, its Stars in `<tmp>/.pult/stars`.
 import {
   type ChatAttachment,
@@ -56,7 +56,7 @@ import {
   UsageLimitSources,
   VcsStatusBroadcaster,
   WorkspaceEntries,
-  XaxisVcsDriver,
+  MonoreVcsDriver,
 } from "../host.ts";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -552,7 +552,7 @@ export const fakeServer = Effect.gen(function* () {
   } = { providers: [], sources: [], refreshed: [], onRefresh: () => {} };
   /** The threads whose previews closed; a close for a thread of `failFor` dies. */
   const previews = { closed: recorder<ThreadId>(), failFor: new Set<ThreadId>() };
-  /** The settled copies the xaxis driver was asked to clean, each removed. */
+  /** The settled copies the monore driver was asked to clean, each removed. */
   const copies = recorder<{
     readonly cwd: string;
     readonly path: string;
@@ -630,7 +630,7 @@ export const fakeServer = Effect.gen(function* () {
         Effect.sync(() => ports.stopped.push(input)),
     }),
     ServerSettings.layerTest(),
-    Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({
+    Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({
       cleanSettledCopy: (input) =>
         Effect.sync(() => {
           copies.push(input);

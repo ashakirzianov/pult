@@ -1,6 +1,6 @@
-// Pult: an xaxis checkout's source control through the `xaxis` CLI, answering the RPCs the
-// changes view and the Graph already call (`pult/decisions`, `xaxis-source-control-home`).
-// A checkout is known by its `.xaxis-checkout` marker, so detection runs no process.
+// Pult: a monore checkout's source control through the `monore` CLI, answering the RPCs the
+// changes view and the Graph already call (`pult/decisions`, `monore-source-control-home`).
+// A checkout is known by its `.monore-checkout` marker, so detection runs no process.
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -37,7 +37,7 @@ import {
   type VcsResolveConflictInput,
   type VcsStatusLocalResult,
   type VcsStatusRemoteResult,
-  type VcsStatusXaxis,
+  type VcsStatusMonore,
 } from "@t3tools/contracts";
 
 import type * as GitManager from "../git/GitManager.ts";
@@ -46,16 +46,16 @@ import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
-import * as XaxisCli from "./XaxisCli.ts";
-import * as XaxisCopies from "./XaxisCopies.ts";
+import * as MonoreCli from "./MonoreCli.ts";
+import * as MonoreCopies from "./MonoreCopies.ts";
 
-export const XAXIS_MARKER = ".xaxis-checkout";
+export const MONORE_MARKER = ".monore-checkout";
 /** A checkout's id, as the CLI writes it into the marker. */
 const CHECKOUT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** The branch and remote branch an xaxis checkout shows as: its own line, and main's tip. */
-export const XAXIS_HEAD_REF = "refs/heads/main";
-export const XAXIS_TIP_REF = "refs/remotes/xaxis/main";
+/** The branch and remote branch a monore checkout shows as: its own line, and main's tip. */
+export const MONORE_HEAD_REF = "refs/heads/main";
+export const MONORE_TIP_REF = "refs/remotes/monore/main";
 
 const DEFAULT_LOG_LIMIT = 50;
 /** How far down a checkout's own log a changeset not on main is looked for. */
@@ -84,10 +84,10 @@ function shortHash(hash: string): string {
 }
 
 /** The verb that finishes a write the CLI names by its command. */
-function interruptedVerb(command: string | null): VcsStatusXaxis["interrupted"] {
+function interruptedVerb(command: string | null): VcsStatusMonore["interrupted"] {
   if (command === null) return null;
-  if (command === "xaxis goto") return "get-latest";
-  if (command === "xaxis land") return "commit-land";
+  if (command === "monore goto") return "get-latest";
+  if (command === "monore land") return "commit-land";
   return { command };
 }
 
@@ -99,7 +99,7 @@ function patchFileStats(patch: string): ReviewDiffFileStat[] {
   let inHunk = false;
   for (const line of patch.split("\n")) {
     if (line.startsWith("diff --git ")) {
-      // `diff --git a/<path> b/<path>`, the two paths one, since xaxis has no renames.
+      // `diff --git a/<path> b/<path>`, the two paths one, since monore has no renames.
       const rest = line.slice("diff --git ".length);
       const path = rest.slice(2, 2 + (rest.length - 5) / 2);
       current = { path, previousPath: null, additions: 0, deletions: 0 };
@@ -130,7 +130,7 @@ function patchHeaders(patch: string): string {
   return kept;
 }
 
-/** `Name <id>`, the one author string an xaxis record keeps. */
+/** `Name <id>`, the one author string a monore record keeps. */
 function splitAuthor(author: string): { readonly name: string; readonly email: string } {
   const match = /^(.*?)\s*<([^>]*)>$/.exec(author);
   return match === null ? { name: author, email: "" } : { name: match[1]!, email: match[2]! };
@@ -145,53 +145,53 @@ const nowFreshness = Effect.gen(function* () {
 });
 
 /**
- * The nearest folder from `cwd` upward holding `.xaxis-checkout` (a file whose
- * content is a checkout's id) or `.git`, and which: an xaxis checkout inside a
- * git repository is xaxis's, a repository inside a checkout git's (`pult/decisions`,
+ * The nearest folder from `cwd` upward holding `.monore-checkout` (a file whose
+ * content is a checkout's id) or `.git`, and which: a monore checkout inside a
+ * git repository is monore's, a repository inside a checkout git's (`pult/decisions`,
  * `vcs-detection-nearest`). Both in one folder fails; null with neither.
  */
-export const nearestRepositoryMarker = Effect.fn("XaxisVcsDriver.nearestRepositoryMarker")(
-  function* (cwd: string, options?: { readonly xaxisOnly?: boolean }) {
+export const nearestRepositoryMarker = Effect.fn("MonoreVcsDriver.nearestRepositoryMarker")(
+  function* (cwd: string, options?: { readonly monoreOnly?: boolean }) {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const fail = (detail: string, cause?: unknown) =>
       new VcsRepositoryDetectionError({
-        operation: "XaxisVcsDriver.nearestRepositoryMarker",
+        operation: "MonoreVcsDriver.nearestRepositoryMarker",
         cwd,
         detail,
         ...(cause === undefined ? {} : { cause }),
       });
-    const isMarker = Effect.fn("XaxisVcsDriver.isMarker")(
+    const isMarker = Effect.fn("MonoreVcsDriver.isMarker")(
       function* (folder: string) {
-        const marker = path.join(folder, XAXIS_MARKER);
+        const marker = path.join(folder, MONORE_MARKER);
         const info = yield* fileSystem.stat(marker).pipe(Effect.option);
         if (Option.isNone(info) || info.value.type !== "File") return false;
         const text = yield* fileSystem.readFileString(marker);
         return CHECKOUT_ID.test(text.trim());
       },
-      Effect.mapError((cause) => fail("Could not read an .xaxis-checkout marker.", cause)),
+      Effect.mapError((cause) => fail("Could not read a .monore-checkout marker.", cause)),
     );
     let folder = path.resolve(cwd);
     while (true) {
-      const [xaxis, git] = yield* Effect.all([
+      const [monore, git] = yield* Effect.all([
         isMarker(folder),
-        options?.xaxisOnly
+        options?.monoreOnly
           ? Effect.succeed(false)
           : fileSystem
               .exists(path.join(folder, ".git"))
               .pipe(Effect.mapError((cause) => fail("Could not inspect a .git entry.", cause))),
       ]);
-      if (xaxis && git) {
+      if (monore && git) {
         return yield* fail(
-          `${folder} holds both an .xaxis-checkout marker and .git; remove one of them.`,
+          `${folder} holds both a .monore-checkout marker and .git; remove one of them.`,
         );
       }
-      if (xaxis) {
+      if (monore) {
         // Real, as git's toplevel is, so one checkout keys one queue of commands.
         const root = yield* fileSystem
           .realPath(folder)
           .pipe(Effect.mapError((cause) => fail("Could not resolve the checkout's root.", cause)));
-        return { kind: "xaxis" as const, root };
+        return { kind: "monore" as const, root };
       }
       if (git) return { kind: "git" as const, root: folder };
       const parent = path.dirname(folder);
@@ -202,9 +202,9 @@ export const nearestRepositoryMarker = Effect.fn("XaxisVcsDriver.nearestReposito
 );
 
 /**
- * The registry's xaxis driver: detection by the marker, no remotes (so no source
+ * The registry's monore driver: detection by the marker, no remotes (so no source
  * control provider attaches), and none of git's process-level operations. The source
- * control itself is `XaxisVcsDriver`.
+ * control itself is `MonoreVcsDriver`.
  */
 export const makeVcsDriver = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -216,23 +216,23 @@ export const makeVcsDriver = Effect.gen(function* () {
     );
   const unsupported = (operation: string, detail: string) =>
     new VcsUnsupportedOperationError({
-      operation: `XaxisVcsDriver.${operation}`,
-      kind: "xaxis",
+      operation: `MonoreVcsDriver.${operation}`,
+      kind: "monore",
       detail,
     });
   const noCheckpoints = () =>
-    Effect.fail(unsupported("checkpoints", "An xaxis checkout keeps no turn checkpoints yet."));
+    Effect.fail(unsupported("checkpoints", "A monore checkout keeps no turn checkpoints yet."));
 
   const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = (cwd) =>
-    provide(nearestRepositoryMarker(cwd, { xaxisOnly: true })).pipe(
+    provide(nearestRepositoryMarker(cwd, { monoreOnly: true })).pipe(
       Effect.flatMap((found) =>
         found === null
           ? Effect.succeed(null)
           : nowFreshness.pipe(
               Effect.map((freshness): VcsRepositoryIdentity => ({
-                kind: "xaxis",
+                kind: "monore",
                 rootPath: found.root,
-                metadataPath: path.join(found.root, XAXIS_MARKER),
+                metadataPath: path.join(found.root, MONORE_MARKER),
                 freshness,
               })),
             ),
@@ -240,10 +240,10 @@ export const makeVcsDriver = Effect.gen(function* () {
     );
 
   return VcsDriver.VcsDriver.of({
-    execute: Effect.fn("XaxisVcsDriver.execute")(function* () {
+    execute: Effect.fn("MonoreVcsDriver.execute")(function* () {
       return yield* unsupported(
         "execute",
-        "An xaxis checkout's CLI runs through XaxisVcsDriver alone.",
+        "A monore checkout's CLI runs through MonoreVcsDriver alone.",
       );
     }),
     checkpoints: {
@@ -257,28 +257,28 @@ export const makeVcsDriver = Effect.gen(function* () {
       deleteCheckpointRefs: noCheckpoints,
     },
     detectRepository,
-    isInsideWorkTree: Effect.fn("XaxisVcsDriver.isInsideWorkTree")(function* (cwd) {
+    isInsideWorkTree: Effect.fn("MonoreVcsDriver.isInsideWorkTree")(function* (cwd) {
       return (yield* detectRepository(cwd)) !== null;
     }),
-    listWorkspaceFiles: Effect.fn("XaxisVcsDriver.listWorkspaceFiles")(function* () {
+    listWorkspaceFiles: Effect.fn("MonoreVcsDriver.listWorkspaceFiles")(function* () {
       return yield* unsupported(
         "listWorkspaceFiles",
-        "An xaxis checkout lists no workspace files yet.",
+        "A monore checkout lists no workspace files yet.",
       );
     }),
-    listRemotes: Effect.fn("XaxisVcsDriver.listRemotes")(function* () {
+    listRemotes: Effect.fn("MonoreVcsDriver.listRemotes")(function* () {
       return { remotes: [], freshness: yield* nowFreshness };
     }),
-    filterIgnoredPaths: Effect.fn("XaxisVcsDriver.filterIgnoredPaths")(function* () {
+    filterIgnoredPaths: Effect.fn("MonoreVcsDriver.filterIgnoredPaths")(function* () {
       return yield* unsupported(
         "filterIgnoredPaths",
-        "An xaxis checkout filters no ignored paths yet.",
+        "A monore checkout filters no ignored paths yet.",
       );
     }),
-    initRepository: Effect.fn("XaxisVcsDriver.initRepository")(function* () {
+    initRepository: Effect.fn("MonoreVcsDriver.initRepository")(function* () {
       return yield* unsupported(
         "initRepository",
-        "Pult does not make xaxis checkouts yet: run `xaxis checkout`.",
+        "Pult does not make monore checkouts yet: run `monore checkout`.",
       );
     }),
   });
@@ -291,23 +291,23 @@ interface TipRead {
 }
 
 /** A tip the CLI could not read for its login or its server, which the status names instead of failing. */
-class XaxisTipUnread extends Schema.TaggedError<XaxisTipUnread>()("XaxisTipUnread", {
+class MonoreTipUnread extends Schema.TaggedError<MonoreTipUnread>()("MonoreTipUnread", {
   reason: Schema.Literals(["signed-out", "unreachable"]),
 }) {}
 
-function tipUnread(error: XaxisCli.XaxisCliError): XaxisTipUnread | GitCommandError {
-  if (error._tag !== "XaxisRefusal") return error;
-  if (SIGNED_OUT_CODES.has(error.code)) return new XaxisTipUnread({ reason: "signed-out" });
-  if (UNREACHABLE_CODES.has(error.code)) return new XaxisTipUnread({ reason: "unreachable" });
+function tipUnread(error: MonoreCli.MonoreCliError): MonoreTipUnread | GitCommandError {
+  if (error._tag !== "MonoreRefusal") return error;
+  if (SIGNED_OUT_CODES.has(error.code)) return new MonoreTipUnread({ reason: "signed-out" });
+  if (UNREACHABLE_CODES.has(error.code)) return new MonoreTipUnread({ reason: "unreachable" });
   return error.toCommandError();
 }
 
 type TipAnswer =
   | { readonly tip: TipRead }
-  | { readonly unread: NonNullable<VcsStatusRemoteResult["xaxisTip"]> };
+  | { readonly unread: NonNullable<VcsStatusRemoteResult["monoreTip"]> };
 
-export class XaxisVcsDriver extends Context.Service<
-  XaxisVcsDriver,
+export class MonoreVcsDriver extends Context.Service<
+  MonoreVcsDriver,
   {
     /** `vcsRefreshStatus`'s local part, for the checkout at `root`. */
     readonly localStatus: (root: string) => Effect.Effect<VcsStatusLocalResult, GitCommandError>;
@@ -326,12 +326,12 @@ export class XaxisVcsDriver extends Context.Service<
       input: ReviewLogInput,
     ) => Effect.Effect<ReviewLogResult, GitCommandError>;
     readonly getRefs: (root: string) => Effect.Effect<ReviewRefsResult, GitCommandError>;
-    /** `vcsPull`: Get latest, the checkout moved to main's tip; a refusal keeps its code (`XaxisCli.refusalCode`). */
+    /** `vcsPull`: Get latest, the checkout moved to main's tip; a refusal keeps its code (`MonoreCli.refusalCode`). */
     readonly getLatest: (root: string) => Effect.Effect<VcsPullResult, GitCommandError>;
     /** This machine's checkouts, as the CLI's registry lists them; `cwd` is where the CLI runs. */
     readonly checkouts: (
       cwd: string,
-    ) => Effect.Effect<ReadonlyArray<XaxisCli.XaxisCheckout>, GitCommandError>;
+    ) => Effect.Effect<ReadonlyArray<MonoreCli.MonoreCheckout>, GitCommandError>;
     /** `gitRunStackedAction`: `commit` commits, `push` lands, `commit_push` is Commit & Land. */
     readonly runStackedAction: (
       root: string,
@@ -343,16 +343,16 @@ export class XaxisVcsDriver extends Context.Service<
       root: string,
       input: VcsResolveConflictInput,
     ) => Effect.Effect<void, GitCommandError>;
-    /** `vcs.createWorktree` for a checkout's root: a thread's copy (`XaxisCopies`). */
-    readonly createCopy: XaxisCopies.XaxisCopies["create"];
-    /** `vcs.removeWorktree` of a copy (`XaxisCopies`). */
-    readonly removeCopy: XaxisCopies.XaxisCopies["remove"];
-    /** The base of `delegate_task`'s isolated child of a checkout (`XaxisCopies`). */
-    readonly copyBase: XaxisCopies.XaxisCopies["base"];
-    /** A settled thread's copy, removed unless it holds work (`XaxisCopies`). */
-    readonly cleanSettledCopy: XaxisCopies.XaxisCopies["cleanSettled"];
+    /** `vcs.createWorktree` for a checkout's root: a thread's copy (`MonoreCopies`). */
+    readonly createCopy: MonoreCopies.MonoreCopies["create"];
+    /** `vcs.removeWorktree` of a copy (`MonoreCopies`). */
+    readonly removeCopy: MonoreCopies.MonoreCopies["remove"];
+    /** The base of `delegate_task`'s isolated child of a checkout (`MonoreCopies`). */
+    readonly copyBase: MonoreCopies.MonoreCopies["base"];
+    /** A settled thread's copy, removed unless it holds work (`MonoreCopies`). */
+    readonly cleanSettledCopy: MonoreCopies.MonoreCopies["cleanSettled"];
   }
->()("t3/vcs/XaxisVcsDriver") {}
+>()("t3/vcs/MonoreVcsDriver") {}
 
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -360,10 +360,10 @@ const make = Effect.gen(function* () {
   const vcsProcess = yield* VcsProcess.VcsProcess;
   const digest = yield* Digest.Digest;
   const settings = yield* ServerSettings.ServerSettingsService;
-  const cli = XaxisCli.make(
+  const cli = MonoreCli.make(
     vcsProcess,
     settings.getSettings.pipe(
-      Effect.map((current) => current.xaxisBinaryPath),
+      Effect.map((current) => current.monoreBinaryPath),
       // Unreadable settings leave the CLI on PATH, as the default does.
       Effect.orElseSucceed(() => ""),
     ),
@@ -374,7 +374,7 @@ const make = Effect.gen(function* () {
       Effect.mapError(
         (cause) =>
           new GitCommandError({
-            operation: "XaxisVcsDriver.hashDiff",
+            operation: "MonoreVcsDriver.hashDiff",
             command: "crypto.digest SHA-256",
             cwd: root,
             detail: "Failed to hash review diff.",
@@ -390,14 +390,14 @@ const make = Effect.gen(function* () {
    */
   const writeLocks = yield* KeyedLock.make<string>();
 
-  const refused = (error: XaxisCli.XaxisCliError) =>
-    error._tag === "XaxisRefusal" ? error.toCommandError() : error;
+  const refused = (error: MonoreCli.MonoreCliError) =>
+    error._tag === "MonoreRefusal" ? error.toCommandError() : error;
   const status = (
     operation: string,
     root: string,
-  ): Effect.Effect<XaxisCli.XaxisStatus, GitCommandError> =>
+  ): Effect.Effect<MonoreCli.MonoreStatus, GitCommandError> =>
     cli
-      .json({ operation, cwd: root, args: ["status", "--json"] }, XaxisCli.XaxisStatus)
+      .json({ operation, cwd: root, args: ["status", "--json"] }, MonoreCli.MonoreStatus)
       .pipe(Effect.mapError(refused));
   const diff = (operation: string, root: string, args: ReadonlyArray<string>) =>
     cli.run({ operation, cwd: root, args: ["diff", ...args] }).pipe(Effect.mapError(refused));
@@ -405,24 +405,24 @@ const make = Effect.gen(function* () {
     operation: string,
     root: string,
     args: ReadonlyArray<string>,
-  ): Effect.Effect<XaxisCli.XaxisLog, XaxisCli.XaxisCliError> =>
-    cli.json({ operation, cwd: root, args: ["log", "--json", ...args] }, XaxisCli.XaxisLog);
+  ): Effect.Effect<MonoreCli.MonoreLog, MonoreCli.MonoreCliError> =>
+    cli.json({ operation, cwd: root, args: ["log", "--json", ...args] }, MonoreCli.MonoreLog);
   /** The tip read last, while the checkout's base is still the one it was read at. */
   const lastTip = (root: string, base: string) => {
     const read = tips.get(root);
     return read !== undefined && read.base === base ? read : { tip: base, base, behind: 0 };
   };
 
-  const localStatus: XaxisVcsDriver["Service"]["localStatus"] = Effect.fn(
-    "XaxisVcsDriver.localStatus",
+  const localStatus: MonoreVcsDriver["Service"]["localStatus"] = Effect.fn(
+    "MonoreVcsDriver.localStatus",
   )(function* (root) {
-    const read = yield* status("XaxisVcsDriver.localStatus", root);
+    const read = yield* status("MonoreVcsDriver.localStatus", root);
     const [edits, stack] = yield* Effect.all(
       [
-        diff("XaxisVcsDriver.localStatus.diff", root, []),
+        diff("MonoreVcsDriver.localStatus.diff", root, []),
         read.stack.length === 0
           ? Effect.succeed(null)
-          : diff("XaxisVcsDriver.localStatus.stack", root, [read.base, read.head]),
+          : diff("MonoreVcsDriver.localStatus.stack", root, [read.base, read.head]),
       ],
       { concurrency: "unbounded" },
     );
@@ -455,31 +455,31 @@ const make = Effect.gen(function* () {
               deletions: stackFiles.reduce((sum, file) => sum + file.deletions, 0),
             },
           }),
-      xaxis: {
+      monore: {
         conflicts: (read.conflict?.paths ?? []).map(({ path, markers }) => ({ path, markers })),
         interrupted: interruptedVerb(read.interrupted),
       },
     } satisfies VcsStatusLocalResult;
   });
 
-  const remoteStatus: XaxisVcsDriver["Service"]["remoteStatus"] = Effect.fn(
-    "XaxisVcsDriver.remoteStatus",
+  const remoteStatus: MonoreVcsDriver["Service"]["remoteStatus"] = Effect.fn(
+    "MonoreVcsDriver.remoteStatus",
   )(function* (root) {
-    // The tip is xaxis's fetch: read on the broadcaster's cadence, whatever its upstream refresh says.
+    // The tip is monore's fetch: read on the broadcaster's cadence, whatever its upstream refresh says.
     const readTip = cli
       .json(
-        { operation: "XaxisVcsDriver.remoteStatus", cwd: root, args: ["tip", "--json"] },
-        XaxisCli.XaxisTip,
+        { operation: "MonoreVcsDriver.remoteStatus", cwd: root, args: ["tip", "--json"] },
+        MonoreCli.MonoreTip,
       )
       .pipe(
         Effect.map((tip): TipAnswer => ({ tip })),
         Effect.mapError(tipUnread),
         Effect.catchTags({
-          XaxisTipUnread: (unread) => Effect.succeed<TipAnswer>({ unread: unread.reason }),
+          MonoreTipUnread: (unread) => Effect.succeed<TipAnswer>({ unread: unread.reason }),
         }),
       );
     const [read, tip] = yield* Effect.all(
-      [status("XaxisVcsDriver.remoteStatus.status", root), readTip],
+      [status("MonoreVcsDriver.remoteStatus.status", root), readTip],
       { concurrency: "unbounded" },
     );
     if ("tip" in tip) tips.set(root, tip.tip);
@@ -488,57 +488,57 @@ const make = Effect.gen(function* () {
       aheadCount: read.stack.length,
       behindCount: "tip" in tip ? tip.tip.behind : 0,
       pr: null,
-      ...("unread" in tip ? { xaxisTip: tip.unread } : {}),
+      ...("unread" in tip ? { monoreTip: tip.unread } : {}),
     } satisfies VcsStatusRemoteResult;
   });
 
   /** A changeset's record: in the checkout's own log, else on main's line. */
-  const findChangeset = Effect.fn("XaxisVcsDriver.findChangeset")(function* (
+  const findChangeset = Effect.fn("MonoreVcsDriver.findChangeset")(function* (
     root: string,
     hash: string,
   ) {
-    const own = yield* log("XaxisVcsDriver.findChangeset.own", root, [
+    const own = yield* log("MonoreVcsDriver.findChangeset.own", root, [
       "-n",
       String(OWN_LOG_SEARCH),
     ]).pipe(Effect.mapError(refused));
     const found = own.changesets.find((changeset) => changeset.hash === hash);
     if (found !== undefined) return found;
-    const onMain = yield* log("XaxisVcsDriver.findChangeset.main", root, [
+    const onMain = yield* log("MonoreVcsDriver.findChangeset.main", root, [
       "--from",
       hash,
       "-n",
       "1",
     ]).pipe(
-      Effect.catchTags({ XaxisRefusal: () => Effect.succeed({ changesets: [] }) }),
+      Effect.catchTags({ MonoreRefusal: () => Effect.succeed({ changesets: [] }) }),
       Effect.mapError(refused),
     );
     const record = onMain.changesets[0];
     if (record?.hash === hash) return record;
     return yield* new GitCommandError({
-      operation: "XaxisVcsDriver.findChangeset",
-      command: "xaxis log",
+      operation: "MonoreVcsDriver.findChangeset",
+      command: "monore log",
       cwd: root,
       detail: "Selected commit is invalid or no longer available.",
     });
   });
 
-  const getDiffPreview: XaxisVcsDriver["Service"]["getDiffPreview"] = Effect.fn(
-    "XaxisVcsDriver.getDiffPreview",
+  const getDiffPreview: MonoreVcsDriver["Service"]["getDiffPreview"] = Effect.fn(
+    "MonoreVcsDriver.getDiffPreview",
   )(function* (root, input) {
     // Stock clients send `ignoreWhitespace` and `trackedOnly`: the CLI's diff keeps whitespace,
     // and its preview is always complete, as an older server's answer to `trackedOnly` is.
     if (input.baseRef !== undefined) {
       return yield* new GitCommandError({
-        operation: "XaxisVcsDriver.getDiffPreview",
-        command: "xaxis diff",
+        operation: "MonoreVcsDriver.getDiffPreview",
+        command: "monore diff",
         cwd: root,
-        detail: "An xaxis checkout's changes compare against its base alone.",
+        detail: "A monore checkout's changes compare against its base alone.",
       });
     }
     const sourceKind = input.file?.sourceKind ?? input.sourceKind;
     const paths = input.file === undefined ? [] : ["--", input.file.path];
     const deferred = input.metadataOnly === true && input.file === undefined;
-    const source = Effect.fn("XaxisVcsDriver.getDiffPreview.source")(function* (
+    const source = Effect.fn("MonoreVcsDriver.getDiffPreview.source")(function* (
       fields: Omit<ReviewDiffPreviewSource, "diff" | "diffHash" | "files" | "truncated">,
       patch: VcsProcess.VcsProcessOutput,
     ) {
@@ -565,16 +565,16 @@ const make = Effect.gen(function* () {
     if (input.commitSha !== undefined || sourceKind === "commit") {
       if (input.commitSha === undefined) {
         return yield* new GitCommandError({
-          operation: "XaxisVcsDriver.getDiffPreview",
-          command: "xaxis diff",
+          operation: "MonoreVcsDriver.getDiffPreview",
+          command: "monore diff",
           cwd: root,
           detail: "Selected commit request is invalid.",
         });
       }
       const changeset = yield* findChangeset(root, input.commitSha);
       const parent = changeset.parents[0];
-      if (parent === undefined) todo("an xaxis changeset with no parent");
-      const patch = yield* diff("XaxisVcsDriver.getDiffPreview.commit", root, [
+      if (parent === undefined) todo("a monore changeset with no parent");
+      const patch = yield* diff("MonoreVcsDriver.getDiffPreview.commit", root, [
         parent,
         changeset.hash,
         ...paths,
@@ -595,15 +595,15 @@ const make = Effect.gen(function* () {
       ]);
     }
 
-    const read = yield* status("XaxisVcsDriver.getDiffPreview.status", root);
+    const read = yield* status("MonoreVcsDriver.getDiffPreview.status", root);
     const [edits, stack] = yield* Effect.all(
       [
         sourceKind === "branch-range"
           ? Effect.succeed(null)
-          : diff("XaxisVcsDriver.getDiffPreview.workingTree", root, paths),
+          : diff("MonoreVcsDriver.getDiffPreview.workingTree", root, paths),
         sourceKind === "working-tree" || read.stack.length === 0
           ? Effect.succeed(null)
-          : diff("XaxisVcsDriver.getDiffPreview.stack", root, [read.base, read.head, ...paths]),
+          : diff("MonoreVcsDriver.getDiffPreview.stack", root, [read.base, read.head, ...paths]),
       ],
       { concurrency: "unbounded" },
     );
@@ -641,8 +641,8 @@ const make = Effect.gen(function* () {
 
   const fileError = (root: string, detail: string, cause?: unknown) =>
     new GitCommandError({
-      operation: "XaxisVcsDriver.getDiffFileContents",
-      command: "xaxis show",
+      operation: "MonoreVcsDriver.getDiffFileContents",
+      command: "monore show",
       cwd: root,
       detail,
       ...(cause === undefined ? {} : { cause }),
@@ -652,7 +652,7 @@ const make = Effect.gen(function* () {
   const showFile = (root: string, hash: string, relativePath: string) =>
     cli
       .run({
-        operation: "XaxisVcsDriver.getDiffFileContents.show",
+        operation: "MonoreVcsDriver.getDiffFileContents.show",
         cwd: root,
         args: ["show", hash, relativePath],
       })
@@ -663,12 +663,12 @@ const make = Effect.gen(function* () {
             : Effect.succeed(result.stdout),
         ),
         Effect.catchTags({
-          XaxisRefusal: (refusal) =>
+          MonoreRefusal: (refusal) =>
             refusal.code === "no-such-path" ? Effect.succeed("") : Effect.fail(refused(refusal)),
         }),
       );
 
-  const diskFile = Effect.fn("XaxisVcsDriver.diskFile")(function* (
+  const diskFile = Effect.fn("MonoreVcsDriver.diskFile")(function* (
     root: string,
     relativePath: string,
   ) {
@@ -722,16 +722,16 @@ const make = Effect.gen(function* () {
     return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
   });
 
-  const getDiffFileContents: XaxisVcsDriver["Service"]["getDiffFileContents"] = Effect.fn(
-    "XaxisVcsDriver.getDiffFileContents",
+  const getDiffFileContents: MonoreVcsDriver["Service"]["getDiffFileContents"] = Effect.fn(
+    "MonoreVcsDriver.getDiffFileContents",
   )(function* (root, input) {
     if (input.changeType === "rename-pure" || input.changeType === "rename-changed") {
-      todo("an xaxis rename, which xaxis does not record");
+      todo("a monore rename, which monore does not record");
     }
     const oldRef =
       input.baseRef ??
       (input.sourceKind === "working-tree"
-        ? (yield* status("XaxisVcsDriver.getDiffFileContents.status", root)).head
+        ? (yield* status("MonoreVcsDriver.getDiffFileContents.status", root)).head
         : null);
     if (oldRef === null || (input.sourceKind !== "working-tree" && input.headRef === null)) {
       return yield* fileError(root, "Selected comparison is no longer available.");
@@ -751,14 +751,14 @@ const make = Effect.gen(function* () {
   });
 
   const commitOf = (
-    changeset: XaxisCli.XaxisChangeset,
+    changeset: MonoreCli.MonoreChangeset,
     decorations: ReadonlyMap<string, ReadonlyArray<string>>,
   ): ReviewLogCommit => {
     const author = splitAuthor(changeset.author);
     const message = changeset.message.replace(/\n+$/, "");
     return {
       sha: changeset.hash,
-      // xaxis's log is first-parent, so a merge's other parents are not walked.
+      // monore's log is first-parent, so a merge's other parents are not walked.
       parents: changeset.parents.slice(0, 1),
       subject: message.split("\n", 1)[0] ?? "",
       message,
@@ -769,24 +769,24 @@ const make = Effect.gen(function* () {
     };
   };
 
-  const getLog: XaxisVcsDriver["Service"]["getLog"] = Effect.fn("XaxisVcsDriver.getLog")(
+  const getLog: MonoreVcsDriver["Service"]["getLog"] = Effect.fn("MonoreVcsDriver.getLog")(
     function* (root, input) {
       const limit = input.limit ?? DEFAULT_LOG_LIMIT;
       const skip = input.skip ?? 0;
-      const read = yield* status("XaxisVcsDriver.getLog.status", root);
+      const read = yield* status("MonoreVcsDriver.getLog.status", root);
       const tip = lastTip(root, read.base);
       const decorations = new Map<string, string[]>();
       for (const [hash, ref] of [
-        [read.head, XAXIS_HEAD_REF],
-        [tip.tip, XAXIS_TIP_REF],
+        [read.head, MONORE_HEAD_REF],
+        [tip.tip, MONORE_TIP_REF],
       ] as const) {
         decorations.set(hash, [...(decorations.get(hash) ?? []), ref]);
       }
       const named = new Set(
         input.refs.map((ref) =>
-          ref === "HEAD" || ref === XAXIS_HEAD_REF || ref === "main" || ref === read.head
+          ref === "HEAD" || ref === MONORE_HEAD_REF || ref === "main" || ref === read.head
             ? "head"
-            : ref === XAXIS_TIP_REF || ref === "xaxis/main" || ref === tip.tip
+            : ref === MONORE_TIP_REF || ref === "monore/main" || ref === tip.tip
               ? "tip"
               : ref,
         ),
@@ -795,8 +795,8 @@ const make = Effect.gen(function* () {
       const want = limit;
       const page = (args: ReadonlyArray<string>, from: number, count: number) =>
         count <= 0
-          ? Effect.succeed([] as ReadonlyArray<XaxisCli.XaxisChangeset>)
-          : log("XaxisVcsDriver.getLog", root, [
+          ? Effect.succeed([] as ReadonlyArray<MonoreCli.MonoreChangeset>)
+          : log("MonoreVcsDriver.getLog", root, [
               ...args,
               "--skip",
               String(from),
@@ -820,10 +820,10 @@ const make = Effect.gen(function* () {
                   GitCommandError: (cause) =>
                     Effect.fail(
                       new GitCommandError({
-                        operation: "XaxisVcsDriver.getLog",
-                        command: "xaxis log",
+                        operation: "MonoreVcsDriver.getLog",
+                        command: "monore log",
                         cwd: root,
-                        detail: `xaxis's history has no changeset ${hash}.`,
+                        detail: `monore's history has no changeset ${hash}.`,
                         cause,
                       }),
                     ),
@@ -847,7 +847,7 @@ const make = Effect.gen(function* () {
       if (named.has("tip") && tip.behind === 0) ownFrom = Math.min(ownFrom, read.stack.length);
       const unplaced: string[] = [];
       let belowSearch = false;
-      let incomingLine: ReadonlyArray<XaxisCli.XaxisChangeset> | undefined;
+      let incomingLine: ReadonlyArray<MonoreCli.MonoreChangeset> | undefined;
       for (const hash of hashes) {
         const inOwn = own.findIndex((changeset) => changeset.hash === hash);
         const inIncoming = incomingSearch.findIndex((changeset) => changeset.hash === hash);
@@ -856,14 +856,14 @@ const make = Effect.gen(function* () {
         else {
           // Past both searches: on main's line (deep on the incoming line, or below the
           // base), or a changeset of a stack a land rebased onto a moved main, which is nowhere.
-          const onMain = yield* log("XaxisVcsDriver.getLog.place", root, [
+          const onMain = yield* log("MonoreVcsDriver.getLog.place", root, [
             "--from",
             hash,
             "-n",
             "1",
           ]).pipe(
             Effect.map((answer) => answer.changesets[0]?.hash === hash),
-            Effect.catchTags({ XaxisRefusal: () => Effect.succeed(false) }),
+            Effect.catchTags({ MonoreRefusal: () => Effect.succeed(false) }),
             Effect.mapError(refused),
           );
           if (!onMain) {
@@ -880,8 +880,8 @@ const make = Effect.gen(function* () {
       }
       if (unplaced.length > 0) {
         return yield* new GitCommandError({
-          operation: "XaxisVcsDriver.getLog",
-          command: "xaxis log",
+          operation: "MonoreVcsDriver.getLog",
+          command: "monore log",
           cwd: root,
           detail: `${unplaced.join(", ")} ${unplaced.length === 1 ? "is" : "are"} on neither this checkout's line nor main's.`,
         });
@@ -891,9 +891,9 @@ const make = Effect.gen(function* () {
         ownFrom === Number.POSITIVE_INFINITY &&
         incomingFrom === Number.POSITIVE_INFINITY
       ) {
-        todo("an xaxis history walked from several changesets all deep below the base");
+        todo("a monore history walked from several changesets all deep below the base");
       }
-      let walked: ReadonlyArray<XaxisCli.XaxisChangeset>;
+      let walked: ReadonlyArray<MonoreCli.MonoreChangeset>;
       if (incomingFrom === Number.POSITIVE_INFINITY) {
         walked = yield* page([], ownFrom + skip, want);
       } else {
@@ -918,30 +918,30 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const getRefs: XaxisVcsDriver["Service"]["getRefs"] = Effect.fn("XaxisVcsDriver.getRefs")(
+  const getRefs: MonoreVcsDriver["Service"]["getRefs"] = Effect.fn("MonoreVcsDriver.getRefs")(
     function* (root) {
-      const read = yield* status("XaxisVcsDriver.getRefs", root);
+      const read = yield* status("MonoreVcsDriver.getRefs", root);
       const tip = lastTip(root, read.base);
       return {
-        head: { ref: XAXIS_HEAD_REF, sha: read.head },
+        head: { ref: MONORE_HEAD_REF, sha: read.head },
         refs: [
-          { name: XAXIS_HEAD_REF, sha: read.head, upstream: XAXIS_TIP_REF },
-          { name: XAXIS_TIP_REF, sha: tip.tip, upstream: null },
+          { name: MONORE_HEAD_REF, sha: read.head, upstream: MONORE_TIP_REF },
+          { name: MONORE_TIP_REF, sha: tip.tip, upstream: null },
         ],
       } satisfies ReviewRefsResult;
     },
   );
 
-  const getLatest: XaxisVcsDriver["Service"]["getLatest"] = Effect.fn("XaxisVcsDriver.getLatest")(
+  const getLatest: MonoreVcsDriver["Service"]["getLatest"] = Effect.fn("MonoreVcsDriver.getLatest")(
     function* (root) {
       return yield* writeLocks.withLock(
         root,
         Effect.gen(function* () {
-          const before = yield* status("XaxisVcsDriver.getLatest.status", root);
+          const before = yield* status("MonoreVcsDriver.getLatest.status", root);
           yield* cli
-            .write({ operation: "XaxisVcsDriver.getLatest", cwd: root, args: ["goto"] })
+            .write({ operation: "MonoreVcsDriver.getLatest", cwd: root, args: ["goto"] })
             .pipe(Effect.mapError(refused));
-          const after = yield* status("XaxisVcsDriver.getLatest.status", root);
+          const after = yield* status("MonoreVcsDriver.getLatest.status", root);
           return {
             status:
               after.base === before.base && after.head === before.head
@@ -955,10 +955,10 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const runStackedAction: XaxisVcsDriver["Service"]["runStackedAction"] = Effect.fn(
-    "XaxisVcsDriver.runStackedAction",
+  const runStackedAction: MonoreVcsDriver["Service"]["runStackedAction"] = Effect.fn(
+    "MonoreVcsDriver.runStackedAction",
   )(function* (root, input, options) {
-    const operation = "XaxisVcsDriver.runStackedAction";
+    const operation = "MonoreVcsDriver.runStackedAction";
     const emit = (
       event:
         | { readonly kind: "action_started"; readonly phases: GitActionProgressPhase[] }
@@ -992,7 +992,7 @@ const make = Effect.gen(function* () {
         input.action === "commit_push_pr" ||
         input.featureBranch === true
       ) {
-        return yield* refuse("xaxis has no pull requests or branches.");
+        return yield* refuse("monore has no pull requests or branches.");
       }
       yield* emit({
         kind: "action_started",
@@ -1011,7 +1011,7 @@ const make = Effect.gen(function* () {
       } else if (wantsCommit) {
         const message = input.commitMessage?.trim() ?? "";
         if (message === "") {
-          return yield* refuse("An xaxis commit needs a message; Pult writes none for xaxis.");
+          return yield* refuse("A monore commit needs a message; Pult writes none for monore.");
         }
         phase = "commit";
         yield* emit({ kind: "phase_started", phase, label: "Committing…" });
@@ -1041,7 +1041,7 @@ const make = Effect.gen(function* () {
         yield* emit({ kind: "phase_started", phase, label: "Landing…" });
         yield* cli.land({ operation: `${operation}.land`, cwd: root }).pipe(
           Effect.catchTags({
-            XaxisLandConflicted: () =>
+            MonoreLandConflicted: () =>
               status(`${operation}.status`, root).pipe(
                 Effect.flatMap((conflicted) => {
                   const count = conflicted.conflict?.paths.length ?? 0;
@@ -1053,7 +1053,7 @@ const make = Effect.gen(function* () {
                 }),
               ),
           }),
-          Effect.mapError((error) => (error._tag === "XaxisRefusal" ? refused(error) : error)),
+          Effect.mapError((error) => (error._tag === "MonoreRefusal" ? refused(error) : error)),
         );
         push = { status: "pushed", branch: "main" };
       }
@@ -1096,24 +1096,24 @@ const make = Effect.gen(function* () {
     );
   });
 
-  const resolveConflict: XaxisVcsDriver["Service"]["resolveConflict"] = Effect.fn(
-    "XaxisVcsDriver.resolveConflict",
+  const resolveConflict: MonoreVcsDriver["Service"]["resolveConflict"] = Effect.fn(
+    "MonoreVcsDriver.resolveConflict",
   )(function* (root, input) {
     yield* cli
       .write({
-        operation: "XaxisVcsDriver.resolveConflict",
+        operation: "MonoreVcsDriver.resolveConflict",
         cwd: root,
         args: ["resolve", `--${input.side}`, "--", ...input.paths],
       })
       .pipe(Effect.mapError(refused), (write) => writeLocks.withLock(root, write));
   });
 
-  const checkouts: XaxisVcsDriver["Service"]["checkouts"] = (cwd) =>
-    cli.checkouts({ operation: "XaxisVcsDriver.checkouts", cwd }).pipe(Effect.mapError(refused));
+  const checkouts: MonoreVcsDriver["Service"]["checkouts"] = (cwd) =>
+    cli.checkouts({ operation: "MonoreVcsDriver.checkouts", cwd }).pipe(Effect.mapError(refused));
 
-  const copies = yield* XaxisCopies.make(cli, writeLocks);
+  const copies = yield* MonoreCopies.make(cli, writeLocks);
 
-  return XaxisVcsDriver.of({
+  return MonoreVcsDriver.of({
     localStatus,
     remoteStatus,
     getDiffPreview,
@@ -1131,4 +1131,4 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(XaxisVcsDriver, make);
+export const layer = Layer.effect(MonoreVcsDriver, make);

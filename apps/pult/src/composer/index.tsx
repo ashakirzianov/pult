@@ -183,7 +183,7 @@ function stripView() {
 }
 
 /**
- * The composer under a file (xaxis `pult/tasks/file-citations.task`): while the
+ * The composer under a file (monore `pult/tasks/file-citations.task`): while the
  * strip is open and the active editor is a file of the selected thread's or
  * draft's tab set, that thread's or draft's composer, or under an ask's file
  * its reply's (`src/asks/reply.ts`), a composer-only mount

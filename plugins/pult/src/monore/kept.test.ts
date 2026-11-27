@@ -1,8 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - the fixture drives the real CLI and server as a person would.
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
-// The kept xaxis checkout through the plugin's activation and its route, the real driver over a real
-// `xaxis` against `scm-server serve` (xaxis `pult/tasks/xaxis-checkouts-on-main.task`, "Test plan").
-// Skipped, with the reason printed, unless XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the binaries.
+// The kept monore checkout through the plugin's activation and its route, the real driver over a real
+// `monore` against `scm-server serve` (monore `pult/tasks/xaxis-checkouts-on-main.task`, "Test plan").
+// Skipped, with the reason printed, unless MONORE_TEST_BIN and MONORE_TEST_SERVER_BIN name the binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -23,12 +23,12 @@ import * as ServerSettings from "../../../../apps/server/src/serverSettings.ts";
 import * as VcsProcess from "../../../../apps/server/src/vcs/VcsProcess.ts";
 import {
   skipped,
-  startXaxisTestServer,
+  startMonoreTestServer,
   suiteName,
   UNKNOWN_TOKEN,
-  XAXIS,
-  type XaxisTestServer,
-} from "../../../../apps/server/src/vcs/XaxisVcsDriver.testkit.ts";
+  MONORE,
+  type MonoreTestServer,
+} from "../../../../apps/server/src/vcs/MonoreVcsDriver.testkit.ts";
 import {
   Context,
   Duration,
@@ -38,7 +38,7 @@ import {
   McpServer,
   VcsAutomaticFetchInterval,
   VcsStatusBroadcaster,
-  XaxisVcsDriver,
+  MonoreVcsDriver,
 } from "../host.ts";
 import { fakeServer } from "../stars/testing.ts";
 import type { KeptView } from "./kept.ts";
@@ -53,20 +53,20 @@ const environmentAuth = {
     }),
 } as unknown as EnvironmentAuth.EnvironmentAuth["Service"];
 
-describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
-  let harness: XaxisTestServer;
+describe.skipIf(skipped)(suiteName("the kept monore checkout"), () => {
+  let harness: MonoreTestServer;
   let writer = "";
-  const xaxis = (cwd: string, ...args: string[]) => harness.xaxis(cwd, ...args);
+  const monore = (cwd: string, ...args: string[]) => harness.monore(cwd, ...args);
   /** A file landed from the writer's checkout of `/test/repo`. */
   const land = (name: string, text: string) => {
     NodeFS.writeFileSync(NodePath.join(writer, name), text);
-    xaxis(writer, "commit", "-m", name);
-    xaxis(writer, "land");
+    monore(writer, "commit", "-m", name);
+    monore(writer, "land");
   };
 
   beforeAll(async () => {
-    harness = await startXaxisTestServer();
-    xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/repo", "writer");
+    harness = await startMonoreTestServer();
+    monore(harness.scratch, "--server", harness.address, "checkout", "/test/repo", "writer");
     writer = NodePath.join(harness.scratch, "writer");
     land("first.txt", "first\n");
   });
@@ -74,21 +74,21 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
   afterAll(() => harness?.stop());
 
   it.effect(
-    "moves the checkout of / at <pult>/xaxis, makes it a project, and says why it cannot",
+    "moves the checkout of / at <pult>/monore, makes it a project, and says why it cannot",
     () =>
       Effect.gen(function* () {
         const server = yield* fakeServer;
         const pult = NodePath.dirname(server.directory);
-        const folder = NodePath.join(pult, "xaxis");
+        const folder = NodePath.join(pult, "monore");
         const interval = { every: Duration.seconds(30) };
         const refreshed: string[] = [];
         const settingsContext = yield* Layer.build(
-          ServerSettings.layerTest({ xaxisBinaryPath: XAXIS! }),
+          ServerSettings.layerTest({ monoreBinaryPath: MONORE! }),
         );
         const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
         const layer = Layer.mergeAll(
           McpServer.McpServer.layer,
-          XaxisVcsDriver.layer.pipe(
+          MonoreVcsDriver.layer.pipe(
             // The real spawner: the server layer's fake one, which the Stars spawn through, has no output.
             Layer.provide(VcsProcess.layer.pipe(Layer.provide(NodeServices.layer))),
             Layer.provide(Layer.succeedContext(settingsContext)),
@@ -127,7 +127,7 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         yield* Effect.addFinalizer(() => Effect.promise(() => web.dispose()));
         const kept = Effect.promise(async () => {
           const response = await web.handler(
-            new Request("http://127.0.0.1/api/plugins/pult/xaxis/kept", {
+            new Request("http://127.0.0.1/api/plugins/pult/monore/kept", {
               headers: { authorization: "Bearer reader" },
             }),
           );
@@ -136,7 +136,7 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         });
         /** The scheduler's tick, once the interval has passed. */
         const tick = TestClock.adjust(interval.every).pipe(
-          Effect.andThen(server.runSource("pult-xaxis-kept")),
+          Effect.andThen(server.runSource("pult-monore-kept")),
         );
         const last = Effect.map(kept, (view) => view.checkouts[0]?.last);
         const keptProjects = () =>
@@ -150,8 +150,8 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
 
         // A checkout of another prefix at the folder, and one nested in it: neither kept.
         NodeFS.mkdirSync(pult, { recursive: true });
-        xaxis(pult, "--server", harness.address, "checkout", "/test/repo", "xaxis");
-        xaxis(folder, "--server", harness.address, "checkout", "/test", "inner");
+        monore(pult, "--server", harness.address, "checkout", "/test/repo", "monore");
+        monore(folder, "--server", harness.address, "checkout", "/test", "inner");
         yield* tick;
         const refusing = yield* kept;
         // In the registry's order, which it does not promise.
@@ -175,11 +175,11 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         expect(keptProjects()).toEqual([]);
         NodeFS.rmSync(folder, { recursive: true });
 
-        // The checkout of / at the folder mirrors its prefix: kept, made a project titled xaxis.
-        xaxis(pult, "--server", harness.address, "checkout", "/", "xaxis");
+        // The checkout of / at the folder mirrors its prefix: kept, made a project titled monore.
+        monore(pult, "--server", harness.address, "checkout", "/", "monore");
         yield* tick;
         const [project] = keptProjects();
-        expect(project?.title).toBe("xaxis");
+        expect(project?.title).toBe("monore");
         expect(yield* kept).toMatchObject({
           folder,
           checkouts: [
@@ -217,15 +217,15 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         const before = yield* last;
         interval.every = Duration.zero;
         yield* TestClock.adjust("1 minute");
-        yield* server.runSource("pult-xaxis-kept");
+        yield* server.runSource("pult-monore-kept");
         expect(yield* last).toEqual(before);
         expect(onDisk("fourth.txt")).toBe(false);
         interval.every = Duration.seconds(30);
 
         // A login that does not hold fails with the CLI's code and refreshes the status; back, it moves.
-        const token = process.env.XAXIS_TOKEN;
-        process.env.XAXIS_TOKEN = UNKNOWN_TOKEN;
-        yield* tick.pipe(Effect.ensuring(Effect.sync(() => (process.env.XAXIS_TOKEN = token))));
+        const token = process.env.MONORE_TOKEN;
+        process.env.MONORE_TOKEN = UNKNOWN_TOKEN;
+        yield* tick.pipe(Effect.ensuring(Effect.sync(() => (process.env.MONORE_TOKEN = token))));
         const failed = yield* last;
         expect(failed).toMatchObject({ outcome: "failed", code: "unauthenticated" });
         expect(failed?.message).toEqual(expect.any(String));
@@ -249,12 +249,12 @@ describe.skipIf(skipped)(suiteName("the kept xaxis checkout"), () => {
         expect((yield* kept).checkouts[0]?.agentThreads).toEqual(["agent", "deeper"]);
 
         // A CLI that cannot list the checkouts is named, in the driver's words.
-        yield* settings.updateSettings({ xaxisBinaryPath: NodePath.join(pult, "no-xaxis") });
+        yield* settings.updateSettings({ monoreBinaryPath: NodePath.join(pult, "no-monore") });
         expect(yield* kept).toEqual({
           folder,
           checkouts: [],
           refused: [],
-          unlisted: expect.stringContaining("xaxis was not found"),
+          unlisted: expect.stringContaining("monore was not found"),
         });
       }).pipe(Effect.scoped, Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
   );

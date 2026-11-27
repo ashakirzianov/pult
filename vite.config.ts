@@ -509,7 +509,7 @@ export default defineConfig({
       },
       {
         // Pult's features moved onto the extension contract take it, and Effect, from the plugin's
-        // ./extension.ts alone, as an installed extension would (xaxis `pult/decisions`, `pult-plugin`).
+        // ./extension.ts alone, as an installed extension would (monore `pult/decisions`, `pult-plugin`).
         files: ["plugins/pult/src/asks/**"],
         excludeFiles: ["plugins/pult/src/asks/**/*.test.ts"],
         rules: {

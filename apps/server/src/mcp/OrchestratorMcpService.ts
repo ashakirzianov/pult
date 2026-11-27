@@ -2952,9 +2952,9 @@ const make = Effect.gen(function* () {
         input.interactionMode,
       );
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
-      // Pult (xaxis `pult/decisions`, `xaxis-copy-contract`): an xaxis parent's child is a copy at
+      // Pult (monore `pult/decisions`, `monore-copy-contract`): a monore parent's child is a copy at
       // the parent checkout's head, commits not landed included, a base the server alone names.
-      const xaxisBase =
+      const monoreBase =
         input.isolation === "worktree" && !isRetryOfAcceptedDelegation
           ? yield* requireProject(parent.thread.projectId).pipe(
               Effect.flatMap((project) =>
@@ -2964,8 +2964,8 @@ const make = Effect.gen(function* () {
               ),
             )
           : null;
-      if (xaxisBase !== null) {
-        workspaceStrategy = { type: "worktree", baseRef: xaxisBase, startFromOrigin: false };
+      if (monoreBase !== null) {
+        workspaceStrategy = { type: "worktree", baseRef: monoreBase, startFromOrigin: false };
       } else if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
         const base = yield* gitDriver

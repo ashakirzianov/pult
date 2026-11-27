@@ -43,8 +43,8 @@ const ENTRY_LIMIT = 50;
  * the literal path when the checkout has it, else the files of the thread's
  * checkout whose path ends with it, else of the environment's other
  * checkouts, through the server's index, a quick pick among several; an
- * absolute path under no checkout, from the xaxis root in the environment's
- * kept xaxis checkout. The tab
+ * absolute path under no checkout, from the monore root in the environment's
+ * kept monore checkout. The tab
  * goes beside the thread's, in the active group, as a preview that a second
  * file replaces; the page's `pult:` provider serves it (`src/files/`). No
  * match, or an absolute path under no checkout, is a notice rather than an
@@ -103,7 +103,7 @@ export async function openDocumentFile(
 
 /**
  * Opens `path` as `input` resolves it, a folder holding a `bundle.md` (an
- * xaxis bundle, `x.task`) as that file, `where` naming in a notice what was
+ * monore bundle, `x.task`) as that file, `where` naming in a notice what was
  * searched.
  */
 async function openPath(
@@ -209,7 +209,7 @@ function pathInput(environmentId: string, checkoutRoot: string | null, projectId
     checkoutRoot,
     projectId,
     checkouts: environmentCheckouts(environmentId),
-    xaxisRoot: keptRoot(environmentId),
+    monoreRoot: keptRoot(environmentId),
     search: async (checkout: Checkout, key: string) => {
       const { entries } = await environmentServer(environmentId).searchEntries({
         cwd: toHostPath(checkout.root),

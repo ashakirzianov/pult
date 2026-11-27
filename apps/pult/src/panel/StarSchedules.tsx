@@ -19,7 +19,7 @@ function useFiring(environmentId: string | undefined): boolean | undefined {
 }
 
 /**
- * A selected Star's schedules in its details cards (xaxis
+ * A selected Star's schedules in its details cards (monore
  * `pult/tasks/star-schedules.task`), those of the home it is drawn from, as
  * that home's plugin serves them on its `stars` route: under a collapsible
  * "Schedules", in the warning colour while any failed or

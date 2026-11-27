@@ -1,8 +1,8 @@
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-// Pult: `xaxis` is an xaxis checkout, driven through its CLI (`apps/server/src/vcs/XaxisVcsDriver.ts`).
-export const VcsDriverKind = Schema.Literals(["git", "jj", "xaxis", "unknown"]);
+// Pult: `monore` is a monore checkout, driven through its CLI (`apps/server/src/vcs/MonoreVcsDriver.ts`).
+export const VcsDriverKind = Schema.Literals(["git", "jj", "monore", "unknown"]);
 export type VcsDriverKind = typeof VcsDriverKind.Type;
 
 export const VcsFreshnessSource = Schema.Literals([

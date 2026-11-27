@@ -3355,7 +3355,7 @@ export const layerWsRpc = (
                 refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
             }),
           ),
-        // Pult: an xaxis checkout's conflicted paths, one side taken; the status then drops them.
+        // Pult: a monore checkout's conflicted paths, one side taken; the status then drops them.
         [WS_METHODS.vcsResolveConflict]: (input) =>
           gitWorkflow.resolveConflict(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
         [WS_METHODS.gitRunStackedAction]: (input) =>

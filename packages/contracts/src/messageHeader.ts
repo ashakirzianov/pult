@@ -1,4 +1,4 @@
-// Pult's, not upstream's (xaxis `pult/decisions`, `message-header`): who sent a message, as data
+// Pult's, not upstream's (monore `pult/decisions`, `message-header`): who sent a message, as data
 // in one context record no marker references. The server writes its `line` for the model in place
 // of upstream's sender note (`withMessageSenderNote`), the page draws its `caption`, and the stored
 // text is the sender's own words.

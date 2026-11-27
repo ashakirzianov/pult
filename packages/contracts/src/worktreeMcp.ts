@@ -6,7 +6,7 @@ import { GitRefName, TrimmedNonEmptyString } from "./baseSchemas.ts";
 export const WorktreeMcpHandoffInput = Schema.Struct({
   branch: GitRefName.annotate({
     description:
-      "In a project kept in xaxis, which has one line and no branches: `main`, with `baseRef` absent or `main`.",
+      "In a project kept in monore, which has one line and no branches: `main`, with `baseRef` absent or `main`.",
   }),
   baseRef: Schema.optional(
     GitRefName.annotate({

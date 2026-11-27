@@ -1,5 +1,5 @@
-// The kept xaxis checkout (`pult/decisions`, `xaxis-kept-checkouts`): the checkout of `/` at
-// `<pult>/xaxis`, beside the Stars directory, moved to main's tip by the driver's Get latest at every
+// The kept monore checkout (`pult/decisions`, `monore-kept-checkouts`): the checkout of `/` at
+// `<pult>/monore`, beside the Stars directory, moved to main's tip by the driver's Get latest at every
 // automatic-fetch interval and made a project. Its folder is the registration.
 import { CommandId, ProjectId, type ThreadId } from "@t3tools/contracts";
 
@@ -16,14 +16,14 @@ import {
   ThreadManagementService,
   VcsAutomaticFetchInterval,
   VcsStatusBroadcaster,
-  XaxisCli,
-  XaxisVcsDriver,
+  MonoreCli,
+  MonoreVcsDriver,
 } from "../host.ts";
 
 /** The folder beside the Stars directory that holds the kept checkout. */
-const KEPT_FOLDER = "xaxis";
+const KEPT_FOLDER = "monore";
 /** The kept checkout's project, until the user renames it. */
-const KEPT_PROJECT_TITLE = "xaxis";
+const KEPT_PROJECT_TITLE = "monore";
 
 /** The refusals that mean the checkout waits for its user, or for the CLI's lock: its state, not a failure. */
 const WAITING_CODES: ReadonlySet<string> = new Set([
@@ -59,21 +59,21 @@ export interface KeptView {
   readonly unlisted?: string;
 }
 
-export class XaxisKeptError extends Schema.TaggedError<XaxisKeptError>()("XaxisKeptError", {
+export class MonoreKeptError extends Schema.TaggedError<MonoreKeptError>()("MonoreKeptError", {
   cause: Schema.Defect(),
 }) {
   override get message(): string {
     const detail = (this.cause as { readonly detail?: unknown } | undefined)?.detail;
     return typeof detail === "string"
-      ? `Pult could not read the kept xaxis checkout: ${detail}`
-      : "Pult could not read the kept xaxis checkout.";
+      ? `Pult could not read the kept monore checkout: ${detail}`
+      : "Pult could not read the kept monore checkout.";
   }
 }
 
-export interface XaxisKept {
+export interface MonoreKept {
   readonly folder: string;
   /** The route's answer, the registry read afresh. */
-  readonly view: Effect.Effect<KeptView, XaxisKeptError>;
+  readonly view: Effect.Effect<KeptView, MonoreKeptError>;
 }
 
 /**
@@ -83,13 +83,13 @@ export interface XaxisKept {
  */
 function classify(
   folder: string,
-  listed: ReadonlyArray<XaxisCli.XaxisCheckout>,
+  listed: ReadonlyArray<MonoreCli.MonoreCheckout>,
   path: Path.Path,
 ): {
-  readonly kept: XaxisCli.XaxisCheckout | undefined;
+  readonly kept: MonoreCli.MonoreCheckout | undefined;
   readonly refused: KeptView["refused"];
 } {
-  let kept: XaxisCli.XaxisCheckout | undefined;
+  let kept: MonoreCli.MonoreCheckout | undefined;
   const refused: Array<KeptView["refused"][number]> = [];
   for (const checkout of listed) {
     const dir = path.resolve(checkout.dir);
@@ -114,10 +114,10 @@ const inside = (folder: string, dir: string, path: Path.Path) => {
   return resolved === folder || resolved.startsWith(`${folder}${path.sep}`);
 };
 
-export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: string) {
+export const make = Effect.fn("MonoreKept.make")(function* (starsDirectory: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
+  const driver = yield* MonoreVcsDriver.MonoreVcsDriver;
   const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
   const interval = yield* VcsAutomaticFetchInterval.VcsAutomaticFetchInterval;
   const projects = yield* ProjectService.ProjectService;
@@ -143,7 +143,7 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
     return classify(real, yield* driver.checkouts(pult), path);
   });
 
-  const ensureProject = Effect.fn("XaxisKept.ensureProject")(function* (dir: string) {
+  const ensureProject = Effect.fn("MonoreKept.ensureProject")(function* (dir: string) {
     const owned = (yield* projects.listShells()).some(
       (project) => path.resolve(project.workspaceRoot) === dir,
     );
@@ -161,11 +161,11 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
       .refreshStatus(dir)
       .pipe(
         Effect.catchCause((cause) =>
-          Effect.logWarning("Could not refresh the kept xaxis checkout's status.", { dir, cause }),
+          Effect.logWarning("Could not refresh the kept monore checkout's status.", { dir, cause }),
         ),
       );
 
-  const move = Effect.fn("XaxisKept.move")(function* (dir: string) {
+  const move = Effect.fn("MonoreKept.move")(function* (dir: string) {
     state.running = { since: yield* nowIso };
     const result = yield* driver
       .getLatest(dir)
@@ -178,7 +178,7 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
       return;
     }
     const error = result.failure;
-    const code = XaxisCli.refusalCode(error);
+    const code = MonoreCli.refusalCode(error);
     if (code !== null && WAITING_CODES.has(code)) {
       state.last = { at, outcome: "waiting", code, message: error.detail };
       return;
@@ -189,7 +189,7 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
       ...(code === null ? {} : { code }),
       message: error.detail,
     };
-    yield* Effect.logWarning("Could not keep the xaxis checkout up to date.", {
+    yield* Effect.logWarning("Could not keep the monore checkout up to date.", {
       dir,
       code,
       message: error.detail,
@@ -207,24 +207,24 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
     lastPass = now;
     const { kept, refused } = yield* list;
     for (const each of refused)
-      yield* Effect.logWarning("An xaxis checkout under the kept folder is not kept.", each);
+      yield* Effect.logWarning("A monore checkout under the kept folder is not kept.", each);
     if (kept === undefined) return;
     const dir = path.resolve(kept.dir);
     yield* ensureProject(dir).pipe(
       Effect.catchCause((cause) =>
-        Effect.logWarning("Could not make the kept xaxis checkout a project.", { dir, cause }),
+        Effect.logWarning("Could not make the kept monore checkout a project.", { dir, cause }),
       ),
     );
     yield* move(dir);
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Could not list the xaxis checkouts to keep.", { cause }),
+      Effect.logWarning("Could not list the monore checkouts to keep.", { cause }),
     ),
-    Effect.withSpan("XaxisKept.pass"),
+    Effect.withSpan("MonoreKept.pass"),
   );
   // The scheduler runs it at once and on its ticks, one run at a time, so a Get latest that hangs
   // holds the next until it ends.
-  yield* scheduler.register("pult-xaxis-kept", pass);
+  yield* scheduler.register("pult-monore-kept", pass);
 
   const view = Effect.gen(function* () {
     const listed = yield* list.pipe(
@@ -265,7 +265,7 @@ export const make = Effect.fn("XaxisKept.make")(function* (starsDirectory: strin
       ],
       refused,
     } satisfies KeptView;
-  }).pipe(Effect.mapError((cause) => new XaxisKeptError({ cause })));
+  }).pipe(Effect.mapError((cause) => new MonoreKeptError({ cause })));
 
-  return { folder, view } satisfies XaxisKept;
+  return { folder, view } satisfies MonoreKept;
 });

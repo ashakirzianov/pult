@@ -319,8 +319,8 @@ describe("applyGitStatusStreamEvent", () => {
         insertions: 1,
         deletions: 0,
       },
-      // Pult: an xaxis checkout's fields ride both parts.
-      xaxis: { conflicts: [{ path: "src/demo.ts", markers: true }], interrupted: null },
+      // Pult: a monore checkout's fields ride both parts.
+      monore: { conflicts: [{ path: "src/demo.ts", markers: true }], interrupted: null },
       hasUpstream: false,
       aheadCount: 0,
       behindCount: 0,
@@ -341,11 +341,11 @@ describe("applyGitStatusStreamEvent", () => {
       behindCount: 1,
       pr: null,
     });
-    const signedOut = { ...current, xaxisTip: "signed-out" as const };
-    const { xaxis: _, ...local } = current;
+    const signedOut = { ...current, monoreTip: "signed-out" as const };
+    const { monore: _, ...local } = current;
     expect(applyGitStatusStreamEvent(signedOut, { _tag: "localUpdated", local })).toEqual({
       ...local,
-      xaxisTip: "signed-out",
+      monoreTip: "signed-out",
     });
   });
 });

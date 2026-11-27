@@ -1,4 +1,4 @@
-// Unsent text carried into a sleeping Star's draft (xaxis
+// Unsent text carried into a sleeping Star's draft (monore
 // `pult/tasks/durable-agent-sleep.task/design.md`, Unsent text), and out of it into the
 // conversation someone else woke (`pult/tasks/message-star.task`), apart from
 // the workbench so `node --test src/stars/carry.test.ts` can run it. The

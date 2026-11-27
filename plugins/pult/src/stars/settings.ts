@@ -1,4 +1,4 @@
-// A Star's channel settings (xaxis `pult/decisions`, `star-channel-settings`): a shared file and one per
+// A Star's channel settings (monore `pult/decisions`, `star-channel-settings`): a shared file and one per
 // channel, flat `key: value` lines read strictly, the channel's winning key by key. The model falls
 // back from the merged choice to the shared file's to the newest conversation's; what was wrong comes
 // back with the files' hash, for a notice once per content.

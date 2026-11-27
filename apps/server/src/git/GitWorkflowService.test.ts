@@ -12,7 +12,7 @@ import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
+import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("GitWorkflowService", (it) => {
   it.effect("finds a name among the refs of every namespace", () =>
@@ -45,7 +45,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("GitWorkflowServi
             }),
           ),
           Layer.provide(Layer.mock(GitManager.GitManager)({})),
-          Layer.provide(Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({})),
+          Layer.provide(Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({})),
           Layer.provideMerge(GitVcsDriver.layer),
           Layer.provideMerge(VcsProcess.layer),
           Layer.provideMerge(
@@ -72,7 +72,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("GitWorkflowServi
         GitWorkflowService.layer.pipe(
           Layer.provide(Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({})),
           Layer.provide(Layer.mock(GitManager.GitManager)({})),
-          Layer.provide(Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({})),
+          Layer.provide(Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({})),
           Layer.provide(
             Layer.mock(GitVcsDriver.GitVcsDriver)({
               execute: (input) => Effect.die(`spawned Git in ${input.cwd}`),

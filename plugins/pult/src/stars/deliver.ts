@@ -1,4 +1,4 @@
-// The one door for every message Pult sends a Star (xaxis `pult/decisions`, `star-delivery`): under the
+// The one door for every message Pult sends a Star (monore `pult/decisions`, `star-delivery`): under the
 // Star's lock it is queued into its channel's current conversation (the default channel where it names
 // none), else the channel wakes fresh, tagged, at the modes of its newest conversation, else the Star's
 // newest, and the model the Star chose for it, else that conversation's.

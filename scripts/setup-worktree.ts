@@ -131,7 +131,7 @@ for (const file of ENV_FILES) {
   NodeFS.symlinkSync(source, target);
 }
 
-// `.claude/skills` links upstream's skills for Claude Code. xaxis holds no symlinks, so
+// `.claude/skills` links upstream's skills for Claude Code. monore holds no symlinks, so
 // the link is kept out of the tree and made here; anything else at its path is a surprise.
 const skillsLink = NodePath.join(worktree, ".claude", "skills");
 const skillsTarget = NodePath.join("..", ".agents", "skills");

@@ -1,4 +1,4 @@
-// The settings page's Providers (xaxis `pult/tasks/provider-setup-settings.task`): what a provider's
+// The settings page's Providers (monore `pult/tasks/provider-setup-settings.task`): what a provider's
 // row and its setup rows say and offer, and the `server.updateSettings` input a change of the
 // instance writes, from what the server reports. Pure: `ProvidersSection.tsx` follows the servers
 // and sends the commands. Run the test with `node --test src/settings/providers.test.ts`.

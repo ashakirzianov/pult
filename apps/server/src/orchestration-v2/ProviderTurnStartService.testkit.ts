@@ -19,7 +19,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
-import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
+import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as TaskFolders from "../workspace/TaskFolders.ts";
 
@@ -43,7 +43,7 @@ export const layer = Layer.mergeAll(
 // Keep repository detection, branch selection and worktree creation on the real Git path.
 export const layerRealGit = GitWorkflow.layer.pipe(
   Layer.provide(GitManager.layer),
-  Layer.provide(Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({})),
+  Layer.provide(Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({})),
   Layer.provide(
     Layer.mergeAll(
       Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({

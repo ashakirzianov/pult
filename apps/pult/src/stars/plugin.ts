@@ -1,4 +1,4 @@
-// The server's Pult plugin, as the page asks it (`plugins/pult`, xaxis
+// The server's Pult plugin, as the page asks it (`plugins/pult`, monore
 // `pult/tasks/durable-agent-sleep.task/design.md`, The routes): the one file that names its
 // routes, apart from the workbench so `node --test src/stars/plugin.test.ts`
 // can run it. `about` says what the plugin of a server does; the Stars'
@@ -684,8 +684,8 @@ export const readStarTranscriptOfThread = (credential: Credential, id: string, t
     (body) => namedTranscript(body, "transcript"),
   );
 
-/** The plugin's feature of keeping the xaxis checkout of `/` at main's tip (`pult/decisions`, `xaxis-kept-checkouts`): `GET xaxis/kept`, asked only where `about` lists it. */
-export const XAXIS_KEPT_FEATURE = "xaxis-kept";
+/** The plugin's feature of keeping the monore checkout of `/` at main's tip (`pult/decisions`, `monore-kept-checkouts`): `GET monore/kept`, asked only where `about` lists it. */
+export const MONORE_KEPT_FEATURE = "monore-kept";
 
 /** The kept checkout's latest Get latest, as the mover recorded it. */
 export interface KeptAttempt {
@@ -696,7 +696,7 @@ export interface KeptAttempt {
   readonly message: string | null;
 }
 
-/** A kept checkout as `xaxis/kept` answers it. */
+/** A kept checkout as `monore/kept` answers it. */
 export interface KeptCheckout {
   readonly dir: string;
   readonly last: KeptAttempt | null;
@@ -706,7 +706,7 @@ export interface KeptCheckout {
   readonly agentThreads: ReadonlyArray<string>;
 }
 
-/** `GET xaxis/kept`'s answer: the kept folder, its checkouts, and why the CLI could not list them, null when it could. */
+/** `GET monore/kept`'s answer: the kept folder, its checkouts, and why the CLI could not list them, null when it could. */
 export interface KeptAnswer {
   readonly folder: string;
   readonly checkouts: ReadonlyArray<KeptCheckout>;
@@ -738,9 +738,9 @@ const keptAnswer = struct<KeptAnswer>({
   unlisted: optional(string),
 });
 
-/** `GET xaxis/kept`'s answer, decoded; a throw for any other shape. */
+/** `GET monore/kept`'s answer, decoded; a throw for any other shape. */
 export const decodeKept = (body: unknown): KeptAnswer => keptAnswer(body, "kept");
 
-/** The kept xaxis checkout and its mover's state. */
-export const readXaxisKept = (credential: Credential) =>
-  ask(credential, "GET", "/xaxis/kept", decodeKept);
+/** The kept monore checkout and its mover's state. */
+export const readMonoreKept = (credential: Credential) =>
+  ask(credential, "GET", "/monore/kept", decodeKept);

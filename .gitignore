@@ -17,7 +17,7 @@ release/
 release-mock/
 .t3
 .pult
-# Kept out of the tree for xaxis, which holds no symlinks: the reference repositories
+# Kept out of the tree for monore, which holds no symlinks: the reference repositories
 # come from `node scripts/sync-reference-repos.ts`, the skills and speech links from setup.
 /.repos/
 /.claude/skills

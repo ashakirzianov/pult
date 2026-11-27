@@ -1,6 +1,6 @@
 /**
  * The extension contract, version 1: everything an extension can name. Only data crosses it, never
- * a server service, a `Context` or an MCP module; an addition does not bump `CONTRACT` (xaxis
+ * a server service, a `Context` or an MCP module; an addition does not bump `CONTRACT` (monore
  * `pult/decisions`, `extension-contract`; docs/internals/plugins.md).
  */
 import type {

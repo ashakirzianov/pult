@@ -135,7 +135,7 @@ async function showMoreStatuses(anchor: HTMLElement): Promise<void> {
 }
 
 /**
- * The bar under an open file (xaxis `pult/status-bar-cleanup`): while the
+ * The bar under an open file (monore `pult/status-bar-cleanup`): while the
  * active editor is one other than a thread's, a draft's or the settings
  * page's tab, Pult's status strip (`StatusStrip.tsx`), a grid view of its
  * own under the editor part, its "more" a popover of the stock bar's other

@@ -4,7 +4,7 @@
  * state kept in `userData`. Development only so far: the page is the Vite dev
  * server's (`pnpm dev`, http://localhost:5190), or the one `PULT_DEV_SERVER_URL`
  * names for a run beside another; serving the built page under `pult://app`
- * is the deferred part of xaxis `pult/shell-electron-wrapper`.
+ * is the deferred part of monore `pult/shell-electron-wrapper`.
  */
 import * as NodePath from "node:path";
 

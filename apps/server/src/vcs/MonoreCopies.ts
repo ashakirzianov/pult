@@ -1,6 +1,6 @@
-// Pult: a thread's copy of a project kept in xaxis, a second checkout of the root's prefix
+// Pult: a thread's copy of a project kept in monore, a second checkout of the root's prefix
 // made where git worktrees go, which `GitWorkflowService` answers the worktree calls with
-// (xaxis `pult/decisions`, `xaxis-copies`, `xaxis-copy-contract`, `xaxis-copy-cleanup`).
+// (monore `pult/decisions`, `monore-copies`, `monore-copy-contract`, `monore-copy-cleanup`).
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
@@ -20,20 +20,20 @@ import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import type * as GitVcsDriver from "./GitVcsDriver.ts";
-import * as XaxisCli from "./XaxisCli.ts";
+import * as MonoreCli from "./MonoreCli.ts";
 
-/** The line every copy is on, as the driver's status names any xaxis checkout's. */
+/** The line every copy is on, as the driver's status names any monore checkout's. */
 const MAIN = "main";
 
 export const NO_BRANCHES =
-  "A project kept in xaxis has one line, main, and no branches: pass baseRef main and no branch.";
+  "A project kept in monore has one line, main, and no branches: pass baseRef main and no branch.";
 
 /** What a settle did with a thread's copy: removed it, or kept it and why. */
 export type SettledCopy =
   | { readonly removed: true }
   | { readonly removed: false; readonly reason: string };
 
-export interface XaxisCopies {
+export interface MonoreCopies {
   /**
    * `vcs.createWorktree` for a checkout's root: a copy of its prefix on `main`, at main's tip, or
    * at a checkout's head `base` handed out for `refName`, inheriting its stack.
@@ -47,7 +47,7 @@ export interface XaxisCopies {
   /**
    * A base naming the head of the checkout at `cwd`, its commits not landed included, for
    * `delegate_task`'s isolated child to start at: refused during a conflict. Only a base handed out
-   * here starts a copy at a changeset, so the tools' `baseRef` names none (`xaxis-copy-contract`).
+   * here starts a copy at a changeset, so the tools' `baseRef` names none (`monore-copy-contract`).
    */
   readonly base: (cwd: string) => Effect.Effect<string, GitCommandError>;
   /**
@@ -61,8 +61,8 @@ export interface XaxisCopies {
   }) => Effect.Effect<SettledCopy>;
 }
 
-export const make = Effect.fn("XaxisCopies.make")(function* (
-  cli: XaxisCli.XaxisCli,
+export const make = Effect.fn("MonoreCopies.make")(function* (
+  cli: MonoreCli.MonoreCli,
   /** The driver's write locks, so a removal waits out a write the server runs in the copy. */
   writeLocks: KeyedLock.KeyedLock<string>,
 ) {
@@ -74,13 +74,13 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
   const refuse = (operation: string, cwd: string, detail: string, cause?: unknown) =>
     new GitCommandError({
       operation,
-      command: "xaxis copy",
+      command: "monore copy",
       cwd,
       detail,
       ...(cause === undefined ? {} : { cause }),
     });
-  const refused = (error: XaxisCli.XaxisCliError) =>
-    error._tag === "XaxisRefusal" ? error.toCommandError() : error;
+  const refused = (error: MonoreCli.MonoreCliError) =>
+    error._tag === "MonoreRefusal" ? error.toCommandError() : error;
   const realPath = (operation: string, target: string) =>
     fileSystem
       .realPath(target)
@@ -91,10 +91,10 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
       );
   const status = (operation: string, root: string) =>
     cli
-      .json({ operation, cwd: root, args: ["status", "--json"] }, XaxisCli.XaxisStatus)
+      .json({ operation, cwd: root, args: ["status", "--json"] }, MonoreCli.MonoreStatus)
       .pipe(Effect.mapError(refused));
 
-  const worktreesFolder = Effect.fn("XaxisCopies.worktreesFolder")(function* (
+  const worktreesFolder = Effect.fn("MonoreCopies.worktreesFolder")(function* (
     fail: (detail: string, cause?: unknown) => GitCommandError,
   ) {
     const current = yield* settings.getSettings.pipe(
@@ -126,9 +126,9 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
    */
   const bases = new Set<string>();
 
-  const create: XaxisCopies["create"] = Effect.fn("XaxisCopies.create")(
+  const create: MonoreCopies["create"] = Effect.fn("MonoreCopies.create")(
     function* (input, progress) {
-      const operation = "XaxisCopies.create";
+      const operation = "MonoreCopies.create";
       const fail = (detail: string, cause?: unknown) => refuse(operation, input.cwd, detail, cause);
       const newRef = input.newRefName;
       const at = bases.has(input.refName) ? input.refName.split("#")[0] : undefined;
@@ -145,7 +145,7 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
         .pipe(Effect.mapError(refused))).find((checkout) => checkout.dir === root);
       if (source === undefined) {
         return yield* fail(
-          `${root} is not the root of a checkout this machine's xaxis lists: only a checkout's root gets a copy.`,
+          `${root} is not the root of a checkout this machine's monore lists: only a checkout's root gets a copy.`,
         );
       }
       if (source.prefix === "/") {
@@ -179,11 +179,11 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
             // The launch's failure names the code: `checkout-stack-incomplete`,
             // `checkout-stack-outside-prefix`, `unknown-changeset`, `not-on-main`, `too-large`, …
             Effect.mapError((error) =>
-              error._tag === "XaxisRefusal"
+              error._tag === "MonoreRefusal"
                 ? refuse(
                     operation,
                     input.cwd,
-                    `xaxis refused the copy (${error.code}): ${error.message}`,
+                    `monore refused the copy (${error.code}): ${error.message}`,
                     error,
                   )
                 : error,
@@ -193,7 +193,7 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
         const real = yield* realPath(operation, target);
         if (copy.dir !== real || copy.prefix !== source.prefix || copy.server !== source.server) {
           return yield* fail(
-            `xaxis made ${copy.dir}, a checkout of ${copy.prefix} at ${copy.server}, where a checkout of ${source.prefix} at ${source.server} was asked for at ${real}.`,
+            `monore made ${copy.dir}, a checkout of ${copy.prefix} at ${copy.server}, where a checkout of ${source.prefix} at ${source.server} was asked for at ${real}.`,
           );
         }
       }).pipe(
@@ -215,8 +215,8 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
     },
   );
 
-  const remove: XaxisCopies["remove"] = Effect.fn("XaxisCopies.remove")(function* (input) {
-    const operation = "XaxisCopies.remove";
+  const remove: MonoreCopies["remove"] = Effect.fn("MonoreCopies.remove")(function* (input) {
+    const operation = "MonoreCopies.remove";
     const target = path.resolve(input.cwd, input.path);
     const fail = (detail: string, cause?: unknown) => refuse(operation, target, detail, cause);
     // Gone already, as a copy whose launch was rolled back is.
@@ -278,8 +278,8 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
     );
   });
 
-  const base: XaxisCopies["base"] = Effect.fn("XaxisCopies.base")(function* (cwd) {
-    const operation = "XaxisCopies.base";
+  const base: MonoreCopies["base"] = Effect.fn("MonoreCopies.base")(function* (cwd) {
+    const operation = "MonoreCopies.base";
     const read = yield* status(operation, cwd);
     // A conflict's changesets wait outside the head, so a copy at it would miss them.
     if (read.conflict !== null) {
@@ -294,9 +294,9 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
     return handedOut;
   });
 
-  const cleanSettled: XaxisCopies["cleanSettled"] = Effect.fn("XaxisCopies.cleanSettled")(
+  const cleanSettled: MonoreCopies["cleanSettled"] = Effect.fn("MonoreCopies.cleanSettled")(
     function* (input) {
-      const operation = "XaxisCopies.cleanSettled";
+      const operation = "MonoreCopies.cleanSettled";
       if (input.activeThreadIds.length > 0) {
         return {
           removed: false,
@@ -322,5 +322,5 @@ export const make = Effect.fn("XaxisCopies.make")(function* (
     },
   );
 
-  return { create, remove, base, cleanSettled } satisfies XaxisCopies;
+  return { create, remove, base, cleanSettled } satisfies MonoreCopies;
 });

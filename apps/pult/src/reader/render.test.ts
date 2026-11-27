@@ -768,7 +768,7 @@ NodeTest.describe("the reader's frame", () => {
   });
 
   NodeTest.it(
-    "lays out YAML frontmatter as the xaxis front draws properties, cites each row's lines, and keeps the body on its own",
+    "lays out YAML frontmatter as the monore front draws properties, cites each row's lines, and keeps the body on its own",
     async () => {
       const result = await page.evaluate(async () => {
         const frame = window.reader.createReaderFrame();
@@ -791,7 +791,7 @@ NodeTest.describe("the reader's frame", () => {
           "blocked-by-ref-list: [../a.task, design.md]",
           "design-ref: ./design.md",
           "tag-list: [small, in-the-loop]",
-          "xaxis-title: Hello",
+          "monore-title: Hello",
           "date: 2026-01-02",
           "empty:",
           "none-ref-list: []",
@@ -935,7 +935,7 @@ NodeTest.describe("the reader's frame", () => {
           "blocked-by-ref-list",
           "design-ref",
           "tag-list",
-          "xaxis-title",
+          "monore-title",
           "date",
           "empty",
           "none-ref-list",
@@ -1002,12 +1002,12 @@ NodeTest.describe("the reader's frame", () => {
   );
 
   NodeTest.it(
-    "joins a frontmatter ref to its document's folder, from the xaxis root in the kept checkout",
+    "joins a frontmatter ref to its document's folder, from the monore root in the kept checkout",
     async () => {
       const { frontmatterRefPath } = await import("./frontmatter.ts");
-      const task = "/Users/a/.pult/xaxis/ann/pult/tasks/x.task/bundle.md";
+      const task = "/Users/a/.pult/monore/ann/pult/tasks/x.task/bundle.md";
       const ref = (path: string, document = task) =>
-        frontmatterRefPath(path, document, "/Users/a/.pult/xaxis");
+        frontmatterRefPath(path, document, "/Users/a/.pult/monore");
       const design = {
         named: "/ann/pult/tasks/x.task/design.md",
         file: "/ann/pult/tasks/x.task/design.md",

@@ -22,7 +22,7 @@ const gone = checkout("/repos/gone", "gone");
 /**
  * One environment whose files are `files`, its threads in `/repos/pult` but
  * `star`, a Star's conversation in its folder `/stars/beta`, which is no
- * checkout (`checkoutsOf`), its kept xaxis checkout at `/xaxis`.
+ * checkout (`checkoutsOf`), its kept monore checkout at `/monore`.
  */
 function environment(files: Array<string>) {
   const metadataCalls: Array<ReadonlyArray<string>> = [];
@@ -36,7 +36,7 @@ function environment(files: Array<string>) {
       checkoutRoot: threadId === "star" ? "/stars/beta" : "/repos/pult",
       projectId: threadId === "star" ? "star" : "pult",
       checkouts,
-      xaxisRoot: "/xaxis",
+      monoreRoot: "/monore",
       search: async ({ root }, key) => {
         searched.push(`${root} ${key}`);
         if (root === gone.root)
@@ -54,7 +54,7 @@ function environment(files: Array<string>) {
     roots: () =>
       rootsKey(
         checkouts.map((checkout) => checkout.root),
-        "/xaxis",
+        "/monore",
       ),
     publishMs: 0,
     onDidChange: (listener) => void changed.push(listener),
@@ -94,7 +94,7 @@ NodeTest.test(
       "/repos/pult/x/c.ts",
       "/repos/pult/y/c.ts",
       "/etc/hosts",
-      "/xaxis/owner/track/about.md",
+      "/monore/owner/track/about.md",
       "/stars/beta/notes.md",
     ];
     const { links, verdicts, settle, reroot, metadataCalls, searched } = environment(files);
@@ -152,7 +152,7 @@ NodeTest.test(
         notified.push(ref.path);
         publish();
       });
-    files.push("/xaxis/etc/hosts");
+    files.push("/monore/etc/hosts");
     settle("t1", "2026-11-24T12:00:00Z");
     NodeAssert.deepEqual(
       refs.map((ref) => links.verdict(ref)),
@@ -165,7 +165,7 @@ NodeTest.test(
       refs.map((ref) => links.verdict(ref)),
       [true, true, true, true, false, true],
     );
-    NodeAssert.deepEqual(metadataCalls, [["/xaxis/etc/hosts", "/repos/pult/src/missing.ts"]]);
+    NodeAssert.deepEqual(metadataCalls, [["/monore/etc/hosts", "/repos/pult/src/missing.ts"]]);
     NodeAssert.deepEqual(searched.toSorted(), [
       "/repos/axis src/missing.ts",
       "/repos/gone src/missing.ts",
@@ -197,8 +197,8 @@ NodeTest.test(
 
     // A worktree thread ends its turn and the store lists the same checkouts in another order.
     NodeAssert.equal(
-      rootsKey(["/repos/axis", "/repos/pult"], "/xaxis"),
-      rootsKey(["/repos/pult", "/repos/axis"], "/xaxis"),
+      rootsKey(["/repos/axis", "/repos/pult"], "/monore"),
+      rootsKey(["/repos/pult", "/repos/axis"], "/monore"),
       "the same checkouts in another order are the same roots",
     );
     notified.length = 0;

@@ -12,7 +12,7 @@ import { pultResource } from "../files/workspace.ts";
  * The workbench's clipboard (`src/services.ts`), which takes the files
  * desktop VS Code's explorer copied as its resources while it holds none of
  * its own, so the stock explorer Paste pastes them, Cmd+V and the context
- * menu alike (xaxis `pult/tasks/paste-files-copied-in-vscode.task`). Only the
+ * menu alike (monore `pult/tasks/paste-files-copied-in-vscode.task`). Only the
  * desktop reads them (`window.pultDesktop.clipboard`); in a browser tab it is
  * the stock service. None while the explorer's last Cut or Copy was a Cut,
  * since the stock Paste then moves what it is handed (`cutPending`).

@@ -1,4 +1,4 @@
-// What is asked of the user, told outside the page (xaxis
+// What is asked of the user, told outside the page (monore
 // `pult/tasks/notify-outside-the-page.task`; `pult/decisions`,
 // `notifications`): the dock badge, the posted asks the panel shows whoever
 // posted them and the secrets agents wait for, and a desktop notification for

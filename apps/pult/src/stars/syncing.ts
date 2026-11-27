@@ -127,7 +127,7 @@ const threadExists = (environmentId: string, threadId: string) =>
     );
 
 /**
- * The Stars' sync (xaxis `pult/tasks/star-sync.task`,
+ * The Stars' sync (monore `pult/tasks/star-sync.task`,
  * `pult/tasks/star-repo-per-star.task`): each Star's folder on each of its
  * homes is a repository of its own, which the page makes one where it is
  * not (and refuses where its Stars directory is still one repository for

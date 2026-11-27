@@ -656,7 +656,7 @@ export const make = Effect.gen(function* () {
       const remembered = yield* git
         .branchPullRequest({ cwd, branch: thread.branch }, { refresh, confirmTerminal: false })
         .pipe(
-          // Pult: a folder that is not a git repository, an xaxis root among them, has no pull request.
+          // Pult: a folder that is not a git repository, a monore root among them, has no pull request.
           Effect.catchIf(
             (error) => error._tag === "GitCommandError" && error.reason === "not_a_repository",
             () => Effect.succeed(null),

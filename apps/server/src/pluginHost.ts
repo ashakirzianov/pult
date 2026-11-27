@@ -11,7 +11,7 @@ export * as Context from "effect/Context";
 export * as Digest from "effect/crypto/Digest";
 // The Pult plugin's Stars: the sleep rule and the transcripts read the records' times.
 export * as DateTime from "effect/DateTime";
-// The Pult plugin's kept xaxis checkout: the automatic-fetch interval it moves at.
+// The Pult plugin's kept monore checkout: the automatic-fetch interval it moves at.
 export * as Duration from "effect/Duration";
 export * as Effect from "effect/Effect";
 export * as Exit from "effect/Exit";
@@ -88,13 +88,13 @@ export * as ThreadLaunchGuard from "./orchestration-v2/ThreadLaunchGuard.ts";
 export * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 // The Pult plugin's usage limits: pult_usage_limits reads this server's providers and hub sources.
 export * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-// The Pult plugin's kept xaxis checkout: the interval it moves at.
+// The Pult plugin's kept monore checkout: the interval it moves at.
 export * as VcsAutomaticFetchInterval from "./vcs/VcsAutomaticFetchInterval.ts";
-// The Pult plugin's kept xaxis checkout: the status it refreshes after a move.
+// The Pult plugin's kept monore checkout: the status it refreshes after a move.
 export * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
-// The Pult plugin's kept xaxis checkout: the CLI's registry, Get latest, and a refusal's code.
-export * as XaxisCli from "./vcs/XaxisCli.ts";
-export * as XaxisVcsDriver from "./vcs/XaxisVcsDriver.ts";
+// The Pult plugin's kept monore checkout: the CLI's registry, Get latest, and a refusal's code.
+export * as MonoreCli from "./vcs/MonoreCli.ts";
+export * as MonoreVcsDriver from "./vcs/MonoreVcsDriver.ts";
 // The Pult plugin's schedules: the watch of the Stars directory says when a Star's schedules changed.
 export * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";

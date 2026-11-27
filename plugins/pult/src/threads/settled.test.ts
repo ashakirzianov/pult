@@ -15,7 +15,7 @@ import {
 import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 
-import { Effect, FileSystem, Layer, XaxisVcsDriver } from "../host.ts";
+import { Effect, FileSystem, Layer, MonoreVcsDriver } from "../host.ts";
 import { at, fakeServer } from "../stars/testing.ts";
 import * as SettledThreads from "./settled.ts";
 
@@ -167,7 +167,7 @@ describe("the settle reactions", () => {
   );
 
   it.effect(
-    "remove a settled thread's xaxis copy, naming who else is on it, not a fenced link's or a deleted parent's",
+    "remove a settled thread's monore copy, naming who else is on it, not a fenced link's or a deleted parent's",
     () =>
       Effect.gen(function* () {
         const h = yield* harness;
@@ -182,7 +182,7 @@ describe("the settle reactions", () => {
         const copy = Effect.fn("copy")(function* (name: string) {
           const at = `${h.server.tmp}/.t3/worktrees/${name}`;
           yield* fs.makeDirectory(at, { recursive: true });
-          yield* fs.writeFileString(`${at}/${XaxisVcsDriver.XAXIS_MARKER}`, "");
+          yield* fs.writeFileString(`${at}/${MonoreVcsDriver.MONORE_MARKER}`, "");
           return at;
         });
         const linkCopy = yield* copy("link");

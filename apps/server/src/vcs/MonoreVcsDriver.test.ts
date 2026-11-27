@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - the fixture drives the real CLI and server as a person would.
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
-// Pult: an xaxis checkout's source control through the services the RPCs call, over a
-// real `xaxis` against `scm-server serve` on a memory store (xaxis
+// Pult: a monore checkout's source control through the services the RPCs call, over a
+// real `monore` against `scm-server serve` on a memory store (monore
 // `pult/tasks/xaxis-source-control.task`, "Test plan"). Skipped, with the reason printed,
-// unless XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the two binaries.
+// unless MONORE_TEST_BIN and MONORE_TEST_SERVER_BIN name the two binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -24,44 +24,44 @@ import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
-import { XAXIS_HEAD_REF, XAXIS_TIP_REF } from "./XaxisVcsDriver.ts";
-import * as XaxisCli from "./XaxisCli.ts";
-import * as XaxisVcsDriver from "./XaxisVcsDriver.ts";
+import { MONORE_HEAD_REF, MONORE_TIP_REF } from "./MonoreVcsDriver.ts";
+import * as MonoreCli from "./MonoreCli.ts";
+import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
 import {
   committed,
   landed,
   skipped,
-  startXaxisTestServer,
+  startMonoreTestServer,
   suiteName,
   UNKNOWN_TOKEN,
-  XAXIS,
-  type XaxisTestServer,
-} from "./XaxisVcsDriver.testkit.ts";
+  MONORE,
+  type MonoreTestServer,
+} from "./MonoreVcsDriver.testkit.ts";
 
-const suite = suiteName("XaxisVcsDriver");
+const suite = suiteName("MonoreVcsDriver");
 
 const platform = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
 describe.skipIf(skipped)(suite, () => {
-  let harness: XaxisTestServer;
+  let harness: MonoreTestServer;
   let scratch = "";
   let a = "";
   let b = "";
   const hashes = { first: "", stacked: "", other1: "", other2: "" };
-  const xaxis = (cwd: string, ...args: string[]) => harness.xaxis(cwd, ...args);
+  const monore = (cwd: string, ...args: string[]) => harness.monore(cwd, ...args);
 
   beforeAll(async () => {
-    harness = await startXaxisTestServer();
+    harness = await startMonoreTestServer();
     scratch = harness.scratch;
-    xaxis(scratch, "--server", harness.address, "checkout", "/test/repo", "a");
-    xaxis(scratch, "--server", harness.address, "checkout", "/test/repo", "b");
+    monore(scratch, "--server", harness.address, "checkout", "/test/repo", "a");
+    monore(scratch, "--server", harness.address, "checkout", "/test/repo", "b");
     a = NodePath.join(scratch, "a");
     b = NodePath.join(scratch, "b");
     NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\ntwo\n");
     NodeFS.mkdirSync(NodePath.join(a, "d"));
     NodeFS.writeFileSync(NodePath.join(a, "d", "g.txt"), "x\n");
-    xaxis(a, "commit", "-m", "first files");
-    hashes.first = landed(xaxis(a, "land"));
+    monore(a, "commit", "-m", "first files");
+    hashes.first = landed(monore(a, "land"));
   });
 
   afterAll(() => harness?.stop());
@@ -72,12 +72,12 @@ describe.skipIf(skipped)(suite, () => {
       Layer.provide(
         Layer.mock(KnownWorkspaces.KnownWorkspaces)({ contains: () => Effect.succeed(true) }),
       ),
-      Layer.provideMerge(XaxisVcsDriver.layer),
+      Layer.provideMerge(MonoreVcsDriver.layer),
       Layer.provideMerge(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer))),
       Layer.provideMerge(GitVcsDriver.layer),
       Layer.provideMerge(VcsProcess.layer),
-      Layer.provideMerge(ServerSettings.layerTest({ xaxisBinaryPath: XAXIS! })),
-      Layer.provideMerge(ServerConfig.layerTest(scratch, { prefix: "t3-xaxis-config-" })),
+      Layer.provideMerge(ServerSettings.layerTest({ monoreBinaryPath: MONORE! })),
+      Layer.provideMerge(ServerConfig.layerTest(scratch, { prefix: "t3-monore-config-" })),
       Layer.provideMerge(platform),
     );
 
@@ -95,11 +95,11 @@ describe.skipIf(skipped)(suite, () => {
           headSha: hashes.first,
           hasWorkingTreeChanges: false,
           workingTree: { rootPath: a, files: [], insertions: 0, deletions: 0 },
-          xaxis: { conflicts: [], interrupted: null },
+          monore: { conflicts: [], interrupted: null },
         });
 
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\n");
-        hashes.stacked = committed(xaxis(a, "commit", "-m", "second\n\nits body", "f.txt"));
+        hashes.stacked = committed(monore(a, "commit", "-m", "second\n\nits body", "f.txt"));
         NodeFS.rmSync(NodePath.join(a, "d", "g.txt"));
         NodeFS.writeFileSync(NodePath.join(a, "n.txt"), "new\n");
         // From a folder inside the checkout, its root's status.
@@ -122,11 +122,11 @@ describe.skipIf(skipped)(suite, () => {
         assert.equal(yield* workflow.currentBranch(a), "main");
 
         NodeFS.writeFileSync(NodePath.join(b, "o.txt"), "other\n");
-        xaxis(b, "commit", "-m", "from b");
-        hashes.other1 = landed(xaxis(b, "land"));
+        monore(b, "commit", "-m", "from b");
+        hashes.other1 = landed(monore(b, "land"));
         NodeFS.writeFileSync(NodePath.join(b, "o.txt"), "other again\n");
-        xaxis(b, "commit", "-m", "from b again");
-        hashes.other2 = landed(xaxis(b, "land"));
+        monore(b, "commit", "-m", "from b again");
+        hashes.other2 = landed(monore(b, "land"));
         assert.deepEqual(yield* workflow.remoteStatus({ cwd: a }), {
           hasUpstream: true,
           aheadCount: 1,
@@ -134,17 +134,17 @@ describe.skipIf(skipped)(suite, () => {
           pr: null,
         });
 
-        const token = process.env.XAXIS_TOKEN;
-        process.env.XAXIS_TOKEN = UNKNOWN_TOKEN;
+        const token = process.env.MONORE_TOKEN;
+        process.env.MONORE_TOKEN = UNKNOWN_TOKEN;
         const signedOut = yield* workflow
           .remoteStatus({ cwd: a })
-          .pipe(Effect.ensuring(Effect.sync(() => (process.env.XAXIS_TOKEN = token))));
+          .pipe(Effect.ensuring(Effect.sync(() => (process.env.MONORE_TOKEN = token))));
         assert.deepEqual(signedOut, {
           hasUpstream: true,
           aheadCount: 1,
           behindCount: 0,
           pr: null,
-          xaxisTip: "signed-out",
+          monoreTip: "signed-out",
         });
       }),
     );
@@ -297,11 +297,11 @@ describe.skipIf(skipped)(suite, () => {
             review
               .getLog({ cwd: a, ...input })
               .pipe(Effect.map((result) => result.commits.map((commit) => commit.sha)));
-          const both: [string, string] = [XAXIS_HEAD_REF, XAXIS_TIP_REF];
+          const both: [string, string] = [MONORE_HEAD_REF, MONORE_TIP_REF];
           assert.deepEqual(yield* page({ refs: both, limit: 3 }), [other2, other1, stacked]);
           assert.deepEqual(yield* page({ refs: both, skip: 3, limit: 3 }), [first]);
           assert.deepEqual(yield* page({ refs: ["HEAD"] }), [stacked, first]);
-          assert.deepEqual(yield* page({ refs: [XAXIS_TIP_REF] }), [other2, other1, first]);
+          assert.deepEqual(yield* page({ refs: [MONORE_TIP_REF] }), [other2, other1, first]);
           assert.deepEqual(yield* page({ refs: [first], limit: 1 }), [first]);
           // Several hashes, each placed on the incoming line or the checkout's own.
           assert.deepEqual(yield* page({ refs: [first, other1] }), [other1, first]);
@@ -312,7 +312,7 @@ describe.skipIf(skipped)(suite, () => {
           assert.include(unplaced.message, `${nowhere} is on neither`);
 
           const [tip, , head] = (yield* review.getLog({ cwd: a, refs: both, limit: 3 })).commits;
-          assert.deepEqual(tip?.refs, [XAXIS_TIP_REF]);
+          assert.deepEqual(tip?.refs, [MONORE_TIP_REF]);
           assert.deepEqual(
             {
               refs: head?.refs,
@@ -322,7 +322,7 @@ describe.skipIf(skipped)(suite, () => {
               author: [head?.authorName, head?.authorEmail],
             },
             {
-              refs: [XAXIS_HEAD_REF],
+              refs: [MONORE_HEAD_REF],
               parents: [first],
               subject: "second",
               message: "second\n\nits body",
@@ -331,16 +331,16 @@ describe.skipIf(skipped)(suite, () => {
           );
 
           assert.deepEqual(yield* review.getRefs({ cwd: a }), {
-            head: { ref: XAXIS_HEAD_REF, sha: stacked },
+            head: { ref: MONORE_HEAD_REF, sha: stacked },
             refs: [
-              { name: XAXIS_HEAD_REF, sha: stacked, upstream: XAXIS_TIP_REF },
-              { name: XAXIS_TIP_REF, sha: other2, upstream: null },
+              { name: MONORE_HEAD_REF, sha: stacked, upstream: MONORE_TIP_REF },
+              { name: MONORE_TIP_REF, sha: other2, upstream: null },
             ],
           });
         }),
     );
 
-    it.effect("commits, lands, gets latest, and refuses what xaxis has not", () =>
+    it.effect("commits, lands, gets latest, and refuses what monore has not", () =>
       Effect.gen(function* () {
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         const events: GitActionProgressEvent[] = [];
@@ -363,7 +363,7 @@ describe.skipIf(skipped)(suite, () => {
           );
 
         const pr = yield* Effect.flip(act({ action: "commit_push_pr", commitMessage: "x" }));
-        assert.include(pr.message, "xaxis has no pull requests or branches");
+        assert.include(pr.message, "monore has no pull requests or branches");
         const unnamed = yield* Effect.flip(act({ action: "commit" }));
         assert.include(unnamed.message, "needs a message");
 
@@ -415,11 +415,11 @@ describe.skipIf(skipped)(suite, () => {
 
         // Land alone, a commit made outside Pult; Commit & Land with nothing to commit lands too.
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\nfour\n");
-        xaxis(a, "commit", "-m", "fifth");
+        monore(a, "commit", "-m", "fifth");
         const beforeLand = yield* refsOf();
         const land = yield* act({ action: "push" });
         // The Graph's stale head and tip after a land: their history as it is now.
-        assert.deepEqual(yield* shas(beforeLand), yield* shas([XAXIS_HEAD_REF, XAXIS_TIP_REF]));
+        assert.deepEqual(yield* shas(beforeLand), yield* shas([MONORE_HEAD_REF, MONORE_TIP_REF]));
         assert.equal((yield* shas(beforeLand))[1], beforeLand[1]);
         // A land over a moved main rebased the stack, so its old head is nowhere.
         assert.include(
@@ -435,7 +435,7 @@ describe.skipIf(skipped)(suite, () => {
           ],
         );
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "one\nTWO\nthree\nfour\nfive\n");
-        xaxis(a, "commit", "-m", "sixth");
+        monore(a, "commit", "-m", "sixth");
         const onlyLand = yield* act({ action: "commit_push", commitMessage: "unused" });
         assert.deepEqual(
           [onlyLand.commit.status, onlyLand.push.status],
@@ -471,8 +471,8 @@ describe.skipIf(skipped)(suite, () => {
           );
 
         NodeFS.writeFileSync(NodePath.join(b, "f.txt"), "from b\n");
-        xaxis(b, "commit", "-m", "b's f");
-        xaxis(b, "land");
+        monore(b, "commit", "-m", "b's f");
+        monore(b, "land");
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "from a\n");
         const failed = yield* Effect.flip(act({ action: "commit_push", commitMessage: "a's f" }));
         const sentence =
@@ -486,27 +486,27 @@ describe.skipIf(skipped)(suite, () => {
           phase: "push",
           message: sentence,
         });
-        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).xaxis, {
+        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).monore, {
           conflicts: [{ path: "f.txt", markers: true }],
           interrupted: null,
         });
 
         yield* workflow.resolveConflict({ cwd: a, paths: ["f.txt"], side: "mine" });
         assert.equal(NodeFS.readFileSync(NodePath.join(a, "f.txt"), "utf8"), "from a\n");
-        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).xaxis?.conflicts, [
+        assert.deepEqual((yield* workflow.localStatus({ cwd: a })).monore?.conflicts, [
           { path: "f.txt", markers: false },
         ]);
 
         const through = yield* act({ action: "commit_push", commitMessage: "a's f, kept" });
         assert.equal(through.push.status, "pushed");
         const after = yield* workflow.localStatus({ cwd: a });
-        assert.deepEqual([after.hasWorkingTreeChanges, after.xaxis?.conflicts], [false, []]);
+        assert.deepEqual([after.hasWorkingTreeChanges, after.monore?.conflicts], [false, []]);
 
         // Take latest leaves nothing to commit: Commit & Land clears the conflict, landing none.
-        xaxis(b, "goto");
+        monore(b, "goto");
         NodeFS.writeFileSync(NodePath.join(b, "f.txt"), "from b again\n");
-        xaxis(b, "commit", "-m", "b's f again");
-        xaxis(b, "land");
+        monore(b, "commit", "-m", "b's f again");
+        monore(b, "land");
         NodeFS.writeFileSync(NodePath.join(a, "f.txt"), "from a again\n");
         yield* Effect.flip(act({ action: "commit_push", commitMessage: "a's f again" }));
         yield* workflow.resolveConflict({ cwd: a, paths: ["f.txt"], side: "main" });
@@ -516,18 +516,18 @@ describe.skipIf(skipped)(suite, () => {
           ["skipped_no_changes", "skipped_up_to_date"],
         );
         const latest = yield* workflow.localStatus({ cwd: a });
-        assert.deepEqual([latest.hasWorkingTreeChanges, latest.xaxis?.conflicts], [false, []]);
+        assert.deepEqual([latest.hasWorkingTreeChanges, latest.monore?.conflicts], [false, []]);
         assert.equal(NodeFS.readFileSync(NodePath.join(a, "f.txt"), "utf8"), "from b again\n");
       }),
     );
 
     it.effect("queues one checkout's verbs, so none meets the CLI's lock", () =>
       Effect.gen(function* () {
-        const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
+        const driver = yield* MonoreVcsDriver.MonoreVcsDriver;
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         NodeFS.writeFileSync(NodePath.join(a, "q.txt"), "queued\n");
-        xaxis(a, "commit", "-m", "for b to get");
-        xaxis(a, "land");
+        monore(a, "commit", "-m", "for b to get");
+        monore(a, "land");
         // Two Get latests at once: the second waits for the first, then finds main where it is.
         const twice = yield* Effect.all([driver.getLatest(b), driver.getLatest(b)], {
           concurrency: "unbounded",
@@ -556,7 +556,7 @@ describe.skipIf(skipped)(suite, () => {
         if (latest._tag === "Failure")
           assert.include(
             ["uncommitted-edits", "unlanded-changes"],
-            XaxisCli.refusalCode(latest.failure),
+            MonoreCli.refusalCode(latest.failure),
           );
       }),
     );

@@ -14,7 +14,7 @@ function threadAlreadyExists(error: unknown): boolean {
 /**
  * The thread id a draft keeps after its send failed: the one it sent, so a retry is the same
  * launch, unless that id can never be launched again, its bootstrap thread deleted or the thread
- * already created (Pult: a draft left unfinalized after its thread was created, xaxis
+ * already created (Pult: a draft left unfinalized after its thread was created, monore
  * `pult/tasks/stale-draft-thread-id.task`), when it takes a fresh one.
  */
 export function failedDraftThreadId(

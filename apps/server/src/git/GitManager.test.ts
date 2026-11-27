@@ -54,7 +54,7 @@ import {
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as XaxisVcsDriver from "../vcs/XaxisVcsDriver.ts";
+import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import type {
@@ -825,7 +825,7 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
             Layer.provide(
               GitWorkflowService.layer.pipe(
                 Layer.provide(Layer.succeed(GitManager.GitManager, manager)),
-                Layer.provide(Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({})),
+                Layer.provide(Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({})),
                 Layer.provide(
                   VcsDriverRegistry.layer.pipe(
                     Layer.provide(VcsProjectConfig.layer),
@@ -6147,10 +6147,10 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
         const events: string[] = [];
         const workflows = yield* Effect.forEach([0, 1], () =>
           GitWorkflowService.make.pipe(
-            // Pult: no xaxis checkout here.
+            // Pult: no monore checkout here.
             Effect.provideService(
-              XaxisVcsDriver.XaxisVcsDriver,
-              {} as XaxisVcsDriver.XaxisVcsDriver["Service"],
+              MonoreVcsDriver.MonoreVcsDriver,
+              {} as MonoreVcsDriver.MonoreVcsDriver["Service"],
             ),
             // Cache the real filesystem result so startImmediately reaches lease acquisition.
             Effect.provideService(FileSystem.FileSystem, {

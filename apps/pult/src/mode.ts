@@ -19,7 +19,7 @@ import { Registry } from "@codingame/monaco-vscode-api/vscode/vs/platform/regist
 import { writeUserValue } from "./settings/userSetting.ts";
 
 /**
- * Pult's mode (xaxis `pult/vscode-mode`): by default Pult's own layout,
+ * Pult's mode (monore `pult/vscode-mode`): by default Pult's own layout,
  * which hides and rearranges much of VS Code's chrome; VS Code mode shows
  * what the default hides, for an extension that needs it. One setting,
  * `pult.mode`, in the user's settings under Pult.

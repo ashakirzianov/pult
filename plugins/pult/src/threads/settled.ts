@@ -1,6 +1,6 @@
 // What settling or archiving a thread does beyond upstream's settle, subscribed to its committed
 // `thread.settled` and `thread.archived` (`pult/decisions`, `thread-events`, `settle-closes-previews`,
-// `settle-stops-agent-servers`, `settle-cascades-to-subagents`, `xaxis-copy-cleanup`). A reaction acts
+// `settle-stops-agent-servers`, `settle-cascades-to-subagents`, `monore-copy-cleanup`). A reaction acts
 // only while the thread is still settled (or archived); a failing one is logged, and the rest go on.
 import {
   CommandId,
@@ -23,7 +23,7 @@ import {
   ServerSettings,
   Stream,
   ThreadManagementService,
-  XaxisVcsDriver,
+  MonoreVcsDriver,
 } from "../host.ts";
 
 export const make = Effect.fn("SettledThreads.make")(function* () {
@@ -32,7 +32,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
   const ports = yield* PortScanner.PortDiscovery;
   const projects = yield* ProjectService.ProjectService;
   const settings = yield* ServerSettings.ServerSettingsService;
-  const xaxis = yield* XaxisVcsDriver.XaxisVcsDriver;
+  const monore = yield* MonoreVcsDriver.MonoreVcsDriver;
   const random = yield* SecureRandom.SecureRandom;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -108,7 +108,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     }
   });
 
-  /** Its copy of a project kept in xaxis goes once no other thread is on it and it holds no work;
+  /** Its copy of a project kept in monore goes once no other thread is on it and it holds no work;
    * a kept one is logged with why. A copy a settle script runs in is the script's, a fenced link's
    * is not ours to touch, a project's own root is no copy, and a subagent's shared worktree is its
    * parent's, a deleted parent's included. */
@@ -118,7 +118,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     const worktreePath = thread.worktreePath;
     if (worktreePath === null) return;
     if (thread.linkOrigin !== undefined && linkOriginIsFenced(thread.linkOrigin)) return;
-    if (!(yield* fs.exists(path.join(worktreePath, XaxisVcsDriver.XAXIS_MARKER)))) return;
+    if (!(yield* fs.exists(path.join(worktreePath, MonoreVcsDriver.MONORE_MARKER)))) return;
     const projectShells = yield* projects.listShells();
     const project = projectShells.find((candidate) => candidate.id === thread.projectId);
     if (
@@ -142,7 +142,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     const activeThreadIds = sharing
       .filter((other) => other.id !== thread.id && other.settledOverride !== "settled")
       .map((other) => other.id);
-    const copy = yield* xaxis.cleanSettledCopy({
+    const copy = yield* monore.cleanSettledCopy({
       cwd: project.workspaceRoot,
       path: worktreePath,
       activeThreadIds,
@@ -196,7 +196,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     yield* whileSettled(event, "previews", (thread) => previews.close({ threadId: thread.id }));
     yield* whileSettled(event, "agent servers", (thread) => stopAgentServers(thread.id));
     yield* whileSettled(event, "subagents", (thread) => settleSubagents(thread.id));
-    yield* whileSettled(event, "xaxis copy", cleanCopy);
+    yield* whileSettled(event, "monore copy", cleanCopy);
   });
 
   const onArchived = (event: OrchestrationV2DomainEvent) =>

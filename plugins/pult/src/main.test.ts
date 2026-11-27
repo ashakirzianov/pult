@@ -50,7 +50,7 @@ import * as VcsStatusBroadcaster from "../../../apps/server/src/vcs/VcsStatusBro
 import * as WorkflowForge from "../../../apps/server/src/workflows/WorkflowForge.ts";
 import * as WorkspacePaths from "../../../apps/server/src/workspace/WorkspacePaths.ts";
 import * as WorktreeSetupTracker from "../../../apps/server/src/project/WorktreeSetupTracker.ts";
-import * as XaxisVcsDriver from "../../../apps/server/src/vcs/XaxisVcsDriver.ts";
+import * as MonoreVcsDriver from "../../../apps/server/src/vcs/MonoreVcsDriver.ts";
 import * as McpProviderSessions from "../../../packages/provider-core/src/server/McpProviderSessions.ts";
 import * as RuntimeLayer from "../../../apps/server/src/orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../../../apps/server/src/persistence/Sqlite.ts";
@@ -182,7 +182,7 @@ it.effect("the plugin activates over the production orchestration services", () 
             platform,
             McpServer.McpServer.layer,
             // Not the runtime's either: the server's source control layers sit beside it.
-            Layer.mock(XaxisVcsDriver.XaxisVcsDriver)({}),
+            Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({}),
             Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
             // Nor its preview layers, which the settle reactions ask for.
             Layer.mock(PreviewManager.PreviewManager)({}),
@@ -263,7 +263,7 @@ it.effect("the server activates the plugin, which lists stars in about and serve
           "star-channel-history",
           "star-channel-settings",
           "usage-limits",
-          "xaxis-kept",
+          "monore-kept",
           "star-schedules",
         ],
       },

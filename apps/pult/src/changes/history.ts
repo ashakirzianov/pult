@@ -99,7 +99,7 @@ export function historyItem(
   };
 }
 
-/** A commit's short hash: git's first `digits`, an xaxis changeset's (`sha256:…`) seven after its prefix. */
+/** A commit's short hash: git's first `digits`, a monore changeset's (`sha256:…`) seven after its prefix. */
 function shortHash(sha: string, digits: number): string {
   return sha.startsWith("sha256:") ? sha.slice(7, 14) : sha.slice(0, digits);
 }

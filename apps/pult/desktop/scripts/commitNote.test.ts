@@ -16,7 +16,7 @@ function tree(...markers: string[]): string {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pult-commit-note-"));
   roots.push(root);
   for (const marker of markers) {
-    const contents = marker === ".xaxis-checkout" ? "b35e21e2-f6dd-41b3-af91-eff48e93bb17\n" : "";
+    const contents = marker === ".monore-checkout" ? "b35e21e2-f6dd-41b3-af91-eff48e93bb17\n" : "";
     NodeFS.writeFileSync(NodePath.join(root, marker), contents);
   }
   return root;
@@ -52,20 +52,20 @@ NodeTest.describe("commitNote", () => {
     NodeAssert.equal(commitNote(root, dirty), `${sha} dirty`);
   });
 
-  NodeTest.it("names an xaxis checkout's changeset, dirty while it has changes", () => {
-    const root = tree(".xaxis-checkout");
-    const clean = exec({ "xaxis status --json": status([]) });
+  NodeTest.it("names a monore checkout's changeset, dirty while it has changes", () => {
+    const root = tree(".monore-checkout");
+    const clean = exec({ "monore status --json": status([]) });
     NodeAssert.equal(commitNote(root, clean), HEAD);
-    NodeAssert.deepEqual(clean.calls, ["xaxis status --json"]);
-    const dirty = exec({ "xaxis status --json": status([{ kind: "modified", path: "x" }]) });
+    NodeAssert.deepEqual(clean.calls, ["monore status --json"]);
+    const dirty = exec({ "monore status --json": status([{ kind: "modified", path: "x" }]) });
     NodeAssert.equal(commitNote(root, dirty), `${HEAD} dirty`);
   });
 
   NodeTest.it("refuses a tree that is both, and a checkout it cannot read as settled", () => {
-    NodeAssert.throws(() => commitNote(tree(".git", ".xaxis-checkout"), exec({})), /both/);
+    NodeAssert.throws(() => commitNote(tree(".git", ".monore-checkout"), exec({})), /both/);
     const conflicted = JSON.stringify({ ...JSON.parse(status([])), conflict: { paths: ["x"] } });
     NodeAssert.throws(
-      () => commitNote(tree(".xaxis-checkout"), exec({ "xaxis status --json": conflicted })),
+      () => commitNote(tree(".monore-checkout"), exec({ "monore status --json": conflicted })),
       /not a settled checkout/,
     );
   });

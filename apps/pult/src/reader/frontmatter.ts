@@ -1,6 +1,6 @@
 // A Markdown file's leading YAML mapping as the reader shows it: each entry
-// a line, drawn as the xaxis front draws an object's properties, its rules
-// duplicated here (`~/repos/xaxis`, `lib/browser/property-names.ts`,
+// a line, drawn as the monore front draws an object's properties, its rules
+// duplicated here (`~/repos/monore`, `lib/browser/property-names.ts`,
 // `titles.ts`, `properties.ts`, `refs.ts`, `dates.ts`, `days.ts`, `time.ts`,
 // `app/components/type-icon.tsx`, `property-cell.tsx`): the kind by the key's
 // last token, the label its other words, a glyph per kind, a date and a time
@@ -36,8 +36,8 @@ const words = (tokens: ReadonlyArray<string>) =>
 
 /**
  * A key's kind by its last token, a trailing `list` wrapping it, else a
- * string, and its label: its other words capitalised, `xaxis-` dropped
- * (`blocked-by-ref-list` "Blocked By", `xaxis-title` "Title"), a key that is
+ * string, and its label: its other words capitalised, `monore-` dropped
+ * (`blocked-by-ref-list` "Blocked By", `monore-title` "Title"), a key that is
  * all suffix keeping its words (`date` "Date"). A key that is no slug is a
  * string, labelled whole.
  */
@@ -58,7 +58,7 @@ function propertyName(key: string): { readonly label: string; readonly kind: Kin
   }
   for (let at = 0; at < lists; at++) kind = { kind: "list", of: kind };
   let base = tokens.slice(0, end);
-  if (base[0] === "xaxis" && base.length > 1) base = base.slice(1);
+  if (base[0] === "monore" && base.length > 1) base = base.slice(1);
   return { label: words(base.length > 0 ? base : tokens) || key, kind };
 }
 
@@ -107,14 +107,14 @@ function shownInstant(text: string, timeZone?: string): string | undefined {
   return `${yearText}-${pad(field("month"))}-${pad(field("day"))} ${pad(field("hour"))}:${pad(field("minute"))}:${pad(field("second"))}`;
 }
 
-/** xaxis's bundle types: a folder `<stem>.<type>` whose head is its `bundle.md`. */
+/** monore's bundle types: a folder `<stem>.<type>` whose head is its `bundle.md`. */
 const BUNDLE_TYPES: ReadonlyArray<string> = ["iam", "mcp", "api", "img", "task"];
 
 /**
  * The file a frontmatter ref in `document` names, as the front reads one: a
- * path from the xaxis root as written; a bare one, or one starting `./` or
- * `../`, joined to the folder of `document`, read from the xaxis root while
- * `document` is in the kept checkout `xaxisRoot` (both `pult:` paths), so the
+ * path from the monore root as written; a bare one, or one starting `./` or
+ * `../`, joined to the folder of `document`, read from the monore root while
+ * `document` is in the kept checkout `monoreRoot` (both `pult:` paths), so the
  * click's resolver opens it there; a bundle (`x.task`) its `bundle.md`.
  * `named` is the path the ref spells, the bundle's own for one. Undefined for
  * a spelling that names no file: empty, a `:`, repeated slashes, a `~`, dot
@@ -123,7 +123,7 @@ const BUNDLE_TYPES: ReadonlyArray<string> = ["iam", "mcp", "api", "img", "task"]
 export function frontmatterRefPath(
   ref: string,
   document: string,
-  xaxisRoot: string | null,
+  monoreRoot: string | null,
 ): { readonly named: string; readonly file: string } | undefined {
   if (ref === "" || ref.includes(":")) return undefined;
   const segments = (ref.startsWith("/") ? ref.slice(1) : ref).split("/");
@@ -138,10 +138,10 @@ export function frontmatterRefPath(
     if (segments.some((segment) => segment === "." || segment === "..")) return undefined;
     named = ref;
   } else {
-    const inXaxis =
-      xaxisRoot !== null &&
-      document.startsWith(xaxisRoot.endsWith("/") ? xaxisRoot : `${xaxisRoot}/`);
-    const base = inXaxis ? document.slice(xaxisRoot.replace(/\/$/, "").length) : document;
+    const inMonore =
+      monoreRoot !== null &&
+      document.startsWith(monoreRoot.endsWith("/") ? monoreRoot : `${monoreRoot}/`);
+    const base = inMonore ? document.slice(monoreRoot.replace(/\/$/, "").length) : document;
     const folder = base.split("/").slice(1, -1);
     for (const segment of segments) {
       if (segment === ".") continue;

@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - the fixture drives the real CLI and server as a person would.
 // @effect-diagnostics processEnvInEffect:off - the CLI reads its token from the server's environment, which a test swaps.
 // Pult: a thread's copy of a checkout, made and removed through the worktree calls of
-// `GitWorkflowService`, over a real `xaxis` against `scm-server serve` (xaxis
+// `GitWorkflowService`, over a real `monore` against `scm-server serve` (monore
 // `pult/tasks/thread-copies.task`, "Test plan"). Skipped, with the reason printed, unless
-// XAXIS_TEST_BIN and XAXIS_TEST_SERVER_BIN name the two binaries.
+// MONORE_TEST_BIN and MONORE_TEST_SERVER_BIN name the two binaries.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -44,30 +44,30 @@ import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
-import * as XaxisCli from "./XaxisCli.ts";
-import { NO_BRANCHES } from "./XaxisCopies.ts";
-import { XAXIS_MARKER } from "./XaxisVcsDriver.ts";
-import * as XaxisVcsDriver from "./XaxisVcsDriver.ts";
+import * as MonoreCli from "./MonoreCli.ts";
+import { NO_BRANCHES } from "./MonoreCopies.ts";
+import { MONORE_MARKER } from "./MonoreVcsDriver.ts";
+import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
 import {
   committed,
   landed,
   skipped,
-  startXaxisTestServer,
+  startMonoreTestServer,
   suiteName,
   UNKNOWN_TOKEN,
-  XAXIS,
-  type XaxisTestServer,
-} from "./XaxisVcsDriver.testkit.ts";
+  MONORE,
+  type MonoreTestServer,
+} from "./MonoreVcsDriver.testkit.ts";
 
 const platform = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer);
 
-describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
-  let harness: XaxisTestServer;
+describe.skipIf(skipped)(suiteName("MonoreCopies"), () => {
+  let harness: MonoreTestServer;
   let root = "";
   let whole = "";
   let worktrees = "";
   let first = "";
-  const xaxis = (cwd: string, ...args: string[]) => harness.xaxis(cwd, ...args);
+  const monore = (cwd: string, ...args: string[]) => harness.monore(cwd, ...args);
   const copiesOfRoot = () => {
     const folder = NodePath.join(worktrees, "pult");
     return NodeFS.existsSync(folder) ? NodeFS.readdirSync(folder) : [];
@@ -75,23 +75,23 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
   const registered = () =>
     (
       JSON.parse(
-        xaxis(harness.scratch, "checkouts", "--json"),
-      ) as typeof XaxisCli.XaxisCheckouts.Type
+        monore(harness.scratch, "checkouts", "--json"),
+      ) as typeof MonoreCli.MonoreCheckouts.Type
     ).checkouts.map((checkout) => checkout.dir);
 
   beforeAll(async () => {
-    harness = await startXaxisTestServer();
+    harness = await startMonoreTestServer();
     const scratch = harness.scratch;
     worktrees = NodePath.join(scratch, "t3", "worktrees");
-    xaxis(scratch, "--server", harness.address, "checkout", "/test/pult", "pult");
+    monore(scratch, "--server", harness.address, "checkout", "/test/pult", "pult");
     root = NodePath.join(scratch, "pult");
     NodeFS.writeFileSync(NodePath.join(root, "f.txt"), "one\n");
     NodeFS.mkdirSync(NodePath.join(root, "sub"));
     NodeFS.writeFileSync(NodePath.join(root, "sub", "g.txt"), "x\n");
-    first = landed((xaxis(root, "commit", "-m", "first"), xaxis(root, "land")));
+    first = landed((monore(root, "commit", "-m", "first"), monore(root, "land")));
     NodeFS.writeFileSync(NodePath.join(root, "f.txt"), "two\n");
-    landed((xaxis(root, "commit", "-m", "second"), xaxis(root, "land")));
-    xaxis(scratch, "--server", harness.address, "checkout", "/", "whole");
+    landed((monore(root, "commit", "-m", "second"), monore(root, "land")));
+    monore(scratch, "--server", harness.address, "checkout", "/", "whole");
     whole = NodePath.join(scratch, "whole");
   });
 
@@ -100,11 +100,11 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
   const layer = () =>
     GitWorkflowService.layer.pipe(
       Layer.provide(Layer.mock(GitManager.GitManager)({})),
-      Layer.provideMerge(XaxisVcsDriver.layer),
+      Layer.provideMerge(MonoreVcsDriver.layer),
       Layer.provideMerge(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer))),
       Layer.provideMerge(GitVcsDriver.layer),
       Layer.provideMerge(VcsProcess.layer),
-      Layer.provideMerge(ServerSettings.layerTest({ xaxisBinaryPath: XAXIS! })),
+      Layer.provideMerge(ServerSettings.layerTest({ monoreBinaryPath: MONORE! })),
       Layer.provideMerge(
         ServerConfig.layerTest(harness.scratch, NodePath.join(harness.scratch, "t3")),
       ),
@@ -234,10 +234,12 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
           "x\n",
         );
         assert.notEqual(
-          NodeFS.readFileSync(NodePath.join(worktree.path, XAXIS_MARKER), "utf8"),
-          NodeFS.readFileSync(NodePath.join(root, XAXIS_MARKER), "utf8"),
+          NodeFS.readFileSync(NodePath.join(worktree.path, MONORE_MARKER), "utf8"),
+          NodeFS.readFileSync(NodePath.join(root, MONORE_MARKER), "utf8"),
         );
-        const status = JSON.parse(xaxis(worktree.path, "status", "--json")) as XaxisCli.XaxisStatus;
+        const status = JSON.parse(
+          monore(worktree.path, "status", "--json"),
+        ) as MonoreCli.MonoreStatus;
         assert.deepEqual([status.prefix, status.server], ["/test/pult", harness.address]);
         const local = yield* workflow.localStatus({ cwd: worktree.path });
         assert.deepEqual([local.refName, local.hasWorkingTreeChanges], ["main", false]);
@@ -289,15 +291,18 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         const before = copiesOfRoot();
         const claimed: string[] = [];
-        const token = process.env.XAXIS_TOKEN;
-        process.env.XAXIS_TOKEN = UNKNOWN_TOKEN;
+        const token = process.env.MONORE_TOKEN;
+        process.env.MONORE_TOKEN = UNKNOWN_TOKEN;
         const error = yield* workflow
           .createWorktree(
             { cwd: root, refName: "main", path: null },
             { progress: { onWorktreeClaimed: (path) => Effect.sync(() => claimed.push(path)) } },
           )
-          .pipe(Effect.flip, Effect.ensuring(Effect.sync(() => (process.env.XAXIS_TOKEN = token))));
-        assert.equal(XaxisCli.refusalCode(error), "unauthenticated");
+          .pipe(
+            Effect.flip,
+            Effect.ensuring(Effect.sync(() => (process.env.MONORE_TOKEN = token))),
+          );
+        assert.equal(MonoreCli.refusalCode(error), "unauthenticated");
         assert.lengthOf(claimed, 1);
         assert.isFalse(NodeFS.existsSync(claimed[0]!));
         assert.deepEqual(copiesOfRoot(), before);
@@ -344,7 +349,7 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
 
         const stacked = yield* make();
         NodeFS.writeFileSync(NodePath.join(stacked, "n.txt"), "new\n");
-        committed(xaxis(stacked, "commit", "-m", "not landed"));
+        committed(monore(stacked, "commit", "-m", "not landed"));
         for (const force of [false, true]) {
           const refused = yield* workflow
             .removeWorktree({ cwd: root, path: stacked, force })
@@ -371,7 +376,7 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       () =>
         Effect.gen(function* () {
           const workflow = yield* GitWorkflowService.GitWorkflowService;
-          const driver = yield* XaxisVcsDriver.XaxisVcsDriver;
+          const driver = yield* MonoreVcsDriver.MonoreVcsDriver;
           const make = () =>
             workflow
               .createWorktree({ cwd: root, refName: "main", path: null })
@@ -400,7 +405,7 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
 
           const stacked = yield* make();
           NodeFS.writeFileSync(NodePath.join(stacked, "n.txt"), "new\n");
-          committed(xaxis(stacked, "commit", "-m", "not landed"));
+          committed(monore(stacked, "commit", "-m", "not landed"));
           const keptStack = yield* clean(stacked);
           assert.include(
             keptStack.removed === false ? keptStack.reason : "",
@@ -415,14 +420,14 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       Effect.gen(function* () {
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         const parentDir = NodePath.join(harness.scratch, "parent");
-        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "parent");
+        monore(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "parent");
         NodeFS.writeFileSync(NodePath.join(parentDir, "n.txt"), "new\n");
-        committed(xaxis(parentDir, "commit", "-m", "not landed"));
-        const parent = JSON.parse(xaxis(parentDir, "status", "--json")) as XaxisCli.XaxisStatus;
-        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "ahead");
+        committed(monore(parentDir, "commit", "-m", "not landed"));
+        const parent = JSON.parse(monore(parentDir, "status", "--json")) as MonoreCli.MonoreStatus;
+        monore(harness.scratch, "--server", harness.address, "checkout", "/test/pult", "ahead");
         const ahead = NodePath.join(harness.scratch, "ahead");
         NodeFS.writeFileSync(NodePath.join(ahead, "f.txt"), "three\n");
-        landed((xaxis(ahead, "commit", "-m", "third"), xaxis(ahead, "land")));
+        landed((monore(ahead, "commit", "-m", "third"), monore(ahead, "land")));
 
         const dispatched: Array<OrchestrationV2ServerCommand> = [];
         // The dispatch is refused once recorded, so the launch it would start never runs.
@@ -451,7 +456,9 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
         assert.equal(worktree.refName, "main");
         assert.equal(NodeFS.readFileSync(NodePath.join(worktree.path, "f.txt"), "utf8"), "two\n");
         assert.equal(NodeFS.readFileSync(NodePath.join(worktree.path, "n.txt"), "utf8"), "new\n");
-        const status = JSON.parse(xaxis(worktree.path, "status", "--json")) as XaxisCli.XaxisStatus;
+        const status = JSON.parse(
+          monore(worktree.path, "status", "--json"),
+        ) as MonoreCli.MonoreStatus;
         assert.equal(status.base, parent.base);
         assert.deepEqual(status.stack, parent.stack);
       }),
@@ -461,11 +468,11 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
       Effect.gen(function* () {
         const workflow = yield* GitWorkflowService.GitWorkflowService;
         // A parent over more of the tree than the project, its commit outside the project's prefix.
-        xaxis(harness.scratch, "--server", harness.address, "checkout", "/test", "wide");
+        monore(harness.scratch, "--server", harness.address, "checkout", "/test", "wide");
         const wide = NodePath.join(harness.scratch, "wide");
         NodeFS.mkdirSync(NodePath.join(wide, "other"));
         NodeFS.writeFileSync(NodePath.join(wide, "other", "o.txt"), "o\n");
-        committed(xaxis(wide, "commit", "-m", "outside"));
+        committed(monore(wide, "commit", "-m", "outside"));
 
         const dispatched: Array<OrchestrationV2ServerCommand> = [];
         yield* delegateFrom(wide, dispatched).pipe(Effect.flip);
@@ -479,7 +486,7 @@ describe.skipIf(skipped)(suiteName("XaxisCopies"), () => {
         const refused = yield* workflow
           .createWorktree({ cwd: root, refName: baseRef, path: null })
           .pipe(Effect.flip);
-        assert.equal(XaxisCli.refusalCode(refused), "checkout-stack-outside-prefix");
+        assert.equal(MonoreCli.refusalCode(refused), "checkout-stack-outside-prefix");
         assert.include(refused.detail, "(checkout-stack-outside-prefix)");
         assert.deepEqual(copiesOfRoot(), before);
       }),

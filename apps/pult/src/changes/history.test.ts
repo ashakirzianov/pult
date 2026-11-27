@@ -101,7 +101,7 @@ NodeTest.describe("historyItem", () => {
     NodeAssert.equal(item.timestamp, Date.parse("2026-11-09T11:00:00Z"));
   });
 
-  NodeTest.test("shortens an xaxis changeset's hash past its `sha256:` prefix", () => {
+  NodeTest.test("shortens a monore changeset's hash past its `sha256:` prefix", () => {
     const hash = `sha256:${"0123456789abcdef".repeat(4)}`;
     const item = historyItem(
       {

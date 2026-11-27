@@ -19,7 +19,7 @@
  *
  * Unsigned, the bundle is signed ad hoc (`ad-hoc-signing`). Last, it writes
  * `COMMIT` beside the artifacts: the commit they were built from, or in an
- * xaxis checkout the changeset, followed by `dirty` when the working tree had
+ * monore checkout the changeset, followed by `dirty` when the working tree had
  * uncommitted changes (`commitNote.ts`).
  */
 import * as NodeChildProcess from "node:child_process";

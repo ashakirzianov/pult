@@ -11,7 +11,7 @@ import { connection, environmentName } from "./connection.ts";
 import { type PairingAddress, pairingAddresses } from "./pairingLink.ts";
 
 /**
- * A pairing link Pair Device minted for another device (xaxis
+ * A pairing link Pair Device minted for another device (monore
  * `pult/tasks/pair-device.task`), shown under its environment's row of the
  * settings page until it expires, is redeemed or revoked, or is put away:
  * the code, and the addresses a link of it may use (`pairingLink.ts`).

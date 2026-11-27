@@ -116,7 +116,7 @@ export const make = Effect.gen(function* () {
     return handle.driver.checkpoints satisfies VcsCheckpointOps;
   });
 
-  // Pult: detected as any VCS, so an xaxis checkout inside a git repository keeps no checkpoints.
+  // Pult: detected as any VCS, so a monore checkout inside a git repository keeps no checkpoints.
   // The registry reads an unreadable repository as none; ask Git again so that fails here.
   const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = Effect.fn(
     "CheckpointStore.isGitRepository",

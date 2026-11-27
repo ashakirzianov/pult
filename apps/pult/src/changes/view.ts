@@ -128,10 +128,10 @@ import {
   syncSteps,
   syncTitle,
   syncTooltip,
-  XAXIS_PLACEHOLDER,
-  type XaxisState,
-  type XaxisStateItem,
-  xaxisStateLine,
+  MONORE_PLACEHOLDER,
+  type MonoreState,
+  type MonoreStateItem,
+  monoreStateLine,
 } from "./sync.ts";
 
 /** The scheme of a change's two sides, served by the view's content provider from the server's file contents RPC. */
@@ -153,10 +153,10 @@ const SYNC_COMMAND = "pult-shell.sync";
 const PULL_COMMAND = "pult-shell.pull";
 /** Pushes a checkout's branch, publishing it when it has no upstream. */
 const PUSH_COMMAND = "pult-shell.push";
-/** Opens the first file of an xaxis checkout's conflict that holds markers, else shows the Conflicts group: its state line's click. */
+/** Opens the first file of a monore checkout's conflict that holds markers, else shows the Conflicts group: its state line's click. */
 const OPEN_CONFLICT_COMMAND = "pult-shell.openConflict";
-/** An xaxis conflict's row's `contextValue` while its server serves `vcs.resolveConflict`, for Keep mine and Take latest. */
-const RESOLVABLE_CONFLICT = "pult-xaxis-conflict";
+/** A monore conflict's row's `contextValue` while its server serves `vcs.resolveConflict`, for Keep mine and Take latest. */
+const RESOLVABLE_CONFLICT = "pult-monore-conflict";
 
 /** While the view shows one thread's checkout, under its card: for `when` clauses. */
 const ChangesFilteredContext = new RawContextKey<boolean>("pult.changesFiltered", false);
@@ -188,7 +188,7 @@ const HISTORY_PAGE = 50;
 
 /** The group of a turn the thread view named, alone in the view while the filter's thread has one. */
 const TURN_GROUP = "turn";
-/** An xaxis checkout's conflicted paths, above its changes, which leave them out. */
+/** A monore checkout's conflicted paths, above its changes, which leave them out. */
 const CONFLICTS_GROUP = "conflicts";
 
 const GROUPS: ReadonlyArray<{
@@ -539,7 +539,7 @@ class ChangeResource implements ISCMResource {
   }
 }
 
-/** A path of an xaxis checkout's conflict: opens the live file; Keep mine and Take latest beside it while its server resolves. */
+/** A path of a monore checkout's conflict: opens the live file; Keep mine and Take latest beside it while its server resolves. */
 class ConflictResource implements ISCMResource {
   readonly sourceUri: URI;
   readonly decorations: ISCMResourceDecorations;
@@ -552,7 +552,7 @@ class ConflictResource implements ISCMResource {
     readonly resourceGroup: ChangesGroup,
     /** The checkout's `checkoutKey`. */
     readonly key: string,
-    readonly conflict: XaxisState["conflicts"][number],
+    readonly conflict: MonoreState["conflicts"][number],
     root: URI,
     resolvable: boolean,
     private readonly opener: (uri: URI, preserveFocus: boolean) => Promise<void>,
@@ -617,9 +617,9 @@ class ChangesGroup implements ISCMResourceGroup {
 let providers = 0;
 let inputs = 0;
 
-/** Whether a checkout is a thread's xaxis copy (`pult/decisions`, `xaxis-copies`): a worktree its status, read or kept, says is xaxis's. */
+/** Whether a checkout is a thread's monore copy (`pult/decisions`, `monore-copies`): a worktree its status, read or kept, says is monore's. */
 function isCopy(entry: Entry): boolean {
-  return entry.checkout.worktree !== null && entry.sync?.xaxis != null;
+  return entry.checkout.worktree !== null && entry.sync?.monore != null;
 }
 
 /**
@@ -644,7 +644,7 @@ class ChangesProvider implements ISCMProvider {
   readonly historyProvider = observableValue<CheckoutHistory | undefined>(this, undefined);
   /** The Commit button, set by the view as the checkout's changes and its commit go. */
   readonly actionButton = observableValue<ISCMActionButtonDescriptor | undefined>(this, undefined);
-  /** An xaxis checkout's state line (`xaxisStateLine`); none for git's. */
+  /** A monore checkout's state line (`monoreStateLine`); none for git's. */
   readonly statusBarCommands = observableValue<ReadonlyArray<Command> | undefined>(this, undefined);
   /** Cmd+Enter in the message box, through the workbench's `scm.acceptInput`. */
   readonly acceptInputCommand: NonNullable<ISCMProvider["acceptInputCommand"]>;
@@ -709,7 +709,7 @@ interface Entry {
     | {
         readonly repository: ISCMRepository;
         readonly provider: ChangesProvider;
-        /** Whether it was named as an xaxis copy, by its folder (`checkoutName`). */
+        /** Whether it was named as a monore copy, by its folder (`checkoutName`). */
         readonly copy: boolean;
       }
     | undefined;
@@ -722,9 +722,9 @@ interface Entry {
   /** When its status was last asked for, which every read fetches, so a read waits `SYNC_INTERVAL_MS` unless forced. */
   syncReadAt: number | undefined;
   syncGeneration: number;
-  /** An xaxis checkout's root, its conflict's paths' base, from its status; undefined for git's or before a read. */
-  xaxisRoot: string | undefined;
-  /** Whether its server serves `vcs.resolveConflict`, asked once its status first says xaxis. */
+  /** A monore checkout's root, its conflict's paths' base, from its status; undefined for git's or before a read. */
+  monoreRoot: string | undefined;
+  /** Whether its server serves `vcs.resolveConflict`, asked once its status first says monore. */
   resolvable: boolean | undefined;
   /** After a Commit & Land that failed: the next status read opens its conflict. */
   revealConflict: boolean;
@@ -978,7 +978,7 @@ class ChangesView {
         sync: undefined,
         syncReadAt: undefined,
         syncGeneration: 0,
-        xaxisRoot: undefined,
+        monoreRoot: undefined,
         resolvable: undefined,
         revealConflict: false,
       };
@@ -1112,28 +1112,28 @@ class ChangesView {
     let sync: SyncState | undefined;
     // A failed read counts as a repository, for a thread's Changes shelf.
     let isRepo = true;
-    let xaxisRoot: string | undefined;
+    let monoreRoot: string | undefined;
     try {
       const server = changesServer(environmentId);
       const status = await limited(() => server.status(root));
       sync = syncState(status);
       isRepo = status.isRepo;
-      if (status.xaxis !== undefined) {
-        xaxisRoot = checkoutRepositoryRoot(root, status.workingTree.rootPath);
+      if (status.monore !== undefined) {
+        monoreRoot = checkoutRepositoryRoot(root, status.workingTree.rootPath);
         // A failed ask is asked again on the next read.
         entry.resolvable ??= await server.canResolveConflicts().catch(() => undefined);
       }
     } catch (error) {
-      // Not a repository, a worktree gone: nothing to sync; an xaxis checkout keeps its words and tells the failure.
+      // Not a repository, a worktree gone: nothing to sync; a monore checkout keeps its words and tells the failure.
       sync = failedRead(entry.sync, errorDetail(error));
-      xaxisRoot = entry.xaxisRoot;
+      monoreRoot = entry.monoreRoot;
     }
     if (generation !== entry.syncGeneration || this.entries.get(entry.key) !== entry) return;
     setRepository(entry.key, isRepo);
-    entry.xaxisRoot = xaxisRoot;
+    entry.monoreRoot = monoreRoot;
     if (entry.revealConflict) {
       entry.revealConflict = false;
-      if ((sync?.xaxis?.conflicts.length ?? 0) > 0) void this.openConflict(entry, sync);
+      if ((sync?.monore?.conflicts.length ?? 0) > 0) void this.openConflict(entry, sync);
     }
     if (JSON.stringify(sync) === JSON.stringify(entry.sync)) return;
     entry.sync = sync;
@@ -1150,14 +1150,14 @@ class ChangesView {
 
   /** The first file of the checkout's conflict that holds markers, open; else Source Control shown, the Conflicts group at its top. */
   async openConflict(entry: Entry, sync = entry.sync): Promise<void> {
-    const conflicts = sync?.xaxis?.conflicts ?? [];
+    const conflicts = sync?.monore?.conflicts ?? [];
     const marked = conflicts.find((conflict) => conflict.markers);
-    if (marked === undefined || entry.xaxisRoot === undefined) {
+    if (marked === undefined || entry.monoreRoot === undefined) {
       await this.services.commands.executeCommand("workbench.view.scm");
       return;
     }
     await this.openFile(
-      URI.joinPath(pultUri(entry.checkout.environmentId, entry.xaxisRoot), marked.path),
+      URI.joinPath(pultUri(entry.checkout.environmentId, entry.monoreRoot), marked.path),
       false,
     );
   }
@@ -1198,7 +1198,7 @@ class ChangesView {
             // A kept checkout's warning keeps it listed, as a conflict does.
             this.keptLine(entry).length > 0
           : entry === narrowed;
-      // A copy is named by its folder once its status says xaxis, and stays so: the workbench reads a provider's name only
+      // A copy is named by its folder once its status says monore, and stays so: the workbench reads a provider's name only
       // as it registers it, so the copy's is registered again, once.
       if (!shows || (entry.registered?.copy === false && isCopy(entry))) {
         entry.registered?.repository.dispose();
@@ -1221,11 +1221,11 @@ class ChangesView {
       turnGroup.set(
         (entryTurn?.changes ?? []).map((change) => new ChangeResource(turnGroup, change, open)),
       );
-      const conflicts = entry.sync?.xaxis?.conflicts ?? [];
+      const conflicts = entry.sync?.monore?.conflicts ?? [];
       const conflictsGroup = provider.group(CONFLICTS_GROUP);
-      const xaxisRoot = entry.xaxisRoot;
+      const monoreRoot = entry.monoreRoot;
       conflictsGroup.set(
-        entryTurn !== undefined || xaxisRoot === undefined
+        entryTurn !== undefined || monoreRoot === undefined
           ? []
           : conflicts.map(
               (conflict) =>
@@ -1233,7 +1233,7 @@ class ChangesView {
                   conflictsGroup,
                   entry.key,
                   conflict,
-                  pultUri(entry.checkout.environmentId, xaxisRoot),
+                  pultUri(entry.checkout.environmentId, monoreRoot),
                   entry.resolvable === true,
                   (uri, preserveFocus) => this.openFile(uri, preserveFocus),
                 ),
@@ -1352,23 +1352,23 @@ class ChangesView {
     const { repository, provider } = registered;
     if (repository.input.visible === turnShown) repository.input.visible = !turnShown;
     const branch = this.branchOf(entry);
-    const xaxis = entry.sync?.xaxis ?? null;
-    const placeholder = xaxis === null ? commitPlaceholder(branch) : XAXIS_PLACEHOLDER;
+    const monore = entry.sync?.monore ?? null;
+    const placeholder = monore === null ? commitPlaceholder(branch) : MONORE_PLACEHOLDER;
     if (repository.input.placeholder !== placeholder) repository.input.placeholder = placeholder;
     const button = turnShown ? undefined : this.actionButton(entry, branch);
     if (JSON.stringify(button) !== JSON.stringify(provider.actionButton.get()))
       provider.actionButton.set(button, undefined);
     const kept = this.keptLine(entry);
-    // A kept checkout's own items stand alone where its status never read as xaxis's (the CLI missing, say).
+    // A kept checkout's own items stand alone where its status never read as monore's (the CLI missing, say).
     const line =
-      (entry.sync === undefined || xaxis === null) && kept.length === 0
+      (entry.sync === undefined || monore === null) && kept.length === 0
         ? undefined
         : [
-            ...(entry.sync === undefined || xaxis === null
+            ...(entry.sync === undefined || monore === null
               ? []
-              : xaxisStateLine(
+              : monoreStateLine(
                   entry.sync,
-                  xaxis,
+                  monore,
                   entry.shown?.kind === "working-tree" ? entry.shown.changes.length : 0,
                 )),
             ...kept,
@@ -1428,7 +1428,7 @@ class ChangesView {
   }
 
   /** What the state line adds for the checkout the environment's plugin keeps at main's tip (`kept.ts`); none for any other. */
-  private keptLine(entry: Entry): ReadonlyArray<XaxisStateItem> {
+  private keptLine(entry: Entry): ReadonlyArray<MonoreStateItem> {
     const kept = keptAt(entry.checkout.environmentId, entry.checkout.root);
     return kept === undefined ? [] : keptStateLine(kept.answer, kept.checkout, Date.now());
   }
@@ -1510,7 +1510,7 @@ class ChangesView {
       case "get-latest":
         return {
           command: {
-            // Commit commits and lands on an xaxis checkout; Pull is Get latest.
+            // Commit commits and lands on a monore checkout; Pull is Get latest.
             id: action.kind === "commit-land" ? COMMIT_COMMAND : PULL_COMMAND,
             title: action.title,
             tooltip: action.tooltip,
@@ -1552,8 +1552,8 @@ class ChangesView {
    * a notification tells with the server's message.
    */
   async commit(entry: Entry, push = false, typed = true): Promise<void> {
-    const xaxis = entry.sync?.xaxis ?? null;
-    if (xaxis !== null) return this.commitAndLand(entry, xaxis, typed);
+    const monore = entry.sync?.monore ?? null;
+    if (monore !== null) return this.commitAndLand(entry, monore, typed);
     const name = this.nameOf(entry);
     const message = typed ? (entry.message ?? "").trim() : "";
     await this.runAction(entry, COMMIT_STARTED.label, async (progressed) => {
@@ -1585,13 +1585,13 @@ class ChangesView {
   }
 
   /**
-   * An xaxis checkout's Commit & Land: every change committed, then landed on
-   * main. A commit needs a message, which the server never writes for xaxis:
+   * A monore checkout's Commit & Land: every change committed, then landed on
+   * main. A commit needs a message, which the server never writes for monore:
    * the box's text (unless not `typed`), else the filter's thread's title on
    * the checkout, else one the shell asks for. A failure is the server's message, and the status
    * read after it opens the conflict it left.
    */
-  private async commitAndLand(entry: Entry, xaxis: XaxisState, typedBox = true): Promise<void> {
+  private async commitAndLand(entry: Entry, monore: MonoreState, typedBox = true): Promise<void> {
     const name = this.nameOf(entry);
     const uncommitted = entry.shown?.kind === "working-tree";
     // Cmd+Enter in the box, whatever the button offers.
@@ -1602,7 +1602,7 @@ class ChangesView {
     }
     const typed = typedBox ? (entry.message ?? "").trim() : "";
     // A pending conflict is cleared only by a commit, though Take latest may have left nothing to commit.
-    const commits = uncommitted || xaxis.conflicts.length > 0;
+    const commits = uncommitted || monore.conflicts.length > 0;
     let message = typed;
     if (message === "" && commits) {
       const filtered = this.filterThread();
@@ -1615,7 +1615,7 @@ class ChangesView {
           await this.services.quickInput.input({
             title: `Commit & Land in ${name}`,
             placeHolder: "Message",
-            prompt: "xaxis needs a message for every commit",
+            prompt: "monore needs a message for every commit",
             validateInput: async (value) =>
               value.trim() === "" ? "Type a message to commit with" : undefined,
           })
@@ -1691,7 +1691,7 @@ class ChangesView {
 
   /** Fast-forwards the checkout's branch from its upstream; a diverged branch fails, told as such. */
   async pull(entry: Entry): Promise<void> {
-    const label = entry.sync?.xaxis == null ? "Pulling…" : "Getting latest…";
+    const label = entry.sync?.monore == null ? "Pulling…" : "Getting latest…";
     await this.runAction(entry, label, async () => {
       await this.pullStep(entry);
     });
@@ -1734,7 +1734,7 @@ class ChangesView {
       return true;
     } catch (error) {
       console.error("[pult-shell] the pull failed", error);
-      const verb = entry.sync?.xaxis == null ? "pull" : "get the latest in";
+      const verb = entry.sync?.monore == null ? "pull" : "get the latest in";
       this.services.notifications.error(
         `Pult could not ${verb} ${name}. ${pullFailure(entry.sync, errorDetail(error))}`,
       );
@@ -2116,7 +2116,7 @@ function warnUntyped(environmentId: string, sources: ReadonlyArray<ReviewDiffPre
   const untyped = sources.some((source) => {
     const stats = source.files?.filter((file) => file.changeType === undefined) ?? [];
     if (stats.length === 0) return false;
-    // An xaxis checkout's stats name none, its headers naming every file.
+    // A monore checkout's stats name none, its headers naming every file.
     const named = new Set(patchFiles(source.diff).map((file) => file.path));
     return stats.some((file) => !named.has(file.path));
   });
@@ -2512,7 +2512,7 @@ export function registerChanges(): void {
     const view = await started;
     if (view !== undefined && typeof key === "string") await view.openConflictOf(key);
   });
-  // An xaxis conflict's rows, while their server resolves: one side of every selected row, each checkout's at once.
+  // A monore conflict's rows, while their server resolves: one side of every selected row, each checkout's at once.
   const resolvable = ContextKeyExpr.and(
     ContextKeyExpr.equals("scmProvider", PROVIDER_ID),
     ContextKeyExpr.equals("scmResourceGroup", CONFLICTS_GROUP),

@@ -111,47 +111,47 @@ describe("VcsDriverRegistry", () => {
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
-  // Pult: the nearer of `.xaxis-checkout` and `.git` decides (`vcs-detection-nearest`).
+  // Pult: the nearer of `.monore-checkout` and `.git` decides (`vcs-detection-nearest`).
   const CHECKOUT_ID = "c078d1e2-6c3d-421c-b76d-a859c655780a\n";
 
-  it.effect("detects the nearest of an xaxis checkout and a git repository", () =>
+  it.effect("detects the nearest of a monore checkout and a git repository", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const rootDir = yield* fs.realPath(
         yield* fs.makeTempDirectoryScoped({ prefix: "t3-vcs-registry-" }),
       );
-      const xaxisInGit = path.join(rootDir, "repo", "checkout");
-      const gitInXaxis = path.join(rootDir, "checkout", "repo");
+      const monoreInGit = path.join(rootDir, "repo", "checkout");
+      const gitInMonore = path.join(rootDir, "checkout", "repo");
       const both = path.join(rootDir, "both");
       yield* fs.makeDirectory(path.join(rootDir, "repo", ".git"), { recursive: true });
-      yield* fs.makeDirectory(path.join(xaxisInGit, "sub"), { recursive: true });
-      yield* fs.writeFileString(path.join(xaxisInGit, ".xaxis-checkout"), CHECKOUT_ID);
-      yield* fs.makeDirectory(path.join(gitInXaxis, ".git"), { recursive: true });
-      yield* fs.writeFileString(path.join(rootDir, "checkout", ".xaxis-checkout"), CHECKOUT_ID);
+      yield* fs.makeDirectory(path.join(monoreInGit, "sub"), { recursive: true });
+      yield* fs.writeFileString(path.join(monoreInGit, ".monore-checkout"), CHECKOUT_ID);
+      yield* fs.makeDirectory(path.join(gitInMonore, ".git"), { recursive: true });
+      yield* fs.writeFileString(path.join(rootDir, "checkout", ".monore-checkout"), CHECKOUT_ID);
       yield* fs.makeDirectory(path.join(both, ".git"), { recursive: true });
-      yield* fs.writeFileString(path.join(both, ".xaxis-checkout"), CHECKOUT_ID);
+      yield* fs.writeFileString(path.join(both, ".monore-checkout"), CHECKOUT_ID);
       const calls: string[] = [];
 
       yield* Effect.gen(function* () {
         const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
-        const detected = yield* registry.detect({ cwd: path.join(xaxisInGit, "sub") });
+        const detected = yield* registry.detect({ cwd: path.join(monoreInGit, "sub") });
         assert.deepEqual(
           { kind: detected?.kind, root: detected?.repository.rootPath },
-          { kind: "xaxis", root: xaxisInGit },
+          { kind: "monore", root: monoreInGit },
         );
-        assert.equal(calls.length, 0, "an xaxis checkout is detected without a process");
-        const inner = yield* registry.detect({ cwd: gitInXaxis });
+        assert.equal(calls.length, 0, "a monore checkout is detected without a process");
+        const inner = yield* registry.detect({ cwd: gitInMonore });
         assert.deepEqual(
           { kind: inner?.kind, root: inner?.repository.rootPath },
-          { kind: "git", root: gitInXaxis },
+          { kind: "git", root: gitInMonore },
         );
         const error = yield* registry.detect({ cwd: both }).pipe(Effect.flip);
         assert.equal(error._tag, "VcsRepositoryDetectionError");
 
         // The marker gone, the repository around it is found again.
-        yield* fs.remove(path.join(xaxisInGit, ".xaxis-checkout"));
-        assert.equal((yield* registry.detect({ cwd: xaxisInGit }))?.kind, "git");
+        yield* fs.remove(path.join(monoreInGit, ".monore-checkout"));
+        assert.equal((yield* registry.detect({ cwd: monoreInGit }))?.kind, "git");
       }).pipe(Effect.provide(makeDiskBackedLayer(rootDir, calls)));
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );

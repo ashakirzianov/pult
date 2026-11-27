@@ -25,7 +25,7 @@ export interface FileLinkSources {
   ) => Promise<ReadonlyArray<unknown>>;
   /** The thread's latest run's end: a change checks its `no` verdicts again, since an agent names a file before it writes it. */
   readonly runEnd: (environmentId: string, threadId: string) => string | null;
-  /** The environment's checkouts and kept xaxis root, as one value (`rootsKey`): a change checks every verdict of the environment again. */
+  /** The environment's checkouts and kept monore root, as one value (`rootsKey`): a change checks every verdict of the environment again. */
   readonly roots: (environmentId: string) => string;
   /** How long changed verdicts wait to reach their gates together: each publish restyles the thread view once, whatever it swaps. */
   readonly publishMs: number;
@@ -33,7 +33,7 @@ export interface FileLinkSources {
   readonly onDidChange: (listener: () => void) => void;
 }
 
-/** `roots` of checkout roots in any order and a kept xaxis root: the store lists the same checkouts in another order as threads start and end their turns. */
+/** `roots` of checkout roots in any order and a kept monore root: the store lists the same checkouts in another order as threads start and end their turns. */
 export const rootsKey = (checkoutRoots: ReadonlyArray<string>, keptRoot: string | null) =>
   JSON.stringify([checkoutRoots.toSorted(), keptRoot]);
 

@@ -361,8 +361,8 @@ function toRemoteStatusPart(status: VcsStatusResult): VcsStatusRemoteResult {
       ? {}
       : { aheadOfDefaultCount: status.aheadOfDefaultCount }),
     pr: status.pr,
-    // Pult: an xaxis checkout's unread tip (`pult/decisions`, `xaxis-status-fields`).
-    ...(status.xaxisTip === undefined ? {} : { xaxisTip: status.xaxisTip }),
+    // Pult: a monore checkout's unread tip (`pult/decisions`, `monore-status-fields`).
+    ...(status.monoreTip === undefined ? {} : { monoreTip: status.monoreTip }),
   };
 }
 
@@ -378,8 +378,8 @@ function toLocalStatusPart(status: VcsStatusResult): VcsStatusLocalResult {
     hasWorkingTreeChanges: status.hasWorkingTreeChanges,
     workingTree: status.workingTree,
     ...(status.branchChanges ? { branchChanges: status.branchChanges } : {}),
-    // Pult: an xaxis checkout's conflicts and interrupted write.
-    ...(status.xaxis ? { xaxis: status.xaxis } : {}),
+    // Pult: a monore checkout's conflicts and interrupted write.
+    ...(status.monore ? { monore: status.monore } : {}),
   };
 }
 

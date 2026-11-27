@@ -41,7 +41,7 @@ it("transfers a merge's bytes, executable bits and deletions, and nothing else",
   NodeFS.rmSync(NodePath.join(repo, "gone"), { recursive: true });
   write(repo, "new/blob.bin", Buffer.from([0, 255, 10, 13]));
   const to = commit(repo);
-  write(checkout, ".xaxis-checkout", "marker");
+  write(checkout, ".monore-checkout", "marker");
   write(checkout, "node_modules/x.js", "ignored");
 
   expect(transfer(repo, from, to, checkout)).toBe(4);
@@ -52,7 +52,7 @@ it("transfers a merge's bytes, executable bits and deletions, and nothing else",
     Buffer.from([0, 255, 10, 13]),
   );
   expect(NodeFS.existsSync(NodePath.join(checkout, "gone"))).toBe(false);
-  expect(NodeFS.readFileSync(NodePath.join(checkout, ".xaxis-checkout"), "utf8")).toBe("marker");
+  expect(NodeFS.readFileSync(NodePath.join(checkout, ".monore-checkout"), "utf8")).toBe("marker");
   expect(NodeFS.existsSync(NodePath.join(checkout, "node_modules/x.js"))).toBe(true);
 
   NodeFS.symlinkSync("kept.txt", NodePath.join(repo, "link"));

@@ -151,7 +151,7 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsAutomaticFetchInterval from "./vcs/VcsAutomaticFetchInterval.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
-import * as XaxisVcsDriver from "./vcs/XaxisVcsDriver.ts";
+import * as MonoreVcsDriver from "./vcs/MonoreVcsDriver.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -488,8 +488,8 @@ const layerGit = Layer.empty.pipe(
 const layerGitWorkflow = GitWorkflowService.layer.pipe(
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(layerGit),
-  // Pult: an xaxis checkout's status (xaxis `pult/tasks/xaxis-source-control.task`).
-  Layer.provideMerge(XaxisVcsDriver.layer),
+  // Pult: a monore checkout's status (monore `pult/tasks/xaxis-source-control.task`).
+  Layer.provideMerge(MonoreVcsDriver.layer),
 );
 
 const layerSourceControlRepositoryService = SourceControlRepositoryService.layer.pipe(
@@ -510,8 +510,8 @@ const layerReview = ReviewService.layer.pipe(
   Layer.provideMerge(layerKnownWorkspaces),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(layerVcsDriverRegistry),
-  // Pult: an xaxis checkout's diffs and history.
-  Layer.provideMerge(XaxisVcsDriver.layer),
+  // Pult: a monore checkout's diffs and history.
+  Layer.provideMerge(MonoreVcsDriver.layer),
 );
 
 const layerVcs = Layer.empty.pipe(

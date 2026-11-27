@@ -1526,8 +1526,8 @@ describe("ThreadSettlementServiceV2 worker", () => {
         const warnings: Array<unknown> = [];
         const fixture = yield* makeHarness({
           snapshot: makeSnapshot([
-            // An xaxis root: git there fails with not_a_repository.
-            makeThread("xaxis-root", {
+            // A monore root: git there fails with not_a_repository.
+            makeThread("monore-root", {
               branch: "main",
               latestUserMessageAt: DateTime.makeUnsafe("2026-08-27T00:00:00.000Z"),
             }),

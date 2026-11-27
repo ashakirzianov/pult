@@ -792,7 +792,7 @@ export const ServerConfig = Schema.Struct({
   extensionUi: Schema.optionalKey(Schema.Boolean),
   /** Pult: whether review.getLog and review.getRefs exist; absent on stock servers, which show no history. */
   reviewLog: Schema.optionalKey(Schema.Boolean),
-  /** Pult: whether vcs.resolveConflict exists; absent on stock servers, whose xaxis conflicts are fixed by hand. */
+  /** Pult: whether vcs.resolveConflict exists; absent on stock servers, whose monore conflicts are fixed by hand. */
   vcsResolveConflict: Schema.optionalKey(Schema.Boolean),
   newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),
   /**

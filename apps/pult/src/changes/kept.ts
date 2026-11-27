@@ -1,6 +1,6 @@
 // The checkout each environment's Pult plugin keeps at main's tip, as its
-// `xaxis/kept` answers (`pult/decisions`, `xaxis-kept-checkouts`), for the
-// changes view's state line. Asked once `about` lists `xaxis-kept` on a
+// `monore/kept` answers (`pult/decisions`, `monore-kept-checkouts`), for the
+// changes view's state line. Asked once `about` lists `monore-kept` on a
 // connect, and again as the Stars' route is: when the environment's projects
 // change, when a thread inside the kept folder starts or ends its work, on
 // the server's status events for a kept checkout (a move, a failure), on the
@@ -17,8 +17,8 @@ import { onDidChangePluginFeatures, pluginFeatures } from "../stars/about.ts";
 import {
   type KeptAnswer,
   type KeptCheckout,
-  readXaxisKept,
-  XAXIS_KEPT_FEATURE,
+  readMonoreKept,
+  MONORE_KEPT_FEATURE,
 } from "../stars/plugin.ts";
 import { threadStore } from "../threads/store.ts";
 
@@ -58,7 +58,7 @@ function drop(environmentId: string, reading: Reading): void {
   readings.delete(environmentId);
 }
 
-/** Follows every environment whose plugin's `about` lists `xaxis-kept` on this connect, and no other. */
+/** Follows every environment whose plugin's `about` lists `monore-kept` on this connect, and no other. */
 function follow(): void {
   let changed = false;
   for (const [environmentId, reading] of readings) {
@@ -70,7 +70,7 @@ function follow(): void {
   for (const environment of connection.environments) {
     const environmentId = environment.environmentId;
     const features = pluginFeatures(environmentId);
-    if (readings.has(environmentId) || features?.has(XAXIS_KEPT_FEATURE) !== true) continue;
+    if (readings.has(environmentId) || features?.has(MONORE_KEPT_FEATURE) !== true) continue;
     readings.set(environmentId, {
       features,
       answer: undefined,
@@ -122,11 +122,11 @@ async function read(environmentId: string): Promise<void> {
   const generation = ++reading.generation;
   let answer: KeptAnswer | undefined;
   try {
-    answer = await readXaxisKept(credential);
+    answer = await readMonoreKept(credential);
   } catch (error) {
     if (readings.get(environmentId) !== reading || reading.generation !== generation) return;
     console.warn(
-      `[pult-shell] could not read the kept xaxis checkout of ${environmentId}: ${error instanceof Error ? error.message : String(error)}`,
+      `[pult-shell] could not read the kept monore checkout of ${environmentId}: ${error instanceof Error ? error.message : String(error)}`,
     );
     // The last answer stands until the next occasion asks again.
     if (reading.answer !== undefined && keeps(reading.answer)) askIn(environmentId, POLL_MS);

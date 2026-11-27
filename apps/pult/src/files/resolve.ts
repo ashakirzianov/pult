@@ -17,7 +17,7 @@ export type Resolution =
   | { readonly kind: "open"; readonly path: string }
   /** Several files end with the key: the user picks, the thread's project's checkouts first. */
   | { readonly kind: "pick"; readonly key: string; readonly candidates: ReadonlyArray<Candidate> }
-  /** An absolute path under no checkout of the environment, which its server would not read, nor names a file in its kept xaxis checkout. */
+  /** An absolute path under no checkout of the environment, which its server would not read, nor names a file in its kept monore checkout. */
   | { readonly kind: "outside" }
   /** No file ends with the key; `error` when every search failed, the first one's message. */
   | { readonly kind: "missing"; readonly key: string; readonly error: string | undefined };
@@ -31,8 +31,8 @@ export interface ResolveInput {
   readonly projectId: string;
   /** Every checkout of the thread's environment (`checkoutsOf`). */
   readonly checkouts: ReadonlyArray<Checkout>;
-  /** The environment's kept xaxis checkout of `/` as a host path (`src/changes/kept.ts`); null when it keeps none. */
-  readonly xaxisRoot: string | null;
+  /** The environment's kept monore checkout of `/` as a host path (`src/changes/kept.ts`); null when it keeps none. */
+  readonly monoreRoot: string | null;
   /** Whether a `pult:` URI path is there; a failure counts as not. */
   readonly exists: (path: string) => Promise<boolean>;
   /** The server's index of a checkout searched for the key (`projects.searchEntries`): entries' paths relative to its root. */
@@ -47,7 +47,7 @@ const ABSOLUTE = /^(\/|[A-Za-z]:[\\/])/;
  * segments, in the thread's checkout through the server's index, and only
  * with none there in the environment's other checkouts, one opening, several
  * a pick; an absolute path under no checkout is refused before any of it,
- * unless it names a file of the kept xaxis checkout read from the xaxis root
+ * unless it names a file of the kept monore checkout read from the monore root
  * (`/owner/track/x.md`), which opens.
  */
 export async function resolveThreadPath(input: ResolveInput): Promise<Resolution> {
@@ -62,12 +62,12 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
     literal = toUriPath(input.path);
     const located = locate(roots, literal);
     if (located === undefined) {
-      const xaxis =
-        input.xaxisRoot === null
+      const monore =
+        input.monoreRoot === null
           ? undefined
-          : joinPath(toUriPath(input.xaxisRoot), literal.slice(1));
-      return xaxis !== undefined && (await input.exists(xaxis))
-        ? { kind: "open", path: xaxis }
+          : joinPath(toUriPath(input.monoreRoot), literal.slice(1));
+      return monore !== undefined && (await input.exists(monore))
+        ? { kind: "open", path: monore }
         : { kind: "outside" };
     }
     key = located.relativePath;

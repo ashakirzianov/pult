@@ -445,7 +445,7 @@ class ReaderPane extends SimpleEditorPane {
     const themes = input.markdown
       ? StandaloneServices.get(IThemeService).onDidColorThemeChange(changed)
       : undefined;
-    // A frontmatter ref is joined from the xaxis root once the kept checkout is known.
+    // A frontmatter ref is joined from the monore root once the kept checkout is known.
     const stopKept = input.markdown ? onDidChangeKept(changed) : undefined;
     await render();
     return {

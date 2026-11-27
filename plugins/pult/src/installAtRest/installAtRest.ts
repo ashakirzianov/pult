@@ -1,4 +1,4 @@
-// Pult.app's server installs the app's downloaded updates while nobody needs it (xaxis `pult/decisions`,
+// Pult.app's server installs the app's downloaded updates while nobody needs it (monore `pult/decisions`,
 // `install-at-rest`). It only consumes the server's services, so it lives in the plugin.
 import type { HostPowerSnapshot } from "@t3tools/contracts";
 

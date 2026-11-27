@@ -31,7 +31,7 @@ const PINNED_KEY = "workbench.activity.pinnedViewlets2";
 const SCM_CONTAINER = "workbench.view.scm";
 
 /**
- * The sidebar tabs Pult mode hides until they are designed (xaxis
+ * The sidebar tabs Pult mode hides until they are designed (monore
  * `pult/tasks/search-tab.task`, `pult/tasks/extensions-tab.task`), each with
  * the palette's commands into it, which Pult mode hides too: no tab in the
  * header, and opened any other way (a key, the settings page's Manage menu,

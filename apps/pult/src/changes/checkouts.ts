@@ -3,7 +3,7 @@
 import type {
   ReviewDiffPreviewSource,
   ReviewDiffPreviewSourceKind,
-  VcsStatusXaxis,
+  VcsStatusMonore,
 } from "@t3tools/contracts";
 
 import type { ShellProject, ShellThread } from "../threads/store.ts";
@@ -86,14 +86,14 @@ export function checkoutsOf(
 
 /**
  * How the Repositories list names a checkout: its project's, a worktree's
- * with its branch, or its folder's name when it records none or is an xaxis
+ * with its branch, or its folder's name when it records none or is a monore
  * copy, whose branch is main like every checkout of its project's
- * (`pult/decisions`, `xaxis-copies`); `xaxis` is whether its status says so.
+ * (`pult/decisions`, `monore-copies`); `monore` is whether its status says so.
  */
-export function checkoutName(checkout: Checkout, xaxis = false): string {
+export function checkoutName(checkout: Checkout, monore = false): string {
   if (checkout.worktree === null) return checkout.projectName;
   const folder = checkout.root.split("/").at(-1) ?? checkout.root;
-  return `${checkout.projectName} · ${(xaxis ? null : checkout.worktree.branch) ?? folder}`;
+  return `${checkout.projectName} · ${(monore ? null : checkout.worktree.branch) ?? folder}`;
 }
 
 /** A changed file of a checkout's source or a thread's turn, with what the server's file contents RPC needs to show its sides. */
@@ -118,7 +118,7 @@ export interface Change {
 
 /**
  * A source's files as changes: its stats, with how each changed from its
- * patch where it names the file (an xaxis checkout's headers, a bounded
+ * patch where it names the file (a monore checkout's headers, a bounded
  * patch, an older server's), else from the stat; a stat that names none,
  * as a server before upstream's 2026-11-14 sends, counts as modified.
  */
@@ -185,10 +185,10 @@ function againstOwnUpstream({ kind, baseRef, headRef }: ReviewDiffPreviewSource)
   return baseRef === headRef || baseRef.slice(baseRef.indexOf("/") + 1) === headRef;
 }
 
-/** A checkout's shown changes but its xaxis conflict's paths, which the Conflicts group lists instead; the paths are its root's, as the server names both. */
+/** A checkout's shown changes but its monore conflict's paths, which the Conflicts group lists instead; the paths are its root's, as the server names both. */
 export function withoutConflicts(
   changes: ReadonlyArray<Change>,
-  conflicts: VcsStatusXaxis["conflicts"],
+  conflicts: VcsStatusMonore["conflicts"],
 ): ReadonlyArray<Change> {
   if (conflicts.length === 0) return changes;
   const conflicted = new Set(conflicts.map((conflict) => conflict.path));

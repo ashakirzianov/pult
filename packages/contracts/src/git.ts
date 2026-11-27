@@ -131,10 +131,10 @@ export const VcsPullInput = Schema.Struct({
 });
 export type VcsPullInput = typeof VcsPullInput.Type;
 
-/** Pult: one side of an xaxis checkout's conflicted paths, taken whole (`xaxis resolve`). */
+/** Pult: one side of a monore checkout's conflicted paths, taken whole (`monore resolve`). */
 export const VcsResolveConflictInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  /** From the checkout's root, as its status's `xaxis.conflicts` names them. */
+  /** From the checkout's root, as its status's `monore.conflicts` names them. */
   paths: Schema.Array(GitFilePath).check(Schema.isMinLength(1)),
   /** `mine` keeps this checkout's version, `main` takes main's (the shell's "Take latest"). */
   side: Schema.Literals(["mine", "main"]),
@@ -253,11 +253,11 @@ const VcsStatusChangeRequest = Schema.Struct({
 });
 
 /**
- * Pult: what an xaxis checkout's local status adds: the paths a land's conflict
+ * Pult: what a monore checkout's local status adds: the paths a land's conflict
  * left (`markers` whether the file still holds conflict markers), and the
  * write that stopped partway, by the verb that finishes it.
  */
-export const VcsStatusXaxis = Schema.Struct({
+export const VcsStatusMonore = Schema.Struct({
   conflicts: Schema.Array(Schema.Struct({ path: GitFilePath, markers: Schema.Boolean })),
   interrupted: Schema.NullOr(
     Schema.Union([
@@ -266,7 +266,7 @@ export const VcsStatusXaxis = Schema.Struct({
     ]),
   ),
 });
-export type VcsStatusXaxis = typeof VcsStatusXaxis.Type;
+export type VcsStatusMonore = typeof VcsStatusMonore.Type;
 
 const VcsStatusLocalShape = {
   isRepo: Schema.Boolean,
@@ -298,8 +298,8 @@ const VcsStatusLocalShape = {
       deletions: NonNegativeInt,
     }),
   ),
-  /** Pult: present for an xaxis checkout alone, its presence naming the kind (`pult/decisions`, `xaxis-status-fields`). */
-  xaxis: Schema.optional(VcsStatusXaxis),
+  /** Pult: present for a monore checkout alone, its presence naming the kind (`pult/decisions`, `monore-status-fields`). */
+  monore: Schema.optional(VcsStatusMonore),
 };
 
 const VcsStatusRemoteShape = {
@@ -308,8 +308,8 @@ const VcsStatusRemoteShape = {
   behindCount: NonNegativeInt,
   aheadOfDefaultCount: Schema.optional(NonNegativeInt),
   pr: Schema.NullOr(VcsStatusChangeRequest),
-  /** Pult: an xaxis checkout's tip could not be read, the counts then 0 behind; absent when it was read. */
-  xaxisTip: Schema.optional(Schema.Literals(["signed-out", "unreachable"])),
+  /** Pult: a monore checkout's tip could not be read, the counts then 0 behind; absent when it was read. */
+  monoreTip: Schema.optional(Schema.Literals(["signed-out", "unreachable"])),
 };
 
 export const VcsStatusLocalResult = Schema.Struct(VcsStatusLocalShape);

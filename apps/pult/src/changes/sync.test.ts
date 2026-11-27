@@ -14,8 +14,8 @@ import {
   syncSteps,
   syncTitle,
   syncTooltip,
-  type XaxisState,
-  xaxisStateLine,
+  type MonoreState,
+  monoreStateLine,
 } from "./sync.ts";
 
 const state = (
@@ -23,7 +23,7 @@ const state = (
   behind: number,
   hasUpstream = true,
   branch: string | null = "main",
-) => ({ branch, hasUpstream, ahead, behind, xaxis: null });
+) => ({ branch, hasUpstream, ahead, behind, monore: null });
 
 NodeTest.describe("syncAction", () => {
   NodeTest.test("commits while the working tree has changes, whatever there is to sync", () => {
@@ -97,14 +97,14 @@ NodeTest.describe("sync", () => {
   });
 });
 
-/** An xaxis checkout's state as the server's status gives it: a stack of `ahead`, main `behind` past its base. */
-const xaxisState = (
+/** A monore checkout's state as the server's status gives it: a stack of `ahead`, main `behind` past its base. */
+const monoreState = (
   ahead: number,
   behind: number,
-  xaxis: Partial<{
-    conflicts: XaxisState["conflicts"];
-    interrupted: XaxisState["interrupted"];
-    xaxisTip: "signed-out" | "unreachable";
+  monore: Partial<{
+    conflicts: MonoreState["conflicts"];
+    interrupted: MonoreState["interrupted"];
+    monoreTip: "signed-out" | "unreachable";
   }> = {},
 ) =>
   syncState({
@@ -118,29 +118,29 @@ const xaxisState = (
     aheadCount: ahead,
     behindCount: behind,
     pr: null,
-    xaxis: { conflicts: xaxis.conflicts ?? [], interrupted: xaxis.interrupted ?? null },
-    ...(xaxis.xaxisTip === undefined ? {} : { xaxisTip: xaxis.xaxisTip }),
+    monore: { conflicts: monore.conflicts ?? [], interrupted: monore.interrupted ?? null },
+    ...(monore.monoreTip === undefined ? {} : { monoreTip: monore.monoreTip }),
   })!;
 
-const button = (uncommitted: boolean, sync: ReturnType<typeof xaxisState>) => {
+const button = (uncommitted: boolean, sync: ReturnType<typeof monoreState>) => {
   const action = syncAction(uncommitted, sync);
-  if (!("title" in action)) throw new Error(`not an xaxis button: ${action.kind}`);
+  if (!("title" in action)) throw new Error(`not a monore button: ${action.kind}`);
   return [action.title, action.enabled, action.tooltip];
 };
 
-const line = (sync: ReturnType<typeof xaxisState>, uncommitted = 0) =>
-  xaxisStateLine(sync, sync.xaxis!, uncommitted).map((item) => [item.title, item.click]);
+const line = (sync: ReturnType<typeof monoreState>, uncommitted = 0) =>
+  monoreStateLine(sync, sync.monore!, uncommitted).map((item) => [item.title, item.click]);
 
 const CONFLICT = { path: "notes/a.md", markers: true };
 
-NodeTest.describe("an xaxis checkout", () => {
+NodeTest.describe("a monore checkout", () => {
   NodeTest.test("commits and lands uncommitted changes or a stack, behind or not", () => {
-    NodeAssert.deepEqual(button(true, xaxisState(0, 3)), [
+    NodeAssert.deepEqual(button(true, monoreState(0, 3)), [
       "$(check) Commit & Land",
       true,
       "Commit every change and land it on main",
     ]);
-    NodeAssert.deepEqual(button(false, xaxisState(2, 3)), [
+    NodeAssert.deepEqual(button(false, monoreState(2, 3)), [
       "$(check) Commit & Land",
       true,
       "Land 2 commits on main",
@@ -148,21 +148,21 @@ NodeTest.describe("an xaxis checkout", () => {
   });
 
   NodeTest.test("gets the latest while only behind, and offers nothing in step with main", () => {
-    NodeAssert.deepEqual(button(false, xaxisState(0, 3)), [
+    NodeAssert.deepEqual(button(false, monoreState(0, 3)), [
       "$(cloud-download) Get latest 3$(arrow-down)",
       true,
       "Bring 3 changes from main",
     ]);
-    NodeAssert.deepEqual(button(false, xaxisState(0, 0))[1], false);
+    NodeAssert.deepEqual(button(false, monoreState(0, 0))[1], false);
   });
 
   NodeTest.test(
     "offers Commit & Land while a conflict is pending, though Take latest left nothing to commit",
     () => {
-      NodeAssert.deepEqual(button(false, xaxisState(0, 0, { conflicts: [CONFLICT] }))[1], true);
+      NodeAssert.deepEqual(button(false, monoreState(0, 0, { conflicts: [CONFLICT] }))[1], true);
       // Listed with a clean working tree, so the button stays in reach.
-      NodeAssert.equal(hasSync(xaxisState(0, 0, { conflicts: [CONFLICT] })), true);
-      NodeAssert.equal(hasSync(xaxisState(0, 0)), false);
+      NodeAssert.equal(hasSync(monoreState(0, 0, { conflicts: [CONFLICT] })), true);
+      NodeAssert.equal(hasSync(monoreState(0, 0)), false);
     },
   );
 
@@ -170,80 +170,82 @@ NodeTest.describe("an xaxis checkout", () => {
     "finishes an interrupted write with its verb, and leaves another to the CLI",
     () => {
       NodeAssert.equal(
-        syncAction(true, xaxisState(1, 0, { interrupted: "get-latest" })).kind,
+        syncAction(true, monoreState(1, 0, { interrupted: "get-latest" })).kind,
         "get-latest",
       );
       NodeAssert.equal(
-        syncAction(false, xaxisState(0, 0, { interrupted: "commit-land" })).kind,
+        syncAction(false, monoreState(0, 0, { interrupted: "commit-land" })).kind,
         "commit-land",
       );
       NodeAssert.deepEqual(
-        button(false, xaxisState(0, 0, { interrupted: { command: "xaxis resolve --mine" } })),
+        button(false, monoreState(0, 0, { interrupted: { command: "monore resolve --mine" } })),
         [
           "$(check) Commit & Land",
           false,
-          "A write stopped partway: run `xaxis resolve --mine` in a terminal",
+          "A write stopped partway: run `monore resolve --mine` in a terminal",
         ],
       );
     },
   );
 
   NodeTest.test("states the first that holds, uncommitted and behind together", () => {
-    NodeAssert.deepEqual(line(xaxisState(1, 2, { conflicts: [CONFLICT, CONFLICT] }), 3), [
+    NodeAssert.deepEqual(line(monoreState(1, 2, { conflicts: [CONFLICT, CONFLICT] }), 3), [
       ["Conflicts in 2 files", "open-conflict"],
     ]);
-    NodeAssert.deepEqual(line(xaxisState(1, 2, { interrupted: "commit-land" }), 3), [
+    NodeAssert.deepEqual(line(monoreState(1, 2, { interrupted: "commit-land" }), 3), [
       ["Interrupted", null],
     ]);
-    NodeAssert.deepEqual(line(xaxisState(1, 2), 1), [["1 uncommitted change · Behind by 2", null]]);
-    NodeAssert.deepEqual(line(xaxisState(1, 2)), [["1 commit not landed", null]]);
-    NodeAssert.deepEqual(line(xaxisState(0, 2)), [["Behind by 2", "get-latest"]]);
-    NodeAssert.deepEqual(line(xaxisState(0, 0)), [["Up to date", null]]);
+    NodeAssert.deepEqual(line(monoreState(1, 2), 1), [
+      ["1 uncommitted change · Behind by 2", null],
+    ]);
+    NodeAssert.deepEqual(line(monoreState(1, 2)), [["1 commit not landed", null]]);
+    NodeAssert.deepEqual(line(monoreState(0, 2)), [["Behind by 2", "get-latest"]]);
+    NodeAssert.deepEqual(line(monoreState(0, 0)), [["Up to date", null]]);
   });
 
   NodeTest.test("tells a tip it could not read beside the state", () => {
-    NodeAssert.deepEqual(line(xaxisState(0, 0, { xaxisTip: "signed-out" })), [
+    NodeAssert.deepEqual(line(monoreState(0, 0, { monoreTip: "signed-out" })), [
       ["Up to date", null],
-      ["Signed out of xaxis", null],
+      ["Signed out of monore", null],
     ]);
-    NodeAssert.deepEqual(line(xaxisState(0, 0, { xaxisTip: "unreachable" }))[1], [
-      "Could not reach xaxis",
+    NodeAssert.deepEqual(line(monoreState(0, 0, { monoreTip: "unreachable" }))[1], [
+      "Could not reach monore",
       null,
     ]);
   });
 
   NodeTest.test("keeps its words after a failed read, which the line tells", () => {
-    const failed = failedRead(xaxisState(2, 0), "xaxis was not found at xaxis")!;
+    const failed = failedRead(monoreState(2, 0), "monore was not found at monore")!;
     NodeAssert.equal(syncAction(false, failed).kind, "commit-land");
-    NodeAssert.deepEqual(xaxisStateLine(failed, failed.xaxis!, 0), [
+    NodeAssert.deepEqual(monoreStateLine(failed, failed.monore!, 0), [
       {
         title: "Could not read the checkout",
-        tooltip: "xaxis was not found at xaxis",
+        tooltip: "monore was not found at monore",
         click: null,
       },
     ]);
-    // A checkout never read as xaxis's behaves as a failed read does: nothing to sync.
+    // A checkout never read as monore's behaves as a failed read does: nothing to sync.
     NodeAssert.equal(failedRead(state(1, 0), "boom"), undefined);
     NodeAssert.equal(failedRead(undefined, "boom"), undefined);
   });
 
   NodeTest.test("leaves a refused Get latest's reason to the CLI", () => {
     NodeAssert.equal(
-      pullFailure(xaxisState(1, 2), "unlanded-changes: land them first"),
+      pullFailure(monoreState(1, 2), "unlanded-changes: land them first"),
       "unlanded-changes: land them first",
     );
   });
 });
 
-NodeTest.describe("the kept xaxis checkout", () => {
+NodeTest.describe("the kept monore checkout", () => {
   const NOW = Date.parse("2026-11-17T14:10:00Z");
-  /** The plugin's `xaxis/kept` answer for a checkout, as the route sends it, and the items it adds. */
+  /** The plugin's `monore/kept` answer for a checkout, as the route sends it, and the items it adds. */
   const kept = (checkout: object, answer: object = {}) => {
     const decoded = decodeKept({
-      folder: "/home/a/.pult/xaxis",
+      folder: "/home/a/.pult/monore",
       checkouts: [
         {
-          dir: "/home/a/.pult/xaxis",
+          dir: "/home/a/.pult/monore",
           prefix: "/",
           projectId: "p1",
           last: null,
@@ -286,20 +288,20 @@ NodeTest.describe("the kept xaxis checkout", () => {
             at: at(1000),
             outcome: "failed",
             code: "signed-out",
-            message: "Not signed in. Run `xaxis login`.",
+            message: "Not signed in. Run `monore login`.",
           },
         }),
-        [["$(warning) Can't keep up to date", "Not signed in. Run `xaxis login`.", null]],
+        [["$(warning) Can't keep up to date", "Not signed in. Run `monore login`.", null]],
       );
       // And when the CLI cannot list the checkouts at all.
       const unlisted = decodeKept({
         folder: "/f",
         checkouts: [],
         refused: [],
-        unlisted: "xaxis was not found",
+        unlisted: "monore was not found",
       });
       NodeAssert.deepEqual(keptStateLine(unlisted, undefined, NOW), [
-        { title: "$(warning) Can't keep up to date", tooltip: "xaxis was not found", click: null },
+        { title: "$(warning) Can't keep up to date", tooltip: "monore was not found", click: null },
       ]);
     },
   );

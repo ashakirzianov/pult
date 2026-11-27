@@ -193,7 +193,7 @@ function Conversation({
 
 /**
  * The fold of a Star's earlier conversations, at the top of its timeline
- * (xaxis `pult/tasks/star-sleep.task`): the transcripts of the home it is drawn
+ * (monore `pult/tasks/star-sleep.task`): the transcripts of the home it is drawn
  * from (`drawnHome`), never live threads, their names from the Pult plugin's
  * `stars` route and each one read from its transcript route (`foldState.ts`).
  * Open until the user collapses it, kept so for the page's session;

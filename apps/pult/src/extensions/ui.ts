@@ -1,4 +1,4 @@
-// What extensions publish into the page's UI slots (xaxis `pult/decisions`, `extension-ui`), as the
+// What extensions publish into the page's UI slots (monore `pult/decisions`, `extension-ui`), as the
 // page holds it, apart from the workbench so `node --test src/extensions/ui.test.ts` runs it: each
 // environment's lists from `extensions.subscribeUi` (`index.ts` follows them), decoded by the
 // slot's schema, an unknown slot skipped and an undecodable list dropped, each logged once; the

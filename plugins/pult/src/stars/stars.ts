@@ -1,4 +1,4 @@
-// The Stars of this server (xaxis `pult/tasks/durable-agent-sleep.task/design.md`, `pult/tasks/star-channels.task`):
+// The Stars of this server (monore `pult/tasks/durable-agent-sleep.task/design.md`, `pult/tasks/star-channels.task`):
 // found on demand from the store and the record files, kept up in their folders, their conversations,
 // one current per channel, which a `pult:channel:<slug>` tag names (an untagged thread is none), put to
 // sleep and transcribed once a minute and before one is handed to anyone. The plugin persists nothing.
@@ -253,7 +253,7 @@ export interface Stars {
   }) => Effect.Effect<Star, StarsError>;
   readonly upkeep: Effect.Effect<void>;
   readonly setRecord: (star: Star, fields: RecordFields) => Effect.Effect<Star, StarsError>;
-  /** The launch hook point's guard: one open conversation per channel (xaxis `pult/decisions`, `star-channel-launches`). */
+  /** The launch hook point's guard: one open conversation per channel (monore `pult/decisions`, `star-channel-launches`). */
   readonly guardLaunch: ThreadLaunchGuard.Guard;
 }
 

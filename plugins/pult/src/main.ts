@@ -29,7 +29,7 @@ import { forAsks } from "./stars/forAsks.ts";
 import { tellRetiredAsks } from "./stars/retiredAsks.ts";
 import * as Stars from "./stars/stars.ts";
 import * as SettledThreads from "./threads/settled.ts";
-import * as XaxisKept from "./xaxis/kept.ts";
+import * as MonoreKept from "./monore/kept.ts";
 
 /**
  * What this build does, one name per feature the page relies on; the page
@@ -46,7 +46,7 @@ const features: ReadonlyArray<string> = [
   "star-channel-history",
   "star-channel-settings",
   "usage-limits",
-  "xaxis-kept",
+  "monore-kept",
 ];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
@@ -75,7 +75,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
   yield* ChildFailures.make(stars, delivering.deliver);
   // Only where the desktop app opts its server in; elsewhere it builds to nothing.
   yield* Layer.build(InstallAtRest.layer);
-  const kept = yield* XaxisKept.make(stars.directory);
+  const kept = yield* MonoreKept.make(stars.directory);
   const tools = Layer.mergeAll(
     yield* MessageTool.make(stars, delivering.deliver),
     yield* ListTool.make(stars),
@@ -89,7 +89,7 @@ export const activate = Effect.fn("PultPlugin.activate")(function* (host: Plugin
           features: firing ? [...features, "star-schedules"] : features,
         }),
       );
-    if ((request.method === "GET" || request.method === "HEAD") && path === "/xaxis/kept")
+    if ((request.method === "GET" || request.method === "HEAD") && path === "/monore/kept")
       return kept.view.pipe(
         Effect.map((view) => HttpServerResponse.jsonUnsafe(view)),
         Effect.catch((error) =>

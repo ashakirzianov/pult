@@ -1,4 +1,4 @@
-// What the Limits shelf shows of the provider accounts' usage windows (xaxis `pult/tasks/provider-limits-page.task`):
+// What the Limits shelf shows of the provider accounts' usage windows (monore `pult/tasks/provider-limits-page.task`):
 // which windows show, which warn, and which of them the shelf lists.
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 import { elapsedShare } from "@t3tools/shared/usageLimits";

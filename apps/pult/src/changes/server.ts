@@ -54,7 +54,7 @@ export function changesServer(environmentId: string) {
         (await connection.run(environmentId, getInitialServerConfig())).vcsResolveConflict === true
       );
     },
-    /** One side of an xaxis checkout's conflicted paths, taken whole: Keep mine, Take latest. */
+    /** One side of a monore checkout's conflicted paths, taken whole: Keep mine, Take latest. */
     resolveConflict: async (input: VcsResolveConflictInput): Promise<void> => {
       await whenReady(environmentId);
       return connection.run(

@@ -56,7 +56,7 @@ NodeTest.describe("checkoutsOf", () => {
         ["a", "/wt/pult-2", "pult · pult-2"],
       ],
     );
-    // An xaxis copy records main, as every checkout of its project does: its folder names it.
+    // A monore copy records main, as every checkout of its project does: its folder names it.
     const copy = {
       environmentId: "a",
       root: "/wt/pult/copy-3fa9c1d2",
@@ -191,7 +191,7 @@ NodeTest.describe("shownChanges", () => {
 
 NodeTest.describe("withoutConflicts", () => {
   NodeTest.test(
-    "leaves an xaxis conflict's paths out of the changes, which Conflicts lists",
+    "leaves a monore conflict's paths out of the changes, which Conflicts lists",
     () => {
       const shown = shownChanges("a", "/notes", "/notes", [
         source("working-tree", ["a.md", "b.md", "c.md"]),

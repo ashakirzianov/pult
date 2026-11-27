@@ -1,4 +1,4 @@
-// When a Star's conversation falls asleep (xaxis `pult/decisions`, `star-sleep`): the page's
+// When a Star's conversation falls asleep (monore `pult/decisions`, `star-sleep`): the page's
 // rule as it was (`apps/pult/src/stars/sleep.ts`), read over the server's own records.
 import type {
   OrchestrationV2ProviderTurnTokenUsage,

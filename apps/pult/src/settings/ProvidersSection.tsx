@@ -133,7 +133,7 @@ function writeInstance(
 /**
  * Providers: per held environment, in the Environments section's order, every provider its
  * server reports, in the server's order, each on or off by a switch, and under one with setup,
- * its runtime (xaxis `pult/tasks/provider-setup-settings.task`). Everything goes through
+ * its runtime (monore `pult/tasks/provider-setup-settings.task`). Everything goes through
  * upstream's RPCs on that environment's connection; the server owns every state shown.
  */
 export function ProvidersSection() {

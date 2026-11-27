@@ -867,8 +867,8 @@ const spawnAndCollectOutput = Effect.fn("spawnAndCollectOutput")(function* (
 });
 
 export const resolveGitCommitHash = Effect.fn("resolveGitCommitHash")(function* (repoRoot: string) {
-  // Pult: an xaxis checkout has no git commit; asking git there would bake an outer repository's.
-  if ((yield* resolveNearestCheckout(repoRoot))?.kind === "xaxis") {
+  // Pult: a monore checkout has no git commit; asking git there would bake an outer repository's.
+  if ((yield* resolveNearestCheckout(repoRoot))?.kind === "monore") {
     return "unknown";
   }
   const result = yield* spawnAndCollectOutput(

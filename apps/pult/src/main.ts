@@ -126,7 +126,7 @@ registerDetails();
 registerLocalServerCommands();
 registerUpdateCommands();
 
-// The workbench owns the whole page, the desktop's traffic lights over its top row; its parts are the layout (xaxis `pult/own-shell`).
+// The workbench owns the whole page, the desktop's traffic lights over its top row; its parts are the layout (monore `pult/own-shell`).
 if (window.pultDesktop) installDesktopTitleBar(window.pultDesktop);
 const container = document.createElement("div");
 container.id = "workbench";

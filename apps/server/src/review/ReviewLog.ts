@@ -1,5 +1,5 @@
 // Pult: `review.getLog` and `review.getRefs`, a checkout's commit history and its
-// refs for the shell's Source Control Graph (xaxis `pult/tasks/scm-history.task`).
+// refs for the shell's Source Control Graph (monore `pult/tasks/scm-history.task`).
 import * as Effect from "effect/Effect";
 
 import {

@@ -1,4 +1,4 @@
-// A Star's channels (xaxis `pult/decisions`, `star-channels`): a channel is a slug nothing registers,
+// A Star's channels (monore `pult/decisions`, `star-channels`): a channel is a slug nothing registers,
 // told on a thread by its tag `pult:channel:<slug>`, and none is special by name: the Star's record
 // names its default channel (`record.ts`).
 

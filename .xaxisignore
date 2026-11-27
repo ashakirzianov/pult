@@ -1,4 +1,4 @@
-# The tree xaxis holds is git's: these three of .gitignore's paths, named here too.
+# The tree monore holds is git's: these three of .gitignore's paths, named here too.
 /.repos/
 /.claude/skills
 /apps/mobile/modules/t3-voice-transcription/ios/AppleSpeechEngine.swift

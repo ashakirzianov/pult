@@ -713,8 +713,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     );
   });
 
-  // Pult: an xaxis checkout, even inside a git repository, bakes no commit and asks no git.
-  it.effect("bakes no git commit into a build from an xaxis checkout", () =>
+  // Pult: a monore checkout, even inside a git repository, bakes no commit and asks no git.
+  it.effect("bakes no git commit into a build from a monore checkout", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -724,7 +724,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         const checkout = path.join(outer, "checkout");
         yield* fs.makeDirectory(checkout);
         yield* fs.writeFileString(
-          path.join(checkout, ".xaxis-checkout"),
+          path.join(checkout, ".monore-checkout"),
           "c078d1e2-6c3d-421c-b76d-a859c655780a\n",
         );
         const commands: string[] = [];

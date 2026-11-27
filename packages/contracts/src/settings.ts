@@ -1407,8 +1407,8 @@ export const ServerSettings = Schema.Struct({
   ),
   /** Pult: the desktop app downloads an update as it finds one and installs it at rest (`InstallAtRest.ts`). */
   autoUpdateDesktopApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /** Pult: the `xaxis` CLI an xaxis checkout's source control runs; empty is `xaxis` on PATH. */
-  xaxisBinaryPath: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Pult: the `monore` CLI a monore checkout's source control runs; empty is `monore` on PATH. */
+  monoreBinaryPath: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /** Holds an OS sleep inhibitor while any run is active; closing a laptop lid still sleeps it. */
   keepAwakeWhileAgentsWork: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** New T3 Connect device keys wait for approval from someone already trusted here. */
@@ -1482,7 +1482,7 @@ export const ServerSettings = Schema.Struct({
   ),
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  // Pult: on unless turned off (xaxis `pult/decisions`, `limited-thread-recovery`).
+  // Pult: on unless turned off (monore `pult/decisions`, `limited-thread-recovery`).
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snoozePresets: SnoozePresetSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SNOOZE_PRESETS)),
@@ -1883,7 +1883,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   autoUpdateDesktopApp: Schema.optionalKey(Schema.Boolean),
-  xaxisBinaryPath: Schema.optionalKey(TrimmedString),
+  monoreBinaryPath: Schema.optionalKey(TrimmedString),
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   requireConnectDeviceApproval: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

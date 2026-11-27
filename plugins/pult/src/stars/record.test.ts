@@ -107,7 +107,7 @@ describe("isStarRoot", () => {
 describe("starFolder", () => {
   it("is the name's slug, its marks dropped, cut to 40 characters", () => {
     assert.strictEqual(starFolder("Beta"), "beta");
-    assert.strictEqual(starFolder("  xaxis Lead!  "), "xaxis-lead");
+    assert.strictEqual(starFolder("  monore Lead!  "), "monore-lead");
     assert.strictEqual(starFolder("Ålpha_Çentauri, the 2nd"), "alpha-centauri-the-2nd");
     assert.strictEqual(starFolder("ﬁne"), "fine");
     assert.strictEqual(starFolder(`${"a".repeat(39)} b`), "a".repeat(39));

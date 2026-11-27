@@ -1,4 +1,4 @@
-// What the shell tells the user outside the page (xaxis
+// What the shell tells the user outside the page (monore
 // `pult/tasks/notify-outside-the-page.task`; `pult/decisions`,
 // `notifications`), apart from the DOM so `node --test
 // src/stars/notices.test.ts` can run it: the dock badge's count, the

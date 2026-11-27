@@ -1,4 +1,4 @@
-// Pult's, not upstream's (xaxis `pult/decisions`, `extension-ui-vocabulary`): what extensions publish
+// Pult's, not upstream's (monore `pult/decisions`, `extension-ui-vocabulary`): what extensions publish
 // into the page's UI slots, on A2UI's model, and the payloads of the three RPCs that carry them. An
 // addition (a slot, an optional field, an `Input` member) needs no bump of the extension contract;
 // changing or removing one does.

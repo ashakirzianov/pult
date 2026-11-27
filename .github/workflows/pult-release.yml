@@ -1,6 +1,6 @@
 name: Pult release
 
-# Pult's own release (xaxis pult/tasks/release-feed.task), beside upstream's
+# Pult's own release (monore pult/tasks/release-feed.task), beside upstream's
 # disabled workflows. An annotated tag `pult-v<x.y.z>` on main builds Pult.app
 # for macOS arm64, signed with the Developer ID and notarized, with the update
 # feed naming this repository; checks the feed, the version and the signature;
@@ -191,7 +191,7 @@ jobs:
 
       # A signed build puts the signing identity in a keychain of electron-builder's own on the user's
       # search list, and its bundled root certificates in another it never takes off; on Pult's own
-      # runner that list is Anton's (xaxis pult/tasks/release-on-own-runner.task). Noted here, so the
+      # runner that list is Anton's (monore pult/tasks/release-on-own-runner.task). Noted here, so the
       # build's additions come off after it, however it ends.
       - name: Note the keychain search list
         if: steps.resolve.outputs.signed == 'true'

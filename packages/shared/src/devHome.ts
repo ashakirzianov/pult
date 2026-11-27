@@ -23,16 +23,16 @@ const pointsAtLinkedWorktree = (gitFileContents: string, path: Path.Path): boole
   return segments.length >= 3 && segments.at(-2) === "worktrees";
 };
 
-const XAXIS_CHECKOUT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MONORE_CHECKOUT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * The nearest folder at or above `cwd` that is a checkout, and of which kind: a git one (its
- * `.git`, a folder or a file) or an xaxis one (its `.xaxis-checkout` marker).
+ * `.git`, a folder or a file) or a monore one (its `.monore-checkout` marker).
  */
 export const resolveNearestCheckout = Effect.fn("devHome.resolveNearestCheckout")(function* (
   cwd: string,
 ): Effect.fn.Return<
-  { readonly kind: "git" | "xaxis"; readonly directory: string } | undefined,
+  { readonly kind: "git" | "monore"; readonly directory: string } | undefined,
   never,
   FileSystem.FileSystem | Path.Path
 > {
@@ -44,21 +44,21 @@ export const resolveNearestCheckout = Effect.fn("devHome.resolveNearestCheckout"
     const hasGit = Option.isSome(
       yield* fileSystem.stat(path.join(directory, ".git")).pipe(Effect.option),
     );
-    // Pult: an xaxis checkout is known by its marker, a file holding the checkout's id, as the
-    // server's `XaxisVcsDriver` reads it. The nearer of the marker and `.git` decides
+    // Pult: a monore checkout is known by its marker, a file holding the checkout's id, as the
+    // server's `MonoreVcsDriver` reads it. The nearer of the marker and `.git` decides
     // (`pult/decisions`, `vcs-detection-nearest`), and both in one folder is refused.
-    const xaxisMarker = yield* fileSystem
-      .readFileString(path.join(directory, ".xaxis-checkout"))
+    const monoreMarker = yield* fileSystem
+      .readFileString(path.join(directory, ".monore-checkout"))
       .pipe(Effect.orElseSucceed(() => ""));
-    if (XAXIS_CHECKOUT_ID.test(xaxisMarker.trim())) {
+    if (MONORE_CHECKOUT_ID.test(monoreMarker.trim())) {
       if (hasGit) {
         return yield* Effect.die(
           new Error(
-            `${directory} holds both .git and .xaxis-checkout; which one it is is unknown.`,
+            `${directory} holds both .git and .monore-checkout; which one it is is unknown.`,
           ),
         );
       }
-      return { kind: "xaxis", directory };
+      return { kind: "monore", directory };
     }
     if (hasGit) {
       return { kind: "git", directory };
@@ -78,8 +78,8 @@ export const resolveGitWorktreePath = Effect.fn("devHome.resolveGitWorktreePath"
   const path = yield* Path.Path;
 
   const checkout = yield* resolveNearestCheckout(cwd);
-  // Pult: an xaxis checkout keeps state of its own as a linked worktree does.
-  if (checkout === undefined || checkout.kind === "xaxis") {
+  // Pult: a monore checkout keeps state of its own as a linked worktree does.
+  if (checkout === undefined || checkout.kind === "monore") {
     return checkout?.directory;
   }
   const gitPath = path.join(checkout.directory, ".git");

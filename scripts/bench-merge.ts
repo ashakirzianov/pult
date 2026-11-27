@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off extendsNativeError:off - runs on the bench, which may have no `vp i`.
-// An upstream merge from the bench, once Pult's code lives in xaxis: the mechanical steps
+// An upstream merge from the bench, once Pult's code lives in monore: the mechanical steps
 // of `pult/tasks/upstream-merges-from-the-bench.task` (pick 5, steps 1 to 5); `AGENTS.md`,
 // "Upstream merges from the bench", is how to run it. Run it in the bench, a git clone
 // whose `origin` is the mirror, with `upstream` and Pult's `rr-cache`:
@@ -26,8 +26,8 @@ interface State {
   readonly server: string;
   /** The temporary git worktree, at `pinned`, where the merge is made. */
   readonly git: string;
-  /** The xaxis checkout of `prefix` at `changeset`, where the merge is checked and landed. */
-  readonly xaxis: string;
+  /** The monore checkout of `prefix` at `changeset`, where the merge is checked and landed. */
+  readonly monore: string;
   readonly step: Step;
 }
 
@@ -65,14 +65,14 @@ function run(
 }
 
 const git = (cwd: string, ...args: string[]) => run("git", args, { cwd }).stdout.trim();
-const xaxis = (cwd: string, ...args: string[]) =>
-  run("xaxis", ["-C", cwd, ...args], { cwd }).stdout;
+const monore = (cwd: string, ...args: string[]) =>
+  run("monore", ["-C", cwd, ...args], { cwd }).stdout;
 
 /**
  * Writes into `dir` what changed between git trees `from` and `to` of `repo`: each added or
  * changed file's committed bytes and executable bit, and each deletion. Nothing else in `dir`
- * is touched, so an xaxis checkout's marker and ignored files stay. A symlink or a gitlink in
- * the change is refused, since xaxis holds neither.
+ * is touched, so a monore checkout's marker and ignored files stay. A symlink or a gitlink in
+ * the change is refused, since monore holds neither.
  */
 export function transfer(repo: string, from: string, to: string, dir: string): number {
   const raw = run("git", ["diff-tree", "-r", "-z", "--no-renames", from, to], { cwd: repo }).stdout;
@@ -81,7 +81,7 @@ export function transfer(repo: string, from: string, to: string, dir: string): n
     const [, newMode, , , status] = fields[i]!.slice(1).split(" ");
     if (status !== "D" && newMode !== "100644" && newMode !== "100755") {
       stop([
-        `bench-merge: ${fields[i + 1]} has git mode ${newMode}; xaxis holds regular and executable files only.`,
+        `bench-merge: ${fields[i + 1]} has git mode ${newMode}; monore holds regular and executable files only.`,
       ]);
     }
   }
@@ -131,16 +131,16 @@ function writeState(bench: string, state: State): State {
   return state;
 }
 
-/** Runs `xaxis mirror` and reads the mapping on `origin`'s `main`. */
+/** Runs `monore mirror` and reads the mapping on `origin`'s `main`. */
 function mirror(bench: string): {
   commit: string;
   changeset: string;
   prefix: string;
   server: string;
 } {
-  process.stdout.write(xaxis(bench, "mirror"));
+  process.stdout.write(monore(bench, "mirror"));
   const commit = git(bench, "rev-parse", "refs/remotes/origin/main");
-  const note = git(bench, "notes", "--ref=xaxis-mirror", "show", commit);
+  const note = git(bench, "notes", "--ref=monore-mirror", "show", commit);
   const field = (name: string) => {
     const value = note.match(new RegExp(`^${name} (.+)$`, "m"))?.[1];
     if (!value)
@@ -187,7 +187,7 @@ function start(bench: string, ref: string): void {
     prefix: pinned.prefix,
     server: pinned.server,
     git: NodePath.join(work, "git"),
-    xaxis: NodePath.join(work, "xaxis"),
+    monore: NodePath.join(work, "monore"),
     step: "merge",
   });
   console.log(
@@ -198,8 +198,8 @@ function start(bench: string, ref: string): void {
     inherit: true,
   });
   run(
-    "xaxis",
-    ["checkout", state.prefix, state.xaxis, "--at", state.changeset, "--server", state.server],
+    "monore",
+    ["checkout", state.prefix, state.monore, "--at", state.changeset, "--server", state.server],
     {
       cwd: bench,
       inherit: true,
@@ -266,28 +266,28 @@ function proceed(bench: string, initial: State): void {
     if (tree === git(state.git, "rev-parse", `${state.pinned}^{tree}`)) {
       retire(bench, state);
       console.log(
-        `bench-merge: upstream ${state.upstream} changes nothing in our tree; skipped, nothing landed. Remove ${state.xaxis}.`,
+        `bench-merge: upstream ${state.upstream} changes nothing in our tree; skipped, nothing landed. Remove ${state.monore}.`,
       );
       return;
     }
     // Step 3: never overlay the merge onto a checkout that moved from the pinned changeset.
-    const status = JSON.parse(xaxis(state.xaxis, "status", "--json")) as {
+    const status = JSON.parse(monore(state.monore, "status", "--json")) as {
       head: string;
       changes: unknown[];
       stack: unknown[];
     };
     if (status.head !== state.changeset || status.changes.length > 0 || status.stack.length > 0) {
       stop([
-        `bench-merge: ${state.xaxis} is not a clean checkout of ${state.changeset}; transfer refused.`,
+        `bench-merge: ${state.monore} is not a clean checkout of ${state.changeset}; transfer refused.`,
       ]);
     }
-    const count = transfer(state.git, state.pinned, tree, state.xaxis);
-    console.log(`bench-merge: ${count} paths transferred into ${state.xaxis}.`);
+    const count = transfer(state.git, state.pinned, tree, state.monore);
+    console.log(`bench-merge: ${count} paths transferred into ${state.monore}.`);
     state = writeState(bench, { ...state, step: "check" });
   }
   if (state.step === "check") {
     const setup = run("node", ["scripts/setup-worktree.ts"], {
-      cwd: state.xaxis,
+      cwd: state.monore,
       env: { ...process.env, T3CODE_PROJECT_ROOT: bench },
       allowFail: true,
       inherit: true,
@@ -295,18 +295,18 @@ function proceed(bench: string, initial: State): void {
     if (setup.status !== 0) {
       stop([
         "bench-merge: STOPPED. Setup failed; a stale lockfile is fixed by `vp i` there, and lands with the merge.",
-        `Fix it in ${state.xaxis}, then \`continue\`.`,
+        `Fix it in ${state.monore}, then \`continue\`.`,
       ]);
     }
     const missing = TYPECHECKED.filter(
-      (dir) => !NodeFS.existsSync(NodePath.join(state.xaxis, dir)),
+      (dir) => !NodeFS.existsSync(NodePath.join(state.monore, dir)),
     );
     if (missing.length > 0)
       stop([`bench-merge: the merged tree has no ${missing.join(", ")} to typecheck.`]);
     const failed = TYPECHECKED.filter(
       (dir) =>
-        run(NodePath.join(state.xaxis, "node_modules/.bin/vp"), ["run", "typecheck"], {
-          cwd: NodePath.join(state.xaxis, dir),
+        run(NodePath.join(state.monore, "node_modules/.bin/vp"), ["run", "typecheck"], {
+          cwd: NodePath.join(state.monore, dir),
           allowFail: true,
           inherit: true,
         }).status !== 0,
@@ -314,7 +314,7 @@ function proceed(bench: string, initial: State): void {
     if (failed.length > 0) {
       stop([
         `bench-merge: STOPPED. Typecheck failed in ${failed.join(", ")}.`,
-        `Fix it in ${state.xaxis} (fixes inside the merge are expected), then \`continue\`.`,
+        `Fix it in ${state.monore} (fixes inside the merge are expected), then \`continue\`.`,
       ]);
     }
     state = writeState(bench, { ...state, step: "land" });
@@ -322,7 +322,7 @@ function proceed(bench: string, initial: State): void {
   if (state.step === "land") {
     stop([
       "bench-merge: STOPPED. Setup and the four typechecks pass.",
-      `Run the page against a dev server of ${state.xaxis} (apps/pult/AGENTS.md, Running), fix there`,
+      `Run the page against a dev server of ${state.monore} (apps/pult/AGENTS.md, Running), fix there`,
       "(`continue` re-runs the typechecks), then `land`.",
     ]);
   }
@@ -330,13 +330,13 @@ function proceed(bench: string, initial: State): void {
 
 function land(bench: string, state: State): void {
   if (state.step === "land") {
-    const status = JSON.parse(xaxis(state.xaxis, "status", "--json")) as {
+    const status = JSON.parse(monore(state.monore, "status", "--json")) as {
       head: string;
       stack: unknown[];
     };
     if (status.head !== state.changeset || status.stack.length > 0) {
       stop([
-        `bench-merge: ${state.xaxis} has moved from ${state.changeset} or holds commits; land it by hand.`,
+        `bench-merge: ${state.monore} has moved from ${state.changeset} or holds commits; land it by hand.`,
       ]);
     }
     // Step 4: the trailer names upstream's own commit, the mapped commit's second parent.
@@ -346,18 +346,18 @@ function land(bench: string, state: State): void {
       `Git-Parent: ${state.upstream}`,
     ].join("\n\n");
     NodeFS.writeFileSync(messagePath(state), message);
-    process.stdout.write(xaxis(state.xaxis, "commit", "-m", message));
+    process.stdout.write(monore(state.monore, "commit", "-m", message));
     state = writeState(bench, { ...state, step: "finish" });
-    const landed = run("xaxis", ["-C", state.xaxis, "land"], {
+    const landed = run("monore", ["-C", state.monore, "land"], {
       cwd: bench,
       allowFail: true,
       inherit: true,
     });
     if (landed.status !== 0) {
       stop([
-        `bench-merge: STOPPED. \`xaxis land\` exited ${landed.status}.`,
-        `On a conflict, resolve it in ${state.xaxis}, then commit there with this same message, or the trailer is lost:`,
-        `  xaxis commit -m "$(cat ${messagePath(state)})" && xaxis land`,
+        `bench-merge: STOPPED. \`monore land\` exited ${landed.status}.`,
+        `On a conflict, resolve it in ${state.monore}, then commit there with this same message, or the trailer is lost:`,
+        `  monore commit -m "$(cat ${messagePath(state)})" && monore land`,
         "then `land` again.",
       ]);
     }
@@ -377,7 +377,7 @@ function land(bench: string, state: State): void {
   }
   retire(bench, state);
   console.log(
-    `bench-merge: mirrored ${merges[0]![0]}, second parent ${state.upstream}. The xaxis checkout ${state.xaxis} is left; remove it when done.`,
+    `bench-merge: mirrored ${merges[0]![0]}, second parent ${state.upstream}. The monore checkout ${state.monore} is left; remove it when done.`,
   );
 }
 
@@ -408,7 +408,7 @@ function main(): void {
         stop(["bench-merge: committed already, and may have landed; `land` finishes it."]);
       }
       retire(bench, state);
-      console.log(`bench-merge: aborted; the xaxis checkout ${state.xaxis} is left as it is.`);
+      console.log(`bench-merge: aborted; the monore checkout ${state.monore} is left as it is.`);
       return;
     }
     default:
