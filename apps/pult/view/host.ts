@@ -29,19 +29,14 @@ export interface ThreadViewHost {
    * whose view takes up the draft the view remembered for the project.
    */
   readonly openDraft: (environmentId: string, projectId: string) => void;
+  /** Answers a miss's text, which the chip clicked shows as its menu's head, or none once it opened or offered a pick. */
   readonly openFile: (
     environmentId: string,
     threadId: string,
     path: string,
     line: number | null,
     endLine: number | null,
-  ) => void;
-  /**
-   * Whether a file chip's path opens anything, as `openFile` would resolve it
-   * (`src/files/linkable.ts`): the view's file link gate draws a chip known
-   * not to as plain text (`fileLinkGate.tsx`).
-   */
-  readonly fileLinks: FileLinks;
+  ) => Promise<string | undefined>;
   /** The thread's changes, a turn's when the view named one whose checkpoints it knows. */
   readonly openChanges: (
     environmentId: string,
@@ -116,23 +111,6 @@ export interface ThreadViewHost {
    * (`browserHost.tsx`); absent outside Pult.app.
    */
   readonly keepRendering: ((keep: boolean) => Promise<void>) | undefined;
-}
-
-/** A file chip's path in its thread, as the view hands it to `openFile`. */
-export interface FileLinkRef {
-  readonly environmentId: string;
-  readonly threadId: string;
-  readonly path: string;
-}
-
-/** Whether file chips open anything: the shell's `src/files/linkable.ts`. */
-export interface FileLinks {
-  /** True while a click would open the file or offer a pick, false once known not to; undefined while unknown, drawn as a chip. */
-  verdict(ref: FileLinkRef): boolean | undefined;
-  /** Asks for the verdict, unless it is known or asked already. */
-  ask(ref: FileLinkRef): void;
-  /** Calls `listener` when the ref's verdict changes; returns its removal. */
-  subscribe(ref: FileLinkRef, listener: () => void): () => void;
 }
 
 /** A thread view's target, as the details cards name it: a thread, or a project's draft. */

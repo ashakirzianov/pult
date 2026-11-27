@@ -3,6 +3,7 @@ import {
   ICommandService,
   type IEditorGroup,
   IInstantiationService,
+  INotificationService,
 } from "@codingame/monaco-vscode-api";
 import {
   type EditorInput,
@@ -35,7 +36,7 @@ import { starById, starStore, starTarget } from "../stars/model.ts";
 import { starName } from "../stars/stars.ts";
 import { StarContent } from "../stars/tab.tsx";
 import { workbenchColorScheme } from "../theme.ts";
-import { openThreadFile, registerOpenThreadFileCommand, threadFileLinks } from "./files.ts";
+import { openThreadFile, registerOpenThreadFileCommand } from "./files.ts";
 import { projectIconUri, projectIcons, threadProjectIcon } from "./projectIcon.ts";
 import { isSubagent, type ShellProject, type ShellThread, threadStore } from "./store.ts";
 
@@ -112,8 +113,10 @@ export function threadView() {
       openDraft: (environmentId, projectId) =>
         run("pult-shell.newThread", environmentId, projectId),
       openFile: (environmentId, threadId, path, line, endLine) =>
-        void openThreadFile(environmentId, threadId, path, line, endLine),
-      fileLinks: threadFileLinks,
+        openThreadFile(environmentId, threadId, path, line, endLine).then(async (miss) => {
+          if (miss !== undefined) (await getService(INotificationService)).warn(miss);
+          return miss;
+        }),
       // The changes view (`src/changes/`): the Source Control view over the thread's project, with a turn's group when the view named one.
       openChanges: (environmentId, threadId, path, turn) =>
         run("pult-shell.showChanges", environmentId, threadId, path, turn),

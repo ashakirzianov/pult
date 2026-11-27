@@ -131,7 +131,7 @@ export async function resolveThreadPath(input: ResolveInput): Promise<Resolution
 }
 
 /** Whether a search failed because its checkout's root is not there, the server's `workspace_root_not_found`. */
-export function rootGone(error: unknown): boolean {
+function rootGone(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&

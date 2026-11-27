@@ -41,7 +41,6 @@ import {
   type ShellValue,
 } from "~/components/chat/ShellComposerOptions";
 import { ShellDetailsCardWidth } from "~/components/chat/ShellDetailsCardWidth";
-import { FileLinkGateContext } from "~/components/chat/fileLinkGate";
 import { TimelineHeaderSlot } from "~/components/chat/TimelineHeaderSlot";
 import { ShellMessagePresentation } from "~/components/chat/ShellMessagePresentation";
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -70,7 +69,6 @@ import {
 import { followsShowingIn } from "./rightPanel.ts";
 import { makeThreadRouter, RESTING_PATH } from "./routes.tsx";
 import { detailsCardWidth } from "./detailsCardWidth.ts";
-import { FileLinkGate } from "./fileLinkGate.tsx";
 import { DetailsInFile, DetailsTarget } from "./ThreadDetailsPanel.tsx";
 import { threadViewHost } from "./host.ts";
 
@@ -611,11 +609,9 @@ function ViewProviders({
           <ShellComposerOptions value={additions.composer}>
             <ShellMessagePresentation value={presentMessage}>
               <ShellDetailsCardWidth value={detailsCardWidth}>
-                <FileLinkGateContext value={FileLinkGate}>
-                  <TimelineHeaderSlot value={additions.header?.element ?? null}>
-                    <RouterProvider router={router} />
-                  </TimelineHeaderSlot>
-                </FileLinkGateContext>
+                <TimelineHeaderSlot value={additions.header?.element ?? null}>
+                  <RouterProvider router={router} />
+                </TimelineHeaderSlot>
               </ShellDetailsCardWidth>
             </ShellMessagePresentation>
           </ShellComposerOptions>

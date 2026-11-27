@@ -198,8 +198,17 @@ interface RightPanelStoreState {
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
-  /** Pult's hook point: `endLine` closes the lines a citation names, which Pult's shell selects; this panel reveals `line` alone. */
-  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number, endLine?: number) => void;
+  /**
+   * Pult's hook point: `endLine` closes the lines a citation names, which Pult's shell selects;
+   * this panel reveals `line` alone. Pult's answers with its miss, the text a chip's menu heads
+   * with; this panel answers nothing.
+   */
+  openFile: (
+    ref: ScopedThreadRef,
+    relativePath: string,
+    line?: number,
+    endLine?: number,
+  ) => void | Promise<string | undefined>;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,
@@ -1004,8 +1013,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             ),
           }));
         }),
+      // Pult: `void`, since the type admits Pult's answer.
       openFile: (ref, requestedPath, line) =>
-        set((state) =>
+        void set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
             if (requestedPath === ".") {
               return upsertSurface(current, singletonSurface("files"));

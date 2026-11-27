@@ -63,7 +63,7 @@ import type { MountedReaderSelection } from "../../view/ReaderSelection.tsx";
 import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
 import { stripTarget } from "../composer/index.tsx";
 import { toHostPath, toUriPath } from "../files/paths.ts";
-import { documentFileLinks, openDocumentFile, openedDocument } from "../threads/files.ts";
+import { openDocumentFile } from "../threads/files.ts";
 import { selectionTarget } from "../threads/selection.ts";
 import { threadStore } from "../threads/store.ts";
 import { threadView } from "../threads/pane.tsx";
@@ -361,10 +361,7 @@ class ReaderPane extends SimpleEditorPane {
       return { dispose: () => {} };
     }
     this.model = model;
-    if (input.markdown) openedDocument(input.file.authority, input.file.path);
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // Each chip's verdict, followed while the tab shows the file: a change renders it again.
-    const following = new Map<string, () => void>();
     const theme = () =>
       getComputedStyle(document.documentElement).colorScheme.includes("dark") ? "dark" : "light";
     const chips: Chips = (codes, values) => {
@@ -391,36 +388,18 @@ class ReaderPane extends SimpleEditorPane {
       });
       const suffixes = buildFileLinkParentSuffixByPath(files.map(({ position }) => position.path));
       const refSuffixes = buildFileLinkParentSuffixByPath(refs.map(({ named }) => named));
-      // A path edited out of the file is followed no more.
-      const paths = new Set([
-        ...files.map(({ position }) => position.path),
-        ...refs.map(({ file }) => file),
-      ]);
-      for (const [path, stop] of following)
-        if (!paths.has(path)) {
-          stop();
-          following.delete(path);
-        }
-      /** Whether a click on `path` opens a file, the verdict followed. */
-      const opens = (path: string) => {
-        const ref = { environmentId: input.file.authority, threadId: input.file.path, path };
-        if (!following.has(path)) following.set(path, documentFileLinks.subscribe(ref, changed));
-        documentFileLinks.ask(ref);
-        return documentFileLinks.verdict(ref) === true;
-      };
+      // Drawn from the text alone: the click resolves it, a miss its menu.
       const drawn = { codes: new Map<string, Chip>(), refs: new Map<string, Chip>() };
       for (const { code, position } of files)
-        if (opens(position.path))
-          drawn.codes.set(code, {
-            markup: view!.readerChip(position.path, fileLinkLabel(position, suffixes), theme()),
-            file: code,
-          });
+        drawn.codes.set(code, {
+          markup: view!.readerChip(position.path, fileLinkLabel(position, suffixes), theme()),
+          file: code,
+        });
       for (const { value, named, file } of refs)
-        if (opens(file))
-          drawn.refs.set(value, {
-            markup: view!.readerChip(file, fileLinkLabel({ path: named }, refSuffixes), theme()),
-            file,
-          });
+        drawn.refs.set(value, {
+          markup: view!.readerChip(file, fileLinkLabel({ path: named }, refSuffixes), theme()),
+          file,
+        });
       return drawn;
     };
     const render = async () => {
@@ -458,7 +437,6 @@ class ReaderPane extends SimpleEditorPane {
       dispose: () => {
         this.find?.dismiss();
         clearTimeout(timer);
-        for (const stop of following.values()) stop();
         changes.dispose();
         stopWrap?.();
         themes?.dispose();
@@ -485,7 +463,9 @@ class ReaderPane extends SimpleEditorPane {
       path,
       line ?? null,
       endLine ?? null,
-    );
+    ).then((miss) => {
+      if (miss !== undefined) StandaloneServices.get(INotificationService).warn(miss);
+    });
   }
 
   /** The page's selection now, read against the tab, the version shown and the composer; none before the page renders. */

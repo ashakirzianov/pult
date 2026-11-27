@@ -221,7 +221,6 @@ import {
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
-import { FileLinkGateContext } from "./chat/fileLinkGate";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { handleMarkdownFragmentClick } from "./chat/markdownFragments";
 import { hastHasText, hastPlainTextDeep, plainHastText } from "./chat/markdownHast.logic";
@@ -587,8 +586,6 @@ function useChatMarkdownState(
   const gt = useGT();
   const messages = useMessages();
   const resolvedTheme = useRenderedAppearance();
-  // Pult's file link gate (`chat/fileLinkGate.ts`); upstream's app provides none.
-  const FileLinkGate = use(FileLinkGateContext);
   const markdownRef = useRef<HTMLElement>(null);
   const mediaRequestId = useRef(0);
   const mediaScopeKey = [
@@ -932,54 +929,55 @@ function useChatMarkdownState(
     }
     return findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot);
   };
-  // The path the panel's open is handed, which Pult's file link gate checks too.
-  const panelOpenPath = (ref: ScopedThreadRef, path: string) => {
+  // Pult: answers the panel's open's answer, a miss's text in Pult's shell (`rightPanelStore.ts`).
+  const openFileInPanel = (
+    fileLinkMeta: MarkdownFileLinkMeta,
+    panelPath: string,
+  ): Promise<string | undefined> | undefined => {
+    if (!threadRef) return;
     // The panel reads relative paths from the thread's folder. A pull request body's `cwd` is the
     // checkout of its repository, which can be another folder.
-    const shell = readThreadShell(ref);
+    const shell = readThreadShell(threadRef);
     const panelRoot =
       shell?.worktreePath ??
       projects.find(
         (project) => project.environmentId === environmentId && project.id === shell?.projectId,
       )?.workspaceRoot;
-    return cwd && panelRoot !== undefined && cwd !== panelRoot
-      ? resolveWorkspaceFilePath(path, cwd)
-      : path;
-  };
-  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
-    const openAt = (path: string) =>
-      useRightPanelStore
+    const openAt = async (path: string) =>
+      (await useRightPanelStore
         .getState()
-        .openFile(threadRef, panelOpenPath(threadRef, path), fileLinkMeta.line);
+        .openFile(
+          threadRef,
+          cwd && panelRoot !== undefined && cwd !== panelRoot
+            ? resolveWorkspaceFilePath(path, cwd)
+            : path,
+          fileLinkMeta.line,
+        )) ?? undefined;
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
       workspaceLinkLookupQuery(panelPath, cwd) === null
     ) {
-      openAt(panelPath);
-      return;
+      return openAt(panelPath);
     }
     // Anything the user opens in this panel meanwhile, such as a file from the picker, wins.
     const panelRef = rightPanelHostRef(threadRef);
     const panelKey = scopedThreadKey(panelRef);
     const userActionRevision = useRightPanelStore.getState().markUserAction(panelRef);
-    void (async () => {
+    return (async () => {
       const match = await findWorkspaceFileMatch(fileLinkMeta);
       if (
         scopedThreadKey(rightPanelHostRef(threadRef)) !== panelKey ||
         useRightPanelStore.getState().getUserActionRevision(panelRef) !== userActionRevision
       )
         return;
-      openAt(match ?? panelPath);
+      return openAt(match ?? panelPath);
     })();
   };
-  /** `fallback`: what Pult's file link gate draws in the chip's place, null for nothing; absent, no gate. */
   const fileLinkChip = (
     fileLinkMeta: MarkdownFileLinkMeta,
     copyMarkdown: string,
     mediaSource?: string,
-    fallback?: React.ReactNode,
   ) => {
     const resolveHostPath = () =>
       resolveMarkdownFileHostPath({
@@ -1003,7 +1001,7 @@ function useChatMarkdownState(
       fileLinkMeta.workspaceRelativePath ??
       (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
-    const chip = (
+    return (
       <MarkdownFileLink
         environmentId={environmentId}
         href={fileLinkMeta.targetPath}
@@ -1071,21 +1069,6 @@ function useChatMarkdownState(
             : undefined
         }
       />
-    );
-    return FileLinkGate !== null &&
-      fallback !== undefined &&
-      threadRef !== undefined &&
-      !isAppBundle &&
-      panelPath !== null ? (
-      <FileLinkGate
-        threadRef={threadRef}
-        path={panelOpenPath(threadRef, panelPath)}
-        isStreaming={isStreaming}
-        chip={chip}
-        fallback={fallback}
-      />
-    ) : (
-      chip
     );
   };
 
@@ -1589,14 +1572,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
       source.startsWith("[") && source.includes("](")
         ? source
         : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
-    const standsAlone = isMarkdownFileLinkLabel(label, normalizedHref);
-    const chip = fileLinkChip(
-      fileLinkMeta,
-      copyMarkdown,
-      normalizedHref,
-      standsAlone ? label : null,
-    );
-    return standsAlone ? (
+    const chip = fileLinkChip(fileLinkMeta, copyMarkdown, normalizedHref);
+    return isMarkdownFileLinkLabel(label, normalizedHref) ? (
       chip
     ) : (
       <span data-markdown-copy={copyMarkdown}>
@@ -1619,9 +1596,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
           fileLinkMeta,
           `\`${codeText}\``,
           inlineCodeFilePathCandidate(codeText) ?? codeText.trim(),
-          <code {...props} className={className}>
-            {children}
-          </code>,
         );
       }
       return (

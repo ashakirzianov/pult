@@ -14,7 +14,6 @@ import { Uri } from "monaco-editor";
 import { changesState } from "./changes/view.ts";
 import { connection } from "./connection/index.ts";
 import { starStore } from "./stars/model.ts";
-import { threadFileLinks } from "./threads/files.ts";
 import { selectedDraft, selectedStar, selectedThread } from "./threads/selection.ts";
 import { threadStore } from "./threads/store.ts";
 
@@ -34,8 +33,6 @@ export function installDebugHandle(): void {
       stars: () => starStore.get(),
       // What the changes view shows and why: its thread, root, group sizes and last failure.
       changes: () => changesState(),
-      // What the file link gate's checks have cost since the page loaded: `getMetadata` calls and paths, searches.
-      fileLinks: () => threadFileLinks.counts(),
       // The editor part's tabs, per group in grid order; `*` marks the active one.
       tabs: async () =>
         (await getService(IEditorGroupsService))
