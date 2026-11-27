@@ -16,6 +16,7 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
+  type OrchestrationV2ContextTransfer,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
@@ -138,6 +139,8 @@ interface FakeThread {
   shell: OrchestrationV2ThreadShell;
   runs: OrchestrationV2Run[];
   subagents: OrchestrationV2Subagent[];
+  /** The context transfers its projection holds, its forks' among them. */
+  contextTransfers: OrchestrationV2ContextTransfer[];
   providerTurns: OrchestrationV2ProviderTurn[];
   /** The conversation's messages, as the projection records them. */
   messages: OrchestrationV2ConversationMessage[];
@@ -271,12 +274,13 @@ function fakeThreads() {
               (options.unsettledOnly !== true || shell.settledOverride !== "settled"),
           ),
       })),
-    /** The thread's row, a deleted one's included, as the store keeps it; its subagents if asked. */
+    /** The thread's row, a deleted one's included, as the store keeps it; its subagents and context transfers if asked. */
     getThreadRecords: (threadId: ThreadId, fields: ReadonlyArray<string>) =>
-      fields.every((field) => field === "subagents")
+      fields.every((field) => field === "subagents" || field === "contextTransfers")
         ? Effect.sync(() => ({
             thread: byId(threadId)!.shell,
             subagents: byId(threadId)?.subagents ?? [],
+            contextTransfers: byId(threadId)?.contextTransfers ?? [],
           }))
         : Effect.die(new Error(`unexpected records read: ${fields.join(", ")}`)),
     streamDomainEvents: Stream.callback<OrchestrationV2DomainEvent>((queue) =>
@@ -393,6 +397,7 @@ function fakeThreads() {
       },
       runs,
       subagents: [],
+      contextTransfers: [],
       providerTurns: [],
       messages: [],
     };

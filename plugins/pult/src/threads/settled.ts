@@ -69,6 +69,45 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     }
   });
 
+  /** A thread below the settled one settles: one neither settled, archived nor deleted, of
+   * the kind `of` names, its subagent or its side chat. One the server refuses to settle, still
+   * running, is logged and left as it is. */
+  const settleChild = Effect.fn("SettledThreads.settleChild")(function* (
+    threadId: ThreadId,
+    childThreadId: ThreadId,
+    kind: "subagent" | "side-chat",
+    of: (child: OrchestrationV2ThreadShell) => boolean,
+  ) {
+    yield* Effect.gen(function* () {
+      const child = yield* threads.getThreadShell(childThreadId);
+      if (
+        child === null ||
+        !of(child) ||
+        child.settledOverride === "settled" ||
+        child.archivedAt !== null ||
+        child.deletedAt !== null
+      )
+        return;
+      yield* threads.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make(
+          `server:settle-${kind}:${childThreadId}:${yield* random.uuidV4()}`,
+        ),
+        threadId: childThreadId,
+      });
+    }).pipe(
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterruptsOnly(cause),
+        (cause) =>
+          Effect.logWarning(`settling a settled thread's ${kind} failed`, {
+            threadId,
+            childThreadId,
+            cause: Cause.pretty(cause),
+          }),
+      ),
+    );
+  });
+
   /** Its subagent threads settle, whose idle rows would otherwise outlive it; un-settling it
    * restores none. Each child's own settle cascades to its subagents in turn. */
   const settleSubagents = Effect.fn("SettledThreads.settleSubagents")(function* (
@@ -77,33 +116,27 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     const { subagents } = yield* threads.getThreadRecords(threadId, ["subagents"]);
     for (const childThreadId of new Set(subagents.map((subagent) => subagent.childThreadId))) {
       if (childThreadId === null) continue;
-      // A child the server refuses to settle, one still running, is logged and left as it is.
-      yield* Effect.gen(function* () {
-        const child = yield* threads.getThreadShell(childThreadId);
-        if (
-          child === null ||
-          child.settledOverride === "settled" ||
-          child.archivedAt !== null ||
-          child.deletedAt !== null
-        )
-          return;
-        yield* threads.dispatch({
-          type: "thread.settle",
-          commandId: CommandId.make(
-            `server:settle-subagent:${childThreadId}:${yield* random.uuidV4()}`,
-          ),
-          threadId: childThreadId,
-        });
-      }).pipe(
-        Effect.catchCauseIf(
-          (cause) => !Cause.hasInterruptsOnly(cause),
-          (cause) =>
-            Effect.logWarning("settling a settled thread's subagent failed", {
-              threadId,
-              childThreadId,
-              cause: Cause.pretty(cause),
-            }),
-        ),
+      yield* settleChild(threadId, childThreadId, "subagent", () => true);
+    }
+  });
+
+  /** Its side chats settle, as upstream's delete and archive take them: the forks of it flagged
+   * `sideChat`, which its fork transfers name. An unsettled one would keep its monore copy, and
+   * a Star's conversation's have no row to settle from (`pult/decisions`, `side-chats`).
+   * Un-settling it restores none. */
+  const settleSideChats = Effect.fn("SettledThreads.settleSideChats")(function* (
+    threadId: ThreadId,
+  ) {
+    const { contextTransfers } = yield* threads.getThreadRecords(threadId, ["contextTransfers"]);
+    const forks = contextTransfers.filter(
+      (transfer) => transfer.type === "fork" && transfer.sourceThreadId === threadId,
+    );
+    for (const childThreadId of new Set(forks.map((transfer) => transfer.targetThreadId))) {
+      yield* settleChild(
+        threadId,
+        childThreadId,
+        "side-chat",
+        (child) => child.lineage.sideChat === true,
       );
     }
   });
@@ -196,6 +229,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     yield* whileSettled(event, "previews", (thread) => previews.close({ threadId: thread.id }));
     yield* whileSettled(event, "agent servers", (thread) => stopAgentServers(thread.id));
     yield* whileSettled(event, "subagents", (thread) => settleSubagents(thread.id));
+    yield* whileSettled(event, "side chats", (thread) => settleSideChats(thread.id));
     yield* whileSettled(event, "monore copy", cleanCopy);
   });
 
