@@ -62,6 +62,17 @@ function memoized(
   return meta;
 }
 
+// Pult's hook point, not upstream's: the rule naming a file in an inline code span, which Pult's
+// shell sets to its own before any view mounts (`apps/pult/view/chipCandidate.ts`); upstream's app
+// keeps upstream's.
+let inlineCodeCandidate: (codeText: string) => string | null = inlineCodeFilePathCandidate;
+
+export function setInlineCodeFilePathCandidate(rule: (codeText: string) => string | null): void {
+  if (inlineCodeMetas.size > 0)
+    throw new Error("The inline code rule is set after a span resolved.");
+  inlineCodeCandidate = rule;
+}
+
 export function resolveInlineCodeFileLinkMeta(
   codeText: string,
   cwd?: string,
@@ -77,7 +88,7 @@ function resolveInlineCodeFileLinkMetaUncached(
   cwd: string | undefined,
   baseDir: string | undefined,
 ): MarkdownFileLinkMeta | null {
-  const candidate = inlineCodeFilePathCandidate(codeText);
+  const candidate = inlineCodeCandidate(codeText);
   if (candidate === null) return null;
 
   return resolveMarkdownFileLinkMeta(

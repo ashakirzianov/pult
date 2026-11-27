@@ -16,6 +16,7 @@ import {
 import { setServerRuntimeOffPrimary } from "~/browser/previewRuntime";
 import { getClientSettings, subscribeClientSettings } from "~/hooks/useSettings";
 import { startI18n } from "~/i18n/runtime";
+import { setInlineCodeFilePathCandidate } from "~/markdown-links";
 import { subscribeDraftThreadPromotion } from "~/composerDraftStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { environmentThreadShells } from "~/state/threads";
@@ -32,6 +33,7 @@ import {
 } from "./preview.ts";
 import { type MountedPreview, mountPreview, type PreviewMountOptions } from "./PreviewMount.tsx";
 import { mountReaderSelection } from "./ReaderSelection.tsx";
+import { chipCandidate } from "./chipCandidate.ts";
 import { readerChip } from "./readerChip.tsx";
 import { showReaderImage } from "./ReaderImage.tsx";
 import { routeRightPanel } from "./rightPanel.ts";
@@ -99,6 +101,8 @@ export interface ThreadViewMounts {
   mountReaderSelection: typeof mountReaderSelection;
   /** The thread view's file chip as markup, for the reader's frame (`readerChip.tsx`). */
   readerChip: typeof readerChip;
+  /** Which inline code spans name a file, the view's rule (`chipCandidate.ts`), for the reader's chips. */
+  chipCandidate: typeof chipCandidate;
   /** The thread view's lightbox for an image of a reader's page (`ReaderImage.tsx`). */
   showImage: typeof showReaderImage;
   /** The chat's line wrap for code, which the reader's code follows. */
@@ -157,6 +161,8 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
   // Upstream's strings read GT, which its app starts as it boots; the view's roots each carry its provider.
   startI18n();
   routeRightPanel();
+  // A bare name with an extension is a chip too, resolved at its click.
+  setInlineCodeFilePathCandidate(chipCandidate);
   startPreviews();
   // Drafts promote as their server threads arrive, as upstream's app starts it: a draft's route follows the redirect its finalization leaves, which is how a pane's draft becomes its thread.
   subscribeDraftThreadPromotion({
@@ -185,6 +191,7 @@ export function startThreadView(host: ThreadViewHost): ThreadViewMounts {
     mountPreview,
     mountReaderSelection,
     readerChip,
+    chipCandidate,
     showImage: showReaderImage,
     codeWrap: () => getClientSettings().wordWrap,
     onDidChangeCodeWrap: (listener) => {

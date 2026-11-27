@@ -57,7 +57,6 @@ import {
   resolvePathLinkTarget,
   splitFilePathPosition,
 } from "@t3tools/shared/fileLinks";
-import { inlineCodeFilePathCandidate } from "@t3tools/shared/markdownLinks";
 
 import type { MountedReaderSelection } from "../../view/ReaderSelection.tsx";
 import { keptRoot, onDidChangeKept } from "../changes/kept.ts";
@@ -366,7 +365,7 @@ class ReaderPane extends SimpleEditorPane {
       getComputedStyle(document.documentElement).colorScheme.includes("dark") ? "dark" : "light";
     const chips: Chips = (codes, values) => {
       const files = codes.flatMap((code) => {
-        const candidate = inlineCodeFilePathCandidate(code);
+        const candidate = view!.chipCandidate(code);
         if (candidate === null) return [];
         // A `~/` path from the home the document sits in, as the thread view reads one from its checkout.
         const path = candidate.startsWith("~/")
@@ -382,7 +381,7 @@ class ReaderPane extends SimpleEditorPane {
           input.file.path,
           kept === null ? null : toUriPath(kept),
         );
-        return named === undefined || inlineCodeFilePathCandidate(named.file) === null
+        return named === undefined || view!.chipCandidate(named.file) === null
           ? []
           : [{ value, ...named }];
       });
@@ -454,16 +453,17 @@ class ReaderPane extends SimpleEditorPane {
     const code = target?.closest?.("[data-pult-file]")?.getAttribute("data-pult-file");
     const input = this.input;
     if (code === undefined || code === null || !(input instanceof ReaderInput)) return;
-    const candidate = inlineCodeFilePathCandidate(code);
-    if (candidate === null) return;
-    const { path, line, endLine } = splitFilePathPosition(candidate);
-    void openDocumentFile(
-      input.file.authority,
-      input.file.path,
-      path,
-      line ?? null,
-      endLine ?? null,
-    ).then((miss) => {
+    void threadView().then(async (view) => {
+      const candidate = view.chipCandidate(code);
+      if (candidate === null) return;
+      const { path, line, endLine } = splitFilePathPosition(candidate);
+      const miss = await openDocumentFile(
+        input.file.authority,
+        input.file.path,
+        path,
+        line ?? null,
+        endLine ?? null,
+      );
       if (miss !== undefined) StandaloneServices.get(INotificationService).warn(miss);
     });
   }
