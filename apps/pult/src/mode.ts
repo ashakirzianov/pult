@@ -41,18 +41,26 @@ export type Mode = (typeof MODES)[number]["mode"];
  * settings held in the in-memory configuration layer, the user's own applying
  * in VS Code mode alone, where the stock ways to change them show
  * (`src/editorMenus.ts`), but a dragged-out tab's window, which opens in VS
- * Code mode in a browser tab alone.
+ * Code mode in a browser tab alone, and the history's scope and mouse
+ * buttons, held in both modes.
  */
 export const VSCodeModeContext = new RawContextKey<boolean>("pult.vscodeMode", false);
 /** On the workbench's element in VS Code mode, for the rules of `style.css`, and read where a context key cannot be. */
 export const VSCODE_MODE_CLASS = "pult-mode-vscode";
 /** Held in VS Code mode too in the desktop app, whose windows deny the auxiliary window a dragged-out tab opens (`src/editorMenus.ts`). */
 const DESKTOP_HELD_SETTINGS = new Set(["workbench.editor.dragToOpenWindow"]);
-/** What Pult's mode holds: the tab bar on Multiple, since a thread's tab is its header; the editor actions on it, since the title bar never shows; and no window from a tab dragged out, since the shell's selection spans one window. */
+/** Held in both modes, since the tab sets are Pult's in both: the stock history steps within the active editor alone, and the mouse's back and forward buttons run Pult's Go Back and Go Forward, which cross tab sets (`src/threads/selection.ts`; `pult/decisions`, `back-and-forward`). */
+const MODELESS_HELD_SETTINGS = new Set([
+  "workbench.editor.navigationScope",
+  "workbench.editor.mouseBackForwardToNavigate",
+]);
+/** What Pult's mode holds: the tab bar on Multiple, since a thread's tab is its header; the editor actions on it, since the title bar never shows; no window from a tab dragged out, since the shell's selection spans one window; and the history's scope and mouse buttons, held in VS Code mode too. */
 const HELD_SETTINGS = {
   "workbench.editor.showTabs": "multiple",
   "workbench.editor.editorActionsLocation": "default",
   "workbench.editor.dragToOpenWindow": false,
+  "workbench.editor.navigationScope": "editor",
+  "workbench.editor.mouseBackForwardToNavigate": false,
 };
 
 /** Registers the setting and the palette's switches. Called before the workbench starts. */
@@ -129,7 +137,10 @@ export async function startMode(): Promise<void> {
     key.set(vscode);
     document.querySelector(".monaco-workbench")?.classList.toggle(VSCODE_MODE_CLASS, vscode);
     for (const [key, value] of Object.entries(HELD_SETTINGS)) {
-      const held = !vscode || (desktop && DESKTOP_HELD_SETTINGS.has(key));
+      const held =
+        !vscode || MODELESS_HELD_SETTINGS.has(key) || (desktop && DESKTOP_HELD_SETTINGS.has(key));
+      // Written only when it changes: the workbench announces even a write of the same value, and the history drops its stacks on one of its scope.
+      if (configuration.inspect(key).memoryValue === (held ? value : undefined)) continue;
       void configuration.updateValue(key, held ? value : undefined, ConfigurationTarget.MEMORY);
     }
   };

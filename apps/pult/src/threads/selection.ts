@@ -4,12 +4,15 @@ import {
   IContextKeyService,
   type IEditorGroup,
   IEditorGroupsService,
+  IHistoryService,
   IInstantiationService,
   INotificationService,
   IQuickInputService,
   IStorageService,
   type ServicesAccessor,
+  IWorkbenchLayoutService,
 } from "@codingame/monaco-vscode-api";
+import { type EditorInput } from "@codingame/monaco-vscode-workbench-service-override/common";
 import { Codicon } from "@codingame/monaco-vscode-api/vscode/vs/base/common/codicons";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { KeyCode, KeyMod } from "@codingame/monaco-vscode-api/vscode/vs/base/common/keyCodes";
@@ -45,6 +48,7 @@ import {
   StarInput,
   ThreadInput,
 } from "./pane.tsx";
+import { PlaceHistory } from "./navigation.ts";
 import { nextAfterParking } from "./parking.ts";
 import { isSubagent, scopedKey, type ShellProject, type ShelfName, threadStore } from "./store.ts";
 
@@ -405,6 +409,12 @@ export function selectDraft(environmentId: string, projectId: string): Promise<v
  * nothing.
  */
 function promoteDraft(promoted: DraftSelection, next: ThreadSelection): Promise<void> {
+  // Back after a new thread's first message returns to the thread, not to a fresh draft, whether or not the draft is still selected.
+  places.rewrite((place) =>
+    workingSetName(place.selection) === workingSetName(promoted)
+      ? { ...place, selection: next }
+      : place,
+  );
   return enqueue(async () => {
     const draft = selectedDraft();
     if (draft?.projectId !== promoted.projectId || draft.environmentId !== promoted.environmentId)
@@ -566,6 +576,134 @@ function workingSetName(selection: Selection): string {
 }
 
 /**
+ * Where the user was: a selection as `switchTo` resolved it (a Star's thread
+ * is the Star) and its active tab there, the selection's own tab (`"lead"`),
+ * another tab's input, found again after its tab set's swap by `matches`, or
+ * none, an Explorer workspace with nothing open.
+ */
+interface Place {
+  readonly selection: Selection;
+  readonly tab: "lead" | EditorInput | undefined;
+}
+
+/** Go Back's and Go Forward's history (`navigation.ts`, `pult/decisions`, `back-and-forward`). */
+const places = new PlaceHistory<Place>(
+  (left, right) =>
+    workingSetName(left.selection) === workingSetName(right.selection) &&
+    // A tab set with nothing open is one place with the first tab opened in it.
+    (left.tab === undefined ||
+      right.tab === undefined ||
+      left.tab === right.tab ||
+      (typeof left.tab === "object" &&
+        typeof right.tab === "object" &&
+        left.tab.matches(right.tab))),
+);
+/** True while Go Back or Go Forward lands, whose switch and activation record nothing. */
+let navigating = false;
+
+/** Records the selection and its active tab, while no switch swaps the editor part and no navigation lands. */
+function recordPlace(editors: IEditorService): void {
+  if (selected === undefined || switching || navigating) return;
+  const active = editors.activeEditor ?? undefined;
+  const tab = active === undefined ? undefined : isLeadTab(active) ? "lead" : active;
+  places.push({ selection: selected, tab });
+}
+
+/**
+ * Whether a place's selection still is one: a thread the store knows and has
+ * not settled (a deleted or settled one is skipped, and comes back once the
+ * store knows it again unsettled), a draft whose project the store knows, a
+ * Star that `starById` knows while Show Star is on (`leaveHiddenStar`'s
+ * rule), the Explorer workspace always.
+ */
+function isUsablePlace({ selection }: Place): boolean {
+  if (isExplorer(selection)) return true;
+  if (isStar(selection)) return starEnabled.get() && starById(selection.starId) !== undefined;
+  if (isDraft(selection))
+    return threadStore.project(selection.environmentId, selection.projectId) !== undefined;
+  if ("threadId" in selection) {
+    const thread = threadStore.thread(selection.environmentId, selection.threadId);
+    return thread !== undefined && !thread.settled;
+  }
+  return unreachable(selection);
+}
+
+function unreachable(value: never): never {
+  throw new Error(`unreachable: ${JSON.stringify(value)}`);
+}
+
+/**
+ * One step of Go Back or Go Forward: within the active editor while the
+ * stock history can step there (`workbench.editor.navigationScope` is held
+ * at `editor`, `src/mode.ts`), so a file's cursor steps come first; else to
+ * the nearest usable place of Pult's own history, queued like a switch. A
+ * switch cancelled over a modified file moves nothing; a file's tab closed
+ * since is opened again by its resource, and a tab of another kind closed
+ * since leaves the selection showing its own tab.
+ */
+async function navigate(way: "back" | "forward"): Promise<void> {
+  const [contextKeys, history, groups, editors] = await Promise.all([
+    getService(IContextKeyService),
+    getService(IHistoryService),
+    getService(IEditorGroupsService),
+    getService(IEditorService),
+  ]);
+  // Queued whole, so the stock history is asked once a switch or a step before it has landed.
+  return enqueue(async () => {
+    const stock = way === "back" ? "canNavigateBack" : "canNavigateForward";
+    if (contextKeys.getContextKeyValue(stock) === true)
+      return way === "back" ? history.goBack() : history.goForward();
+    const index = way === "back" ? places.back(isUsablePlace) : places.forward(isUsablePlace);
+    if (index === undefined) return;
+    const { selection, tab } = places.at(index);
+    const here = () =>
+      selected !== undefined && workingSetName(selected) === workingSetName(selection);
+    let landed = false;
+    navigating = true;
+    try {
+      // The selection's own tab is shown by the switch, which opens it again if it was closed.
+      if (tab === "lead" || !here()) await switchTo(selection);
+      if (!here()) return;
+      if (typeof tab === "object" && !(await showTab(tab, selection))) return;
+      places.commit(index);
+      landed = true;
+    } finally {
+      navigating = false;
+      // A step that landed nowhere (a switch cancelled, an open superseded by a tab the user clicked) leaves where the user is a place of its own.
+      if (!landed) recordPlace(editors);
+    }
+  });
+
+  /** Shows `tab`, or a closed file's tab opened again, or for a tab of another kind closed since the selection's own tab; false when the open was superseded. */
+  async function showTab(tab: EditorInput, selection: Selection): Promise<boolean> {
+    for (const group of groups.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE)) {
+      const open = group.editors.find((editor) => editor.matches(tab));
+      if (open !== undefined) return (await group.openEditor(open)) !== undefined;
+    }
+    const file = tab.resource === undefined ? undefined : tab.toUntyped();
+    if (file !== undefined) return (await editors.openEditor(file)) !== undefined;
+    if (!isExplorer(selection)) await switchTo(selection);
+    return true;
+  }
+}
+
+/**
+ * The mouse's back and forward buttons, 3 and 4, run Go Back and Go Forward,
+ * as the stock listener runs the history service, which Pult holds off
+ * (`workbench.editor.mouseBackForwardToNavigate`, `src/mode.ts`).
+ */
+function listenToMouseButtons(container: HTMLElement): void {
+  const onButton = (event: MouseEvent, down: boolean) => {
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (down) void navigate(event.button === 3 ? "back" : "forward");
+  };
+  container.addEventListener("mousedown", (event) => onButton(event, true));
+  container.addEventListener("mouseup", (event) => onButton(event, false));
+}
+
+/**
  * Moves a thread's or draft's tab back to the left edge of its group. Not
  * sticky: a sticky tab offers an unpin button, and a dragged editor can still
  * land before it, so the shell puts it back after every change instead.
@@ -641,6 +779,9 @@ export async function restoreThreadSelection(): Promise<void> {
   });
   editors.onDidActiveEditorChange(() => recordExplorerFiles(editors, storage));
   onDidSelectThread(() => recordExplorerFiles(editors, storage));
+  editors.onDidActiveEditorChange(() => recordPlace(editors));
+  onDidSelectThread(() => recordPlace(editors));
+  listenToMouseButtons((await getService(IWorkbenchLayoutService)).mainContainer);
   for (const listener of listeners) listener();
   // Whether the selection is a subagent's: on each switch, and as the store learns of the thread and its parent.
   const subagentKey = SubagentSelectedContext.bindTo(await getService(IContextKeyService));
@@ -822,6 +963,54 @@ export function registerSelectThreadCommand(): void {
       }
     },
   );
+  registerNavigateCommands();
+}
+
+/**
+ * `pult-shell.navigateBack` and `pult-shell.navigateForward`, the palette's
+ * "Pult: Go Back" and "Pult: Go Forward" (`navigate`), on the stock Go Back's
+ * and Go Forward's keys of each platform, the keyboards' Browser Back and
+ * Forward among them, bound over the stock ones with no `when`, as Cmd+N is.
+ */
+function registerNavigateCommands(): void {
+  for (const way of ["back", "forward"] as const) {
+    const back = way === "back";
+    registerAction2(
+      class extends Action2 {
+        constructor() {
+          super({
+            id: back ? "pult-shell.navigateBack" : "pult-shell.navigateForward",
+            title: back
+              ? { value: "Go Back", original: "Go Back" }
+              : { value: "Go Forward", original: "Go Forward" },
+            category: { value: "Pult", original: "Pult" },
+            f1: true,
+            keybinding: {
+              weight: KeybindingWeight.WorkbenchContrib + 1,
+              primary: back ? KeyMod.Alt | KeyCode.LeftArrow : KeyMod.Alt | KeyCode.RightArrow,
+              secondary: [back ? KeyCode.BrowserBack : KeyCode.BrowserForward],
+              mac: {
+                primary: back
+                  ? KeyMod.WinCtrl | KeyCode.Minus
+                  : KeyMod.WinCtrl | KeyMod.Shift | KeyCode.Minus,
+                secondary: [back ? KeyCode.BrowserBack : KeyCode.BrowserForward],
+              },
+              linux: {
+                primary: back
+                  ? KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.Minus
+                  : KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Minus,
+                secondary: [back ? KeyCode.BrowserBack : KeyCode.BrowserForward],
+              },
+            },
+          });
+        }
+
+        run(): Promise<void> {
+          return navigate(way);
+        }
+      },
+    );
+  }
 }
 
 /**
