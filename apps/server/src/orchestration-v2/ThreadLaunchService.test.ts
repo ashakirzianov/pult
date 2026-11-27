@@ -76,6 +76,7 @@ import {
 import * as ThreadLaunchGuard from "./ThreadLaunchGuard.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as MonoreCopies from "../vcs/MonoreCopies.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
@@ -159,9 +160,15 @@ interface HarnessOptions {
     dispatch: ThreadManagement.ThreadManagementService["Service"]["dispatch"],
   ) => ReturnType<ThreadManagement.ThreadManagementService["Service"]["dispatch"]>;
   readonly isGitRepository?: CheckpointStore.CheckpointStore["Service"]["isGitRepository"];
+  /** The project's folder, `/repo` by default. */
+  readonly workspaceRoot?: string;
 }
 
 function makeHarness(options: HarnessOptions = {}) {
+  const harnessProject =
+    options.workspaceRoot === undefined
+      ? project
+      : { ...project, workspaceRoot: options.workspaceRoot };
   const layerDatabase = SqlitePersistence.layerMemory;
   const layerRegistry = ProviderAdapterRegistry.layerFromAdapters(options.adapters ?? [adapter]);
   const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
@@ -221,19 +228,19 @@ function makeHarness(options: HarnessOptions = {}) {
       getById: (id) =>
         Effect.succeed(
           id === projectId
-            ? Option.some(project)
+            ? Option.some(harnessProject)
             : id === otherProjectId
               ? Option.some(otherProject)
               : Option.none(),
         ),
-      getByWorkspaceRoot: () => Effect.succeedSome(project),
+      getByWorkspaceRoot: () => Effect.succeedSome(harnessProject),
       workspaceScanDirectory: () => Effect.die("unused"),
       snapshot: Effect.die("unused"),
       getShell: () => Effect.die("unused"),
       listShells: () => Effect.die("unused"),
     }),
     Layer.mock(GitWorkflow.GitWorkflowService)({
-      repositoryRoot: () => Effect.succeed(project.workspaceRoot),
+      repositoryRoot: () => Effect.succeed(harnessProject.workspaceRoot),
       createWorktree,
       renameBranch,
       fetchWorktreeBaseCommit:
@@ -291,6 +298,7 @@ function makeHarness(options: HarnessOptions = {}) {
         layerReceipts,
         layerOrchestrator,
         IdAllocator.layer,
+        NodeServices.layer,
         options.getLaunchSettings === undefined
           ? Layer.empty
           : Layer.mock(ServerSettings.ServerSettingsService)({
@@ -307,7 +315,7 @@ function makeHarness(options: HarnessOptions = {}) {
           ? Option.some({
               projectId,
               title: project.title,
-              workspaceRoot: project.workspaceRoot,
+              workspaceRoot: harnessProject.workspaceRoot,
               defaultModelSelection: project.defaultModelSelection,
               defaultThreadEnvMode: null,
               hasCustomTitle: false,
@@ -3680,6 +3688,76 @@ it.effect.each(["origin/master", ":/initial"])(
         });
       }).pipe(Effect.provide(harness.layer));
     }),
+);
+
+it.effect("launches a monore project's copy on main and refuses another line or a branch", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const root = yield* fs.realPath(
+      yield* fs.makeTempDirectoryScoped({ prefix: "launch-monore-" }),
+    );
+    yield* fs.writeFileString(`${root}/.monore-checkout`, "0b5e7a1c-3f2d-4e8a-9b6c-1d2e3f4a5b6c\n");
+    // GitWorkflowService's answers for a monore checkout: no repository, remote or commit of git's.
+    const harness = makeHarness({
+      workspaceRoot: root,
+      fetchWorktreeBaseCommit: () => Effect.succeed(null),
+      git: {
+        repositoryRoot: () => Effect.succeed(null),
+        resolveWorktreeBaseRemote: () => Effect.succeed(null),
+        resolvePrimaryRemoteName: (cwd) =>
+          Effect.fail(
+            new GitCommandError({ operation: "test", command: "vcs-route", cwd, detail: "monore" }),
+          ),
+        currentBranch: () => Effect.succeed("main"),
+      },
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const check = (workspace: { readonly baseRef: string; readonly branch?: string }) =>
+        launches
+          .checkWorktreeBase({ projectId, workspaceStrategy: { type: "worktree", ...workspace } })
+          .pipe(Effect.match({ onSuccess: () => "accepted", onFailure: (error) => error.message }));
+      const refused = `Project "Project" (${root}): ${MonoreCopies.NO_BRANCHES}`;
+      assert.deepEqual(
+        yield* Effect.forEach(
+          [
+            { baseRef: "main" },
+            { baseRef: "refs/heads/main" },
+            { baseRef: "main", branch: "t3code/0b5e7a1c" },
+            { baseRef: "origin/main" },
+            { baseRef: "main", branch: "feature/x" },
+          ],
+          check,
+        ),
+        ["accepted", "accepted", "accepted", refused, refused],
+      );
+      const launched = yield* launches.launch(
+        launchInput({
+          command: "launch:monore",
+          thread: "thread:launch:monore",
+          message: "Build the feature",
+          workspace: { type: "worktree", baseRef: "main" },
+        }),
+      );
+      const projection = yield* preparationSettled(launched.threadId);
+      assert.equal(projection.runs[0]?.workspacePreparation?.type, "worktree");
+      assert.deepInclude(harness.createWorktree.mock.calls[0]?.[0], { cwd: root, refName: "main" });
+    }).pipe(Effect.provide(harness.layer));
+    // A folder inside a checkout is no checkout's root, so it gets no copy.
+    yield* fs.makeDirectory(`${root}/notes`);
+    const inside = makeHarness({
+      workspaceRoot: `${root}/notes`,
+      git: { repositoryRoot: () => Effect.succeed(null) },
+    });
+    const error = yield* ThreadLaunch.ThreadLaunchService.pipe(
+      Effect.flatMap((launches) =>
+        launches.checkWorktreeBase({ projectId, workspaceStrategy: worktreeStrategy }),
+      ),
+      Effect.flip,
+      Effect.provide(inside.layer),
+    );
+    assert.equal(error._tag, "ThreadLaunchNotRepositoryError");
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect("leaves uncertain Git detection failures to workspace preparation", () =>

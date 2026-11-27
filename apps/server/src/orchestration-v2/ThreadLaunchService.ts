@@ -35,8 +35,10 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -69,6 +71,8 @@ import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import { DispatchModeLimit } from "./DispatchModeLimit.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as TaskFolders from "../workspace/TaskFolders.ts";
+import * as MonoreCopies from "../vcs/MonoreCopies.ts";
+import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 
 // The agent waits for its branch name; a rate-limited provider would hold it for minutes.
 const BRANCH_NAME_TIMEOUT = "20 seconds";
@@ -238,6 +242,20 @@ export class ThreadLaunchNotRepositoryError extends Schema.TaggedError<ThreadLau
   }
 }
 
+// Pult: a monore project's copy starts on main with no branch (`pult/decisions`, `monore-copies`).
+export class ThreadLaunchMonoreLineError extends Schema.TaggedError<ThreadLaunchMonoreLineError>()(
+  "ThreadLaunchMonoreLineError",
+  {
+    projectId: ProjectId,
+    projectTitle: Schema.String,
+    workspaceRoot: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Project "${this.projectTitle}" (${this.workspaceRoot}): ${MonoreCopies.NO_BRANCHES}`;
+  }
+}
+
 export class ThreadLaunchService extends Context.Service<
   ThreadLaunchService,
   {
@@ -259,6 +277,7 @@ export class ThreadLaunchService extends Context.Service<
       | ThreadLaunchBranchExistsError
       | ThreadLaunchBranchConflictError
       | ThreadLaunchNotRepositoryError
+      | ThreadLaunchMonoreLineError
       | TaskFolderError
     >;
     /** True only when the project's folder is known not to be a Git repository. */
@@ -303,6 +322,8 @@ const make = Effect.gen(function* () {
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
   const taskFolders = yield* TaskFolders.TaskFolders;
   const launchGuard = yield* ThreadLaunchGuard; // Pult: a plugin's hook point on a fresh launch.
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   // A project-folder launch that names no branch records the folder's checkout, as the composer does.
   const launchBranch = (strategy: ThreadLaunchWorkspaceStrategy, workspaceRoot: string) =>
     strategy.type === "root" && strategy.branch === undefined
@@ -392,6 +413,14 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const isMonoreRoot = (cwd: string) =>
+    Effect.all([MonoreVcsDriver.nearestRepositoryMarker(cwd), fileSystem.realPath(cwd)]).pipe(
+      Effect.map(([nearest, root]) => nearest?.kind === "monore" && nearest.root === root),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.orElseSucceed(() => false),
+    );
+
   const checkWorktreeBase: ThreadLaunchService["Service"]["checkWorktreeBase"] = Effect.fn(
     "ThreadLaunchService.checkWorktreeBase",
   )(function* (input) {
@@ -440,6 +469,21 @@ const make = Effect.gen(function* () {
       ],
       { concurrency: "unbounded" },
     );
+    // Pult: where Git finds no repository, a monore checkout's root takes the driver's rules, main
+    // and no branch, as `MonoreCopies.create` does. A folder inside a checkout, or a failed
+    // detection, is refused as before.
+    if (repositoryRoot === null && (yield* isMonoreRoot(cwd))) {
+      if (
+        (baseRef === "main" || baseRef === MonoreVcsDriver.MONORE_HEAD_REF) &&
+        (branch === undefined || branch === "main" || isTemporaryWorktreeBranch(branch))
+      )
+        return;
+      return yield* new ThreadLaunchMonoreLineError({
+        projectId: project.id,
+        projectTitle: project.title,
+        workspaceRoot: cwd,
+      });
+    }
     if (repositoryRoot === null)
       return yield* new ThreadLaunchNotRepositoryError({
         projectId: project.id,

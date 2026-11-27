@@ -65,11 +65,15 @@ function worktreeCheckHint(
     | ThreadLaunch.ThreadLaunchBranchExistsError
     | ThreadLaunch.ThreadLaunchBranchConflictError
     | ThreadLaunch.ThreadLaunchNotRepositoryError
+    | ThreadLaunch.ThreadLaunchMonoreLineError
     | TaskFolderError,
   strategy: { readonly startFromOrigin?: boolean | undefined },
 ) {
   if (error._tag === "TaskFolderError")
     return "Pass `repositories` paths from the project's tracked Git folders.";
+  // Pult: the refusal names what a monore project takes.
+  if (error._tag === "ThreadLaunchMonoreLineError")
+    return `Or use workspaceStrategy: {type: "root"}.`;
   if (error._tag === "ThreadLaunchNotRepositoryError")
     return `Use workspaceStrategy: {type: "root"}, or pass the projectId of a Git repository.`;
   if (error._tag === "ThreadLaunchBranchExistsError")

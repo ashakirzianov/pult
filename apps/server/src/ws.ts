@@ -2378,6 +2378,14 @@ export const layerWsRpc = (
                         message: cause.message,
                         cause,
                       }),
+                    // Pult: a monore project's copy is on main with no branch.
+                    ThreadLaunchMonoreLineError: (cause) =>
+                      new OrchestrationV2ThreadLaunchError({
+                        commandId: input.commandId,
+                        projectId: input.projectId,
+                        message: cause.message,
+                        cause,
+                      }),
                     TaskFolderError: (cause) =>
                       new OrchestrationV2ThreadLaunchError({
                         commandId: input.commandId,
