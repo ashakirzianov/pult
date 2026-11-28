@@ -68,41 +68,43 @@ function Slot({ page, now }: { page: PageRow; now: number }) {
       className={`pult-card-slot${menuOpen || pending !== undefined ? " pult-card-slot-open" : ""}`}
     >
       <Status status={page.row.status} now={now} />
-      {/* Clicks stop here, short of the row that opens it. */}
-      <span className="pult-card-actions" onClick={(event) => event.stopPropagation()}>
-        {page.row.actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            title={action.label}
-            aria-label={action.label}
-            disabled={pending !== undefined}
-            {...(action.input === undefined
-              ? { onClick: () => void actOnRow(page, action.id) }
-              : {
-                  "aria-haspopup": "menu" as const,
-                  "aria-expanded": menuOpen,
-                  onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
-                    setMenuOpen(true);
-                    // The instant, Pult's time menu: its presets, then Custom… titled by its label.
-                    void showSnoozePresets(
-                      event.currentTarget,
-                      () => setMenuOpen(false),
-                      (until) => void actOnRow(page, action.id, until),
-                      undefined,
-                      action.input?.label,
-                    );
-                  },
-                })}
-          >
-            <Icon
-              icon={pending === action.id ? "loading" : action.icon}
-              spin={pending === action.id}
-            />
-            {action.text === true ? action.label : null}
-          </button>
-        ))}
-      </span>
+      {/* Clicks stop here, short of the row that opens it. None while it is drawn ahead, so its status stays on hover. */}
+      {page.row.actions.length === 0 ? null : (
+        <span className="pult-card-actions" onClick={(event) => event.stopPropagation()}>
+          {page.row.actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              title={action.label}
+              aria-label={action.label}
+              disabled={pending !== undefined}
+              {...(action.input === undefined
+                ? { onClick: () => void actOnRow(page, action.id) }
+                : {
+                    "aria-haspopup": "menu" as const,
+                    "aria-expanded": menuOpen,
+                    onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+                      setMenuOpen(true);
+                      // The instant, Pult's time menu: its presets, then Custom… titled by its label.
+                      void showSnoozePresets(
+                        event.currentTarget,
+                        () => setMenuOpen(false),
+                        (until) => void actOnRow(page, action.id, until),
+                        undefined,
+                        action.input?.label,
+                      );
+                    },
+                  })}
+            >
+              <Icon
+                icon={pending === action.id ? "loading" : action.icon}
+                spin={pending === action.id}
+              />
+              {action.text === true ? action.label : null}
+            </button>
+          ))}
+        </span>
+      )}
     </span>
   );
 }

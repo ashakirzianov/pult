@@ -26,14 +26,83 @@ const row = (key: string, shelf = "inbox", extra: Record<string, unknown> = {}) 
   ...extra,
 });
 
+/** A row whose snooze, settle and reply declare what they do to it. */
+const declaring = (key: string, extra: Record<string, unknown> = {}) => {
+  const base = row(key);
+  const [snooze, settle] = base.actions;
+  return row(key, "inbox", {
+    actions: [
+      {
+        ...snooze,
+        then: {
+          shelf: "snoozed",
+          status: { icon: "bell-slash", label: "Snoozed", time: { of: "input", as: "clock" } },
+        },
+      },
+      {
+        ...settle,
+        then: {
+          shelf: "settled",
+          status: { icon: "check", label: "Settled", time: { of: "click", as: "age" } },
+        },
+      },
+    ],
+    open: {
+      ...base.open,
+      reply: {
+        ...base.open.reply,
+        then: {
+          shelf: "working",
+          status: { icon: "comment", label: "Replied", time: { of: "click", as: "age" } },
+        },
+      },
+    },
+    ...extra,
+  });
+};
+
+const CLICK = Date.parse("2026-11-28T12:00:00.000Z");
+
 function items(order: ReadonlyArray<string> = ["env", "other"]) {
   const warnings: string[] = [];
   const model = new ExtensionItems(
     (message) => warnings.push(message),
     () => order,
+    () => CLICK,
   );
   return { model, warnings };
 }
+
+/** A transport whose every call waits for the test to answer or refuse it. */
+function held() {
+  const sent: unknown[] = [];
+  let answer = () => {};
+  let refuse = (_error: Error) => {};
+  const wait = <A>(value: A) =>
+    new Promise<A>((resolve, reject) => {
+      answer = () => resolve(value);
+      refuse = reject;
+    });
+  const transport: Transport = {
+    act: (environmentId, input) => {
+      sent.push({ environmentId, ...input });
+      return wait(undefined);
+    },
+    send: (environmentId, input) => {
+      sent.push({ environmentId, ...input });
+      return wait({ thread: "t2" });
+    },
+  };
+  return { transport, sent, answer: () => answer(), refuse: (error: Error) => refuse(error) };
+}
+
+const message = {
+  text: "Yes",
+  attachments: [],
+  model: null,
+  runtimeMode: null,
+  interactionMode: null,
+};
 
 const keys = (model: ExtensionItems) =>
   model.rows().map((page) => `${page.environmentId}/${page.extension}/${page.row.key}`);
@@ -75,7 +144,7 @@ NodeTest.describe("ExtensionItems", () => {
   );
 
   NodeTest.test(
-    "holds an action pending until its answer, one at a time, and hands back a refusal's words; an instant's value is sent",
+    "holds an action that declares nothing pending until its answer, one at a time, and hands back a refusal's words; an instant's value is sent",
     async () => {
       const { model } = items();
       model.apply("env", { extension: "a", slot: "shelf-row", items: [row("x")] });
@@ -116,6 +185,111 @@ NodeTest.describe("ExtensionItems", () => {
       NodeAssert.equal("value" in (sent[1] as object), false);
       refuse(new Error("not now"));
       NodeAssert.equal(await settling, "not now");
+      NodeAssert.equal(model.pendingOf(page), undefined);
+    },
+  );
+
+  NodeTest.test(
+    "draws a declared action at the click and holds it, over publishes leaving the row and an answer arriving first, until the row's own publish",
+    async () => {
+      const { model, warnings } = items();
+      model.apply("env", { extension: "a", slot: "shelf-row", items: [declaring("x")] });
+      const call = held();
+      const until = "2026-11-29T09:00:00.000Z";
+      const snoozing = model.act(call.transport, model.row("env", "a", "x")!, "snooze", until);
+      // Its new shelf and status, the input's value its time, and no actions to offer.
+      const drawn = model.row("env", "a", "x")!;
+      NodeAssert.deepEqual(
+        [drawn.row.shelf, drawn.row.status, drawn.row.actions],
+        ["snoozed", { icon: "bell-slash", label: "Snoozed", time: { at: until, as: "clock" } }, []],
+      );
+      NodeAssert.equal(model.pendingOf(drawn), undefined);
+      NodeAssert.equal(call.sent.length, 1);
+      // Another row's publish leaves it drawn, and so does the answer.
+      const other = { extension: "a", slot: "shelf-row", items: [declaring("x"), row("y")] };
+      model.apply("env", other);
+      call.answer();
+      NodeAssert.equal(await snoozing, null);
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "snoozed");
+      NodeAssert.deepEqual(model.row("env", "a", "x")?.row.actions, []);
+      // The row's own publish ends it, whatever it says.
+      model.apply("env", {
+        extension: "a",
+        slot: "shelf-row",
+        items: [declaring("x", { shelf: "working" }), row("y")],
+      });
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "working");
+      NodeAssert.equal(model.row("env", "a", "x")?.row.actions.length, 2);
+      NodeAssert.deepEqual(warnings, []);
+      // A publish ahead of the answer ends it too, and the row's new actions are offered at once.
+      const settling = model.act(call.transport, model.row("env", "a", "x")!, "settle");
+      model.apply("env", {
+        extension: "a",
+        slot: "shelf-row",
+        items: [declaring("x", { shelf: "settled" }), row("y")],
+      });
+      const settled = model.row("env", "a", "x")!;
+      NodeAssert.equal(settled.row.actions.length, 2);
+      NodeAssert.equal(model.pendingOf(settled), undefined);
+      call.answer();
+      NodeAssert.equal(await settling, null);
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "settled");
+      NodeAssert.deepEqual(warnings, []);
+    },
+  );
+
+  NodeTest.test(
+    "redraws a refused one as published, with the refusal's words, and a send's the same; the click's instant is its time",
+    async () => {
+      const { model } = items();
+      model.apply("env", { extension: "a", slot: "shelf-row", items: [declaring("x")] });
+      const call = held();
+      const settling = model.act(call.transport, model.row("env", "a", "x")!, "settle");
+      NodeAssert.deepEqual(model.row("env", "a", "x")?.row.status, {
+        icon: "check",
+        label: "Settled",
+        time: { at: "2026-11-28T12:00:00.000Z", as: "age" },
+      });
+      call.refuse(new Error("asked again meanwhile"));
+      NodeAssert.equal(await settling, "asked again meanwhile");
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "inbox");
+      // A handled send draws its reply's `then`, and a refused one throws its words.
+      const name = { environmentId: "env", extension: "a", key: "x" };
+      const sending = model.send(call.transport, name, message);
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "working");
+      call.refuse(new Error("not here"));
+      await NodeAssert.rejects(sending, /not here/);
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "inbox");
+      const sent = model.send(call.transport, name, message);
+      call.answer();
+      NodeAssert.deepEqual(await sent, { thread: "t2" });
+      NodeAssert.equal(model.row("env", "a", "x")?.row.shelf, "working");
+    },
+  );
+
+  NodeTest.test(
+    "draws as published a row answered and never published, warning once per extension, and forgets one drawn with its environment",
+    async () => {
+      const { model, warnings } = items();
+      const list = { extension: "a", slot: "shelf-row", items: [declaring("x"), declaring("y")] };
+      model.apply("env", list);
+      const call = held();
+      for (const key of ["x", "y"]) {
+        const settling = model.act(call.transport, model.row("env", "a", key)!, "settle");
+        call.answer();
+        await settling;
+        NodeAssert.equal(model.row("env", "a", key)?.row.shelf, "settled");
+        model.apply("env", list);
+        NodeAssert.equal(model.row("env", "a", key)?.row.shelf, "inbox");
+      }
+      NodeAssert.equal(warnings.length, 1);
+      NodeAssert.match(warnings[0]!, /declared what an action or a send does to its row "x"/);
+      // An environment forgotten takes the row drawn and its pending mark: its next snapshot is the state.
+      void model.act(call.transport, model.row("env", "a", "x")!, "settle");
+      model.forget("env");
+      model.apply("env", list);
+      const page = model.row("env", "a", "x")!;
+      NodeAssert.equal(page.row.shelf, "inbox");
       NodeAssert.equal(model.pendingOf(page), undefined);
     },
   );

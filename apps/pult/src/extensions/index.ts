@@ -239,12 +239,12 @@ function handledComposer(page: PageRow, key: string) {
         },
       },
       send: async (message) => {
-        const answer = await transport.send(page.environmentId, {
-          extension: page.extension,
-          slot: "shelf-row",
-          key: page.row.key,
+        // The row drawn ahead by its reply's `then`; the composer locked until the answer.
+        const answer = await items.send(
+          transport,
+          { environmentId: page.environmentId, extension: page.extension, key: page.row.key },
           message,
-        });
+        );
         void openPosterThread(poster, page.environmentId, answer.thread).catch(
           async (error: unknown) =>
             (await getService(INotificationService)).error(

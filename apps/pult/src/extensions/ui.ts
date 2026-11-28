@@ -2,12 +2,14 @@
 // page holds it, apart from the workbench so `node --test src/extensions/ui.test.ts` runs it: each
 // environment's lists from `extensions.subscribeUi` (`index.ts` follows them), decoded by the
 // slot's schema, an unknown slot skipped and an undecodable list dropped, each logged once; the
-// rows, and the action pending on each from its click until `extensions.act` answers.
+// rows, each drawn ahead from the click of an action or a send that declares its `then` until its
+// extension publishes it changed or refuses, and an action that declares none pending until it answers.
 import {
   EXTENSION_SLOTS,
   type ExtensionComposed,
   type ExtensionShelfRow,
   type ExtensionSlot,
+  type ExtensionThen,
   type ExtensionUiPublished,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -65,15 +67,31 @@ const isSlot = (slot: string): slot is ExtensionSlot => Object.hasOwn(EXTENSION_
 const listKey = (environmentId: string, extension: string, slot: string) =>
   JSON.stringify([environmentId, extension, slot]);
 
+/** A row by its environment, extension and key. */
+type RowName = Pick<PageRow, "environmentId" | "extension"> & { readonly key: string };
+
 /** A row's identity across the page: its environment, extension and key. */
-const rowId = (row: Pick<PageRow, "environmentId" | "extension"> & { readonly key: string }) =>
-  JSON.stringify([row.environmentId, row.extension, row.key]);
+const rowId = (row: RowName) => JSON.stringify([row.environmentId, row.extension, row.key]);
+
+/** What a publish of the row must change to end its drawing ahead. */
+const asClicked = (row: ExtensionShelfRow) => JSON.stringify([row.shelf, row.status, row.actions]);
+
+/** A row drawn ahead: its `then`, its times filled, over the row as published at the click. */
+interface Ahead extends RowName {
+  readonly shelf: ExtensionShelfRow["shelf"];
+  readonly status: ExtensionShelfRow["status"];
+  readonly at: string;
+  /** The extension answered, so the next publish that still shows the row as clicked shows a `then` it never published. */
+  answered: boolean;
+}
 
 export class ExtensionItems {
   private readonly lists = new Map<string, PageRow[]>();
   private readonly warned = new Set<string>();
-  /** The action in flight on each row, by `rowId`. */
-  private readonly pending = new Map<string, string>();
+  /** The action that declares nothing in flight on each row, by `rowId`, one mark per click; one drawn ahead is none, its row's publish showing what is next. */
+  private readonly pending = new Map<string, { readonly action: string }>();
+  /** The rows drawn ahead, by `rowId`. */
+  private readonly ahead = new Map<string, Ahead>();
   private readonly listeners = new Set<() => void>();
   /** The environments whose stream sent anything since they were last forgotten: their rows are this connect's. */
   private readonly answered = new Set<string>();
@@ -81,10 +99,16 @@ export class ExtensionItems {
 
   private readonly warn: (message: string) => void;
   private readonly order: () => ReadonlyArray<string>;
+  private readonly clock: () => number;
 
-  constructor(warn: (message: string) => void, order: () => ReadonlyArray<string>) {
+  constructor(
+    warn: (message: string) => void,
+    order: () => ReadonlyArray<string>,
+    clock: () => number = Date.now,
+  ) {
     this.warn = warn;
     this.order = order;
+    this.clock = clock;
   }
 
   subscribe(listener: () => void): () => void {
@@ -92,7 +116,7 @@ export class ExtensionItems {
     return () => this.listeners.delete(listener);
   }
 
-  /** Every environment's rows: in the environments' order, each one's by extension then as published. */
+  /** Every environment's rows: in the environments' order, each one's by extension then as published; one drawn ahead with its `then`'s shelf and status, and no actions. */
   rows(): ReadonlyArray<PageRow> {
     return this.shown;
   }
@@ -106,9 +130,9 @@ export class ExtensionItems {
     );
   }
 
-  /** The action in flight on the row, which draws spinning while its other actions wait. */
+  /** The action that declares nothing in flight on the row, which draws spinning while its other actions wait. */
   pendingOf(row: PageRow): string | undefined {
-    return this.pending.get(rowId({ ...row, key: row.row.key }));
+    return this.pending.get(rowId({ ...row, key: row.row.key }))?.action;
   }
 
   /** One extension's whole list for one slot, as the environment's stream sends it. */
@@ -135,14 +159,30 @@ export class ExtensionItems {
         key,
         decoded.value.map((row) => ({ environmentId, extension: published.extension, row })),
       );
+    // A row drawn ahead ends with its own publish, whatever it says: nothing orders it and the answer.
+    for (const [id, drawn] of this.ahead) {
+      if (drawn.environmentId !== environmentId || drawn.extension !== published.extension)
+        continue;
+      const now = this.published(drawn);
+      if (now !== undefined && asClicked(now.row) === drawn.at && !drawn.answered) continue;
+      this.ahead.delete(id);
+      if (now !== undefined && asClicked(now.row) === drawn.at)
+        this.warnOnce(
+          `${environmentId}\0${published.extension}\0then`,
+          `the extension "${published.extension}" declared what an action or a send does to its row "${drawn.key}" and did not publish it; the row is drawn as published`,
+        );
+    }
     this.update();
   }
 
   /** The environment's lists gone, as when it disconnects: its stream sends the whole set again. */
   forget(environmentId: string): void {
     this.answered.delete(environmentId);
-    for (const key of this.lists.keys())
-      if ((JSON.parse(key) as ReadonlyArray<string>)[0] === environmentId) this.lists.delete(key);
+    const ofIt = (key: string) => (JSON.parse(key) as ReadonlyArray<string>)[0] === environmentId;
+    for (const key of this.lists.keys()) if (ofIt(key)) this.lists.delete(key);
+    // Its rows drawn ahead and its pending marks go too: the next session's snapshot is the state.
+    for (const id of this.ahead.keys()) if (ofIt(id)) this.ahead.delete(id);
+    for (const id of this.pending.keys()) if (ofIt(id)) this.pending.delete(id);
     this.update();
   }
 
@@ -157,8 +197,9 @@ export class ExtensionItems {
   }
 
   /**
-   * A click on the row's action, `value` its input's: pending until the extension answers, its own
-   * publish already in by then; a refusal's words, or null once done. One action at a time per row.
+   * A click on the row's action, `value` its input's: drawn ahead by its `then` where it declares
+   * one, else pending until the extension answers; a refusal's words, the row drawn as published, or
+   * null once done. One pending action at a time per row; a row drawn ahead offers none.
    */
   async act(
     transport: Transport,
@@ -166,9 +207,13 @@ export class ExtensionItems {
     action: string,
     value?: string,
   ): Promise<string | null> {
-    const id = rowId({ ...page, key: page.row.key });
+    const name = { ...page, key: page.row.key };
+    const id = rowId(name);
     if (this.pending.has(id)) return null;
-    this.pending.set(id, action);
+    const declared = this.published(name)?.row.actions.find((each) => each.id === action)?.then;
+    const drawing = declared === undefined ? undefined : this.draw(name, declared, value);
+    const mark = drawing === undefined ? { action } : undefined;
+    if (mark !== undefined) this.pending.set(id, mark);
     this.update(true);
     try {
       await transport.act(page.environmentId, {
@@ -178,13 +223,81 @@ export class ExtensionItems {
         action,
         ...(value === undefined ? {} : { value }),
       });
+      if (drawing !== undefined && this.ahead.get(id) === drawing) drawing.answered = true;
       return null;
     } catch (error) {
+      if (drawing !== undefined && this.ahead.get(id) === drawing) this.ahead.delete(id);
       return error instanceof Error ? error.message : String(error);
     } finally {
-      this.pending.delete(id);
+      if (mark !== undefined && this.pending.get(id) === mark) this.pending.delete(id);
       this.update(true);
     }
+  }
+
+  /**
+   * A handled composer's Send on the row: drawn ahead by its reply's `then` where it declares one,
+   * the thread it landed in once answered; a refusal thrown, the row drawn as published.
+   */
+  async send(
+    transport: Transport,
+    name: RowName,
+    message: ExtensionComposed,
+  ): Promise<{ readonly thread: string }> {
+    const id = rowId(name);
+    const declared = this.published(name)?.row.open.reply?.then;
+    const drawing = declared === undefined ? undefined : this.draw(name, declared, undefined);
+    if (drawing !== undefined) this.update(true);
+    try {
+      const answer = await transport.send(name.environmentId, {
+        extension: name.extension,
+        slot: "shelf-row",
+        key: name.key,
+        message,
+      });
+      if (drawing !== undefined && this.ahead.get(id) === drawing) drawing.answered = true;
+      return answer;
+    } catch (error) {
+      if (drawing !== undefined && this.ahead.get(id) === drawing) {
+        this.ahead.delete(id);
+        this.update(true);
+      }
+      throw error;
+    }
+  }
+
+  /** The row as its extension last published it, under any drawing ahead. */
+  private published(name: RowName): PageRow | undefined {
+    return this.lists
+      .get(listKey(name.environmentId, name.extension, "shelf-row"))
+      ?.find((each) => each.row.key === name.key);
+  }
+
+  /** The row drawn ahead by `then`, over any drawing before it: the click's instant, or the input's value, as its time. */
+  private draw(name: RowName, then: ExtensionThen, value: string | undefined): Ahead | undefined {
+    const now = this.published(name);
+    if (now === undefined) return undefined;
+    const { time, ...status } = then.status;
+    const at = (of: "click" | "input") => {
+      if (of === "click") return new Date(this.clock()).toISOString();
+      // The server refuses an input's time on an action with none, and a reply's.
+      if (value === undefined)
+        throw new Error(`unreachable: a \`then\` of "${name.key}" draws an input it was not sent`);
+      return value;
+    };
+    const drawing: Ahead = {
+      environmentId: name.environmentId,
+      extension: name.extension,
+      key: name.key,
+      shelf: then.shelf,
+      status:
+        time === undefined
+          ? status
+          : { ...status, time: "of" in time ? { at: at(time.of), as: time.as } : time },
+      at: asClicked(now.row),
+      answered: false,
+    };
+    this.ahead.set(rowId(name), drawing);
+    return drawing;
   }
 
   private warnOnce(key: string, message: string): void {
@@ -205,7 +318,16 @@ export class ExtensionItems {
           rank(left[0]!.environmentId) - rank(right[0]!.environmentId) ||
           left[0]!.extension.localeCompare(right[0]!.extension),
       )
-      .flat();
+      .flat()
+      .map((page) => {
+        const drawn = this.ahead.get(rowId({ ...page, key: page.row.key }));
+        return drawn === undefined
+          ? page
+          : {
+              ...page,
+              row: { ...page.row, shelf: drawn.shelf, status: drawn.status, actions: [] },
+            };
+      });
     if (!force && JSON.stringify(next) === JSON.stringify(this.shown)) return;
     this.shown = next;
     for (const listener of this.listeners) listener();

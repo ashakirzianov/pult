@@ -116,7 +116,8 @@
   pointer-events: auto;
 }
 
-.pult-card:hover .pult-card-slot > .pult-card-status,
+/* A slot with no actions, an extension's row drawn ahead, keeps its status. */
+.pult-card:hover .pult-card-slot:has(> .pult-card-actions) > .pult-card-status,
 .pult-card-slot:has(.pult-card-actions :focus-visible) > .pult-card-status,
 .pult-card-slot-open > .pult-card-status {
   position: absolute;
