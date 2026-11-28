@@ -94,7 +94,10 @@ export * as VcsAutomaticFetchInterval from "./vcs/VcsAutomaticFetchInterval.ts";
 export * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 // The Pult plugin's kept monore checkout: the CLI's registry, Get latest, and a refusal's code.
 export * as MonoreCli from "./vcs/MonoreCli.ts";
+// The Pult plugin's monore kind: its driver, marker and calls, registered at activation.
 export * as MonoreVcsDriver from "./vcs/MonoreVcsDriver.ts";
+// The Pult plugin's monore kind: where it registers, and where a settled thread's copy is detected.
+export * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 // The Pult plugin's schedules: the watch of the Stars directory says when a Star's schedules changed.
 export * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 export type { PluginHost, PluginRouteHandler } from "./plugins/PluginLoader.ts";

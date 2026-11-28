@@ -1,16 +1,22 @@
 import { assert, it, describe } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Scope from "effect/Scope";
 import { ChildProcessSpawner } from "effect/process";
 import { VcsProcessExitError } from "@t3tools/contracts";
 
 import * as VcsProcess from "./VcsProcess.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
 import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
+import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
+import type * as VcsWorkflow from "./VcsWorkflow.ts";
 
 const processOutput = (stdout: string): VcsProcess.VcsProcessOutput => ({
   exitCode: ChildProcessSpawner.ExitCode(0),
@@ -26,7 +32,12 @@ const normalizeGitArgs = (args: ReadonlyArray<string>): ReadonlyArray<string> =>
 const DETECT_COMMAND = "rev-parse --is-inside-work-tree --show-toplevel --git-common-dir";
 
 describe("VcsDriverRegistry", () => {
-  const makeDiskBackedLayer = (rootDir: string, calls: string[]) =>
+  const makeDiskBackedLayer = (
+    rootDir: string,
+    calls: string[],
+    // Pult: run before each answer, once the probe has read the disk.
+    beforeAnswer: Effect.Effect<void> = Effect.void,
+  ) =>
     Layer.effect(VcsDriverRegistry.VcsDriverRegistry, VcsDriverRegistry.make).pipe(
       Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provide(
@@ -46,6 +57,7 @@ describe("VcsDriverRegistry", () => {
               while (repoDir !== null && !(yield* fs.exists(path.join(repoDir, ".git")))) {
                 repoDir = repoDir === rootDir ? null : path.dirname(repoDir);
               }
+              yield* beforeAnswer;
               if (repoDir === null) {
                 return {
                   ...processOutput(""),
@@ -111,10 +123,11 @@ describe("VcsDriverRegistry", () => {
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
-  // Pult: the nearer of `.monore-checkout` and `.git` decides (`vcs-detection-nearest`).
+  // Pult: the nearest of a registered kind's marker and `.git` decides (`vcs-detection-nearest`,
+  // `vcs-driver-seam`).
   const CHECKOUT_ID = "c078d1e2-6c3d-421c-b76d-a859c655780a\n";
 
-  it.effect("detects the nearest of a monore checkout and a git repository", () =>
+  it.effect("detects a registered kind's checkout, the nearest of its marker and .git", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -132,27 +145,92 @@ describe("VcsDriverRegistry", () => {
       yield* fs.makeDirectory(path.join(both, ".git"), { recursive: true });
       yield* fs.writeFileString(path.join(both, ".monore-checkout"), CHECKOUT_ID);
       const calls: string[] = [];
+      const probed = yield* Deferred.make<void>();
+      const answer = yield* Deferred.make<void>();
+      let beforeAnswer: Effect.Effect<void> = Effect.void;
+      // Detection calls none of the kind's routed calls.
+      const workflow = {} as VcsWorkflow.VcsWorkflow;
+      const registration = {
+        kind: "monore",
+        marker: MonoreVcsDriver.MONORE_MARKER,
+        driver: yield* MonoreVcsDriver.makeVcsDriver,
+        workflow,
+      } as const;
+      const kindAt = (registry: VcsDriverRegistry.VcsDriverRegistry["Service"], cwd: string) =>
+        Effect.map(registry.detect({ cwd }), (detected) => ({
+          kind: detected?.kind,
+          root: detected?.repository.rootPath,
+          routed: detected?.workflow === workflow,
+        }));
 
       yield* Effect.gen(function* () {
         const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
-        const detected = yield* registry.detect({ cwd: path.join(monoreInGit, "sub") });
-        assert.deepEqual(
-          { kind: detected?.kind, root: detected?.repository.rootPath },
-          { kind: "monore", root: monoreInGit },
+        // Unregistered, a checkout is the repository around it, or none.
+        assert.deepEqual(yield* kindAt(registry, path.join(monoreInGit, "sub")), {
+          kind: "git",
+          root: path.join(rootDir, "repo"),
+          routed: false,
+        });
+        assert.equal(yield* registry.detect({ cwd: path.join(rootDir, "checkout") }), null);
+
+        // A detection git is still answering as the kind registers is not kept either.
+        beforeAnswer = Deferred.succeed(probed, undefined).pipe(
+          Effect.andThen(Deferred.await(answer)),
         );
-        assert.equal(calls.length, 0, "a monore checkout is detected without a process");
-        const inner = yield* registry.detect({ cwd: gitInMonore });
-        assert.deepEqual(
-          { kind: inner?.kind, root: inner?.repository.rootPath },
-          { kind: "git", root: gitInMonore },
-        );
+        const inFlight = yield* Effect.forkChild(registry.detect({ cwd: monoreInGit }));
+        yield* Deferred.await(probed);
+        const registered = yield* Scope.make();
+        yield* registry.register(registration).pipe(Scope.provide(registered));
+        yield* Deferred.succeed(answer, undefined);
+        yield* Fiber.join(inFlight);
+        assert.deepEqual(yield* kindAt(registry, monoreInGit), {
+          kind: "monore",
+          root: monoreInGit,
+          routed: true,
+        });
+
+        calls.length = 0;
+        assert.deepEqual(yield* kindAt(registry, path.join(monoreInGit, "sub")), {
+          kind: "monore",
+          root: monoreInGit,
+          routed: true,
+        });
+        assert.equal(calls.length, 0, "a registered kind's checkout is detected without a process");
+        assert.deepEqual(yield* kindAt(registry, gitInMonore), {
+          kind: "git",
+          root: gitInMonore,
+          routed: false,
+        });
         const error = yield* registry.detect({ cwd: both }).pipe(Effect.flip);
         assert.equal(error._tag, "VcsRepositoryDetectionError");
+
+        const second = yield* Effect.scoped(registry.register(registration)).pipe(Effect.exit);
+        assert.isTrue(Exit.hasDies(second), "a second registration of a kind is a defect");
 
         // The marker gone, the repository around it is found again.
         yield* fs.remove(path.join(monoreInGit, ".monore-checkout"));
         assert.equal((yield* registry.detect({ cwd: monoreInGit }))?.kind, "git");
-      }).pipe(Effect.provide(makeDiskBackedLayer(rootDir, calls)));
+
+        // Its scope closed, the kind is gone, and the checkout is none again.
+        assert.equal(
+          (yield* registry.detect({ cwd: path.join(rootDir, "checkout") }))?.kind,
+          "monore",
+        );
+        yield* Scope.close(registered, Exit.void);
+        assert.equal(yield* registry.detect({ cwd: path.join(rootDir, "checkout") }), null);
+        assert.equal(
+          (yield* registry.get("monore").pipe(Effect.flip))._tag,
+          "VcsUnsupportedOperationError",
+        );
+      }).pipe(
+        Effect.provide(
+          makeDiskBackedLayer(
+            rootDir,
+            calls,
+            Effect.suspend(() => beforeAnswer),
+          ),
+        ),
+      );
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 

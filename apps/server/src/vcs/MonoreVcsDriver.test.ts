@@ -30,6 +30,7 @@ import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
 import {
   committed,
   landed,
+  layerRegistered,
   skipped,
   startMonoreTestServer,
   suiteName,
@@ -67,7 +68,7 @@ describe.skipIf(skipped)(suite, () => {
   afterAll(() => harness?.stop());
 
   const layer = () =>
-    Layer.mergeAll(GitWorkflowService.layer, ReviewService.layer).pipe(
+    Layer.mergeAll(GitWorkflowService.layer, ReviewService.layer, layerRegistered).pipe(
       Layer.provide(Layer.mock(GitManager.GitManager)({})),
       Layer.provide(
         Layer.mock(KnownWorkspaces.KnownWorkspaces)({ contains: () => Effect.succeed(true) }),

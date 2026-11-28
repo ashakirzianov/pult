@@ -68,6 +68,8 @@ const makeCaptureStore = Effect.fn("test.makeCaptureStore")(function* (
       get: () => Effect.succeed(driver),
       detect: () => Effect.succeed(handle),
       resolve: () => Effect.succeed(handle),
+      // Pult: the registry's hook point, which checkpoints never call.
+      register: () => Effect.die("unused"),
     }),
   );
 });

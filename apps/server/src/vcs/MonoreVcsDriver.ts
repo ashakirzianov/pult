@@ -19,28 +19,20 @@ import {
   VcsUnsupportedOperationError,
   type GitActionProgressEvent,
   type GitActionProgressPhase,
-  type GitManagerServiceError,
-  type GitRunStackedActionInput,
   type GitRunStackedActionResult,
-  type ReviewDiffFileContentsInput,
-  type ReviewDiffFileContentsResult,
   type ReviewDiffFileStat,
-  type ReviewDiffPreviewInput,
   type ReviewDiffPreviewResult,
   type ReviewDiffPreviewSource,
   type ReviewLogCommit,
-  type ReviewLogInput,
   type ReviewLogResult,
   type ReviewRefsResult,
   type VcsPullResult,
   type VcsRepositoryIdentity,
-  type VcsResolveConflictInput,
   type VcsStatusLocalResult,
   type VcsStatusRemoteResult,
   type VcsStatusMonore,
 } from "@t3tools/contracts";
 
-import type * as GitManager from "../git/GitManager.ts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 
 import * as ServerSettings from "../serverSettings.ts";
@@ -48,6 +40,7 @@ import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 import * as MonoreCli from "./MonoreCli.ts";
 import * as MonoreCopies from "./MonoreCopies.ts";
+import type * as VcsWorkflow from "./VcsWorkflow.ts";
 
 export const MONORE_MARKER = ".monore-checkout";
 /** A checkout's id, as the CLI writes it into the marker. */
@@ -202,9 +195,9 @@ export const nearestRepositoryMarker = Effect.fn("MonoreVcsDriver.nearestReposit
 );
 
 /**
- * The registry's monore driver: detection by the marker, no remotes (so no source
- * control provider attaches), and none of git's process-level operations. The source
- * control itself is `MonoreVcsDriver`.
+ * The monore kind's driver, which Pult's plugin registers (`VcsDriverRegistry.register`):
+ * detection by the marker, no remotes (so no source control provider attaches), and none of
+ * git's process-level operations. The source control itself is `MonoreVcsDriver`.
  */
 export const makeVcsDriver = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -306,53 +299,21 @@ type TipAnswer =
   | { readonly tip: TipRead }
   | { readonly unread: NonNullable<VcsStatusRemoteResult["monoreTip"]> };
 
+/**
+ * A monore checkout's calls (`VcsWorkflow`), which the plugin registers with `makeVcsDriver`:
+ * `remoteStatus` reads the tip, which `getLog` and `getRefs` then show; `getLatest` is Get latest,
+ * a refusal keeping its code (`MonoreCli.refusalCode`); `runStackedAction`'s `commit` commits, `push`
+ * lands, `commit_push` is Commit & Land; the copies are `MonoreCopies`'.
+ */
 export class MonoreVcsDriver extends Context.Service<
   MonoreVcsDriver,
-  {
-    /** `vcsRefreshStatus`'s local part, for the checkout at `root`. */
-    readonly localStatus: (root: string) => Effect.Effect<VcsStatusLocalResult, GitCommandError>;
-    /** `vcsRefreshStatus`'s remote part: the tip read, which `getLog` and `getRefs` then show. */
-    readonly remoteStatus: (root: string) => Effect.Effect<VcsStatusRemoteResult, GitCommandError>;
-    readonly getDiffPreview: (
-      root: string,
-      input: ReviewDiffPreviewInput,
-    ) => Effect.Effect<ReviewDiffPreviewResult, GitCommandError>;
-    readonly getDiffFileContents: (
-      root: string,
-      input: ReviewDiffFileContentsInput,
-    ) => Effect.Effect<ReviewDiffFileContentsResult, GitCommandError>;
-    readonly getLog: (
-      root: string,
-      input: ReviewLogInput,
-    ) => Effect.Effect<ReviewLogResult, GitCommandError>;
-    readonly getRefs: (root: string) => Effect.Effect<ReviewRefsResult, GitCommandError>;
-    /** `vcsPull`: Get latest, the checkout moved to main's tip; a refusal keeps its code (`MonoreCli.refusalCode`). */
-    readonly getLatest: (root: string) => Effect.Effect<VcsPullResult, GitCommandError>;
+  VcsWorkflow.VcsWorkflow & {
     /** This machine's checkouts, as the CLI's registry lists them; `cwd` is where the CLI runs. */
     readonly checkouts: (
       cwd: string,
     ) => Effect.Effect<ReadonlyArray<MonoreCli.MonoreCheckout>, GitCommandError>;
-    /** `gitRunStackedAction`: `commit` commits, `push` lands, `commit_push` is Commit & Land. */
-    readonly runStackedAction: (
-      root: string,
-      input: GitRunStackedActionInput,
-      options?: GitManager.GitRunStackedActionOptions,
-    ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
-    /** `vcs.resolveConflict`: one side of conflicted paths, taken whole. */
-    readonly resolveConflict: (
-      root: string,
-      input: VcsResolveConflictInput,
-    ) => Effect.Effect<void, GitCommandError>;
-    /** `vcs.createWorktree` for a checkout's root: a thread's copy (`MonoreCopies`). */
-    readonly createCopy: MonoreCopies.MonoreCopies["create"];
     /** Whether a checkout's root gets a copy (`MonoreCopies`). */
     readonly canCopy: MonoreCopies.MonoreCopies["canCopy"];
-    /** `vcs.removeWorktree` of a copy (`MonoreCopies`). */
-    readonly removeCopy: MonoreCopies.MonoreCopies["remove"];
-    /** The base of `delegate_task`'s isolated child of a checkout (`MonoreCopies`). */
-    readonly copyBase: MonoreCopies.MonoreCopies["base"];
-    /** A settled thread's copy, removed unless it holds work (`MonoreCopies`). */
-    readonly cleanSettledCopy: MonoreCopies.MonoreCopies["cleanSettled"];
   }
 >()("t3/vcs/MonoreVcsDriver") {}
 

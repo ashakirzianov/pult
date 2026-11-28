@@ -15,7 +15,6 @@ import {
   Cause,
   Effect,
   FileSystem,
-  Path,
   PortScanner,
   PreviewManager,
   ProjectService,
@@ -23,7 +22,7 @@ import {
   ServerSettings,
   Stream,
   ThreadManagementService,
-  MonoreVcsDriver,
+  VcsDriverRegistry,
 } from "../host.ts";
 
 export const make = Effect.fn("SettledThreads.make")(function* () {
@@ -32,10 +31,9 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
   const ports = yield* PortScanner.PortDiscovery;
   const projects = yield* ProjectService.ProjectService;
   const settings = yield* ServerSettings.ServerSettingsService;
-  const monore = yield* MonoreVcsDriver.MonoreVcsDriver;
+  const vcs = yield* VcsDriverRegistry.VcsDriverRegistry;
   const random = yield* SecureRandom.SecureRandom;
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
 
   /** The thread now, while it is still settled and not deleted. */
   const stillSettled = (threadId: ThreadId) =>
@@ -151,7 +149,12 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     const worktreePath = thread.worktreePath;
     if (worktreePath === null) return;
     if (thread.linkOrigin !== undefined && linkOriginIsFenced(thread.linkOrigin)) return;
-    if (!(yield* fs.exists(path.join(worktreePath, MonoreVcsDriver.MONORE_MARKER)))) return;
+    // A monore checkout's root, the kind this plugin registers (`monore/kind.ts`), with no git
+    // process run.
+    const real = yield* fs.realPath(worktreePath).pipe(Effect.orElseSucceed(() => null));
+    if (real === null) return;
+    const handle = yield* vcs.detect({ cwd: worktreePath, requestedKind: "monore" });
+    if (handle?.workflow === undefined || handle.repository.rootPath !== real) return;
     const projectShells = yield* projects.listShells();
     const project = projectShells.find((candidate) => candidate.id === thread.projectId);
     if (
@@ -175,7 +178,7 @@ export const make = Effect.fn("SettledThreads.make")(function* () {
     const activeThreadIds = sharing
       .filter((other) => other.id !== thread.id && other.settledOverride !== "settled")
       .map((other) => other.id);
-    const copy = yield* monore.cleanSettledCopy({
+    const copy = yield* handle.workflow.cleanSettledCopy({
       cwd: project.workspaceRoot,
       path: worktreePath,
       activeThreadIds,

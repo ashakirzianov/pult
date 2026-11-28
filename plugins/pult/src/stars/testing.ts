@@ -58,6 +58,7 @@ import {
   VcsStatusBroadcaster,
   WorkspaceEntries,
   MonoreVcsDriver,
+  VcsDriverRegistry,
 } from "../host.ts";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -643,6 +644,8 @@ export const fakeServer = Effect.gen(function* () {
         }),
     }),
     Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
+    // Activation registers the monore kind here; a test that detects provides the real registry over it.
+    Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({ register: () => Effect.void }),
     // Read only to claim a text upload, which no test sends.
     Layer.mock(DocumentText.DocumentText)({}),
     Layer.succeed(WorkspaceEntries.WorkspaceEntries, {

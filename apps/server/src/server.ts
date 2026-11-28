@@ -488,7 +488,7 @@ const layerGit = Layer.empty.pipe(
 const layerGitWorkflow = GitWorkflowService.layer.pipe(
   Layer.provideMerge(layerVcsDriverRegistry),
   Layer.provideMerge(layerGit),
-  // Pult: a monore checkout's status (monore `pult/tasks/xaxis-source-control.task`).
+  // Pult: the monore calls, which its plugin registers (`VcsDriverRegistry.register`).
   Layer.provideMerge(MonoreVcsDriver.layer),
 );
 
@@ -510,7 +510,7 @@ const layerReview = ReviewService.layer.pipe(
   Layer.provideMerge(layerKnownWorkspaces),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(layerVcsDriverRegistry),
-  // Pult: a monore checkout's diffs and history.
+  // Pult: the monore calls, as above.
   Layer.provideMerge(MonoreVcsDriver.layer),
 );
 

@@ -7,6 +7,11 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
+import * as VcsDriverRegistry from "./VcsDriverRegistry.ts";
 
 export const MONORE = process.env.MONORE_TEST_BIN;
 const SERVER = process.env.MONORE_TEST_SERVER_BIN;
@@ -16,6 +21,19 @@ export const suiteName = (name: string) =>
   skipped
     ? `${name} (skipped: MONORE_TEST_BIN and MONORE_TEST_SERVER_BIN name no monore CLI and scm-server of JSON format 1)`
     : name;
+
+/** The monore kind registered into the registry for the layer's scope, as Pult's plugin registers it. */
+export const layerRegistered = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
+    yield* registry.register({
+      kind: "monore",
+      marker: MonoreVcsDriver.MONORE_MARKER,
+      driver: yield* MonoreVcsDriver.makeVcsDriver,
+      workflow: yield* MonoreVcsDriver.MonoreVcsDriver,
+    });
+  }),
+);
 
 /** A token of the right shape that no key holds. */
 export const UNKNOWN_TOKEN = `xk:/root:${"0".repeat(64)}`;

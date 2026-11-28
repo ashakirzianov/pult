@@ -17,11 +17,16 @@ import {
 import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 
-import { Effect, FileSystem, Layer, MonoreVcsDriver } from "../host.ts";
+// The server's own process runner, which the plugin never imports: any git process would die.
+import * as VcsProcess from "../../../../apps/server/src/vcs/VcsProcess.ts";
+import { Effect, FileSystem, Layer, VcsDriverRegistry } from "../host.ts";
+import * as MonoreKind from "../monore/kind.ts";
 import { at, fakeServer } from "../stars/testing.ts";
 import * as SettledThreads from "./settled.ts";
 
 const PROJECT = ProjectId.make("project-pult");
+/** A checkout's id, as the CLI writes it into the marker. */
+const CHECKOUT_ID = "c078d1e2-6c3d-421c-b76d-a859c655780a";
 const NOW = "2026-11-26T12:00:00.000Z";
 
 /** The reactions subscribed over a fake server, the warnings they log, and a way to commit an event. */
@@ -36,7 +41,17 @@ const harness = Effect.gen(function* () {
     ],
     { mergeWithExisting: false },
   );
-  yield* SettledThreads.make().pipe(Effect.provide(Layer.merge(server.layer, logger)));
+  // The real registry, the monore kind registered as activation registers it.
+  const vcs = yield* Layer.build(
+    VcsDriverRegistry.layer.pipe(
+      Layer.provide(Layer.mock(VcsProcess.VcsProcess)({})),
+      Layer.provide(server.layer),
+    ),
+  );
+  yield* Effect.gen(function* () {
+    yield* MonoreKind.register;
+    yield* SettledThreads.make();
+  }).pipe(Effect.provide(Layer.mergeAll(server.layer, logger, Layer.succeedContext(vcs))));
   yield* server.threads.events.taken(1);
   const commit = (
     type: "thread.settled" | "thread.archived" | "thread.unsettled",
@@ -224,7 +239,7 @@ describe("the settle reactions", () => {
         const copy = Effect.fn("copy")(function* (name: string) {
           const at = `${h.server.tmp}/.t3/worktrees/${name}`;
           yield* fs.makeDirectory(at, { recursive: true });
-          yield* fs.writeFileString(`${at}/${MonoreVcsDriver.MONORE_MARKER}`, "");
+          yield* fs.writeFileString(`${at}/.monore-checkout`, `${CHECKOUT_ID}\n`);
           return at;
         });
         const linkCopy = yield* copy("link");

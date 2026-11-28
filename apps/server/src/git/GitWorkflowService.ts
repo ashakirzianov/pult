@@ -36,7 +36,6 @@ import { trimAsciiWhitespace } from "@t3tools/contracts";
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 
 export class GitWorkflowService extends Context.Service<
@@ -80,7 +79,7 @@ export class GitWorkflowService extends Context.Service<
     /** The checkout's own HEAD file, inside a linked worktree's admin directory when there is one. */
     readonly headPath: (cwd: string) => Effect.Effect<string | null, never>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
-    /** Pult: `vcs.resolveConflict`, a monore checkout's alone. */
+    /** Pult: `vcs.resolveConflict`, a registered kind's checkout's alone (`VcsDriverRegistry.register`). */
     readonly resolveConflict: (
       input: VcsResolveConflictInput,
     ) => Effect.Effect<void, GitCommandError>;
@@ -163,7 +162,7 @@ export class GitWorkflowService extends Context.Service<
       readonly newBranch: string;
     }) => Effect.Effect<{ readonly branch: string }, GitManagerServiceError>;
     /**
-     * Pult: the base `delegate_task`'s isolated child of a monore checkout starts at, the
+     * Pult: the base `delegate_task`'s isolated child of a registered kind's checkout starts at, the
      * checkout's head, refused during a conflict; null for a folder of any other kind.
      */
     readonly delegatedCopyBase: (cwd: string) => Effect.Effect<string | null, GitCommandError>;
@@ -211,7 +210,6 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
-  const monore = yield* MonoreVcsDriver.MonoreVcsDriver;
   const fileSystem = yield* FileSystem.FileSystem;
 
   // Nested projects and path aliases must share the checkout's branch-mutation lease.
@@ -221,7 +219,7 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((cwd) => withWorkspaceLease(cwd, effect)),
     );
 
-  // Pult: any kind's handle, which the monore routes take before git's checks.
+  // Pult: any kind's handle, which a registered kind's routes take before git's checks.
   const resolveForWorkflow = Effect.fn("GitWorkflowService.resolveForWorkflow")(function* (
     operation: string,
     cwd: string,
@@ -239,11 +237,19 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const noGitWorkflow = (operation: string, cwd: string, kind: string) =>
+  // Pult: a registered kind's is a checkout (`VcsDriverRegistry.register`).
+  const kindName = (handle: VcsDriverRegistry.VcsDriverHandle) =>
+    handle.workflow === undefined ? `a ${handle.kind} repository` : `a ${handle.kind} checkout`;
+
+  const noGitWorkflow = (
+    operation: string,
+    cwd: string,
+    handle: VcsDriverRegistry.VcsDriverHandle,
+  ) =>
     new GitManagerError({
       operation,
       cwd,
-      detail: `This is ${kind === "monore" ? "a monore checkout" : `a ${kind} repository`}, which has no Git workflow.`,
+      detail: `This is ${kindName(handle)}, which has no Git workflow.`,
     });
 
   const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
@@ -251,12 +257,12 @@ export const make = Effect.gen(function* () {
     cwd: string,
   ) {
     const handle = yield* resolveForWorkflow(operation, cwd);
-    // Pult: another kind's checkout, a monore one, runs no git.
-    if (handle.kind !== "git") return yield* noGitWorkflow(operation, cwd, handle.kind);
+    // Pult: another kind's checkout runs no git.
+    if (handle.kind !== "git") return yield* noGitWorkflow(operation, cwd, handle);
     return handle;
   });
 
-  // Pult: any kind's handle, which the monore routes take before git's checks.
+  // Pult: any kind's handle, which a registered kind's routes take before git's checks.
   const resolveForCommand = Effect.fn("GitWorkflowService.resolveForCommand")(function* (
     operation: string,
     cwd: string,
@@ -275,13 +281,13 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const notGit = (operation: string, cwd: string, kind: string) =>
+  const notGit = (operation: string, cwd: string, handle: VcsDriverRegistry.VcsDriverHandle) =>
     new GitCommandError({
       operation,
       command: "vcs-route",
       cwd,
       reason: "not_a_repository",
-      detail: `This is ${kind === "monore" ? "a monore checkout" : `a ${kind} repository`}, not a Git repository.`,
+      detail: `This is ${kindName(handle)}, not a Git repository.`,
     });
 
   const ensureGitCommand = Effect.fn("GitWorkflowService.ensureGitCommand")(function* (
@@ -289,21 +295,22 @@ export const make = Effect.gen(function* () {
     cwd: string,
   ) {
     const handle = yield* resolveForCommand(operation, cwd);
-    // Pult: another kind's checkout, a monore one, runs no git.
-    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
+    // Pult: another kind's checkout runs no git.
+    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle);
     return handle;
   });
 
-  // Pult: whether a worktree call or a git question asked around one is a monore checkout's
-  // to answer (`pult/decisions`, `monore-copies`), git's checks for every other kind.
-  const isMonoreCommand = Effect.fn("GitWorkflowService.isMonoreCommand")(function* (
+  // Pult: the registered kind's calls, when a worktree call or a git question asked around one is
+  // its checkout's to answer (`pult/decisions`, `monore-copies`); null for git, git's checks for
+  // every other kind.
+  const workflowFor = Effect.fn("GitWorkflowService.workflowFor")(function* (
     operation: string,
     cwd: string,
   ) {
     const handle = yield* resolveForCommand(operation, cwd);
-    if (handle.kind === "monore") return true;
-    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
-    return false;
+    if (handle.workflow !== undefined) return handle.workflow;
+    if (handle.kind !== "git") return yield* notGit(operation, cwd, handle);
+    return null;
   });
 
   // Pult: the handle, which callers route by kind; git's routes take `kind === "git"` alone.
@@ -339,7 +346,7 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    // Pult: a monore checkout is not a Git repository here.
+    // Pult: a registered kind's checkout is not a Git repository here.
     return handle?.kind === "git";
   });
 
@@ -367,8 +374,8 @@ export const make = Effect.gen(function* () {
       );
     }),
     hasCommit: Effect.fn("GitWorkflowService.hasCommit")(function* (input) {
-      // Pult: a monore checkout has no commits by git's names.
-      if (yield* isMonoreCommand("GitWorkflowService.hasCommit", input.cwd)) return false;
+      // Pult: a registered kind's checkout has no commits by git's names.
+      if ((yield* workflowFor("GitWorkflowService.hasCommit", input.cwd)) !== null) return false;
       const result = yield* git.execute({
         operation: "GitWorkflowService.hasCommit",
         cwd: input.cwd,
@@ -402,11 +409,11 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((handle) =>
           handle?.kind === "git"
             ? gitManager.status(input)
-            : handle?.kind === "monore"
+            : handle?.workflow !== undefined
               ? Effect.all(
                   [
-                    monore.localStatus(handle.repository.rootPath),
-                    monore.remoteStatus(handle.repository.rootPath),
+                    handle.workflow.localStatus(handle.repository.rootPath),
+                    handle.workflow.remoteStatus(handle.repository.rootPath),
                   ],
                   { concurrency: "unbounded" },
                 ).pipe(Effect.map(([local, remote]) => ({ ...local, ...remote })))
@@ -419,16 +426,16 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((handle) =>
           handle?.kind === "git"
             ? gitManager.localStatus(input, options)
-            : handle?.kind === "monore"
-              ? monore.localStatus(handle.repository.rootPath)
+            : handle?.workflow !== undefined
+              ? handle.workflow.localStatus(handle.repository.rootPath)
               : Effect.succeed(nonRepositoryLocalStatus()),
         ),
       );
     }),
     currentBranch: Effect.fn("GitWorkflowService.currentBranch")(function* (cwd) {
       const handle = yield* detectRepositoryForStatus("GitWorkflowService.currentBranch", cwd);
-      // Pult: a monore checkout is on its own line of main, as its status names it.
-      if (handle?.kind === "monore") return "main";
+      // Pult: a registered kind's checkout is on its own line of main, as its status names it.
+      if (handle?.workflow !== undefined) return "main";
       if (handle?.kind !== "git") {
         return null;
       }
@@ -470,8 +477,8 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((handle) =>
           handle?.kind === "git"
             ? gitManager.remoteStatus(input, options)
-            : handle?.kind === "monore"
-              ? monore.remoteStatus(handle.repository.rootPath)
+            : handle?.workflow !== undefined
+              ? handle.workflow.remoteStatus(handle.repository.rootPath)
               : Effect.succeed(null),
         ),
       );
@@ -499,15 +506,17 @@ export const make = Effect.gen(function* () {
     pullCurrentBranch: Effect.fn("GitWorkflowService.pullCurrentBranch")(function* (cwd) {
       const operation = "GitWorkflowService.pullCurrentBranch";
       const handle = yield* resolveForCommand(operation, cwd);
-      // Pult: a monore checkout's pull is Get latest.
-      if (handle.kind === "monore") return yield* monore.getLatest(handle.repository.rootPath);
-      if (handle.kind !== "git") return yield* notGit(operation, cwd, handle.kind);
+      // Pult: a registered kind's checkout's pull is Get latest.
+      if (handle.workflow !== undefined) {
+        return yield* handle.workflow.getLatest(handle.repository.rootPath);
+      }
+      if (handle.kind !== "git") return yield* notGit(operation, cwd, handle);
       return yield* git.pullCurrentBranch(cwd);
     }),
     resolveConflict: Effect.fn("GitWorkflowService.resolveConflict")(function* (input) {
       const operation = "GitWorkflowService.resolveConflict";
       const handle = yield* resolveForCommand(operation, input.cwd);
-      if (handle.kind !== "monore") {
+      if (handle.workflow === undefined) {
         return yield* new GitCommandError({
           operation,
           command: "vcs-route",
@@ -516,19 +525,19 @@ export const make = Effect.gen(function* () {
             "Only a monore checkout's conflicts are resolved here; fix a Git conflict by hand.",
         });
       }
-      return yield* monore.resolveConflict(handle.repository.rootPath, input);
+      return yield* handle.workflow.resolveConflict(handle.repository.rootPath, input);
     }),
     runStackedAction: Effect.fn("GitWorkflowService.runStackedAction")(function* (input, options) {
       const handle = yield* resolveForWorkflow("GitWorkflowService.runStackedAction", input.cwd);
-      // Pult: a monore checkout commits and lands (`pult/decisions`, `monore-verbs`).
-      if (handle.kind === "monore") {
+      // Pult: a registered kind's checkout commits in its own verbs (`pult/decisions`, `monore-verbs`).
+      if (handle.workflow !== undefined) {
         return yield* withCheckoutLease(
           handle.repository.rootPath,
-          monore.runStackedAction(handle.repository.rootPath, input, options),
+          handle.workflow.runStackedAction(handle.repository.rootPath, input, options),
         );
       }
       if (handle.kind !== "git") {
-        return yield* noGitWorkflow("GitWorkflowService.runStackedAction", input.cwd, handle.kind);
+        return yield* noGitWorkflow("GitWorkflowService.runStackedAction", input.cwd, handle);
       }
       return yield* withCheckoutLease(
         handle.repository.rootPath,
@@ -561,15 +570,14 @@ export const make = Effect.gen(function* () {
       );
     }),
     createWorktree: Effect.fn("GitWorkflowService.createWorktree")(function* (input, options) {
-      // Pult: a monore checkout's worktree is a copy.
-      if (yield* isMonoreCommand("GitWorkflowService.createWorktree", input.cwd)) {
-        return yield* monore.createCopy(input, options?.progress);
-      }
+      // Pult: a registered kind's checkout's worktree is a copy.
+      const workflow = yield* workflowFor("GitWorkflowService.createWorktree", input.cwd);
+      if (workflow !== null) return yield* workflow.createCopy(input, options?.progress);
       return yield* gitManager.createWorktree(input, options);
     }),
     listLocalBranchNames: Effect.fn("GitWorkflowService.listLocalBranchNames")(function* (cwd) {
-      // Pult: a monore checkout has no branches.
-      if (yield* isMonoreCommand("GitWorkflowService.listLocalBranchNames", cwd)) return [];
+      // Pult: a registered kind's checkout has no branches.
+      if ((yield* workflowFor("GitWorkflowService.listLocalBranchNames", cwd)) !== null) return [];
       return yield* git.listLocalBranchNames(cwd);
     }),
     fetchRemote: Effect.fn("GitWorkflowService.fetchRemote")(function (input) {
@@ -604,7 +612,9 @@ export const make = Effect.gen(function* () {
     resolveWorktreeBaseRemote: Effect.fn("GitWorkflowService.resolveWorktreeBaseRemote")(
       function* (input) {
         // Pult: a copy has no remote base, so nothing is fetched.
-        if (yield* isMonoreCommand("GitWorkflowService.resolveWorktreeBaseRemote", input.cwd)) {
+        if (
+          (yield* workflowFor("GitWorkflowService.resolveWorktreeBaseRemote", input.cwd)) !== null
+        ) {
           return null;
         }
         return yield* git.resolveWorktreeBaseRemote(input);
@@ -612,7 +622,9 @@ export const make = Effect.gen(function* () {
     ),
     fetchWorktreeBaseCommit: Effect.fn("GitWorkflowService.fetchWorktreeBaseCommit")(
       function* (input) {
-        if (yield* isMonoreCommand("GitWorkflowService.fetchWorktreeBaseCommit", input.cwd)) {
+        if (
+          (yield* workflowFor("GitWorkflowService.fetchWorktreeBaseCommit", input.cwd)) !== null
+        ) {
           return null;
         }
         return yield* git.fetchWorktreeBaseCommit(input);
@@ -626,18 +638,17 @@ export const make = Effect.gen(function* () {
       },
     ),
     removeWorktree: Effect.fn("GitWorkflowService.removeWorktree")(function* (input) {
-      if (yield* isMonoreCommand("GitWorkflowService.removeWorktree", input.cwd)) {
-        return yield* monore.removeCopy(input);
-      }
+      const workflow = yield* workflowFor("GitWorkflowService.removeWorktree", input.cwd);
+      if (workflow !== null) return yield* workflow.removeCopy(input);
       return yield* git.removeWorktree(input);
     }),
     pruneWorktrees: Effect.fn("GitWorkflowService.pruneWorktrees")(function* (input) {
       // Pult: a copy keeps no worktree registry, and no branches below.
-      if (yield* isMonoreCommand("GitWorkflowService.pruneWorktrees", input.cwd)) return;
+      if ((yield* workflowFor("GitWorkflowService.pruneWorktrees", input.cwd)) !== null) return;
       return yield* git.pruneWorktrees(input);
     }),
     deleteLocalBranch: Effect.fn("GitWorkflowService.deleteLocalBranch")(function* (input) {
-      if (yield* isMonoreCommand("GitWorkflowService.deleteLocalBranch", input.cwd)) return;
+      if ((yield* workflowFor("GitWorkflowService.deleteLocalBranch", input.cwd)) !== null) return;
       return yield* git.deleteLocalBranch(input);
     }),
     createRef: Effect.fn("GitWorkflowService.createRef")(function (input) {
@@ -670,8 +681,8 @@ export const make = Effect.gen(function* () {
     // git's to refuse, as before.
     delegatedCopyBase: Effect.fn("GitWorkflowService.delegatedCopyBase")(function* (cwd) {
       const handle = yield* registry.resolve({ cwd }).pipe(Effect.orElseSucceed(() => null));
-      if (handle?.kind !== "monore") return null;
-      return yield* monore.copyBase(cwd);
+      if (handle?.workflow === undefined) return null;
+      return yield* handle.workflow.copyBase(cwd);
     }),
   });
 });

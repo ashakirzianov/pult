@@ -6,13 +6,14 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import type * as Scope from "effect/Scope";
 
 import type { VcsDriverKind, VcsError, VcsRepositoryIdentity } from "@t3tools/contracts";
-import { VcsUnsupportedOperationError } from "@t3tools/contracts";
+import { VcsRepositoryDetectionError, VcsUnsupportedOperationError } from "@t3tools/contracts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsProjectConfig from "./VcsProjectConfig.ts";
 import * as VcsDriver from "./VcsDriver.ts";
-import * as MonoreVcsDriver from "./MonoreVcsDriver.ts";
+import type * as VcsWorkflow from "./VcsWorkflow.ts";
 
 const DETECTION_CACHE_CAPACITY = 2_048;
 // Detection costs three git processes per cwd; cached hits still stat disk, so TTL bounds only undetectable changes.
@@ -27,6 +28,23 @@ export interface VcsDriverHandle {
   readonly kind: VcsDriverKind;
   readonly repository: VcsRepositoryIdentity;
   readonly driver: VcsDriver.VcsDriver["Service"];
+  /** Pult: a registered kind's routed calls (`register`); undefined for git's. */
+  readonly workflow?: VcsWorkflow.VcsWorkflow;
+}
+
+/** Pult: the kinds a plugin may register: the contracts' literal less upstream's, `monore` alone. */
+export type RegisteredVcsKind = Exclude<VcsDriverKind, "git" | "jj" | "unknown">;
+
+/**
+ * Pult: a VCS kind a plugin registers (docs/internals/plugins.md, Hook points): its driver, which
+ * finds a checkout's root with no process, the marker file at that root, and the calls
+ * `GitWorkflowService` and `ReviewService` route to it.
+ */
+export interface VcsDriverRegistration {
+  readonly kind: RegisteredVcsKind;
+  readonly marker: string;
+  readonly driver: VcsDriver.VcsDriver["Service"];
+  readonly workflow: VcsWorkflow.VcsWorkflow;
 }
 
 export class VcsDriverRegistry extends Context.Service<
@@ -37,6 +55,13 @@ export class VcsDriverRegistry extends Context.Service<
       input: VcsDriverResolveInput,
     ) => Effect.Effect<VcsDriverHandle | null, VcsError>;
     readonly resolve: (input: VcsDriverResolveInput) => Effect.Effect<VcsDriverHandle, VcsError>;
+    /**
+     * Pult: holds `registration` until the caller's scope closes; a second one while one is held
+     * is a defect. Registering and its release drop every detection, those in flight included.
+     */
+    readonly register: (
+      registration: VcsDriverRegistration,
+    ) => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("t3/vcs/VcsDriverRegistry") {}
 
@@ -63,15 +88,15 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const projectConfig = yield* VcsProjectConfig.VcsProjectConfig;
   const git = yield* GitVcsDriver.makeVcsDriver;
-  // Pult: a monore checkout, known by its marker (monore `pult/tasks/xaxis-source-control.task`).
-  const monore = yield* MonoreVcsDriver.makeVcsDriver;
   const drivers: Partial<Record<VcsDriverKind, VcsDriver.VcsDriver["Service"]>> = {
     git,
-    monore,
   };
+  // Pult: the kind a plugin registered (`register`, `pult/decisions`, `vcs-driver-seam`). One slot,
+  // since `RegisteredVcsKind` is one literal; which of two kinds is nearest is not decided.
+  let registered: VcsDriverRegistration | undefined;
 
   const get: VcsDriverRegistry["Service"]["get"] = (kind) => {
-    const driver = drivers[kind];
+    const driver = kind === registered?.kind ? registered.driver : drivers[kind];
     if (!driver) {
       return Effect.fail(
         new VcsUnsupportedOperationError({
@@ -106,7 +131,58 @@ export const make = Effect.gen(function* () {
       kind,
       repository,
       driver,
+      ...(kind === registered?.kind ? { workflow: registered.workflow } : {}),
     } satisfies VcsDriverHandle;
+  });
+
+  // Pult: a registered kind's checkout around cwd, unless `.git` is nearer; `.git` beside its marker
+  // fails (`pult/decisions`, `vcs-detection-nearest`).
+  const nearestRegistered = Effect.fn("VcsDriverRegistry.nearestRegistered")(function* (
+    cwd: string,
+  ) {
+    const registration = registered;
+    if (registration === undefined) return null;
+    const repository = yield* registration.driver.detectRepository(cwd);
+    if (repository === null) return null;
+    const fail = (detail: string, cause?: unknown) =>
+      new VcsRepositoryDetectionError({
+        operation: "VcsDriverRegistry.nearestRegistered",
+        cwd,
+        detail,
+        ...(cause === undefined ? {} : { cause }),
+      });
+    // Upward from cwd, as the driver looked; its root is real, so each folder is compared real.
+    let folder = path.resolve(cwd);
+    while (true) {
+      const [real, hasGit] = yield* Effect.all([
+        // A folder not on disk is no root; the driver walked past it too.
+        fileSystem.realPath(folder).pipe(Effect.orElseSucceed(() => null)),
+        fileSystem
+          .exists(path.join(folder, ".git"))
+          .pipe(Effect.mapError((cause) => fail("Could not inspect a .git entry.", cause))),
+      ]);
+      if (real === repository.rootPath) {
+        if (hasGit) {
+          return yield* fail(
+            `${folder} holds both a ${registration.marker} marker and .git; remove one of them.`,
+          );
+        }
+        return {
+          kind: registration.kind,
+          repository,
+          driver: registration.driver,
+          workflow: registration.workflow,
+        } satisfies VcsDriverHandle;
+      }
+      if (hasGit) return null;
+      const parent = path.dirname(folder);
+      if (parent === folder) {
+        return yield* fail(
+          `The ${registration.kind} checkout at ${repository.rootPath} is not above ${cwd}.`,
+        );
+      }
+      folder = parent;
+    }
   });
 
   const detectResolvedKind = Effect.fn("VcsDriverRegistry.detectResolvedKind")(function* (input: {
@@ -120,12 +196,8 @@ export const make = Effect.gen(function* () {
       return yield* detectWithDriver(requestedKind, driver, input.cwd);
     }
 
-    // Pult: the nearer of `.monore-checkout` and `.git` decides (`pult/decisions`, `vcs-detection-nearest`).
-    const nearest = yield* MonoreVcsDriver.nearestRepositoryMarker(input.cwd).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-    );
-    if (nearest?.kind === "monore") return yield* detectWithDriver("monore", monore, input.cwd);
+    const nearest = yield* nearestRegistered(input.cwd);
+    if (nearest !== null) return nearest;
     return yield* detectWithDriver("git", git, input.cwd);
   });
 
@@ -138,13 +210,13 @@ export const make = Effect.gen(function* () {
     );
   };
 
-  // Pult: a `.monore-checkout` marker appearing below the root moves the nearest repository too.
+  // Pult: a registered kind's marker appearing below the root moves the nearest repository too.
   const readDiskState = (cwd: string, repository: VcsRepositoryIdentity) =>
     Effect.all({
       gitEntries: Effect.forEach(
         foldersBelowRoot(cwd, repository.rootPath).flatMap((folder) => [
           path.join(folder, ".git"),
-          path.join(folder, MonoreVcsDriver.MONORE_MARKER),
+          ...(registered === undefined ? [] : [path.join(folder, registered.marker)]),
         ]),
         (entry) => fileSystem.exists(entry),
       ),
@@ -216,10 +288,30 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const register: VcsDriverRegistry["Service"]["register"] = Effect.fn(
+    "VcsDriverRegistry.register",
+  )((registration) =>
+    Effect.acquireRelease(
+      Effect.suspend(() => {
+        if (registered !== undefined) {
+          return Effect.die(new Error(`A ${registered.kind} VCS driver is registered already.`));
+        }
+        registered = registration;
+        return Cache.invalidateAll(detectionCache);
+      }),
+      () =>
+        Effect.suspend(() => {
+          registered = undefined;
+          return Cache.invalidateAll(detectionCache);
+        }),
+    ),
+  );
+
   return VcsDriverRegistry.of({
     get,
     detect,
     resolve,
+    register,
   });
 });
 

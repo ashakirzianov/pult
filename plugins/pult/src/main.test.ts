@@ -51,6 +51,8 @@ import * as WorkflowForge from "../../../apps/server/src/workflows/WorkflowForge
 import * as WorkspacePaths from "../../../apps/server/src/workspace/WorkspacePaths.ts";
 import * as WorktreeSetupTracker from "../../../apps/server/src/project/WorktreeSetupTracker.ts";
 import * as MonoreVcsDriver from "../../../apps/server/src/vcs/MonoreVcsDriver.ts";
+import * as VcsDriverRegistry from "../../../apps/server/src/vcs/VcsDriverRegistry.ts";
+import * as VcsProcess from "../../../apps/server/src/vcs/VcsProcess.ts";
 import * as McpProviderSessions from "../../../packages/provider-core/src/server/McpProviderSessions.ts";
 import * as RuntimeLayer from "../../../apps/server/src/orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../../../apps/server/src/persistence/Sqlite.ts";
@@ -174,6 +176,10 @@ it.effect("the plugin activates over the production orchestration services", () 
       Layer.provide(platform),
     );
     const context = yield* Layer.build(runtime);
+    // Detection runs no process here.
+    const vcs = yield* Layer.build(
+      VcsDriverRegistry.layer.pipe(Layer.provide(Layer.mock(VcsProcess.VcsProcess)({}))),
+    );
     const loaderContext = yield* Layer.build(
       PluginLoader.layer(bundledPlugins).pipe(
         Layer.provideMerge(ExtensionUi.layer),
@@ -184,6 +190,7 @@ it.effect("the plugin activates over the production orchestration services", () 
             McpServer.McpServer.layer,
             // Not the runtime's either: the server's source control layers sit beside it.
             Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({}),
+            Layer.succeedContext(vcs),
             Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
             // Nor its preview layers, which the settle reactions ask for.
             Layer.mock(PreviewManager.PreviewManager)({}),
@@ -202,6 +209,8 @@ it.effect("the plugin activates over the production orchestration services", () 
     expect(yield* loader.list).toContainEqual(
       expect.objectContaining({ name: "pult", status: "loaded", error: undefined }),
     );
+    // Its activation registered the monore kind; `get` fails for a kind with no driver.
+    yield* Context.get(vcs, VcsDriverRegistry.VcsDriverRegistry).get("monore");
   }).pipe(
     Effect.scoped,
     Effect.provideService(ServerActivation.ServerActivation, Effect.never),

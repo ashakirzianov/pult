@@ -9,18 +9,13 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Random from "effect/Random";
 
-import {
-  GitCommandError,
-  type VcsCreateWorktreeInput,
-  type VcsCreateWorktreeResult,
-  type VcsRemoveWorktreeInput,
-} from "@t3tools/contracts";
+import { GitCommandError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
-import type * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as MonoreCli from "./MonoreCli.ts";
+import type * as VcsWorkflow from "./VcsWorkflow.ts";
 
 /** The line every copy is on, as the driver's status names any monore checkout's. */
 const MAIN = "main";
@@ -28,42 +23,30 @@ const MAIN = "main";
 export const NO_BRANCHES =
   "A project kept in monore has one line, main, and no branches: pass baseRef main and no branch.";
 
-/** What a settle did with a thread's copy: removed it, or kept it and why. */
-export type SettledCopy =
-  | { readonly removed: true }
-  | { readonly removed: false; readonly reason: string };
-
 export interface MonoreCopies {
   /**
    * `vcs.createWorktree` for a checkout's root: a copy of its prefix on `main`, at main's tip, or
    * at a checkout's head `base` handed out for `refName`, inheriting its stack.
    */
-  readonly create: (
-    input: VcsCreateWorktreeInput,
-    progress?: GitVcsDriver.CreateWorktreeProgress,
-  ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
+  readonly create: VcsWorkflow.VcsWorkflow["createCopy"];
   /**
    * Whether `create` copies the checkout whose root is `root`: one of a prefix, not the whole tree.
    * Fails where monore lists no checkout there, as `create` does.
    */
   readonly canCopy: (root: string) => Effect.Effect<boolean, GitCommandError>;
   /** `vcs.removeWorktree` of a copy: `force` lets uncommitted edits go, never a stack or a conflict. */
-  readonly remove: (input: VcsRemoveWorktreeInput) => Effect.Effect<void, GitCommandError>;
+  readonly remove: VcsWorkflow.VcsWorkflow["removeCopy"];
   /**
    * A base naming the head of the checkout at `cwd`, its commits not landed included, for
    * `delegate_task`'s isolated child to start at: refused during a conflict. Only a base handed out
    * here starts a copy at a changeset, so the tools' `baseRef` names none (`monore-copy-contract`).
    */
-  readonly base: (cwd: string) => Effect.Effect<string, GitCommandError>;
+  readonly base: VcsWorkflow.VcsWorkflow["copyBase"];
   /**
    * At a thread's settle, `remove` without `force` of its copy at `path`, a copy of the checkout at
    * `cwd` inside the worktrees folder, unless a thread of `activeThreadIds` is still on it.
    */
-  readonly cleanSettled: (input: {
-    readonly cwd: string;
-    readonly path: string;
-    readonly activeThreadIds: ReadonlyArray<string>;
-  }) => Effect.Effect<SettledCopy>;
+  readonly cleanSettled: VcsWorkflow.VcsWorkflow["cleanSettledCopy"];
 }
 
 export const make = Effect.fn("MonoreCopies.make")(function* (

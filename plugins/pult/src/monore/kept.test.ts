@@ -39,6 +39,7 @@ import {
   VcsAutomaticFetchInterval,
   VcsStatusBroadcaster,
   MonoreVcsDriver,
+  VcsDriverRegistry,
 } from "../host.ts";
 import { fakeServer } from "../stars/testing.ts";
 import type { KeptView } from "./kept.ts";
@@ -86,11 +87,14 @@ describe.skipIf(skipped)(suiteName("the kept monore checkout"), () => {
           ServerSettings.layerTest({ monoreBinaryPath: MONORE! }),
         );
         const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
-        const layer = Layer.mergeAll(
+        const vcsProcess = VcsProcess.layer.pipe(Layer.provide(NodeServices.layer));
+        const context = yield* Layer.mergeAll(
           McpServer.McpServer.layer,
+          // The server's registry, which the plugin registers the monore kind into at activation.
+          VcsDriverRegistry.layer.pipe(Layer.provide(vcsProcess)),
           MonoreVcsDriver.layer.pipe(
             // The real spawner: the server layer's fake one, which the Stars spawn through, has no output.
-            Layer.provide(VcsProcess.layer.pipe(Layer.provide(NodeServices.layer))),
+            Layer.provide(vcsProcess),
             Layer.provide(Layer.succeedContext(settingsContext)),
           ),
           Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
@@ -104,12 +108,13 @@ describe.skipIf(skipped)(suiteName("the kept monore checkout"), () => {
             VcsAutomaticFetchInterval.VcsAutomaticFetchInterval,
             Effect.sync(() => interval.every),
           ),
-        ).pipe(Layer.provideMerge(server.layer));
+        ).pipe(Layer.provideMerge(server.layer), Layer.build);
+        const registry = Context.get(context, VcsDriverRegistry.VcsDriverRegistry);
         const loader = Context.get(
           yield* Layer.build(
             PluginLoader.layer(bundledPlugins).pipe(
               Layer.provideMerge(ExtensionUi.layer),
-              Layer.provide(layer),
+              Layer.provide(Layer.succeedContext(context)),
             ),
           ),
           PluginLoader.PluginLoader,
@@ -180,6 +185,8 @@ describe.skipIf(skipped)(suiteName("the kept monore checkout"), () => {
         yield* tick;
         const [project] = keptProjects();
         expect(project?.title).toBe("monore");
+        // The activation's registration reached the registry the server's services detect with.
+        expect((yield* registry.detect({ cwd: folder }))?.kind).toBe("monore");
         expect(yield* kept).toMatchObject({
           folder,
           checkouts: [

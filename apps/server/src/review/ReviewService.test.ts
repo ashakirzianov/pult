@@ -12,7 +12,6 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
 import * as ReviewService from "./ReviewService.ts";
 
@@ -31,7 +30,6 @@ function layer(input: {
   const projectRoots = input.projectRoots ?? [];
   return ReviewService.layer.pipe(
     Layer.provide(KnownWorkspaces.layer),
-    Layer.provide(Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({})),
     Layer.provide(
       Layer.effectDiscard(
         Effect.gen(function* () {

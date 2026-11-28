@@ -30,6 +30,7 @@ import { tellRetiredAsks } from "./stars/retiredAsks.ts";
 import * as Stars from "./stars/stars.ts";
 import * as SettledThreads from "./threads/settled.ts";
 import * as MonoreKept from "./monore/kept.ts";
+import * as MonoreKind from "./monore/kind.ts";
 
 /**
  * What this build does, one name per feature the page relies on; the page
@@ -50,6 +51,8 @@ const features: ReadonlyArray<string> = [
 ];
 
 export const activate = Effect.fn("PultPlugin.activate")(function* (host: PluginHost) {
+  // First, so the server's services read a monore checkout as one from here on.
+  yield* MonoreKind.register;
   // What settling or archiving a thread does beyond upstream's settle.
   yield* SettledThreads.make();
   const deliverTo = yield* Delivery.make;
