@@ -280,7 +280,10 @@ export class ThreadLaunchService extends Context.Service<
       | ThreadLaunchMonoreLineError
       | TaskFolderError
     >;
-    /** True only when the project's folder is known not to be a Git repository. */
+    /**
+     * True only when the project's folder is known to hold no worktree: not a Git repository, nor
+     * a monore checkout's root that gets a copy.
+     */
     readonly isNonGitProject: (projectId: ProjectId) => Effect.Effect<boolean>;
     /**
      * Pult: whether the project's folder is the root of a monore checkout of a prefix, whose new
@@ -548,10 +551,12 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orElseSucceed(() => Option.none()));
     if (Option.isNone(project)) return false;
     // Unlike `git.repositoryRoot`, this fails on a repository Git cannot read, which is not "no repository".
-    return yield* checkpointStore.isGitRepository(project.value.workspaceRoot).pipe(
-      Effect.map((isRepository) => !isRepository),
-      Effect.orElseSucceed(() => false),
-    );
+    const isRepository = yield* checkpointStore
+      .isGitRepository(project.value.workspaceRoot)
+      .pipe(Effect.orElseSucceed(() => true));
+    if (isRepository) return false;
+    // Pult: a copy's launch reports a checkout the CLI cannot read, so only "no copy" says no worktree.
+    return !(yield* copiesMonoreRoot(projectId).pipe(Effect.orElseSucceed(() => true)));
   });
 
   const copiesMonoreRoot: ThreadLaunchService["Service"]["copiesMonoreRoot"] = Effect.fn(

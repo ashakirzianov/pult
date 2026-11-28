@@ -3704,11 +3704,18 @@ it.effect("launches a monore project's copy on main and refuses another line or 
       yield* fs.makeTempDirectoryScoped({ prefix: "launch-monore-" }),
     );
     yield* fs.writeFileString(`${root}/.monore-checkout`, "0b5e7a1c-3f2d-4e8a-9b6c-1d2e3f4a5b6c\n");
-    // Whether a new thread on the project gets a copy.
+    // Whether a new thread or a schedule on the project gets a copy, and whether the copy's
+    // launch is left to report what monore could not read.
     const copies = (layer: ReturnType<typeof makeHarness>["layer"]) =>
       ThreadLaunch.ThreadLaunchService.pipe(
-        Effect.flatMap((launches) => launches.copiesMonoreRoot(projectId)),
-        Effect.orElseSucceed(() => "unreadable" as const),
+        Effect.flatMap((launches) =>
+          Effect.all([
+            launches
+              .copiesMonoreRoot(projectId)
+              .pipe(Effect.orElseSucceed(() => "unreadable" as const)),
+            launches.isNonGitProject(projectId),
+          ]),
+        ),
         Effect.provide(layer),
       );
     // GitWorkflowService's answers for a monore checkout: no repository, remote or commit of git's.
@@ -3759,14 +3766,14 @@ it.effect("launches a monore project's copy on main and refuses another line or 
       assert.equal(projection.runs[0]?.workspacePreparation?.type, "worktree");
       assert.deepInclude(harness.createWorktree.mock.calls[0]?.[0], { cwd: root, refName: "main" });
     }).pipe(Effect.provide(harness.layer));
-    assert.equal(yield* copies(harness.layer), true);
-    // The whole tree is not copied, so its threads stay in the root.
+    assert.deepEqual(yield* copies(harness.layer), [true, false]);
+    // The whole tree is not copied, so its threads and schedules stay in the root.
     const whole = makeHarness({
       workspaceRoot: root,
       isGitRepository: () => Effect.succeed(false),
       canCopy: () => Effect.succeed(false),
     });
-    assert.equal(yield* copies(whole.layer), false);
+    assert.deepEqual(yield* copies(whole.layer), [false, true]);
     const unreadable = makeHarness({
       workspaceRoot: root,
       isGitRepository: () => Effect.succeed(false),
@@ -3775,7 +3782,7 @@ it.effect("launches a monore project's copy on main and refuses another line or 
           new GitCommandError({ operation: "test", command: "monore", cwd, detail: "no CLI" }),
         ),
     });
-    assert.equal(yield* copies(unreadable.layer), "unreadable");
+    assert.deepEqual(yield* copies(unreadable.layer), ["unreadable", false]);
     // A folder inside a checkout is no checkout's root, so it gets no copy.
     yield* fs.makeDirectory(`${root}/notes`);
     const inside = makeHarness({
@@ -3783,7 +3790,7 @@ it.effect("launches a monore project's copy on main and refuses another line or 
       isGitRepository: () => Effect.succeed(false),
       git: { repositoryRoot: () => Effect.succeed(null) },
     });
-    assert.equal(yield* copies(inside.layer), false);
+    assert.deepEqual(yield* copies(inside.layer), [false, true]);
     const error = yield* ThreadLaunch.ThreadLaunchService.pipe(
       Effect.flatMap((launches) =>
         launches.checkWorktreeBase({ projectId, workspaceStrategy: worktreeStrategy }),
