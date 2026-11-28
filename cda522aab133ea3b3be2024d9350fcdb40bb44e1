@@ -1,0 +1,4 @@
+monore-mirror 1
+server https://scm.monore.app
+prefix ashakirzianov/pult/code
+changeset sha256:58ca44a37c97983b022243c479dc2aab8e4b8bfd05abbac4810c8211e7a2f335
