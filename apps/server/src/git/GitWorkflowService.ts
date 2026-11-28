@@ -205,6 +205,22 @@ function nonRepositoryListRefs(): VcsListRefsResult {
   };
 }
 
+/** Pult: a registered kind's one line, `main`, the base a new thread's copy starts from. */
+function oneLineListRefs({ query, refKind }: VcsListRefsInput): VcsListRefsResult {
+  const name = "main";
+  const refs =
+    refKind === "remote" || !name.includes(query?.toLowerCase() ?? "")
+      ? []
+      : [{ name, current: true, isDefault: true, worktreePath: null }];
+  return {
+    refs,
+    isRepo: true,
+    hasPrimaryRemote: false,
+    nextCursor: null,
+    totalCount: refs.length,
+  };
+}
+
 /** @public */
 export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
@@ -331,8 +347,8 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  const detectGitRepositoryForCommand = Effect.fn(
-    "GitWorkflowService.detectGitRepositoryForCommand",
+  const detectAnyRepositoryForCommand = Effect.fn(
+    "GitWorkflowService.detectAnyRepositoryForCommand",
   )(function* (operation: string, cwd: string) {
     const handle = yield* registry.detect({ cwd }).pipe(
       Effect.mapError(
@@ -346,8 +362,8 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    // Pult: a registered kind's checkout is not a Git repository here.
-    return handle?.kind === "git";
+    // Pult: the handle, which `listRefs` routes by kind.
+    return handle;
   });
 
   const routeGitManager =
@@ -563,10 +579,14 @@ export const make = Effect.gen(function* () {
       },
     ),
     listRefs: Effect.fn("GitWorkflowService.listRefs")(function (input) {
-      return detectGitRepositoryForCommand("GitWorkflowService.listRefs", input.cwd).pipe(
-        Effect.flatMap((isGitRepository) =>
-          isGitRepository ? git.listRefs(input) : Effect.succeed(nonRepositoryListRefs()),
-        ),
+      return detectAnyRepositoryForCommand("GitWorkflowService.listRefs", input.cwd).pipe(
+        Effect.flatMap((handle) => {
+          // Pult: a registered kind's checkout lists its one line.
+          if (handle?.workflow !== undefined) return Effect.succeed(oneLineListRefs(input));
+          return handle?.kind === "git"
+            ? git.listRefs(input)
+            : Effect.succeed(nonRepositoryListRefs());
+        }),
       );
     }),
     createWorktree: Effect.fn("GitWorkflowService.createWorktree")(function* (input, options) {

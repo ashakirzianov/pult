@@ -261,6 +261,45 @@ describe.skipIf(skipped)(suiteName("MonoreCopies"), () => {
       }),
     );
 
+    it.effect(
+      "lists main alone, a copy's base; switching to it stays refused, or web moves a copy's thread to the root",
+      () =>
+        Effect.gen(function* () {
+          const workflow = yield* GitWorkflowService.GitWorkflowService;
+          const main = { name: "main", current: true, isDefault: true, worktreePath: null };
+          const listed = { isRepo: true, hasPrimaryRemote: false, nextCursor: null };
+          assert.deepEqual(yield* workflow.listRefs({ cwd: root, limit: 100 }), {
+            ...listed,
+            refs: [main],
+            totalCount: 1,
+          });
+          assert.deepEqual(
+            yield* Effect.forEach(
+              [
+                { query: "MAI" },
+                { refKind: "local" as const },
+                { query: "feat" },
+                { refKind: "remote" as const },
+              ],
+              (input) =>
+                workflow
+                  .listRefs({ cwd: root, ...input })
+                  .pipe(Effect.map(({ refs, totalCount }) => [refs.length, totalCount])),
+            ),
+            [
+              [1, 1],
+              [1, 1],
+              [0, 0],
+              [0, 0],
+            ],
+          );
+          assert.deepInclude(
+            yield* workflow.switchRef({ cwd: root, refName: "main" }).pipe(Effect.flip),
+            { operation: "GitWorkflowService.switchRef", reason: "not_a_repository" },
+          );
+        }),
+    );
+
     it.effect("refuses a branch, another base, a folder inside a checkout and the whole tree", () =>
       Effect.gen(function* () {
         const workflow = yield* GitWorkflowService.GitWorkflowService;

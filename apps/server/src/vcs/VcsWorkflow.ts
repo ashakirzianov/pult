@@ -1,6 +1,6 @@
 // Pult: the calls `GitWorkflowService` and `ReviewService` route to a VCS kind a plugin registers
 // (`VcsDriverRegistry.register`, docs/internals/plugins.md, Hook points). A registered kind's
-// checkout is on one line, `main`, with no git refs, branches or remote base, so the services answer
+// checkout is on one line, `main`, with no other ref, branch or remote base, so the services answer
 // those questions themselves; everything that does work is here.
 import type * as Effect from "effect/Effect";
 
