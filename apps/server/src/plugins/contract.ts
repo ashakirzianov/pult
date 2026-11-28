@@ -165,11 +165,12 @@ export interface ExtensionHost {
   };
   /**
    * The page's UI slots. What is published is state: a reconnect or a second page gets the whole
-   * set, and it goes when the activation's scope closes. A handler's own publish reaches the page
-   * before its answer does, so a pending item is replaced by its new state.
+   * set, and it goes when the activation's scope closes. An action or a send that declares `then`
+   * publishes its item's new state from its handler: the page draws it so from the click until that
+   * publish. The order of a publish and an answer on the socket is not promised.
    */
   readonly ui: {
-    /** Replaces the extension's whole list for `slot`; a malformed item or a key repeated in it fails the call. */
+    /** Replaces the extension's whole list for `slot`; a malformed item, a key repeated in it or a `then` the page cannot draw fails the call. */
     readonly publish: <S extends Slot>(
       slot: S,
       items: ReadonlyArray<SlotItem<S>>,

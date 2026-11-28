@@ -5,6 +5,7 @@ import {
   AuthOrchestrationReadScope,
   messageHeaderOf,
   EnvironmentId,
+  type ExtensionShelfRow,
   ProjectId,
   ProviderInstanceId,
   RunId,
@@ -559,11 +560,15 @@ const UI_ACTIVATE = `
     poster: { thread: "thread-1" },
     status: { icon: "inbox", label: "Asked" },
     actions: [
-      { id: "snooze", label: "Snooze", icon: "clock", input: { kind: "instant", label: "Snooze until" } },
+      { id: "snooze", label: "Snooze", icon: "clock", input: { kind: "instant", label: "Snooze until" }, then: snoozed },
       { id: "settle", label: "Settle", icon: "check", text: true },
     ],
-    open: { reply: { target: { handled: { project: "project-1" } }, chips: [{ label: "Yes", text: "Yes" }] } },
+    open: { reply: { target: { handled: { project: "project-1" } }, chips: [{ label: "Yes", text: "Yes" }], then: replied } },
   });
+  const drawn = (time) => ({ shelf: "snoozed", status: { icon: "bell-slash", label: "Snoozed", time } });
+  const snoozed = drawn({ of: "input", as: "clock" });
+  const replied = { shelf: "working", status: { icon: "comment", label: "Replied", time: { of: "click", as: "age" } } };
+  const wake = { id: "wake", label: "Wake", icon: "bell" };
   yield* host.ui.publish("shelf-row", [row("inbox")]);
   yield* host.ui.onAction(({ slot, key, action, value }) =>
     action === "settle"
@@ -581,12 +586,16 @@ const UI_ACTIVATE = `
           return { thread: "thread-1" };
         }),
   );
-  // A second handler, a repeated key, an undecodable item and an unknown slot fail their calls.
+  // A second handler, a repeated key, an undecodable item, an unknown slot and a \`then\` the page cannot draw fail their calls.
+  const reply = (target, then) => ({ ...row("inbox").open.reply, target, then });
   for (const call of [
     host.ui.onSend(() => Effect.succeed({ thread: "x" })),
     host.ui.publish("shelf-row", [row("inbox"), row("inbox")]),
     host.ui.publish("shelf-row", [{ key: "x" }]),
     host.ui.publish("nowhere", []),
+    host.ui.publish("shelf-row", [{ ...row("inbox"), actions: [{ ...wake, then: snoozed }] }]),
+    host.ui.publish("shelf-row", [{ ...row("inbox"), open: { reply: reply({ handled: { project: "project-1" } }, snoozed) } }]),
+    host.ui.publish("shelf-row", [{ ...row("inbox"), open: { reply: reply({ thread: "thread-1" }, replied) } }]),
   ]) {
     const error = yield* Effect.flip(call);
     events.push(\`\${error instanceof HostCallError} \${error.call}: \${error.message.split(":")[1].trim()}\`);
@@ -602,11 +611,14 @@ it.effect(
       const ui = yield* ExtensionUi.ExtensionUi;
       const scope = yield* Scope.make();
       yield* Layer.buildWithScope(PluginLoader.layer({}), scope);
-      expect(events().slice(1, 5)).toEqual([
+      expect(events().slice(1, 8)).toEqual([
         "true ui.onSend: it has a handler already, one per activation",
         'true ui.publish: the key "a" repeats in "shelf-row"',
         'true ui.publish: an item of "shelf-row" does not decode',
         'true ui.publish: there is no slot "nowhere"',
+        'true ui.publish: the action "wake" of "a" draws its input\'s time, and takes none',
+        'true ui.publish: the reply of "a" draws an input\'s time, and a send has none',
+        'true ui.publish: the reply of "a" declares what its send does, and no handler answers a thread\'s composer',
       ]);
 
       // A subscriber gets the whole set, then each change: the action's own publish, then the list gone.
@@ -688,7 +700,20 @@ it.effect(
       ]);
 
       yield* Scope.close(scope, Exit.void);
-      const seen = [...(yield* Fiber.join(following))].map(({ extension, slot, items }) => ({
+      const lists = [...(yield* Fiber.join(following))];
+      // What the action and the reply declare reaches the page as published.
+      const first = lists[0]!.items[0] as ExtensionShelfRow;
+      expect([first.actions[0]?.then, first.open.reply?.then]).toEqual([
+        {
+          shelf: "snoozed",
+          status: { icon: "bell-slash", label: "Snoozed", time: { of: "input", as: "clock" } },
+        },
+        {
+          shelf: "working",
+          status: { icon: "comment", label: "Replied", time: { of: "click", as: "age" } },
+        },
+      ]);
+      const seen = lists.map(({ extension, slot, items }) => ({
         extension,
         slot,
         shelves: items.map((item) => (item as { shelf: string }).shelf),

@@ -21,6 +21,15 @@ export const ExtensionTime = Schema.Struct({
 });
 export type ExtensionTime = typeof ExtensionTime.Type;
 
+/** A time in a row drawn ahead: a published one, or one the page fills, the click's own instant or the action's input's value. */
+export const ExtensionTimeAhead = Schema.Union([
+  ExtensionTime,
+  Schema.Struct({ of: Schema.Literals(["click", "input"]), as: Schema.Literals(["age", "clock"]) }),
+]);
+export type ExtensionTimeAhead = typeof ExtensionTimeAhead.Type;
+
+export const ExtensionShelf = Schema.Literals(["inbox", "working", "snoozed", "settled"]);
+
 /** One of Pult's built-in components by name, data only; a page lacking it draws `fallback`. */
 export const ExtensionNamed = Schema.Struct({
   named: Schema.Literal("star-mark"),
@@ -40,6 +49,21 @@ export const ExtensionInput = Schema.Union([
 ]);
 export type ExtensionInput = typeof ExtensionInput.Type;
 
+/**
+ * What an action, or a handled reply's send, does to its row, as its extension knows it before it
+ * runs: the page draws the row so at the click, until the extension publishes the row changed or
+ * refuses. The rest of the row stays as published.
+ */
+export const ExtensionThen = Schema.Struct({
+  shelf: ExtensionShelf,
+  status: Schema.Struct({
+    icon: ExtensionIcon,
+    label: Schema.String,
+    time: Schema.optional(ExtensionTimeAhead),
+  }),
+});
+export type ExtensionThen = typeof ExtensionThen.Type;
+
 export const ExtensionAction = Schema.Struct({
   id: NonEmpty,
   label: NonEmpty,
@@ -47,6 +71,8 @@ export const ExtensionAction = Schema.Struct({
   /** Draws the label beside the icon. */
   text: Schema.optional(Schema.Literal(true)),
   input: Schema.optional(ExtensionInput),
+  /** Declared only where the extension knows the outcome; with none, the row is pending until the answer. */
+  then: Schema.optional(ExtensionThen),
 });
 export type ExtensionAction = typeof ExtensionAction.Type;
 
@@ -78,13 +104,15 @@ export const ExtensionReply = Schema.Struct({
   /** After the name in "Reply to **name** · note"; display only. */
   note: Schema.optional(Schema.String),
   chips: Schema.Array(ExtensionChip).check(Schema.isMaxLength(4)),
+  /** What a send through a handled target does to the row. */
+  then: Schema.optional(ExtensionThen),
 });
 export type ExtensionReply = typeof ExtensionReply.Type;
 
 /** A row on one of the thread shelves, drawn as a thread's card is. */
 export const ExtensionShelfRow = Schema.Struct({
   key: NonEmpty,
-  shelf: Schema.Literals(["inbox", "working", "snoozed", "settled"]),
+  shelf: ExtensionShelf,
   title: Schema.String,
   /** A thread (its project's icon, its title), or a named component. */
   poster: Schema.Union([Schema.Struct({ thread: NonEmpty }), ExtensionNamed]),

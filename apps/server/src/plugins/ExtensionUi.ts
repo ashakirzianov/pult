@@ -10,6 +10,7 @@ import {
   type ExtensionSendInput,
   type ExtensionSlot,
   type ExtensionShelfRow,
+  type ExtensionThen,
   type ExtensionUiPublished,
   ExtensionUiRefused,
 } from "@t3tools/contracts";
@@ -28,16 +29,32 @@ export type SendHandler = (
   send: UiSend,
 ) => Effect.Effect<{ readonly thread: string }, { readonly message: string }>;
 
-/** Per slot: the actions an item offers, and whether its composer is handled. */
+const fromInput = (then: ExtensionThen | undefined) =>
+  then?.status.time !== undefined && "of" in then.status.time && then.status.time.of === "input";
+
+/** Per slot: the actions an item offers, whether its composer is handled, and why its `then`s cannot be drawn. */
 const SLOT_READERS: {
   readonly [Slot in ExtensionSlot]: {
     readonly actions: (item: ExtensionShelfRow) => ExtensionShelfRow["actions"];
     readonly handled: (item: ExtensionShelfRow) => boolean;
+    readonly undrawable: (item: ExtensionShelfRow) => string | undefined;
   };
 } = {
   "shelf-row": {
     actions: (row) => row.actions,
     handled: (row) => row.open.reply !== undefined && "handled" in row.open.reply.target,
+    undrawable: (row) => {
+      const action = row.actions.find((each) => each.input === undefined && fromInput(each.then));
+      if (action !== undefined)
+        return `the action "${action.id}" of "${row.key}" draws its input's time, and takes none`;
+      const reply = row.open.reply;
+      if (reply?.then === undefined) return undefined;
+      if ("thread" in reply.target)
+        return `the reply of "${row.key}" declares what its send does, and no handler answers a thread's composer`;
+      if (fromInput(reply.then))
+        return `the reply of "${row.key}" draws an input's time, and a send has none`;
+      return undefined;
+    },
   },
 };
 
@@ -66,7 +83,7 @@ interface State {
 export class ExtensionUi extends Context.Service<
   ExtensionUi,
   {
-    /** Replaces the extension's whole list for `slot`; a malformed item or a repeated key fails it. */
+    /** Replaces the extension's whole list for `slot`; a malformed item, a repeated key or a `then` the page cannot draw fails it. */
     readonly publish: (
       extension: string,
       slot: string,
@@ -122,6 +139,8 @@ const make = Effect.gen(function* () {
     for (const item of decoded) {
       if (keys.has(item.key)) return yield* failed(`the key "${item.key}" repeats in "${slot}"`);
       keys.add(item.key);
+      const undrawable = SLOT_READERS[slot].undrawable(item);
+      if (undrawable !== undefined) return yield* failed(undrawable);
     }
     yield* write({ extension, slot, items: decoded });
   });
