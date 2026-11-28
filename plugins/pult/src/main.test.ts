@@ -139,6 +139,7 @@ it.effect("the plugin activates over the production orchestration services", () 
           Layer.mock(ManagedEndpoint.CloudManagedEndpointRuntime)({}),
           Layer.mock(GitVcsDriver.GitVcsDriver)({}),
           Layer.mock(GitWorkflow.GitWorkflowService)({}),
+          Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({}),
           FetchHttpClient.layer,
           ManagedPolicy.layerTest(),
           McpSessions.layer,

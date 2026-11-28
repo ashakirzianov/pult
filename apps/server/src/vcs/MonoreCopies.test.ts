@@ -283,6 +283,16 @@ describe.skipIf(skipped)(suiteName("MonoreCopies"), () => {
           "a checkout of the whole tree, which is not copied",
         );
         assert.deepEqual(copiesOfRoot(), before);
+        // What a launch with no workspace asks before it defaults to a copy.
+        const driver = yield* MonoreVcsDriver.MonoreVcsDriver;
+        assert.deepEqual(yield* Effect.forEach([root, whole], (dir) => driver.canCopy(dir)), [
+          true,
+          false,
+        ]);
+        assert.include(
+          (yield* Effect.flip(driver.canCopy(NodePath.join(root, "sub")))).detail,
+          "only a checkout's root gets a copy",
+        );
       }),
     );
 

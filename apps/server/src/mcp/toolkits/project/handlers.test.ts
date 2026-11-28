@@ -63,11 +63,15 @@ const clientLaunchHarness = (input: {
   readonly launched: Array<ThreadLaunch.ThreadLaunchInput>;
   readonly workspaceRoot?: string;
   readonly checkWorktreeBase?: ThreadLaunch.ThreadLaunchService["Service"]["checkWorktreeBase"];
+  readonly copiesMonoreRoot?: ThreadLaunch.ThreadLaunchService["Service"]["copiesMonoreRoot"];
+  /** An agent's thread calls, in place of the client. */
+  readonly fromThread?: true;
   readonly hostedAppUrl?: string;
   /** The orchestrator refuses the new thread's mode, as under a managed ceiling. */
   readonly refusedByCeiling?: true;
 }) => {
   const projectId = ProjectId.make("project:client-target");
+  const callerThreadId = ThreadId.make("thread:caller");
   const modelSelection = {
     instanceId: ProviderInstanceId.make("claudeAgent"),
     model: "claude-opus",
@@ -109,19 +113,41 @@ const clientLaunchHarness = (input: {
     Layer.succeed(McpInvocationContext.McpInvocationContext, {
       environmentId: EnvironmentId.make("environment"),
       requestNamespace: "client:session-1",
-      thread: undefined,
-      client: {
-        sessionId: "session-1",
-        label: "Claude Code",
-        access: input.runtimeModeCeiling,
-        hostedAppUrl: input.hostedAppUrl,
-      },
+      thread:
+        input.fromThread === undefined
+          ? undefined
+          : {
+              threadId: callerThreadId,
+              providerSessionId: "session-caller",
+              providerInstanceId: modelSelection.instanceId,
+            },
+      client:
+        input.fromThread === undefined
+          ? {
+              sessionId: "session-1",
+              label: "Claude Code",
+              access: input.runtimeModeCeiling,
+              hostedAppUrl: input.hostedAppUrl,
+            }
+          : undefined,
       issuedAt: 0,
       capabilities: new Set(["orchestration" as const]),
     }),
     Layer.mock(ThreadManagement.ThreadManagementService)({
       // A thread exists once a launch started it.
       getThreadShell: (threadId) => {
+        if (threadId === callerThreadId)
+          return Effect.succeed({
+            id: callerThreadId,
+            projectId,
+            modelSelection,
+            runtimeMode: input.runtimeModeCeiling,
+            interactionMode: "default",
+            providerInstanceId: modelSelection.instanceId,
+            activeRunId: "run:caller",
+            archivedAt: null,
+            deletedAt: null,
+          } as unknown as OrchestrationV2ThreadShell);
         const launch = input.launched.find((candidate) => candidate.threadId === threadId);
         return Effect.succeed(
           launch === undefined
@@ -137,6 +163,7 @@ const clientLaunchHarness = (input: {
     }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),
+      copiesMonoreRoot: input.copiesMonoreRoot ?? (() => Effect.succeed(false)),
       launch: (launch) => {
         input.launched.push(launch);
         if (input.refusedByCeiling) {
@@ -813,6 +840,65 @@ it.effect("a launch that omits its workspace follows the new-threads-in-a-worktr
         source,
       ).toEqual(["worktree", "root"]);
     }
+
+    // Pult: on a project kept in monore an agent or a client gets a copy at main whatever the
+    // setting says, and an explicit root stays the root.
+    for (const fromThread of [false, true]) {
+      const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+      const { projectId, dependencies } = clientLaunchHarness({
+        runtimeModeCeiling: "auto",
+        launched,
+        defaultThreadEnvMode: "local",
+        copiesMonoreRoot: () => Effect.succeed(true),
+        ...(fromThread ? { fromThread: true as const } : {}),
+      });
+      const toolkit = yield* ProjectToolkit.pipe(
+        Effect.provide(
+          McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(
+            Layer.provide(dependencies),
+          ),
+        ),
+      );
+      for (const workspaceStrategy of [undefined, { type: "root" as const }]) {
+        yield* toolkit
+          .handle("t3_thread_launch", {
+            title: "Fix",
+            projectId,
+            ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
+          })
+          .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      }
+      expect(
+        launched.map((launch) => launch.workspaceStrategy),
+        fromThread ? "agent" : "client",
+      ).toEqual([{ type: "worktree", baseRef: "main", startFromOrigin: true }, { type: "root" }]);
+    }
+
+    // A checkout monore cannot read is refused, never launched in the root.
+    const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
+    const { projectId, dependencies } = clientLaunchHarness({
+      runtimeModeCeiling: "auto",
+      launched,
+      copiesMonoreRoot: () =>
+        Effect.fail(
+          new GitCommandError({
+            operation: "test",
+            command: "monore",
+            cwd: "/projects/client-target",
+            detail: "No CLI.",
+          }),
+        ),
+    });
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const refused = (yield* toolkit
+      .handle("t3_thread_launch", { title: "Fix", projectId })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies))).at(-1)?.result;
+    expect(refused).toMatchObject({ code: "orchestration_error" });
+    expect(launched).toHaveLength(0);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

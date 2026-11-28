@@ -42,6 +42,11 @@ export interface MonoreCopies {
     input: VcsCreateWorktreeInput,
     progress?: GitVcsDriver.CreateWorktreeProgress,
   ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
+  /**
+   * Whether `create` copies the checkout whose root is `root`: one of a prefix, not the whole tree.
+   * Fails where monore lists no checkout there, as `create` does.
+   */
+  readonly canCopy: (root: string) => Effect.Effect<boolean, GitCommandError>;
   /** `vcs.removeWorktree` of a copy: `force` lets uncommitted edits go, never a stack or a conflict. */
   readonly remove: (input: VcsRemoveWorktreeInput) => Effect.Effect<void, GitCommandError>;
   /**
@@ -126,6 +131,27 @@ export const make = Effect.fn("MonoreCopies.make")(function* (
    */
   const bases = new Set<string>();
 
+  /** The listed checkout whose root is `root`, a real path. */
+  const sourceOf = Effect.fn("MonoreCopies.sourceOf")(function* (operation: string, root: string) {
+    const source = (yield* cli
+      .checkouts({ operation: `${operation}.checkouts`, cwd: root })
+      .pipe(Effect.mapError(refused))).find((checkout) => checkout.dir === root);
+    if (source === undefined) {
+      return yield* refuse(
+        operation,
+        root,
+        `${root} is not the root of a checkout this machine's monore lists: only a checkout's root gets a copy.`,
+      );
+    }
+    return source;
+  });
+
+  const canCopy: MonoreCopies["canCopy"] = Effect.fn("MonoreCopies.canCopy")(function* (root) {
+    const operation = "MonoreCopies.canCopy";
+    const source = yield* sourceOf(operation, yield* realPath(operation, root));
+    return source.prefix !== "/";
+  });
+
   const create: MonoreCopies["create"] = Effect.fn("MonoreCopies.create")(
     function* (input, progress) {
       const operation = "MonoreCopies.create";
@@ -140,14 +166,7 @@ export const make = Effect.fn("MonoreCopies.make")(function* (
       }
 
       const root = yield* realPath(operation, input.cwd);
-      const source = (yield* cli
-        .checkouts({ operation: `${operation}.checkouts`, cwd: root })
-        .pipe(Effect.mapError(refused))).find((checkout) => checkout.dir === root);
-      if (source === undefined) {
-        return yield* fail(
-          `${root} is not the root of a checkout this machine's monore lists: only a checkout's root gets a copy.`,
-        );
-      }
+      const source = yield* sourceOf(operation, root);
       if (source.prefix === "/") {
         return yield* fail(`${root} is a checkout of the whole tree, which is not copied.`);
       }
@@ -322,5 +341,5 @@ export const make = Effect.fn("MonoreCopies.make")(function* (
     },
   );
 
-  return { create, remove, base, cleanSettled } satisfies MonoreCopies;
+  return { create, canCopy, remove, base, cleanSettled } satisfies MonoreCopies;
 });

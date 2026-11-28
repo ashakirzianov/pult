@@ -358,15 +358,32 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                   (settings) => resolveProjectSettings(settings, projectId, project).settings,
                 ),
               );
-        // An outside caller that names no workspace follows the new-threads-in-a-worktree
-        // default, as the composer does.
-        const requestedStrategy =
+        // Pult: a launch that names no workspace on a project kept in monore gets a copy at main,
+        // whoever calls and whatever the setting says (`pult/decisions`, `monore-launch-default`).
+        const copiesMonoreRoot =
           input.workspaceStrategy === undefined &&
-          caller === undefined &&
           project !== undefined &&
           projectSettings !== undefined &&
-          (projectSettings.defaultThreadEnvMode ??
-            (yield* projectFileThreadEnvMode(project.workspaceRoot))) === "worktree"
+          (yield* ThreadLaunch.ThreadLaunchService.pipe(
+            Effect.flatMap((launches) => launches.copiesMonoreRoot(projectId)),
+            Effect.mapError(
+              (error) =>
+                new OrchestratorMcpFailure({
+                  code: "orchestration_error",
+                  message: `Could not read the project's monore checkout for the new copy: ${error.detail} No thread was created. Retry, or pass workspaceStrategy.`,
+                }),
+            ),
+          ));
+        // An outside caller that names no workspace follows the new-threads-in-a-worktree
+        // default, as the composer does.
+        const requestedStrategy = copiesMonoreRoot
+          ? { type: "worktree" as const, baseRef: "main" }
+          : input.workspaceStrategy === undefined &&
+              caller === undefined &&
+              project !== undefined &&
+              projectSettings !== undefined &&
+              (projectSettings.defaultThreadEnvMode ??
+                (yield* projectFileThreadEnvMode(project.workspaceRoot))) === "worktree"
             ? yield* defaultWorktreeStrategy(project.workspaceRoot)
             : input.workspaceStrategy;
         // An omitted startFromOrigin follows the new-worktree setting, as the composer and

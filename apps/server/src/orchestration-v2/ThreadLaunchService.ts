@@ -282,6 +282,11 @@ export class ThreadLaunchService extends Context.Service<
     >;
     /** True only when the project's folder is known not to be a Git repository. */
     readonly isNonGitProject: (projectId: ProjectId) => Effect.Effect<boolean>;
+    /**
+     * Pult: whether the project's folder is the root of a monore checkout of a prefix, whose new
+     * thread gets a copy at main by default (`MonoreCopies.canCopy`).
+     */
+    readonly copiesMonoreRoot: (projectId: ProjectId) => Effect.Effect<boolean, GitCommandError>;
     readonly retryPreparation: (
       input: ThreadLaunchPreparationInput,
     ) => Effect.Effect<
@@ -311,6 +316,7 @@ const make = Effect.gen(function* () {
   const terminals = yield* TerminalManager.TerminalManager;
   const git = yield* GitWorkflow.GitWorkflowService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const monore = yield* MonoreVcsDriver.MonoreVcsDriver;
   const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
@@ -546,6 +552,18 @@ const make = Effect.gen(function* () {
       Effect.map((isRepository) => !isRepository),
       Effect.orElseSucceed(() => false),
     );
+  });
+
+  const copiesMonoreRoot: ThreadLaunchService["Service"]["copiesMonoreRoot"] = Effect.fn(
+    "ThreadLaunchService.copiesMonoreRoot",
+  )(function* (projectId) {
+    const project = yield* projects
+      .getById(projectId)
+      .pipe(Effect.orElseSucceed(() => Option.none()));
+    if (Option.isNone(project)) return false;
+    const root = project.value.workspaceRoot;
+    // The marker first, so a Git project's launch never runs the CLI.
+    return (yield* isMonoreRoot(root)) && (yield* monore.canCopy(root));
   });
 
   /**
@@ -1796,6 +1814,7 @@ const make = Effect.gen(function* () {
     launch,
     checkWorktreeBase,
     isNonGitProject,
+    copiesMonoreRoot,
     retryPreparation,
     prepareRun,
   });

@@ -345,6 +345,8 @@ export class MonoreVcsDriver extends Context.Service<
     ) => Effect.Effect<void, GitCommandError>;
     /** `vcs.createWorktree` for a checkout's root: a thread's copy (`MonoreCopies`). */
     readonly createCopy: MonoreCopies.MonoreCopies["create"];
+    /** Whether a checkout's root gets a copy (`MonoreCopies`). */
+    readonly canCopy: MonoreCopies.MonoreCopies["canCopy"];
     /** `vcs.removeWorktree` of a copy (`MonoreCopies`). */
     readonly removeCopy: MonoreCopies.MonoreCopies["remove"];
     /** The base of `delegate_task`'s isolated child of a checkout (`MonoreCopies`). */
@@ -1125,6 +1127,7 @@ const make = Effect.gen(function* () {
     resolveConflict,
     checkouts,
     createCopy: copies.create,
+    canCopy: copies.canCopy,
     removeCopy: copies.remove,
     copyBase: copies.base,
     cleanSettledCopy: copies.cleanSettled,

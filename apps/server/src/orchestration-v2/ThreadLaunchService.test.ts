@@ -77,6 +77,7 @@ import * as ThreadLaunchGuard from "./ThreadLaunchGuard.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as MonoreCopies from "../vcs/MonoreCopies.ts";
+import * as MonoreVcsDriver from "../vcs/MonoreVcsDriver.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
@@ -160,6 +161,8 @@ interface HarnessOptions {
     dispatch: ThreadManagement.ThreadManagementService["Service"]["dispatch"],
   ) => ReturnType<ThreadManagement.ThreadManagementService["Service"]["dispatch"]>;
   readonly isGitRepository?: CheckpointStore.CheckpointStore["Service"]["isGitRepository"];
+  /** Whether monore copies the project's checkout; only a project rooted at a marker asks. */
+  readonly canCopy?: MonoreVcsDriver.MonoreVcsDriver["Service"]["canCopy"];
   /** The project's folder, `/repo` by default. */
   readonly workspaceRoot?: string;
 }
@@ -218,6 +221,9 @@ function makeHarness(options: HarnessOptions = {}) {
     Layer.mock(TerminalManager.TerminalManager)({ close: closeTerminal }),
     Layer.mock(CheckpointStore.CheckpointStore)({
       isGitRepository: options.isGitRepository ?? (() => Effect.succeed(true)),
+    }),
+    Layer.mock(MonoreVcsDriver.MonoreVcsDriver)({
+      canCopy: options.canCopy ?? (() => Effect.die("a monore checkout's test names canCopy")),
     }),
     Layer.succeed(ProjectService.ProjectService, {
       create: () => Effect.die("unused"),
@@ -2897,6 +2903,7 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
           ),
         checkWorktreeBase: launches.checkWorktreeBase,
         isNonGitProject: launches.isNonGitProject,
+        copiesMonoreRoot: launches.copiesMonoreRoot,
         retryPreparation: launches.retryPreparation,
         prepareRun: launches.prepareRun,
       }),
@@ -3697,9 +3704,18 @@ it.effect("launches a monore project's copy on main and refuses another line or 
       yield* fs.makeTempDirectoryScoped({ prefix: "launch-monore-" }),
     );
     yield* fs.writeFileString(`${root}/.monore-checkout`, "0b5e7a1c-3f2d-4e8a-9b6c-1d2e3f4a5b6c\n");
+    // Whether a new thread on the project gets a copy.
+    const copies = (layer: ReturnType<typeof makeHarness>["layer"]) =>
+      ThreadLaunch.ThreadLaunchService.pipe(
+        Effect.flatMap((launches) => launches.copiesMonoreRoot(projectId)),
+        Effect.orElseSucceed(() => "unreadable" as const),
+        Effect.provide(layer),
+      );
     // GitWorkflowService's answers for a monore checkout: no repository, remote or commit of git's.
     const harness = makeHarness({
       workspaceRoot: root,
+      isGitRepository: () => Effect.succeed(false),
+      canCopy: () => Effect.succeed(true),
       fetchWorktreeBaseCommit: () => Effect.succeed(null),
       git: {
         repositoryRoot: () => Effect.succeed(null),
@@ -3743,12 +3759,31 @@ it.effect("launches a monore project's copy on main and refuses another line or 
       assert.equal(projection.runs[0]?.workspacePreparation?.type, "worktree");
       assert.deepInclude(harness.createWorktree.mock.calls[0]?.[0], { cwd: root, refName: "main" });
     }).pipe(Effect.provide(harness.layer));
+    assert.equal(yield* copies(harness.layer), true);
+    // The whole tree is not copied, so its threads stay in the root.
+    const whole = makeHarness({
+      workspaceRoot: root,
+      isGitRepository: () => Effect.succeed(false),
+      canCopy: () => Effect.succeed(false),
+    });
+    assert.equal(yield* copies(whole.layer), false);
+    const unreadable = makeHarness({
+      workspaceRoot: root,
+      isGitRepository: () => Effect.succeed(false),
+      canCopy: (cwd) =>
+        Effect.fail(
+          new GitCommandError({ operation: "test", command: "monore", cwd, detail: "no CLI" }),
+        ),
+    });
+    assert.equal(yield* copies(unreadable.layer), "unreadable");
     // A folder inside a checkout is no checkout's root, so it gets no copy.
     yield* fs.makeDirectory(`${root}/notes`);
     const inside = makeHarness({
       workspaceRoot: `${root}/notes`,
+      isGitRepository: () => Effect.succeed(false),
       git: { repositoryRoot: () => Effect.succeed(null) },
     });
+    assert.equal(yield* copies(inside.layer), false);
     const error = yield* ThreadLaunch.ThreadLaunchService.pipe(
       Effect.flatMap((launches) =>
         launches.checkWorktreeBase({ projectId, workspaceStrategy: worktreeStrategy }),
