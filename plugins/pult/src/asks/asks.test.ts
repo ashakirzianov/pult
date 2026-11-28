@@ -186,12 +186,19 @@ it.effect(
             Effect.map((error) => error.message),
             Effect.orElseSucceed(() => "done"),
           );
-      const reply = (key: string, text: string) =>
+      const reply = (key: string, text: string, records?: ReadonlyArray<unknown>) =>
         ui.send({
           extension: "pult",
           slot: "shelf-row",
           key,
-          message: { text, attachments: [], model: null, runtimeMode: null, interactionMode: null },
+          message: {
+            text,
+            ...(records === undefined ? {} : { context: { version: 1, records } as never }),
+            attachments: [],
+            model: null,
+            runtimeMode: null,
+            interactionMode: null,
+          },
         });
       const commit = (
         type: "thread.settled" | "thread.unsettled" | "thread.archived",
@@ -848,18 +855,65 @@ it.effect(
       yield* act(posted.id, "unsettle");
       // A plain thread is told in its own thread, here of a settle with no reply.
       // A thread's reply goes into its own thread; its settle is told there, here after that reply.
-      expect(yield* reply(filed.id, "Ship it")).toEqual({ thread: "worker" });
+      // It cites a passage of the ask's file, by its path in the thread's checkout, and one of a message.
+      const fileMarker = "[q.md L4](t3-context://v1/review-comment/review-comment_c1)";
+      const quoteMarker =
+        "[Assistant quote](t3-citation://v1/env-1/worker/message-1?text=All+green.&start=0&end=10&prefix=&suffix=&comment=Even+on+CI%3F)";
+      const shipIt = `${fileMarker}\n${quoteMarker}\nShip it`;
+      yield* fs.writeFileString(`${tree}/notes/q.md`, "\n## Ship the parser?\n\nIt passes, now.\n");
+      expect(
+        yield* reply(filed.id, shipIt, [
+          {
+            version: 1,
+            contextId: "review-comment_c1",
+            label: "q.md L4",
+            kind: "review-comment",
+            sectionId: "file:notes/q.md",
+            sectionTitle: "File comment",
+            filePath: "notes/q.md",
+            startIndex: 3,
+            endIndex: 3,
+            rangeLabel: "L4",
+            text: "Since when?",
+            diff: "It passes, now.",
+            fenceLanguage: "md",
+          },
+        ]),
+      ).toEqual({ thread: "worker" });
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "worker",
-        text: "Ship it",
+        text: shipIt,
         header: { line: `[In reply to your ask ${filed.id} "Ship it?"]` },
         createdBy: "user",
       });
-      // A file ask's first comment makes its page, which its row opens from then on, the file a chip on it.
+      // A file ask's first comment makes its page, which its row opens from then on: the file a chip
+      // on it over its Markdown as it reads now, and each citation where its marker stood, its source
+      // over the passage quoted, then the comment on it.
       const filedPage = path.join(path.dirname(kept), `${filed.id}.md`);
       expect(yield* fs.readFileString(filedPage)).toBe(
-        `Context: \`${tree}/notes/q.md\`\n\n---\n\n## User, 2026-11-10 13:00 UTC\n\nShip it\n`,
+        [
+          `Context: \`${tree}/notes/q.md\``,
+          "## Ship the parser?",
+          "It passes, now.",
+          "---",
+          "## User, 2026-11-10 13:00 UTC",
+          `> \`${tree}/notes/q.md\` · L4\n>\n> It passes, now.`,
+          "Since when?",
+          "> A message in the thread\n>\n> All green.",
+          "Even on CI?",
+          "Ship it\n",
+        ].join("\n\n"),
       );
+      // The record keeps each citation's source, the quote's thread and message by their ids.
+      const filedRecord = JSON.parse(
+        yield* fs.readFileString(path.join(server.tmp, recordOf.replace(posted.id, filed.id))),
+      );
+      expect(
+        filedRecord.comments[0].citations.map((each: { source: unknown }) => each.source),
+      ).toEqual([
+        { file: `${tree}/notes/q.md`, lines: "L4", language: "md" },
+        { thread: "worker", message: "message-1" },
+      ]);
       expect((yield* rows).find((each) => each.key === filed.id)).toMatchObject({
         open: { file: filedPage },
       });
@@ -944,6 +998,8 @@ it.effect(
       expect(yield* act(filed.id, "unsettle")).toBe("done");
       // A settle that crosses its poster asking again, as Pult tells the poster, settles nothing.
       expect(yield* work.ask({ id: filed.id, comment: "Shipped. Tag it too?" })).toEqual(filed);
+      // Asked again with no comment, its page shows the file as it reads then.
+      yield* fs.writeFileString(`${tree}/notes/q.md`, "## Ship the parser?\n\nShipped.\n");
       const sendOnce = server.threads.service.sendToThread;
       server.threads.service.sendToThread = ((input) => {
         server.threads.service.sendToThread = sendOnce;
@@ -956,6 +1012,7 @@ it.effect(
         "The ask was asked again as you settled it, so it is not settled: settle it again if you mean the ask as asked now.",
       );
       expect((yield* work.list()).asks).toMatchObject([{ id: filed.id, status: "posted" }]);
+      expect(yield* fs.readFileString(filedPage)).toContain("\n\nShipped.\n\n---\n\n");
       worker.shell = {
         ...worker.shell,
         settledOverride: "settled",

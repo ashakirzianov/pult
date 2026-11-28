@@ -78,12 +78,33 @@ const Poster = Schema.Union([
 ]);
 export type Poster = typeof Poster.Type;
 
+/** A passage the user's comment cites, written on the page where its marker stands in the comment's text. */
+const AskCitation = Schema.Struct({
+  /** The marker as the composer wrote it in the text. */
+  marker: Schema.String,
+  /** A file's lines, its path from the root where Pult can tell it, or a thread's message. */
+  source: Schema.Union([
+    Schema.Struct({
+      file: Schema.String,
+      lines: Schema.String,
+      language: Schema.optional(Schema.String),
+    }),
+    Schema.Struct({ thread: Schema.String, message: Schema.String }),
+  ]),
+  quote: Schema.String,
+  /** The user's comment on the passage. */
+  comment: Schema.optional(Schema.String),
+});
+type AskCitation = typeof AskCitation.Type;
+
 /** One comment of the exchange: the user's reply, or the poster's answer, a settle's closing one. */
 const AskComment = Schema.Struct({
   by: Schema.Literals(["user", "poster"]),
   at: Schema.String,
   text: Schema.String,
   closing: Schema.optional(Schema.Literal(true)),
+  /** The user's citations; a comment from before them, or with none, has none. */
+  citations: Schema.optional(Schema.Array(AskCitation)),
 });
 type AskComment = typeof AskComment.Type;
 
@@ -160,10 +181,112 @@ const UNANSWERED_TEXT =
 const commentHeading = (comment: AskComment) =>
   `## ${comment.by === "user" ? "User" : comment.closing ? "Agent, settling" : "Agent"}, ${comment.at.slice(0, 10)} ${comment.at.slice(11, 16)} UTC`;
 
+/** Each line of `text` quoted. */
+const quoted = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => (line === "" ? ">" : `> ${line}`))
+    .join("\n");
+
+/** Languages whose lines read as Markdown in a quote; any other's are quoted as a fenced block. */
+const PROSE = new Set(["md", "markdown", "text"]);
+
+/**
+ * A citation as the thread view draws one, as far as Markdown goes: its source (a file's path, a
+ * chip when it is from the root, and its lines; or the thread's message) and the passage quoted,
+ * then the comment made on it.
+ */
+function citationText(citation: AskCitation): string {
+  const { source } = citation;
+  const header =
+    "file" in source ? `\`${source.file}\` · ${source.lines}` : "A message in the thread";
+  const language = "file" in source ? (source.language ?? "diff") : "md";
+  const fence = "`".repeat(
+    Math.max(3, ...Array.from(citation.quote.matchAll(/`+/g), (run) => run[0].length + 1)),
+  );
+  const quote = PROSE.has(language)
+    ? citation.quote.trimEnd()
+    : `${fence}${language}\n${citation.quote.trimEnd()}\n${fence}`;
+  const comment = citation.comment?.trim() ?? "";
+  return `${quoted(`${header}\n\n${quote}`)}${comment === "" ? "" : `\n\n${comment}`}`;
+}
+
+/** A comment's text with each citation written where its marker stands, as blocks of their own. */
+const commentText = (comment: AskComment) =>
+  (comment.citations ?? [])
+    .reduce(
+      (text, citation) =>
+        text.replace(
+          new RegExp(`\\n*${citation.marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n*`, "g"),
+          () => `\n\n${citationText(citation)}\n\n`,
+        ),
+      comment.text,
+    )
+    .trim();
+
 /** The page: the ask's text or its file's chip, then each comment under its heading; only the text while it has none. */
 function pageText(head: string, comments: ReadonlyArray<AskComment>): string {
   if (comments.length === 0) return head;
-  return `${[head.trimEnd(), "---", ...comments.map((each) => `${commentHeading(each)}\n\n${each.text.trim()}`)].join("\n\n")}\n`;
+  return `${[head.trimEnd(), "---", ...comments.map((each) => `${commentHeading(each)}\n\n${commentText(each)}`)].join("\n\n")}\n`;
+}
+
+/** A file or diff comment of the composer's, which its context carries. */
+type FileComment = Extract<
+  NonNullable<Composed["context"]>["records"][number],
+  { readonly kind: "review-comment" }
+>;
+
+/** A file comment's marker in the composed text, or an assistant quote's link, which carries its quote. */
+const CITATION_MARKER =
+  /\[[^[\]\n]*\]\((?:t3-context:\/\/v1\/review-comment\/([A-Za-z0-9_-]+)|(t3-citation:\/\/v1\/[^\s)]+))\)/g;
+
+/**
+ * The citations of a reply, each by its marker in the text: a file comment's lines from its record
+ * in the composed context, its path as `fromRoot` reads it; an assistant quote's passage from its
+ * link. A marker with neither stays in the text as written.
+ */
+function citationsOf(
+  composed: Composed,
+  fromRoot: (file: string) => string,
+): ReadonlyArray<AskCitation> {
+  const records = composed.context?.records ?? [];
+  return Array.from(composed.text.matchAll(CITATION_MARKER)).flatMap(
+    ([marker, contextId, link]): ReadonlyArray<AskCitation> => {
+      if (link !== undefined) {
+        const url = new URL(link);
+        const [, , thread = "", message = ""] = url.pathname.split("/").map(decodeURIComponent);
+        const quote = url.searchParams.get("text");
+        const comment = url.searchParams.get("comment");
+        return quote === null
+          ? []
+          : [
+              {
+                marker,
+                source: { thread, message },
+                quote,
+                ...(comment === null ? {} : { comment }),
+              },
+            ];
+      }
+      const record = records.find(
+        (each): each is FileComment =>
+          each.kind === "review-comment" && "filePath" in each && each.contextId === contextId,
+      );
+      if (record === undefined) return [];
+      return [
+        {
+          marker,
+          source: {
+            file: fromRoot(record.filePath),
+            lines: record.rangeLabel,
+            ...(record.fenceLanguage === undefined ? {} : { language: record.fenceLanguage }),
+          },
+          quote: record.diff,
+          ...(record.text.trim() === "" ? {} : { comment: record.text }),
+        },
+      ];
+    },
+  );
 }
 
 /** The first non-empty line with its leading `#`s dropped, its whitespace one space; `fallback` where that leaves nothing. */
@@ -256,6 +379,7 @@ export type Action =
       readonly posted: string;
       readonly key: string;
       readonly text: string;
+      readonly citations: ReadonlyArray<AskCitation>;
     }
   | { readonly kind: "snooze"; readonly until: string | null }
   | { readonly kind: "settle" }
@@ -455,6 +579,24 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
     Effect.mapError(failed("read")),
   );
 
+  /** A named file's page opens with its chip, then the file's Markdown as it reads now; a file of another kind, or one gone, the chip alone. */
+  const contextHead = Effect.fn("Asks.contextHead")(function* (file: string) {
+    const chip = `Context: \`${file}\``;
+    if (!/\.(md|markdown)$/i.test(file)) return chip;
+    // The page is a copy for reading: a reply already delivered is recorded whatever became of the file.
+    const text = yield* fs
+      .readFileString(file)
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.as(
+            Effect.logWarning("An ask's context file cannot be read.", { file, cause }),
+            "",
+          ),
+        ),
+      );
+    return text.trim() === "" ? chip : `${chip}\n\n${text.trim()}`;
+  });
+
   /** Writes the ask's page from its record, which holds its `text` where it is Pult's Markdown. */
   const writePage = (record: AskRecord) =>
     record.kept
@@ -463,7 +605,9 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         : keep(record.id, pageText(record.text, record.comments ?? []))
       : (record.comments ?? []).length === 0
         ? Effect.die(new Error(`unreachable: the ask ${record.id} has no page to write`))
-        : keep(record.id, pageText(`Context: \`${record.file}\``, record.comments ?? []));
+        : Effect.flatMap(contextHead(record.file), (head) =>
+            keep(record.id, pageText(head, record.comments ?? [])),
+          );
 
   /** The record and its page, the page first, as an ask's Markdown was written before its record. */
   const writeWithPage = (record: AskRecord) => Effect.andThen(writePage(record), write(record));
@@ -595,8 +739,13 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
                 ? record.text
                 : yield* textOf(record).pipe(Effect.mapError(unavailable))),
           };
+          // A named file's page shows the file as it reads at each asking.
           yield* (
-            input.text === undefined && comment === undefined ? write(next) : writeWithPage(next)
+            input.text === undefined &&
+            comment === undefined &&
+            (record.kept || comments.length === 0)
+              ? write(next)
+              : writeWithPage(next)
           ).pipe(Effect.mapError(unavailable));
           return { id: record.id, status: "posted" as const };
         }
@@ -753,7 +902,15 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
                 ? // A reply moves it to Working, from Snoozed too.
                   { replied: now, replyKey: action.key, snoozedUntil: null }
                 : {}),
-              comments: [...(record.comments ?? []), { by: "user", at: now, text: action.text }],
+              comments: [
+                ...(record.comments ?? []),
+                {
+                  by: "user",
+                  at: now,
+                  text: action.text,
+                  ...(action.citations.length === 0 ? {} : { citations: action.citations }),
+                },
+              ],
               text: yield* textOf(record),
             };
             yield* writeWithPage(next);
@@ -789,7 +946,7 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
   const reply: Asks["reply"] = Effect.fn("Asks.reply")(function* (id, composed) {
     const found = yield* lock.withPermits(1)(loadOne(id));
     if (found === undefined) return undefined;
-    const { ask } = found;
+    const { ask, record } = found;
     const header = replyHeader(ask);
     const from = { line: header.line, caption: header.caption };
     // @effect-diagnostics-next-line cryptoRandomUUIDInEffect:off -- an extension's entry carries no `SecureRandom`.
@@ -803,7 +960,16 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
             .send({ threadId: ask.poster.thread, key, header: from, composed })
             .pipe(Effect.mapError(failed("reply")), Effect.as(ask.poster.thread));
     // The posting it answered: one asked again meanwhile stays in Inbox.
-    yield* act(id, { kind: "replied", posted: ask.posted, key, text: composed.text });
+    yield* act(id, {
+      kind: "replied",
+      posted: ask.posted,
+      key,
+      text: composed.text,
+      // A path relative to the poster's checkout, the composer's for a file of it, read as the ask's file where it names it.
+      citations: citationsOf(composed, (file) =>
+        !path.isAbsolute(file) && record.file.endsWith(`${path.sep}${file}`) ? record.file : file,
+      ),
+    });
     return { thread };
   });
 
