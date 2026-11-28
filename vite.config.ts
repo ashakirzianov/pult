@@ -202,7 +202,7 @@ export default defineConfig({
       "apps/mobile/modules/t3-highlights/Vendor/**",
       "apps/mobile/modules/t3-highlights/cpp/generated/**",
       "apps/mobile/modules/t3-highlights/nitrogen/generated/**",
-      // Pult's copy of pult-star's mark, kept byte-comparable to its source.
+      // Pult's copy of star-genart's mark, kept byte-comparable to its source.
       "apps/pult/src/stars/flat/**",
       "*.icon/**",
     ],
