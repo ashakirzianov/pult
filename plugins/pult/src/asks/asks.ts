@@ -153,6 +153,13 @@ export const Ask = Schema.Struct({
 export type Ask = typeof Ask.Type;
 
 /**
+ * An ask as the plugin holds it, beside what the tools serve: whether its thread is settled, which
+ * holds it settled whatever its own settle, so an un-settle of the ask leaves it settled, or is
+ * refused where its own settle is not in.
+ */
+export type HeldAsk = Ask & { readonly threadSettled: boolean };
+
+/**
  * The header a reply carries (`messageHeader.ts`), written here and served with the ask, which the
  * page's composer attaches: its line a Star's names its posting channel, as the settle notice does
  * (Anton's ruling, 2026-11-21).
@@ -401,9 +408,9 @@ export interface Asks {
     mine: (poster: Poster) => boolean,
     comment: string | undefined,
   ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, AskRefused>;
-  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<Ask>, AsksError>;
+  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<HeldAsk>, AsksError>;
   /** The ask of `id` as `list` serves it; undefined for an id of no ask, or of one gone. */
-  readonly get: (id: string) => Effect.Effect<Ask | undefined, AsksError>;
+  readonly get: (id: string) => Effect.Effect<HeldAsk | undefined, AsksError>;
   /** The page's actions; undefined for an unknown ask, a string for one refused. The user's settle tells the poster. */
   /**
    * The user's reply from the composer its row's reply opens, under the ask's header, the ask then
@@ -416,7 +423,7 @@ export interface Asks {
   readonly act: (
     id: string,
     action: Action,
-  ) => Effect.Effect<Ask | undefined | { readonly refused: string }, AsksError>;
+  ) => Effect.Effect<HeldAsk | undefined | { readonly refused: string }, AsksError>;
 }
 
 const iso = (at: DateTime.DateTime) => DateTime.formatIso(at);
@@ -502,7 +509,8 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
       snoozedUntil: record.snoozedUntil,
       settled,
       replies: record.replies ?? [],
-    } satisfies Ask;
+      threadSettled: thread.settled !== null,
+    } satisfies HeldAsk;
   });
 
   /** One record file with its ask as served, removed where gone; undefined for a file that is no record, logged and left. */

@@ -146,7 +146,8 @@ export const register = Effect.fn("PultTools.registerAsks")(function* (
     const found = yield* asks
       .list({ star, channel: input.channel, thread, settled: input.settled === true })
       .pipe(Effect.mapError(unavailable));
-    return { asks: found };
+    // What the rows read of an ask is no tool's.
+    return { asks: found.map(({ threadSettled: _, ...ask }) => ask) };
   });
 
   yield* host.tools.register(AsksToolkit, {

@@ -1,7 +1,7 @@
-// The asks as rows on the page's thread shelves (`host.ui`, the `shelf-row` slot), a click opening
-// an ask's page with a reply composer the asks handle. Built whole at activation, the next snooze end
-// or expiry and a thread poster's event, a target read per poster; a write rebuilds its row alone, and
-// a write or event that may move a Star's conversation reads that poster's target again after it.
+// The asks as rows on the page's thread shelves (`host.ui`, `shelf-row`), a click opening an ask's
+// page with a reply composer the asks handle, each action and the reply declaring the row it leaves
+// (`then`). Built whole at activation, the next snooze end or expiry and a thread poster's event; a
+// write rebuilds its row alone, and one that may move a Star's conversation reads its target again.
 import {
   ActionRefused,
   type Composed,
@@ -13,7 +13,7 @@ import {
   type SlotItem,
   Stream,
 } from "../extension.ts";
-import type { Action, Ask, Asks, AskStars, Poster } from "./asks.ts";
+import type { Action, Ask, Asks, AskStars, HeldAsk, Poster } from "./asks.ts";
 
 type Row = SlotItem<"shelf-row">;
 
@@ -65,8 +65,43 @@ function statusOf(ask: Ask): Row["status"] {
   }
 }
 
-const actionsOf = (ask: Ask): Row["actions"] =>
-  ask.status === "snoozed" ? [WAKE] : ask.status === "settled" ? [UNSETTLE] : [SNOOZE, SETTLE];
+type Then = NonNullable<Row["actions"][number]["then"]>;
+
+/** The row of the ask as an action leaves it, its time `time` where the action stamps it: what the page draws at the click. */
+function thenOf(ask: Ask, time?: NonNullable<Then["status"]["time"]>): Then {
+  const status = statusOf(ask);
+  return { shelf: SHELVES[ask.status], status: time === undefined ? status : { ...status, time } };
+}
+
+/** The ask with no snooze or settle of its own: replied or posted. */
+const awake = (ask: Ask): Ask => ({ ...ask, status: ask.replied === null ? "posted" : "replied" });
+
+/** Each action with what it does to the row, `now` telling whether a settled ask's snooze still runs. */
+function actionsOf(ask: HeldAsk, now: number): Row["actions"] {
+  switch (ask.status) {
+    case "snoozed":
+      return [{ ...WAKE, then: thenOf(awake(ask)) }];
+    case "settled":
+      // While its thread is settled, an un-settle leaves the ask settled, or is refused: nothing to draw.
+      if (ask.threadSettled) return [UNSETTLE];
+      return [
+        {
+          ...UNSETTLE,
+          then: thenOf(
+            ask.snoozedUntil !== null && millis(ask.snoozedUntil) > now
+              ? { ...ask, status: "snoozed" }
+              : awake(ask),
+          ),
+        },
+      ];
+    case "posted":
+    case "replied":
+      return [
+        { ...SNOOZE, then: thenOf({ ...ask, status: "snoozed" }, { of: "input", as: "clock" }) },
+        { ...SETTLE, then: thenOf({ ...ask, status: "settled" }, { of: "click", as: "age" }) },
+      ];
+  }
+}
 
 /** Where a poster's reply composer writes, undefined for a poster gone. */
 type Target =
@@ -81,8 +116,8 @@ const posterKey = (poster: Poster) =>
 const byPosted = (left: Ask, right: Ask) =>
   left.posted.localeCompare(right.posted) || left.id.localeCompare(right.id);
 
-/** The ask's row; `target` where its reply's composer writes. */
-function rowOf(ask: Ask, target: Target): Row {
+/** The ask's row; `target` where its reply's composer writes, `now` what its actions read the clock as. */
+function rowOf(ask: HeldAsk, target: Target, now: number): Row {
   // Offered while the posting is neither replied to nor settled.
   const chips =
     ask.replied === null && ask.settled === null
@@ -102,7 +137,7 @@ function rowOf(ask: Ask, target: Target): Row {
             fallback: { icon: "account", label: "Star" },
           },
     status: statusOf(ask),
-    actions: actionsOf(ask),
+    actions: actionsOf(ask, now),
     open: {
       // Its page once it has one, the comments under its context.
       file: ask.page,
@@ -119,6 +154,10 @@ function rowOf(ask: Ask, target: Target): Row {
               },
               ...(target.note === undefined ? {} : { note: target.note }),
               chips,
+              // A reply moves it to Working, from Snoozed too; a settled one stays settled.
+              ...(ask.status === "settled"
+                ? {}
+                : { then: thenOf({ ...ask, status: "replied" }, { of: "click", as: "age" }) }),
             },
           }),
     },
@@ -167,7 +206,9 @@ export const make = Effect.fn("AskRows.make")(function* (
   let reading = false;
 
   /** The asks as last read, by id, and their posters' targets, by poster: what the rows are built from. */
-  let built: { readonly asks: Map<string, Ask>; readonly targets: Map<string, Target> } | undefined;
+  let built:
+    | { readonly asks: Map<string, HeldAsk>; readonly targets: Map<string, Target> }
+    | undefined;
 
   const targetOf = Effect.fn("AskRows.targetOf")(function* (poster: Poster) {
     if (!("thread" in poster)) return yield* stars.replyTarget(poster.star, poster.channel);
@@ -184,16 +225,16 @@ export const make = Effect.fn("AskRows.make")(function* (
       all.flatMap((ask) => ("thread" in ask.poster ? [ask.poster.thread] : [])),
     );
     reading = false;
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
     yield* host.ui.publish(
       "shelf-row",
       all.map((ask) => {
         const key = posterKey(ask.poster);
         if (!from.targets.has(key))
           throw new Error(`unreachable: the ask ${ask.id}'s poster has no target read`);
-        return rowOf(ask, from.targets.get(key));
+        return rowOf(ask, from.targets.get(key), now);
       }),
     );
-    const now = DateTime.toEpochMillis(yield* DateTime.now);
     const next = Math.min(
       ...all.flatMap((ask) =>
         ask.status === "snoozed" && ask.snoozedUntil !== null

@@ -186,6 +186,27 @@ it.effect(
             Effect.map((error) => error.message),
             Effect.orElseSucceed(() => "done"),
           );
+      /**
+       * The action's, or with none the reply's, `then` as the row last published declares it, and a
+       * check that the row the next publish shows is the one it drew, times aside.
+       */
+      const declared = (key: string, action?: string) => {
+        const row = published.find((each) => each.key === key)!;
+        const then =
+          action === undefined
+            ? row.open.reply.then
+            : row.actions.find((each: { id: string }) => each.id === action).then;
+        expect(then).toBeDefined();
+        const drawn = ({ shelf, status }: Record<string, any>) => ({
+          shelf,
+          icon: status.icon,
+          label: status.label,
+          time: status.time?.as,
+        });
+        return Effect.map(rows, (list) =>
+          expect(drawn(list.find((each) => each.key === key)!)).toEqual(drawn(then)),
+        );
+      };
       const reply = (key: string, text: string, records?: ReadonlyArray<unknown>) =>
         ui.send({
           extension: "pult",
@@ -611,14 +632,28 @@ it.effect(
           label: "Ask",
           time: { at: "2026-11-10T13:00:00.000Z", as: "age" },
         },
+        // Each action, and the reply, declares the row it leaves, which the page draws at the click.
         actions: [
           {
             id: "snooze",
             label: "Snooze",
             icon: "clock",
             input: { kind: "instant", label: "Snooze until" },
+            then: {
+              shelf: "snoozed",
+              status: { icon: "bell-slash", label: "Snoozed", time: { of: "input", as: "clock" } },
+            },
           },
-          { id: "settle", label: "Settle", icon: "check", text: true },
+          {
+            id: "settle",
+            label: "Settle",
+            icon: "check",
+            text: true,
+            then: {
+              shelf: "settled",
+              status: { icon: "check", label: "Settled", time: { of: "click", as: "age" } },
+            },
+          },
         ],
         open: {
           file: kept,
@@ -636,6 +671,10 @@ it.effect(
               { label: "serde", text: "serde" },
               { label: "miniserde", text: "miniserde" },
             ],
+            then: {
+              shelf: "working",
+              status: { icon: "comment", label: "Replied", time: { of: "click", as: "age" } },
+            },
           },
         },
       };
@@ -653,6 +692,7 @@ it.effect(
             reply: {
               target: { handled: { project: repo.id, placeholder: "Write your reply" } },
               chips: [{ label: "Ship it", text: "Ship it" }],
+              then: expect.objectContaining({ shelf: "working" }),
             },
           },
         }),
@@ -722,7 +762,9 @@ it.effect(
       expect(yield* act("nobody", "settle")).toContain('no item "nobody"');
       const until = "2026-11-11T09:00:00.000Z";
       const beforeActs = targetReads;
+      const snoozing = declared(posted.id, "snooze");
       expect(yield* act(posted.id, "snooze", "2026-11-11T09:00:00Z")).toBe("done");
+      yield* snoozing;
       expect((yield* rows)[0]).toMatchObject({
         shelf: "snoozed",
         status: { icon: "bell-slash", time: { at: until, as: "clock" } },
@@ -738,7 +780,9 @@ it.effect(
       yield* fs.writeFileString(path.join(server.tmp, recordOf), JSON.stringify(record));
       // A reply goes into the Star's open conversation under the ask's header, as the user's, and moves it to Working, from Snoozed too.
       yield* TestClock.adjust(1000);
+      const replying = declared(posted.id);
       expect(yield* reply(posted.id, "serde")).toEqual({ thread: "vega-user" });
+      yield* replying;
       // A snooze wakes no conversation, so it read no target; a reply may, so it read its Star's again after.
       yield* landed(() => targetReads > beforeActs);
       yield* rows;
@@ -806,9 +850,13 @@ it.effect(
       yield* rowsWhen((list) => noteOf(list) === "into its open conversation");
       expect(targetReads - beforeRuns).toBe(3);
       yield* act(posted.id, "snooze", until);
+      const waking = declared(posted.id, "wake");
       expect(yield* act(posted.id, "wake")).toBe("done");
+      yield* waking;
       expect((yield* rows)[0]).toMatchObject({ shelf: "working" });
+      const settling = declared(posted.id, "settle");
       expect(yield* act(posted.id, "settle")).toBe("done");
+      yield* settling;
       expect((yield* rows)[0]).toMatchObject({
         shelf: "settled",
         status: { icon: "check", time: { at: "2026-11-10T13:00:02.000Z" } },
@@ -836,7 +884,11 @@ it.effect(
       expect(server.threads.messages).toHaveLength(told);
       expect((yield* star.list()).asks).toEqual([]);
       expect((yield* star.list({ settled: true })).asks).toMatchObject([{ status: "settled" }]);
+      // A settled ask's reply leaves it settled, so it declares nothing.
+      expect((yield* rows)[0]!.open.reply.then).toBeUndefined();
+      const unsettling = declared(posted.id, "unsettle");
       expect(yield* act(posted.id, "unsettle")).toBe("done");
+      yield* unsettling;
       expect((yield* star.list()).asks).toMatchObject([{ status: "replied" }]);
       // A later reply left unanswered is told again; one whose ask is settled as its turn ends is not.
       yield* TestClock.adjust(1000);
@@ -849,10 +901,19 @@ it.effect(
       yield* TestClock.adjust(1000);
       yield* reply(posted.id, "Or miniserde");
       const settledReply = server.threads.messages.at(-1)!;
+      // Its poster's settle keeps its snooze, so while that runs an un-settle leaves it snoozed.
+      yield* act(posted.id, "snooze", "2026-11-10T14:00:00.000Z");
       yield* star.settle(posted.id);
       yield* completed(settledReply);
       expect(server.threads.messages.at(-1)).toBe(settledReply);
-      yield* act(posted.id, "unsettle");
+      yield* rows;
+      const resnoozing = declared(posted.id, "unsettle");
+      expect(yield* act(posted.id, "unsettle")).toBe("done");
+      yield* resnoozing;
+      expect((yield* rows)[0]).toMatchObject({
+        shelf: "snoozed",
+        status: { time: { at: "2026-11-10T14:00:00.000Z", as: "clock" } },
+      });
       // A plain thread is told in its own thread, here of a settle with no reply.
       // A thread's reply goes into its own thread; its settle is told there, here after that reply.
       // It cites a passage of the ask's file, by its path in the thread's checkout, and one of a message.
@@ -1033,6 +1094,10 @@ it.effect(
         shelf: "settled",
         status: { time: { at: "2026-11-10T12:30:00.000Z" } },
       });
+      // An un-settle the asks will refuse declares nothing, so the page never draws it.
+      expect(published.find((each) => each.key === filed.id)!.actions).toEqual([
+        { id: "unsettle", label: "Un-settle", icon: "discard" },
+      ]);
       expect(yield* act(filed.id, "unsettle")).toBe(
         "The ask reads as settled because its thread is: un-settle the thread.",
       );
