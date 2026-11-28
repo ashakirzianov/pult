@@ -50,4 +50,39 @@ The source of truth is monore `/ashakirzianov/pult/code`, its history `monore lo
 
 ## Upstream merges
 
-None is made until monore's uptake lands (`/ashakirzianov/xaxis/tasks/git-upstream-uptake.task`); `/ashakirzianov/pult/tasks/uptake-replaces-bench-merge.task` then writes the procedure. Never run `scripts/bench-merge.ts`: its `Git-Parent:` trailer names a commit the CLI's clone lacks, which stops the mirror for every lander.
+One builder, in a copy of its own (Rules), with no edits and nothing to land; one uptake at a time (`pult/decisions`, `upstream-merge-form`). The remote is `upstream` in `.monoregit`; `monore status --json` in the copy gives `git_clone`, this machine's git clone of the code, `head`, the copy's changeset, and while an uptake waits, `uptake.commit`, upstream's commit taken up.
+
+1. **Take it up:** `monore uptake upstream`. Upstream's `main` is merged into the copy as edits, from git's merge base with the mirror's newest commit, by monore's own three-way. The uptake names what it left out and exits 2 on a conflict. Note the previous pin for the report: `git -C <git_clone> merge-base origin/main <uptake.commit>`. Possible outcomes:
+   - `Up to date` or `changes nothing here`: the merge ends there.
+   - It may wait, loudly, with one of these codes:
+     - `uptake-behind`: run `monore goto`, then take it up again.
+     - `uptake-unlanded`: land and mirror first.
+     - `uptake-unmirrored`: run `monore mirror` first.
+     - `uptake-foreign` (a commit pushed to GitHub's `main` by hand): run `monore uptake origin`, then commit, land and mirror it, tell Beta, and take up upstream again.
+   - Stop and tell Beta on any of these: `uptake-merge-bases`, `uptake-unrelated`, or a `left out, symlink` or `left out, gitlink` line (a link upstream added outside what `.monoreignore` names).
+   - If it stopped partway, `monore uptake` with no remote finishes it.
+   - To abandon the merge, remove the copy.
+2. **Resolve the conflicts:** they sit between `<<<<<<< mine` and `>>>>>>> theirs`, in the server's and the view's hook points. You can take one side of a path whole with `monore resolve <path> --mine` or `--theirs`.
+   - No rerere and no rename following: a file upstream renamed or deleted that we changed comes as a conflict with their side deleting it. Carry our change over by hand to where upstream moved the file, then take `--theirs` for the old path.
+   - `pnpm-lock.yaml` takes `--theirs`; step 3's `vp i` puts our dependencies back.
+   - Keep the list of conflicts and how each was resolved, for the commit's body.
+3. **Ours and theirs:**
+   - Our root `AGENTS.md` stays ours: `monore resolve AGENTS.md --mine` if it conflicted, or `monore show <head> AGENTS.md > AGENTS.md` if it merged clean.
+   - `git -C <git_clone> show <uptake.commit>:AGENTS.md > docs/upstream/AGENTS.md`.
+   - Then `vp i`; a lockfile it changes goes with the merge.
+   - `vp run typecheck` in `apps/pult`, `apps/web`, `apps/server` and `plugins/pult`.
+   - The page run against a dev server of the copy (`apps/pult/AGENTS.md`, Running).
+   - Fixes inside the merge are expected, and are committed with it.
+4. **Review:** a second agent reviews before the land. It reads:
+   - the conflict list against both sides (`monore diff <path>` for ours, `git -C <git_clone> show <uptake.commit>:<path>` for theirs);
+   - each rename carried over by hand;
+   - every edit beyond the conflicts;
+   - the left-out lines.
+5. **Land:**
+   - `monore commit -m "Merge upstream <first 10 of the commit> into main"`, with the conflict list in the body. The commit adds `Git-Parent:` itself, and refuses a message that already holds one.
+   - Then a plain `monore land` and `monore mirror` (`land --merge` over the uptake's changeset is refused, `merge-git-parent`).
+   - A land that conflicts with concurrent landings is fixed by a new commit under the merge's own message, which carries the `Git-Parent:` by itself. If the CLI says the fix dropped the uptake's merge, take upstream up again.
+   - A rebase that lands the uptake's changeset as nothing (its changes already on the tip) loses its `Git-Parent:` without a word: the check below is what catches it; then take upstream up again.
+   - Check: `git -C <git_clone> merge-base --is-ancestor <the commit> origin/main` exits 0. If not, stop and tell Beta.
+6. **Workflows:** run `gh workflow list --all -R ashakirzianov/pult`, and disable every active workflow but `pult-release.yml` (`gh workflow disable <name> -R ashakirzianov/pult`), since upstream adds workflows.
+7. **Report:** the merger's report names the route files upstream added since the previous pin, `git -C <git_clone> diff --diff-filter=A --name-only <previous pin>..<the commit> -- apps/web/src/routes`.
