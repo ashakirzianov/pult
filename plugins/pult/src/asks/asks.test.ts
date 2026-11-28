@@ -860,7 +860,11 @@ it.effect(
       const quoteMarker =
         "[Assistant quote](t3-citation://v1/env-1/worker/message-1?text=All+green.&start=0&end=10&prefix=&suffix=&comment=Even+on+CI%3F)";
       const shipIt = `${fileMarker}\n${quoteMarker}\nShip it`;
-      yield* fs.writeFileString(`${tree}/notes/q.md`, "\n## Ship the parser?\n\nIt passes, now.\n");
+      // Its leading frontmatter is left off the page, a rule further down kept.
+      yield* fs.writeFileString(
+        `${tree}/notes/q.md`,
+        "---\nstatus: draft\n---\n\n## Ship the parser?\n\nIt passes, now.\n\n---\n\nNext: the lexer.\n",
+      );
       expect(
         yield* reply(filed.id, shipIt, [
           {
@@ -895,6 +899,8 @@ it.effect(
           `Context: \`${tree}/notes/q.md\``,
           "## Ship the parser?",
           "It passes, now.",
+          "---",
+          "Next: the lexer.",
           "---",
           "## User, 2026-11-10 13:00 UTC",
           `> \`${tree}/notes/q.md\` · L4\n>\n> It passes, now.`,

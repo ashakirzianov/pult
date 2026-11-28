@@ -295,6 +295,9 @@ function contextTitle(text: string, fallback: string): string {
   return oneLine(line?.trim().replace(/^#+/, "") ?? "") || fallback;
 }
 
+/** A YAML frontmatter block opening a file, which a page would render as a rule and a heading; one never closed is kept. */
+const LEADING_FRONTMATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/;
+
 const oneLine = (text: string) => text.replace(/\s+/gu, " ").trim();
 
 const refused = (message: string) => new AskRefused({ code: "invalid_request", message });
@@ -594,7 +597,8 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
           ),
         ),
       );
-    return text.trim() === "" ? chip : `${chip}\n\n${text.trim()}`;
+    const body = text.replace(LEADING_FRONTMATTER, "").trim();
+    return body === "" ? chip : `${chip}\n\n${body}`;
   });
 
   /** Writes the ask's page from its record, which holds its `text` where it is Pult's Markdown. */
