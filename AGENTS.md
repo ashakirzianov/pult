@@ -13,7 +13,7 @@ This codebase is the **Pult track**'s (monore `pult/about`), beside `../pult-sta
 
 ## Where code lives
 
-The source of truth is monore `/ashakirzianov/pult/code`, its history `monore log` and `monore blame`; `~/repos/pult` is a checkout of it, and every agent works in a copy of its own (Rules). `github.com/ashakirzianov/pult`, a GitHub fork of upstream, is its one-way mirror, whose `main` takes commits only from `monore mirror`, the remote it publishes to named by `.monoregit` at the root (`pult/decisions`, `one-repo`). Whatever reads git (upstream's tree, the fork's diff against it) is read in `git_clone`, the CLI's own clone of the code that `monore status --json` names in a copy, after `git -C <git_clone> fetch -q --no-tags upstream +refs/heads/main:refs/remotes/upstream/main`: read it, and never commit, push or merge in it.
+The source of truth is monore `/ashakirzianov/pult/code`, its history `monore log` and `monore blame`; `~/repos/pult` is a checkout of it, and every agent works in a copy of its own (Rules). `github.com/ashakirzianov/pult`, a GitHub fork of upstream, is its one-way mirror, whose `main` takes commits only from `monore mirror`, the remote it publishes to named by `.monoregit` at the root (`pult/decisions`, `one-repo`). Whatever reads git (upstream's tree, the fork's diff against it) is read in `git_clone`, the CLI's own clone of the code that `monore status --json` names in a copy, after `git -C <git_clone> fetch -q --no-tags origin +refs/heads/main:refs/remotes/origin/main` and the same of `upstream` into `refs/remotes/upstream/main` (the mirror moves neither; a clone with no `upstream` remote gets it from the copy's next `monore mirror`, which syncs the clone's remotes from `.monoregit`): read it, and never commit, push or merge in it.
 
 - `apps/pult`: the shell, a Vite page on VS Code's workbench with upstream's thread view built in; its map and its own conventions are `apps/pult/AGENTS.md`. `apps/pult/view` is the app around the thread view, `apps/pult/desktop` the Electron wrapper.
 - `apps/web`: upstream's web app, which is also the shell's thread view, built in place by the shell's Vite. Changes to it are ours to make, kept small and local so upstream merges stay easy, and they may change the fork's own web app; one that makes sense only for the shell is a slot or context there. Each is commented with Pult's use; `git -C <git_clone> diff --stat upstream/main...origin/main -- apps/web` lists them.
@@ -52,7 +52,7 @@ The source of truth is monore `/ashakirzianov/pult/code`, its history `monore lo
 
 One builder, in a copy of its own (Rules), with no edits and nothing to land; one uptake at a time (`pult/decisions`, `upstream-merge-form`). The remote is `upstream` in `.monoregit`; `monore status --json` in the copy gives `git_clone`, this machine's git clone of the code, `head`, the copy's changeset, and while an uptake waits, `uptake.commit`, upstream's commit taken up.
 
-1. **Take it up:** `monore uptake upstream`. Upstream's `main` is merged into the copy as edits, from git's merge base with the mirror's newest commit, by monore's own three-way. The uptake names what it left out and exits 2 on a conflict. Note the previous pin for the report: `git -C <git_clone> merge-base origin/main <uptake.commit>`. Possible outcomes:
+1. **Take it up:** `monore uptake upstream`. Upstream's `main` is merged into the copy as edits, from git's merge base with the mirror's newest commit, by monore's own three-way. The uptake names what it left out and exits 2 on a conflict. Once it has taken something up, note `uptake.commit` (status drops it at the commit) and the previous pin, `git -C <git_clone> merge-base origin/main <uptake.commit>`, for steps 5 and 7. Possible outcomes:
    - `Up to date` or `changes nothing here`: the merge ends there.
    - It may wait, loudly, with one of these codes:
      - `uptake-behind`: run `monore goto`, then take it up again.
@@ -80,9 +80,9 @@ One builder, in a copy of its own (Rules), with no edits and nothing to land; on
    - the left-out lines.
 5. **Land:**
    - `monore commit -m "Merge upstream <first 10 of the commit> into main"`, with the conflict list in the body. The commit adds `Git-Parent:` itself, and refuses a message that already holds one.
-   - Then a plain `monore land` and `monore mirror` (`land --merge` over the uptake's changeset is refused, `merge-git-parent`).
+   - Then a plain `monore land` and `monore mirror`, never `land --merge` (`merge-git-parent`).
    - A land that conflicts with concurrent landings is fixed by a new commit under the merge's own message, which carries the `Git-Parent:` by itself. If the CLI says the fix dropped the uptake's merge, take upstream up again.
    - A rebase that lands the uptake's changeset as nothing (its changes already on the tip) loses its `Git-Parent:` without a word: the check below is what catches it; then take upstream up again.
-   - Check: `git -C <git_clone> merge-base --is-ancestor <the commit> origin/main` exits 0. If not, stop and tell Beta.
+   - Check: after `git -C <git_clone> fetch -q --no-tags origin +refs/heads/main:refs/remotes/origin/main`, `git -C <git_clone> merge-base --is-ancestor <the commit> origin/main` exits 0. If not, stop and tell Beta.
 6. **Workflows:** run `gh workflow list --all -R ashakirzianov/pult`, and disable every active workflow but `pult-release.yml` (`gh workflow disable <name> -R ashakirzianov/pult`), since upstream adds workflows.
 7. **Report:** the merger's report names the route files upstream added since the previous pin, `git -C <git_clone> diff --diff-filter=A --name-only <previous pin>..<the commit> -- apps/web/src/routes`.
