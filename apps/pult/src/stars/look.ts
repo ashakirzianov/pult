@@ -7,7 +7,7 @@ import { lineageWorks, threadsBelow } from "./stars.ts";
 /** The five looks, read from the mark alone, first that holds first. */
 export type StarLook = "troubled" | "waiting" | "working" | "awake" | "asleep";
 
-/** The state of `pult-star`'s mark (`flat/states.ts`) each look draws: working is the mark's `delegating`, the disc awake, its planets, one per working channel, drawn in every look (`mark.ts`). */
+/** The state of `star-genart`'s mark (`flat/states.ts`) each look draws: working is the mark's `delegating`, the disc awake, its planets, one per working channel, drawn in every look (`mark.ts`). */
 export const LOOK_STATES: Readonly<Record<StarLook, State>> = {
   troubled: "troubled",
   waiting: "waiting",

@@ -11,7 +11,7 @@ import { cardRows, type Star, workingChannels } from "./stars.ts";
 
 type Scheme = "light" | "dark";
 
-/** The tints a Star takes, as `pult-star`'s Curls sketch names them, each by its hue in degrees: what the page draws and offers. */
+/** The tints a Star takes, as `star-genart`'s Curls sketch names them, each by its hue in degrees: what the page draws and offers. */
 export const TINTS = [
   { name: "amber", hue: 40 },
   { name: "coral", hue: 12 },
