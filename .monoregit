@@ -2,3 +2,7 @@
 	url = https://github.com/ashakirzianov/pult.git
 	role = publish
 	branch = main
+[remote "upstream"]
+	url = https://github.com/pingdotgg/t3code.git
+	role = uptake
+	branch = main
