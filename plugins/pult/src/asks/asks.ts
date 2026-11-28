@@ -275,6 +275,8 @@ export interface Asks {
     comment: string | undefined,
   ) => Effect.Effect<{ readonly id: string; readonly status: "settled" }, AskRefused>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<Ask>, AsksError>;
+  /** The ask of `id` as `list` serves it; undefined for an id of no ask, or of one gone. */
+  readonly get: (id: string) => Effect.Effect<Ask | undefined, AsksError>;
   /** The page's actions; undefined for an unknown ask, a string for one refused. The user's settle tells the poster. */
   /**
    * The user's reply from the composer its row's reply opens, under the ask's header, the ask then
@@ -675,6 +677,9 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
         ),
       );
 
+  const get: Asks["get"] = (id) =>
+    Effect.map(lock.withPermits(1)(loadOne(id)), (found) => found?.ask);
+
   /** Tells the poster a notice of Pult's about its ask, once per `key`: a retry after a failure tells it again, a repeat replays. */
   const tellPoster = Effect.fn("Asks.tellPoster")(function* (
     record: AskRecord,
@@ -832,5 +837,5 @@ export const make = Effect.fn("Asks.make")(function* (host: ExtensionHost, stars
     ),
   );
 
-  return { post, settleOwn, list, reply, act } satisfies Asks;
+  return { post, settleOwn, list, get, reply, act } satisfies Asks;
 });

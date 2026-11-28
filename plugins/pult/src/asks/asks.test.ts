@@ -13,6 +13,7 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import * as Tracer from "effect/Tracer";
 
 // The real loader, bundled list, MCP server and routes, which the plugin itself never imports.
 import * as McpHttpServer from "../../../../apps/server/src/mcp/McpHttpServer.ts";
@@ -70,6 +71,15 @@ const scopeOf = (
 });
 
 const DAY = 24 * 60 * 60_000;
+
+/** The reply targets the rows read, `AskRows.targetOf`'s spans, which the test's tracer counts. */
+let targetReads = 0;
+const countingTargets = Tracer.make({
+  span: (options) => {
+    if (options.name === "AskRows.targetOf") targetReads++;
+    return new Tracer.NativeSpan(options);
+  },
+});
 
 it.effect(
   "threads post, settle and list asks with the pult_ask tools, and the page draws them as rows it acts on and replies to through the extension's handlers",
@@ -510,7 +520,7 @@ it.effect(
         title: "Vega",
         workspaceRoot: root,
       });
-      server.threads.add(
+      const vegaUser = server.threads.add(
         vega.id,
         "vega-user",
         {
@@ -622,6 +632,9 @@ it.effect(
           },
         },
       };
+      // The activation's build had no asks. A post read its new poster's target, and asking again read it again after.
+      yield* landed(() => targetReads >= 3);
+      expect(targetReads).toBe(3);
       expect(yield* rows).toEqual([
         starRow,
         expect.objectContaining({
@@ -701,6 +714,7 @@ it.effect(
       );
       expect(yield* act("nobody", "settle")).toContain('no item "nobody"');
       const until = "2026-11-11T09:00:00.000Z";
+      const beforeActs = targetReads;
       expect(yield* act(posted.id, "snooze", "2026-11-11T09:00:00Z")).toBe("done");
       expect((yield* rows)[0]).toMatchObject({
         shelf: "snoozed",
@@ -718,6 +732,10 @@ it.effect(
       // A reply goes into the Star's open conversation under the ask's header, as the user's, and moves it to Working, from Snoozed too.
       yield* TestClock.adjust(1000);
       expect(yield* reply(posted.id, "serde")).toEqual({ thread: "vega-user" });
+      // A snooze wakes no conversation, so it read no target; a reply may, so it read its Star's again after.
+      yield* landed(() => targetReads > beforeActs);
+      yield* rows;
+      expect(targetReads - beforeActs).toBe(1);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
         text: "serde",
@@ -746,6 +764,7 @@ it.effect(
       expect((yield* star.list()).asks).toMatchObject([{ id: posted.id, page: kept }]);
       // The turn the reply started ends with the ask still replied: the channel is told, once per reply.
       const starReply = server.threads.messages.at(-1)!;
+      const beforeRuns = targetReads;
       yield* completed(starReply, true);
       expect(server.threads.messages.at(-1)).toMatchObject({
         threadId: "vega-user",
@@ -761,6 +780,24 @@ it.effect(
       const toldUnanswered = server.threads.messages.length;
       yield* completed(starReply);
       expect(server.threads.messages).toHaveLength(toldUnanswered);
+      // A Star conversation's first run seen, perhaps a wake's, reads its channel's target again; a later update, nothing.
+      yield* landed(() => targetReads > beforeRuns);
+      yield* rows;
+      expect(targetReads - beforeRuns).toBe(1);
+      // Its settle and un-settle each read it again, and the row's composer tells where a reply goes.
+      const noteOf = (list: typeof published) =>
+        list.find((each) => each.key === posted.id)?.open.reply.note;
+      vegaUser.shell = {
+        ...vegaUser.shell,
+        settledOverride: "settled",
+        settledAt: at("2026-11-10T13:00:03.000Z"),
+      };
+      yield* commit("thread.settled", "vega-user");
+      yield* rowsWhen((list) => noteOf(list) === "asleep, wakes in a new conversation");
+      vegaUser.shell = { ...vegaUser.shell, settledOverride: null, settledAt: null };
+      yield* commit("thread.unsettled", "vega-user");
+      yield* rowsWhen((list) => noteOf(list) === "into its open conversation");
+      expect(targetReads - beforeRuns).toBe(3);
       yield* act(posted.id, "snooze", until);
       expect(yield* act(posted.id, "wake")).toBe("done");
       expect((yield* rows)[0]).toMatchObject({ shelf: "working" });
@@ -981,6 +1018,16 @@ it.effect(
       const own = yield* fenced.ask({ text: "From afar" });
       expect((yield* fenced.list()).asks).toMatchObject([{ id: own.id, title: "From afar" }]);
       expect((yield* fenced.list({ star: "vega-id" })).refused).toBe("capability_denied");
+      // A rebuild, here at its poster's event, reads each poster's target once, however many asks it posted.
+      const beforeAgain = targetReads;
+      yield* fenced.ask({ text: "From afar, again" });
+      yield* landed(() => targetReads > beforeAgain);
+      yield* rows;
+      const beforeRebuild = targetReads;
+      yield* commit("thread.unsettled", linked.shell.id);
+      yield* landed(() => targetReads > beforeRebuild);
+      expect(yield* rows).toHaveLength(2);
+      expect(targetReads - beforeRebuild).toBe(1);
       // An outside client is not offered the tools at all.
       const outside = yield* Effect.exit(
         tool("pult_ask_list", scopeOf({ client: "full-access" }), {}),
@@ -988,6 +1035,7 @@ it.effect(
       expect(Exit.isFailure(outside) && Cause.pretty(outside.cause)).toContain("not found");
     }).pipe(
       Effect.scoped,
+      Effect.withTracer(countingTargets),
       // A server's environment, not the process's: an agent's shell carries its desktop app's.
       Effect.provide(
         Layer.mergeAll(

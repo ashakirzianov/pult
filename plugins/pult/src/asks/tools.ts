@@ -152,17 +152,18 @@ export const register = Effect.fn("PultTools.registerAsks")(function* (
   yield* host.tools.register(AsksToolkit, {
     pult_ask: {
       access: "acts-as-caller",
+      // Its caller's run may be its conversation's first since a wake.
       handle: (input, caller) =>
         Effect.flatMap(posterOf(caller), (poster) =>
           asks.post(poster, caller.folder ?? undefined, input),
-        ).pipe(Effect.tap(() => rows.publish)),
+        ).pipe(Effect.tap((posted) => rows.publish(posted.id, { moved: true }))),
     },
     pult_ask_settle: {
       access: "acts-as-caller",
       handle: (input, caller) =>
         Effect.flatMap(posterOf(caller), (poster) =>
           asks.settleOwn(input.id, isOwn(poster), input.comment),
-        ).pipe(Effect.tap(() => rows.publish)),
+        ).pipe(Effect.tap((settled) => rows.publish(settled.id, { moved: false }))),
     },
     pult_ask_list: { access: "reads-as-caller", handle: list },
   });
