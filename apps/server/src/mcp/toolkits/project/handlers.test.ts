@@ -54,7 +54,8 @@ const clientLaunchHarness = (input: {
   readonly runtimeModeCeiling: RuntimeMode;
   readonly defaultRuntimeMode?: RuntimeMode;
   readonly newWorktreesStartFromOrigin?: boolean;
-  readonly defaultThreadEnvMode?: "local" | "worktree";
+  /** The environment's setting; the current checkout unless a test names one, or null to inherit. */
+  readonly defaultThreadEnvMode?: "local" | "worktree" | null;
   readonly fallbackModel?: ModelSelection;
   readonly providers?: readonly ServerProvider[];
   /** Where Settings saves a project's model; the legacy project field stays null. */
@@ -93,9 +94,8 @@ const clientLaunchHarness = (input: {
       ...(input.newWorktreesStartFromOrigin === undefined
         ? {}
         : { newWorktreesStartFromOrigin: input.newWorktreesStartFromOrigin }),
-      ...(input.defaultThreadEnvMode === undefined
-        ? {}
-        : { defaultThreadEnvMode: input.defaultThreadEnvMode }),
+      defaultThreadEnvMode:
+        input.defaultThreadEnvMode === undefined ? "local" : input.defaultThreadEnvMode,
       ...(input.overrideModel === undefined
         ? {}
         : {
@@ -797,14 +797,14 @@ it.effect("a worktree launch that omits startFromOrigin follows the new-worktree
 it.effect("a launch that omits its workspace follows the new-threads-in-a-worktree default", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
-    for (const source of ["setting", "t3.json"] as const) {
+    for (const source of ["setting", "t3.json", "built-in"] as const) {
       const repo = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-launch-env-mode-" });
       const launched: Array<ThreadLaunch.ThreadLaunchInput> = [];
       const { projectId, dependencies } = clientLaunchHarness({
         runtimeModeCeiling: "auto",
         launched,
         workspaceRoot: repo,
-        ...(source === "setting" ? { defaultThreadEnvMode: "worktree" as const } : {}),
+        defaultThreadEnvMode: source === "setting" ? "worktree" : null,
       });
       const git = yield* GitVcsDriver.GitVcsDriver.pipe(Effect.provide(dependencies));
       for (const args of [
